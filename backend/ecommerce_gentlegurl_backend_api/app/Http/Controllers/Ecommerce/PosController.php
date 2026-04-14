@@ -12,6 +12,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderItemStaffSplit;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\PosCart;
+use App\Models\Ecommerce\PosCartAppointmentSettlementItem;
 use App\Models\Ecommerce\PosCartItem;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
@@ -146,11 +147,12 @@ class PosController extends Controller
     {
         $query = trim((string) $request->query('q', ''));
         $page = max(1, (int) $request->query('page', 1));
+        $unpaidOnly = (bool) $request->boolean('unpaid_only', false);
         $hasRange = $request->filled('from_date') && $request->filled('to_date');
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,service_price,price', 'staff:id,name']);
+        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,service_price,price,service_type', 'staff:id,name']);
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
@@ -172,7 +174,9 @@ class PosController extends Controller
         if ($request->filled('staff_id')) {
             $builder->where('staff_id', (int) $request->query('staff_id'));
         }
-        if ($request->filled('status')) {
+        if ($unpaidOnly) {
+            $builder->where('status', 'COMPLETED')->where('payment_status', 'UNPAID');
+        } elseif ($request->filled('status')) {
             $builder->where('status', (string) $request->query('status'));
         } else {
             // POS appointments (no status filter / "ALL"): show staff-facing bookings only.
@@ -210,6 +214,8 @@ class PosController extends Controller
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
                 'service_total' => (float) $summary['service_total'],
+                'addon_total_price' => (float) ($summary['addon_total_price'] ?? 0),
+                'add_ons' => $summary['add_ons'] ?? [],
                 'package_status' => $summary['package_status'],
             ];
         })->values();
@@ -347,6 +353,23 @@ class PosController extends Controller
         ], __('Package reserved successfully for appointment.'));
     }
 
+    public function releasePackageForAppointment(Request $request, int $id)
+    {
+        $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
+        if (! $booking->customer_id || ! $booking->service_id) {
+            return $this->respondError(__('Appointment must have customer and service to release package.'), 422);
+        }
+
+        // Release reserved claims only (consumed cannot be released).
+        // POS reservations are stored by used_from/used_ref_id (booking_id) with booking_id null.
+        $this->customerServicePackageService->releaseReservedClaimsForBooking((int) $booking->id);
+        $this->customerServicePackageService->releaseReservedClaimsBySource('POS', (int) $booking->id);
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Package claim released for appointment.'));
+    }
+
     public function collectAppointmentPayment(Request $request, int $id)
     {
         $validated = $request->validate([
@@ -454,25 +477,27 @@ class PosController extends Controller
     {
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
-        if ((float) $summary['balance_due'] > 0.0001) {
-            return $this->respondError(__('Please collect outstanding balance before marking completed.'), 422);
-        }
+        $balanceDue = (float) ($summary['balance_due'] ?? 0);
+        $hasOutstandingBalance = $balanceDue > 0.0001;
 
-        DB::transaction(function () use ($booking) {
+        $hasPackageUsage = CustomerServicePackageUsage::query()
+            ->where('booking_id', (int) $booking->id)
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->exists();
+
+        DB::transaction(function () use ($booking, $hasOutstandingBalance, $hasPackageUsage) {
             $booking->status = 'COMPLETED';
             $booking->completed_at = now();
-            $booking->payment_status = 'PAID';
+            // Allow "completed but unpaid" so staff can settle later in POS checkout.
+            // When there is no outstanding balance, mark as PAID immediately.
+            $booking->payment_status = $hasOutstandingBalance ? 'UNPAID' : 'PAID';
             $booking->save();
 
-            $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
-            $this->customerServicePackageService->attachReservedClaimsToBooking(
-                (int) ($booking->customer_id ?? 0),
-                (int) ($booking->service_id ?? 0),
-                'POS',
-                (int) $booking->id,
-                (int) $booking->id,
-            );
-            $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
+            // Only consume existing reserved claims. Do NOT auto-attach claims here;
+            // otherwise, a normal unpaid completion could incorrectly offset the service with a package.
+            if ($hasPackageUsage) {
+                $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
+            }
         });
 
         return $this->respond([
@@ -996,7 +1021,44 @@ class PosController extends Controller
         $package = ServicePackage::query()->where('is_active', true)->findOrFail((int) $validated['service_package_id']);
         $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
         $qty = (int) ($validated['qty'] ?? 1);
-        $cart = $this->resolveCart((int) $request->user()->id);
+        $cart = $this->resolveCart((int) $request->user()->id)->load([
+            'appointmentSettlementItems.booking:id,customer_id',
+            'packageItems:id,customer_id',
+        ]);
+
+        // If settlement exists in cart, all lines must belong to the same member.
+        if ($cart->appointmentSettlementItems->isNotEmpty()) {
+            $settlementCustomerIds = $cart->appointmentSettlementItems
+                ->map(fn (PosCartAppointmentSettlementItem $row) => (int) ($row->booking?->customer_id ?? 0))
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->values();
+
+            if ($settlementCustomerIds->count() !== 1) {
+                return $this->respondError(__('All appointment settlement items in one cart must belong to the same member.'), 422);
+            }
+
+            $lockedCustomerId = (int) $settlementCustomerIds->first();
+            if ($lockedCustomerId > 0 && (int) $customer->id !== $lockedCustomerId) {
+                return $this->respondError(__('Settlement is already in cart. Remove settlement to change member before adding a package.'), 422);
+            }
+        }
+
+        // If other package lines exist, enforce single-member as well.
+        $existingPackageCustomerIds = $cart->packageItems
+            ->map(fn (PosCartPackageItem $row) => (int) ($row->customer_id ?? 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+        if ($existingPackageCustomerIds->count() > 0) {
+            if ($existingPackageCustomerIds->count() !== 1) {
+                return $this->respondError(__('All service packages in one cart must belong to the same member.'), 422);
+            }
+            $lockedPackageCustomerId = (int) $existingPackageCustomerIds->first();
+            if ($lockedPackageCustomerId > 0 && (int) $customer->id !== $lockedPackageCustomerId) {
+                return $this->respondError(__('This cart already has a different member for service packages. Remove package items to change member.'), 422);
+            }
+        }
 
         $packagePrice = (float) ($package->selling_price ?? 0);
 
@@ -1014,8 +1076,132 @@ class PosController extends Controller
 
         return $this->respond([
             'item' => $item->load(['servicePackage:id,name,selling_price', 'customer:id,name']),
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load([
+                'items.variant.product',
+                'items.product',
+                'serviceItems.bookingService',
+                'serviceItems.assignedStaff',
+                'serviceItems.customer:id,name',
+                'packageItems.servicePackage',
+                'packageItems.customer:id,name',
+                'appointmentSettlementItems.booking.customer:id,name',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.staff:id,name',
+            ])),
         ], __('Package added to POS cart.'));
+    }
+
+    public function addAppointmentSettlementToCart(Request $request)
+    {
+        $validated = $request->validate([
+            'booking_id' => ['required', 'integer', 'exists:bookings,id'],
+        ]);
+
+        $booking = Booking::query()->with([
+            'customer:id,name',
+            'service:id,name,service_price,price,service_type',
+            'staff:id,name',
+        ])->findOrFail((int) $validated['booking_id']);
+        if ((string) $booking->status !== 'COMPLETED') {
+            return $this->respondError(__('Only COMPLETED appointments can be settled from POS cart.'), 422);
+        }
+
+        if (empty($booking->customer_id)) {
+            return $this->respondError(__('Settlement appointment must belong to a member.'), 422);
+        }
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $balanceDue = (float) ($summary['balance_due'] ?? 0);
+        if ($balanceDue <= 0.0001) {
+            return $this->respondError(__('No balance due for this appointment.'), 422);
+        }
+
+        $cart = $this->resolveCart((int) $request->user()->id)->load([
+            'serviceItems',
+            'packageItems:id,customer_id',
+            'appointmentSettlementItems.booking:id,customer_id',
+        ]);
+
+        $hasGuestServiceContext = $cart->serviceItems->contains(function (PosCartServiceItem $item) {
+            if (! empty($item->customer_id)) return false;
+            return trim((string) ($item->guest_email ?? '')) !== '' || trim((string) ($item->guest_name ?? '')) !== '';
+        });
+        if ($hasGuestServiceContext) {
+            return $this->respondError(__('Cannot add settlement while cart is using guest details. Remove guest items or switch to a member first.'), 422);
+        }
+
+        $existingPackageCustomerIds = $cart->packageItems
+            ->map(fn (PosCartPackageItem $row) => (int) ($row->customer_id ?? 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+        if ($existingPackageCustomerIds->count() > 0) {
+            if ($existingPackageCustomerIds->count() !== 1) {
+                return $this->respondError(__('All service packages in one cart must belong to the same member.'), 422);
+            }
+            $lockedPackageCustomerId = (int) $existingPackageCustomerIds->first();
+            if ($lockedPackageCustomerId > 0 && $lockedPackageCustomerId !== (int) $booking->customer_id) {
+                return $this->respondError(__('This settlement belongs to a different member. Remove current package item(s) to change member.'), 422);
+            }
+        }
+
+        $existingSettlementCustomerIds = $cart->appointmentSettlementItems
+            ->map(fn (PosCartAppointmentSettlementItem $row) => (int) ($row->booking?->customer_id ?? 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+        if ($existingSettlementCustomerIds->count() > 0) {
+            if ($existingSettlementCustomerIds->count() !== 1) {
+                return $this->respondError(__('All appointment settlement items in one cart must belong to the same member.'), 422);
+            }
+            $lockedCustomerId = (int) $existingSettlementCustomerIds->first();
+            if ($lockedCustomerId > 0 && $lockedCustomerId !== (int) $booking->customer_id) {
+                return $this->respondError(__('This settlement belongs to a different member. Remove the current settlement item(s) to change member.'), 422);
+            }
+        }
+
+        $item = PosCartAppointmentSettlementItem::query()->firstOrCreate([
+            'pos_cart_id' => (int) $cart->id,
+            'booking_id' => (int) $booking->id,
+        ]);
+
+        return $this->respond([
+            'item' => $item,
+            'cart' => $this->serializeCart($cart->fresh()->load([
+                'items.variant.product',
+                'items.product',
+                'serviceItems.bookingService',
+                'serviceItems.assignedStaff',
+                'serviceItems.customer:id,name',
+                'packageItems.servicePackage',
+                'packageItems.customer:id,name',
+                'appointmentSettlementItems.booking.customer:id,name',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.staff:id,name',
+            ])),
+        ], __('Appointment settlement added to POS cart.'));
+    }
+
+    public function removeAppointmentSettlementCartItem(Request $request, int $itemId)
+    {
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->appointmentSettlementItems()->findOrFail($itemId);
+        $item->delete();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load([
+                'items.variant.product',
+                'items.product',
+                'serviceItems.bookingService',
+                'serviceItems.assignedStaff',
+                'serviceItems.customer:id,name',
+                'packageItems.servicePackage',
+                'packageItems.customer:id,name',
+                'appointmentSettlementItems.booking.customer:id,name',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.staff:id,name',
+            ])),
+        ], __('Appointment settlement removed from POS cart.'));
     }
 
     public function updatePackageCartItem(Request $request, int $itemId)
@@ -1030,7 +1216,18 @@ class PosController extends Controller
         $item->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load([
+                'items.variant.product',
+                'items.product',
+                'serviceItems.bookingService',
+                'serviceItems.assignedStaff',
+                'serviceItems.customer:id,name',
+                'packageItems.servicePackage',
+                'packageItems.customer:id,name',
+                'appointmentSettlementItems.booking.customer:id,name',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.staff:id,name',
+            ])),
         ]);
     }
 
@@ -1041,7 +1238,18 @@ class PosController extends Controller
         $item->delete();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load([
+                'items.variant.product',
+                'items.product',
+                'serviceItems.bookingService',
+                'serviceItems.assignedStaff',
+                'serviceItems.customer:id,name',
+                'packageItems.servicePackage',
+                'packageItems.customer:id,name',
+                'appointmentSettlementItems.booking.customer:id,name',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.staff:id,name',
+            ])),
         ]);
     }
 
@@ -1291,7 +1499,18 @@ class PosController extends Controller
 
     public function cart(Request $request)
     {
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
+        $cart = $this->resolveCart((int) $request->user()->id)->load([
+            'items.variant.product',
+            'items.product',
+            'serviceItems.bookingService',
+            'serviceItems.assignedStaff',
+            'serviceItems.customer:id,name',
+            'packageItems.servicePackage',
+            'packageItems.customer:id,name',
+            'appointmentSettlementItems.booking.customer:id,name',
+            'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+            'appointmentSettlementItems.booking.staff:id,name',
+        ]);
 
         return $this->respond([
             'cart' => $this->serializeCart($cart),
@@ -1371,8 +1590,19 @@ class PosController extends Controller
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
-        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
+        $cart = $this->resolveCart((int) $request->user()->id)->load([
+            'items.variant.product',
+            'items.product',
+            'serviceItems.bookingService',
+            'serviceItems.assignedStaff',
+            'serviceItems.customer:id,name',
+            'packageItems.servicePackage',
+            'packageItems.customer:id,name',
+            'appointmentSettlementItems.booking.customer:id,name',
+            'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+            'appointmentSettlementItems.booking.staff:id,name',
+        ]);
+        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty() && $cart->appointmentSettlementItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
         }
 
@@ -1612,12 +1842,39 @@ class PosController extends Controller
                 abort(422, __('Selected checkout member does not match package member.'));
             }
 
+            if ($cart->appointmentSettlementItems->isNotEmpty()) {
+                $settlementCustomerIds = $cart->appointmentSettlementItems
+                    ->map(fn (PosCartAppointmentSettlementItem $row) => (int) ($row->booking?->customer_id ?? 0))
+                    ->filter(fn (int $id) => $id > 0)
+                    ->unique()
+                    ->values();
+
+                if ($settlementCustomerIds->count() !== 1) {
+                    abort(422, __('All appointment settlement items in one checkout must belong to the same member.'));
+                }
+
+                $settlementCustomerId = (int) $settlementCustomerIds->first();
+                if (empty($customerId)) {
+                    $customerId = $settlementCustomerId;
+                }
+
+                if ((int) $customerId !== $settlementCustomerId) {
+                    abort(422, __('Selected checkout member does not match settlement member.'));
+                }
+            }
+
             $isStaffUser = !empty($request->user()?->staff_id);
 
             $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
             $packageSubtotal = (float) $cart->packageItems->sum(fn (PosCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
             $depositTotal = $this->resolvePosBookingDepositForCart($cart);
-            $subtotal = (float) $cartPricing['subtotal'] + $packageSubtotal + $depositTotal;
+            $settlementTotal = (float) $cart->appointmentSettlementItems->sum(function (PosCartAppointmentSettlementItem $row) {
+                $booking = $row->booking;
+                if (! $booking) return 0.0;
+                $summary = $this->resolveAppointmentFinancialSummary($booking);
+                return max(0.0, (float) ($summary['balance_due'] ?? 0));
+            });
+            $subtotal = (float) $cartPricing['subtotal'] + $packageSubtotal + $depositTotal + $settlementTotal;
             $discountTotal = 0.0;
             $voucherData = null;
 
@@ -2061,6 +2318,73 @@ class PosController extends Controller
                 ];
             }
 
+            foreach ($cart->appointmentSettlementItems as $settlementItem) {
+                $booking = $settlementItem->booking;
+                if (! $booking) {
+                    continue;
+                }
+                $booking->loadMissing(['service', 'customer']);
+                if ((string) $booking->status !== 'COMPLETED') {
+                    abort(422, __('Only COMPLETED appointments can be settled from POS cart.'));
+                }
+
+                $summary = $this->resolveAppointmentFinancialSummary($booking);
+                $serviceBalanceDue = max(0.0, (float) ($summary['service_balance_due'] ?? 0));
+                $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
+                $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
+                if ($balanceDue <= 0.0001) {
+                    continue;
+                }
+
+                if ($serviceBalanceDue > 0.0001) {
+                    OrderItem::query()->create([
+                        'order_id' => (int) $order->id,
+                        'line_type' => 'booking_settlement',
+                        'product_id' => null,
+                        'product_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                        'display_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                        'quantity' => 1,
+                        'price_snapshot' => $serviceBalanceDue,
+                        'unit_price_snapshot' => $serviceBalanceDue,
+                        'line_total' => $serviceBalanceDue,
+                        'line_total_snapshot' => $serviceBalanceDue,
+                        'effective_unit_price' => $serviceBalanceDue,
+                        'effective_line_total' => $serviceBalanceDue,
+                        'locked' => true,
+                        'booking_id' => (int) $booking->id,
+                        'booking_service_id' => (int) ($booking->service_id ?? 0),
+                    ]);
+                }
+
+                foreach ($addonSettlementItems as $addon) {
+                    $addonAmount = max(0.0, (float) ($addon['balance_due'] ?? 0));
+                    if ($addonAmount <= 0.0001) {
+                        continue;
+                    }
+                    OrderItem::query()->create([
+                        'order_id' => (int) $order->id,
+                        'line_type' => 'booking_addon',
+                        'product_id' => null,
+                        'product_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
+                        'display_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
+                        'variant_name_snapshot' => 'Booking Add-on Settlement',
+                        'quantity' => 1,
+                        'price_snapshot' => $addonAmount,
+                        'unit_price_snapshot' => $addonAmount,
+                        'line_total' => $addonAmount,
+                        'line_total_snapshot' => $addonAmount,
+                        'effective_unit_price' => $addonAmount,
+                        'effective_line_total' => $addonAmount,
+                        'locked' => true,
+                        'booking_id' => (int) $booking->id,
+                        'booking_service_id' => (int) ($booking->service_id ?? 0),
+                    ]);
+                }
+
+                $booking->payment_status = 'PAID';
+                $booking->save();
+            }
+
             $order->load(['items', 'customer']);
 
             if ($voucherData && $discountTotal > 0) {
@@ -2092,6 +2416,7 @@ class PosController extends Controller
             $cart->items()->delete();
             $cart->serviceItems()->delete();
             $cart->packageItems()->delete();
+            $cart->appointmentSettlementItems()->delete();
             $this->clearVoucherFromCart($cart);
 
             return [$order, $receiptUrl, $purchasedPackageLines];
@@ -2430,10 +2755,45 @@ class PosController extends Controller
             ];
         })->values();
 
+        $settlementItems = $cart->appointmentSettlementItems->map(function (PosCartAppointmentSettlementItem $item) {
+            $booking = $item->booking;
+            if (! $booking) {
+                return null;
+            }
+            $summary = $this->resolveAppointmentFinancialSummary($booking);
+            $balanceDue = (float) ($summary['balance_due'] ?? 0);
+            if ($balanceDue <= 0.0001) {
+                return null;
+            }
+
+            return [
+                'id' => (int) $item->id,
+                'booking_id' => (int) $booking->id,
+                'booking_service_id' => (int) ($booking->service_id ?? 0),
+                'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+                'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
+                'customer_name' => (string) ($booking->customer?->name ?? '-'),
+                'service_name' => (string) ($booking->service?->name ?? '-'),
+                'staff_name' => (string) ($booking->staff?->name ?? '-'),
+                'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
+                'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+                'balance_due' => round($balanceDue, 2),
+                'service_total' => (float) ($summary['service_total'] ?? 0),
+                'addon_total_price' => (float) ($summary['addon_total_price'] ?? 0),
+                'deposit_contribution' => (float) ($summary['deposit_contribution'] ?? 0),
+                'package_offset' => (float) ($summary['package_offset'] ?? 0),
+                'amount_due_now' => (float) ($summary['amount_due_now'] ?? $balanceDue),
+                'service_balance_due' => (float) ($summary['service_balance_due'] ?? 0),
+                'addon_settlement_items' => $summary['addon_settlement_items'] ?? [],
+                'package_status' => $summary['package_status'] ?? null,
+            ];
+        })->filter()->values();
+
         $voucherDiscount = (float) ($cart->voucher_discount_amount ?? 0);
         $bookingDepositTotal = (float) ($depositBreakdown['deposit_total'] ?? 0);
         $serviceAddonTotal = 0.0;
-        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $packageItems->sum('line_total') + $bookingDepositTotal);
+        $settlementTotal = (float) $settlementItems->sum(fn (array $row) => (float) ($row['balance_due'] ?? 0));
+        $subtotal = (float) (($cartPricing['subtotal'] ?? $items->sum('line_total')) + $packageItems->sum('line_total') + $bookingDepositTotal + $settlementTotal);
         $grandTotal = max(0, $subtotal - $voucherDiscount);
 
         return [
@@ -2441,6 +2801,7 @@ class PosController extends Controller
             'items' => $items,
             'service_items' => $serviceItems,
             'package_items' => $packageItems,
+            'appointment_settlement_items' => $settlementItems,
             'booking_deposit_total' => $bookingDepositTotal,
             'booking_addon_total' => $serviceAddonTotal,
             'booking_deposit_breakdown' => $depositBreakdown,
@@ -2684,7 +3045,7 @@ class PosController extends Controller
 
         $promotions = Promotion::query()
             ->where('is_active', true)
-            ->whereIn('id', \DB::table('promotion_products')->select('promotion_id')->distinct())
+            ->whereIn('id', DB::table('promotion_products')->select('promotion_id')->distinct())
             ->with(['promotionProducts', 'promotionTiers'])
             ->get();
 

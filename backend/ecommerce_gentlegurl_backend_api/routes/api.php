@@ -401,6 +401,7 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/status', [PosController::class, 'updateAppointmentStatus']);
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
         Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment']);
+        Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment']);
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
         Route::post('/appointments/{id}/reschedule', [PosController::class, 'rescheduleAppointment']);
         Route::get('/cart', [PosController::class, 'cart']);
@@ -408,6 +409,8 @@ $protectedRoutes = function () {
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
         Route::post('/cart/add-package', [PosController::class, 'addPackageToCart']);
+        Route::post('/cart/add-appointment-settlement', [PosController::class, 'addAppointmentSettlementToCart']);
+        Route::delete('/cart/appointment-settlements/{itemId}', [PosController::class, 'removeAppointmentSettlementCartItem']);
         Route::patch('/cart/package-items/{itemId}', [PosController::class, 'updatePackageCartItem']);
         Route::delete('/cart/package-items/{itemId}', [PosController::class, 'removePackageCartItem']);
         Route::post('/cart/add-service', [PosController::class, 'addService']);

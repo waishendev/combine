@@ -932,19 +932,24 @@ export default function PosAppointmentsWorkspace({
       !['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()),
     [appointmentCheckoutCompleted, appointmentDetail?.package_status?.status, appointmentPackageApplied],
   )
-  const canMarkAppointmentCompleted = !appointmentActionLoading && (
-    appointmentDueAmountNow <= 0 || appointmentPackageApplied
-  )
-
   const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
   /** Cancelled / no-show / late cancel — no checkout or “complete visit” CTAs. */
   const appointmentIsTerminalCancelled = ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION'].includes(appointmentStatusUpper)
 
+  const appointmentShowPaymentBadge =
+    !appointmentIsTerminalCancelled && ['CONFIRMED', 'COMPLETED'].includes(appointmentStatusUpper)
+  const appointmentPaymentBadgeIsPaid = appointmentDueAmountNow <= 0.0001
+
+  const canMarkAppointmentCompleted =
+    !appointmentActionLoading &&
+    !appointmentIsTerminalCancelled &&
+    appointmentStatusUpper !== 'COMPLETED'
+
   const showAppointmentCollectPayment =
-    appointmentDueAmountNow > 0 && !appointmentIsTerminalCancelled && appointmentStatusUpper !== 'COMPLETED'
+    appointmentDueAmountNow > 0 && !appointmentIsTerminalCancelled && appointmentStatusUpper === 'COMPLETED'
 
   const showAppointmentMarkCompletedBlock =
-    !appointmentIsTerminalCancelled && appointmentStatusUpper !== 'COMPLETED' && appointmentDueAmountNow <= 0
+    !appointmentIsTerminalCancelled && appointmentStatusUpper === 'CONFIRMED'
 
   const showAppointmentPaymentCtaCard =
     appointmentReschedulePolicyWarnings.length > 0 ||
@@ -1171,8 +1176,8 @@ export default function PosAppointmentsWorkspace({
                       </span>
                       <div className="flex flex-wrap items-center justify-end gap-2">
                         <BookingStatusBadge status={appointmentDetail.status} label={appointmentDetail.status} showDot={false} />
-                        {String(appointmentDetail.status ?? '').toUpperCase() === 'CONFIRMED' ? (
-                          appointmentDueAmountNow <= 0 ? (
+                        {appointmentShowPaymentBadge ? (
+                          appointmentPaymentBadgeIsPaid ? (
                             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-900 ring-1 ring-emerald-200">
                               Paid
                             </span>
@@ -1313,7 +1318,7 @@ export default function PosAppointmentsWorkspace({
                     {showAppointmentCollectPayment ? (
                       <div className="space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Collect payment</p>
-                        <p className="text-xs text-slate-500">Checkout opens cash or QRPay confirmation.</p>
+                        <p className="text-xs text-slate-500">Settle this completed appointment via cash or QRPay.</p>
                         <div className={`grid gap-2 ${appointmentShowApplyPackageButton ? 'grid-cols-2' : 'grid-cols-1'}`}>
                           <button
                             type="button"
@@ -1346,11 +1351,12 @@ export default function PosAppointmentsWorkspace({
                     {showAppointmentMarkCompletedBlock ? (
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Complete visit</p>
+                        <p className="text-xs text-slate-500">Mark as Completed first to enable Checkout / Apply package.</p>
                         <button
                           type="button"
                           disabled={!canMarkAppointmentCompleted || appointmentActionLoading}
                           title={
-                            canMarkAppointmentCompleted ? 'Mark appointment as completed' : 'Complete payment or apply package first'
+                            canMarkAppointmentCompleted ? 'Mark appointment as completed' : 'Mark appointment as completed'
                           }
                           onClick={() => void markAppointmentCompleted()}
                           className="flex min-h-[48px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"

@@ -1,6 +1,7 @@
 'use client'
 
 import StatusBadge from './StatusBadge'
+import { useState } from 'react'
 import { useI18n } from '@/lib/i18n'
 
 export interface ProductImage {
@@ -115,6 +116,7 @@ export default function ProductRow({
   onViewStockLogs,
 }: ProductRowProps) {
   const { t } = useI18n()
+  const [imageBroken, setImageBroken] = useState(false)
   const mainImage = product.images.find((image) => image.isMain) ?? product.images[0]
   const formatAmount = (value: number) =>
     value.toLocaleString(undefined, {
@@ -156,12 +158,13 @@ export default function ProductRow({
       )}
       <td className="px-4 py-2 border border-gray-200">
         <div className="flex items-center gap-3">
-          {mainImage?.url ? (
+          {mainImage?.url && !imageBroken ? (
             <img
               src={mainImage.url}
               alt={product.name}
               className="h-10 w-10 rounded object-cover border border-gray-200 bg-gray-50"
               loading="lazy"
+              onError={() => setImageBroken(true)}
             />
           ) : (
             <div className="h-10 w-10 rounded border border-dashed border-gray-300 bg-gray-50" />

@@ -37,7 +37,7 @@ class DatabaseSeeder extends Seeder
             BillplzPaymentGatewayOptionSeeder::class,
 
             // upper all should open , no command to avoid error seed
-
+            DemoMembersSeederTesting::class,
 
             FrontendTestDataSeeder::class,
             LoyaltyRewardSeederTesting::class,

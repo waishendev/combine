@@ -48,6 +48,7 @@ type Cart = {
   items: CartItem[]
   service_items?: ServiceCartItem[]
   package_items?: PackageCartItem[]
+  appointment_settlement_items?: AppointmentSettlementCartItem[]
   subtotal: number
   grand_total: number
   booking_deposit_total?: number
@@ -64,6 +65,35 @@ type Cart = {
     } | null
   } | null
   promotions?: AppliedPromotion[]
+}
+
+type AppointmentSettlementCartItem = {
+  id: number
+  booking_id: number
+  booking_service_id?: number
+  booking_code: string
+  customer_id?: number | null
+  customer_name?: string | null
+  service_name?: string | null
+  staff_name?: string | null
+  appointment_start_at?: string | null
+  appointment_end_at?: string | null
+  balance_due: number
+  service_total?: number
+  addon_total_price?: number
+  deposit_contribution?: number
+  package_offset?: number
+  amount_due_now?: number
+  service_balance_due?: number
+  addon_settlement_items?: Array<{
+    id?: number | null
+    name: string
+    extra_duration_min?: number
+    extra_price: number
+    paid_amount?: number
+    balance_due: number
+  }>
+  package_status?: { status?: 'reserved' | 'consumed' | 'released' | null } | null
 }
 
 
@@ -162,6 +192,7 @@ type BookingServiceOption = {
   service_type?: string | null
   price?: number
   service_price?: number
+  duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
 }
@@ -193,7 +224,7 @@ type ServicePackageOption = {
   allowed_staffs?: Array<{ id: number; name: string }>
 }
 
-type PosCatalogTab = 'products' | 'book-service' | 'service-packages'
+type PosCatalogTab = 'products' | 'book-service' | 'service-packages' | 'settlement'
 
 type ProductOption = {
   id: number
@@ -445,12 +476,34 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [servicePackages, setServicePackages] = useState<ServicePackageOption[]>([])
   const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
   const [packageQuery, setPackageQuery] = useState('')
+  const [settlementQuery, setSettlementQuery] = useState('')
+  const [settlementAppointments, setSettlementAppointments] = useState<
+    Array<{
+      id: number
+      booking_code: string
+      customer_name: string
+      staff_name?: string | null
+      status: string
+      appointment_start_at?: string | null
+      appointment_end_at?: string | null
+      balance_due: number
+      amount_due_now: number
+      service_names?: string[]
+      service_total?: number
+      addon_total_price?: number
+      deposit_contribution?: number
+      package_offset?: number
+      add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>
+    }>
+  >([])
+  const [settlementLoading, setSettlementLoading] = useState(false)
   const [packageModalOpen, setPackageModalOpen] = useState(false)
   const [packageDraft, setPackageDraft] = useState<ServicePackageOption | null>(null)
   const [packageSelectedMember, setPackageSelectedMember] = useState<Member | null>(null)
   const [packageMemberQuery, setPackageMemberQuery] = useState('')
   const [packageMembers, setPackageMembers] = useState<Member[]>([])
   const [packageMembersLoading, setPackageMembersLoading] = useState(false)
+  const [packageMemberPickerOpen, setPackageMemberPickerOpen] = useState(false)
   const [packageModalError, setPackageModalError] = useState<string | null>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
@@ -474,8 +527,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   /** Checkout confirmation: member vs guest when book services exist without packages */
   const [checkoutIdentityMode, setCheckoutIdentityMode] = useState<'member' | 'guest'>('member')
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
+  const [settlementAvailabilityMap, setSettlementAvailabilityMap] = useState<Record<number, number>>({})
   const [serviceRedeemingIds, setServiceRedeemingIds] = useState<Record<number, boolean>>({})
   const [serviceUnclaimingIds, setServiceUnclaimingIds] = useState<Record<number, boolean>>({})
+  const [settlementRedeemingIds, setSettlementRedeemingIds] = useState<Record<number, boolean>>({})
+  const [settlementUnclaimingIds, setSettlementUnclaimingIds] = useState<Record<number, boolean>>({})
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -603,18 +659,52 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const cartItems = useMemo(() => cart?.items ?? [], [cart?.items])
   const cartServiceItems = useMemo(() => cart?.service_items ?? [], [cart?.service_items])
   const cartPackageItems = useMemo(() => cart?.package_items ?? [], [cart?.package_items])
+  const cartAppointmentSettlementItems = useMemo(
+    () => cart?.appointment_settlement_items ?? [],
+    [cart?.appointment_settlement_items],
+  )
 
   const hasCartProducts = cartItems.length > 0
   const hasCartBookServices = cartServiceItems.length > 0
   const hasCartPackages = cartPackageItems.length > 0
+  const hasCartAppointmentSettlements = cartAppointmentSettlementItems.length > 0
   /** Member/guest validation before pay (product-only carts skip) */
-  const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages
+  const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
   /** Rules C,E,F,G: any package ⇒ member only, no guest */
-  const checkoutRequiresMemberOnly = hasCartPackages
+  const checkoutRequiresMemberOnly = hasCartPackages || hasCartAppointmentSettlements
   /** Rules B,D: book services without packages ⇒ member or guest */
   const checkoutAllowsGuestToggle = hasCartBookServices && !hasCartPackages
   /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear */
   const showMemberGuestToggleInCheckout = checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation
+
+  /** When settlement exists, customer context is locked (must remove settlement to change). */
+  const settlementLockedCustomerId = useMemo(() => {
+    if (!hasCartAppointmentSettlements) return null
+    const ids = new Set<number>()
+    for (const row of cartAppointmentSettlementItems) {
+      const id = Number((row as any)?.customer_id ?? 0)
+      if (Number.isFinite(id) && id > 0) ids.add(id)
+    }
+    if (ids.size === 1) return Array.from(ids)[0] ?? null
+    return null
+  }, [cartAppointmentSettlementItems, hasCartAppointmentSettlements])
+
+  useEffect(() => {
+    if (!hasCartAppointmentSettlements) return
+    // Settlement is member-only and should freeze identity switching.
+    setCheckoutIdentityMode('member')
+    setBookingIdentityMode('member')
+    if (settlementLockedCustomerId && selectedMember?.id !== settlementLockedCustomerId) {
+      const raw = cartAppointmentSettlementItems[0]?.customer_name?.trim()
+      const name = raw && raw.length > 0 ? raw : `Member (#${settlementLockedCustomerId})`
+      setSelectedMember({ id: settlementLockedCustomerId, name, phone: null, email: null })
+    }
+  }, [
+    cartAppointmentSettlementItems,
+    hasCartAppointmentSettlements,
+    selectedMember?.id,
+    settlementLockedCustomerId,
+  ])
 
   const guestContactIsComplete = useMemo(() => {
     const name = guestContactCache.name.trim()
@@ -1303,6 +1393,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
             price: Number(maybe.price ?? 0),
             service_price: Number(maybe.service_price ?? 0),
+            duration_min: Number(maybe.duration_min ?? 0),
             is_active: Boolean(maybe.is_active ?? true),
             allowed_staffs: Array.isArray(maybe.allowed_staffs)
               ? (maybe.allowed_staffs as Array<Record<string, unknown>>)
@@ -1400,6 +1491,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setServicePackages([])
     } finally {
       setServicePackagesLoading(false)
+    }
+  }, [])
+
+  const fetchUnpaidCompletedAppointments = useCallback(async (keyword: string) => {
+    setSettlementLoading(true)
+    try {
+      const params = new URLSearchParams()
+      params.set('per_page', '50')
+      params.set('unpaid_only', '1')
+      if (keyword.trim()) params.set('q', keyword.trim())
+
+      const res = await fetch(`/api/proxy/pos/appointments?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const paged = extractPaged<any>(json)
+      const rows = Array.isArray(paged.data) ? paged.data : []
+      setSettlementAppointments(rows)
+    } catch {
+      setSettlementAppointments([])
+    } finally {
+      setSettlementLoading(false)
     }
   }, [])
 
@@ -1646,12 +1757,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     setPackageDraft(servicePackage)
     setPackageSelectedMember(selectedMember)
-    setPackageMemberQuery(selectedMember?.name ?? '')
+    setPackageMemberQuery('')
+    if (hasCartAppointmentSettlements && selectedMember?.id) {
+      // Settlement locks the member; modal is still allowed for pre-fill.
+      setPackageSelectedMember(selectedMember)
+      setPackageMemberQuery('')
+    }
     setPackageMembers([])
     setPackageMembersLoading(false)
+    setPackageMemberPickerOpen(false)
     setPackageModalError(null)
     setPackageModalOpen(true)
-  }, [activeStaffs, fetchStaffOptions, selectedMember])
+  }, [activeStaffs, fetchStaffOptions, hasCartAppointmentSettlements, selectedMember])
 
   const submitPackageToCart = useCallback(async () => {
     if (!packageDraft?.id) return
@@ -1891,6 +2008,65 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }
 
+  const removeAppointmentSettlementItem = async (itemId: number) => {
+    const res = await fetch(`/api/proxy/pos/cart/appointment-settlements/${itemId}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => null)
+    if (res.ok) {
+      setCart((json?.data?.cart ?? null) as Cart | null)
+      void fetchUnpaidCompletedAppointments(settlementQuery)
+    } else {
+      showMsg(json?.message ?? 'Unable to remove settlement item.', 'error')
+    }
+  }
+
+  const addAppointmentSettlementToCart = async (bookingId: number) => {
+    const res = await fetch('/api/proxy/pos/cart/add-appointment-settlement', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ booking_id: bookingId }),
+    })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to add appointment settlement.', 'error')
+      return
+    }
+    setCart((json?.data?.cart ?? null) as Cart | null)
+    showMsg('Added appointment settlement to cart.', 'success')
+    void fetchUnpaidCompletedAppointments(settlementQuery)
+  }
+
+  const claimSettlementPackage = async (bookingId: number, cartSettlementItemId: number) => {
+    if (settlementRedeemingIds[cartSettlementItemId]) return
+    setSettlementRedeemingIds((prev) => ({ ...prev, [cartSettlementItemId]: true }))
+    const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/apply-package`, { method: 'POST' })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to apply package.', 'error')
+      setSettlementRedeemingIds((prev) => ({ ...prev, [cartSettlementItemId]: false }))
+      return
+    }
+    showMsg(json?.message ?? 'Package applied.', 'success')
+    await loadCart()
+    void fetchUnpaidCompletedAppointments(settlementQuery)
+    setSettlementRedeemingIds((prev) => ({ ...prev, [cartSettlementItemId]: false }))
+  }
+
+  const unclaimSettlementPackage = async (bookingId: number, cartSettlementItemId: number) => {
+    if (settlementUnclaimingIds[cartSettlementItemId]) return
+    setSettlementUnclaimingIds((prev) => ({ ...prev, [cartSettlementItemId]: true }))
+    const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/release-package`, { method: 'POST' })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to release package.', 'error')
+      setSettlementUnclaimingIds((prev) => ({ ...prev, [cartSettlementItemId]: false }))
+      return
+    }
+    showMsg(json?.message ?? 'Package released.', 'success')
+    await loadCart()
+    void fetchUnpaidCompletedAppointments(settlementQuery)
+    setSettlementUnclaimingIds((prev) => ({ ...prev, [cartSettlementItemId]: false }))
+  }
+
   useEffect(() => {
     focusScanner()
     void loadCart()
@@ -1925,7 +2101,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void fetchActiveStaffs()
     void fetchServices()
     void fetchServicePackages()
-  }, [fetchActiveStaffs, fetchServicePackages, fetchServices])
+    void fetchUnpaidCompletedAppointments('')
+  }, [fetchActiveStaffs, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
 
   const filteredServices = useMemo(() => {
     const keyword = serviceQuery.trim().toLowerCase()
@@ -1963,6 +2140,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const raw = svc.customer_name?.trim()
       const name = raw && raw.length > 0 ? raw : `Member (#${svc.customer_id})`
       setSelectedMember({ id: svc.customer_id, name, phone: null, email: null })
+      return
+    }
+    const st = cart.appointment_settlement_items?.find((s) => s.customer_id)
+    if (st?.customer_id) {
+      const raw = st.customer_name?.trim()
+      const name = raw && raw.length > 0 ? raw : `Member (#${st.customer_id})`
+      setSelectedMember({ id: st.customer_id, name, phone: null, email: null })
     }
   }, [cart, selectedMember?.id])
 
@@ -2007,7 +2191,53 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [cart?.service_items, selectedMember?.id])
 
-  const hasCartItems = cartItems.length > 0 || cartServiceItems.length > 0 || cartPackageItems.length > 0
+  useEffect(() => {
+    const memberId = selectedMember?.id
+    const settlementItems = cart?.appointment_settlement_items ?? []
+
+    if (!memberId || settlementItems.length === 0) {
+      setSettlementAvailabilityMap({})
+      return
+    }
+
+    let cancelled = false
+    const run = async () => {
+      const next: Record<number, number> = {}
+      await Promise.all(settlementItems.map(async (item) => {
+        const bookingServiceId = Number(item.booking_service_id ?? 0)
+        if (!bookingServiceId) {
+          next[item.id] = 0
+          return
+        }
+        try {
+          const res = await fetch(`/api/proxy/customers/${memberId}/service-package-available-for/${bookingServiceId}`, { cache: 'no-store' })
+          if (!res.ok) {
+            next[item.id] = 0
+            return
+          }
+          const json = await res.json().catch(() => null)
+          const rows = Array.isArray(json?.data) ? json.data : []
+          next[item.id] = rows.reduce((sum: number, row: unknown) => {
+            if (!row || typeof row !== 'object') return sum
+            const maybe = row as Record<string, unknown>
+            return sum + Number(maybe.remaining_qty ?? 0)
+          }, 0)
+        } catch {
+          next[item.id] = 0
+        }
+      }))
+      if (!cancelled) setSettlementAvailabilityMap(next)
+    }
+
+    void run()
+    return () => { cancelled = true }
+  }, [cart?.appointment_settlement_items, selectedMember?.id])
+
+  const hasCartItems =
+    cartItems.length > 0 ||
+    cartServiceItems.length > 0 ||
+    cartPackageItems.length > 0 ||
+    cartAppointmentSettlementItems.length > 0
 
   useEffect(() => {
     if (productSearchMode !== 'sku') {
@@ -2559,7 +2789,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCheckoutIdentityMode('member')
     setMemberQuery('')
     setMembers([])
-    setCart({ id: cart.id, items: [], service_items: [], package_items: [], subtotal: 0, grand_total: 0 })
+    setCart({ id: cart.id, items: [], service_items: [], package_items: [], appointment_settlement_items: [], subtotal: 0, grand_total: 0 })
     setCashReceived('')
     setCheckoutItemAssignments([])
     if (qrProofPreviewUrl) {
@@ -2645,7 +2875,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     if (paymentMethod === 'qrpay') {
       if (!qrProofFileName) {
-        showMsg('Please upload QR payment proof before checkout.', 'error')
+        setCheckoutError('Please upload QR payment proof before checkout.')
         return
       }
 
@@ -2665,7 +2895,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     if (!Number.isFinite(effectiveCashReceived) || effectiveCashReceived < cartTotal) {
-      showMsg('Cash received must be equal or more than total.', 'error')
+      setCheckoutError('Cash received must be equal or more than total.')
       return
     }
 
@@ -3147,6 +3377,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               >
                 SERVICE PACKAGES
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setCatalogTab('settlement')
+                  void fetchUnpaidCompletedAppointments(settlementQuery)
+                }}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'settlement' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                SETTLEMENT
+              </button>
             </div>
 
             {catalogTab === 'products' ? (
@@ -3404,6 +3644,110 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   )}
                 </div>
               </div>
+            ) : catalogTab === 'settlement' ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="mb-4 flex items-center gap-2">
+                  <input
+                    value={settlementQuery}
+                    onChange={(e) => setSettlementQuery(e.target.value)}
+                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    placeholder="Search booking no / customer / service"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        void fetchUnpaidCompletedAppointments(settlementQuery)
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void fetchUnpaidCompletedAppointments(settlementQuery)}
+                    className="shrink-0 rounded-lg border-2 border-gray-300 bg-white px-3 py-3 text-xs font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700"
+                    title="Refresh unpaid completed appointments"
+                  >
+                    Refresh
+                  </button>
+                </div>
+
+                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
+                  {settlementLoading ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading unpaid completed appointments...</div>
+                  ) : settlementAppointments.length === 0 ? (
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No completed unpaid appointments found.</div>
+                  ) : (
+                    settlementAppointments.map((appt) => {
+                      const due = Number(appt.amount_due_now ?? appt.balance_due ?? 0)
+                      const serviceLabel = Array.isArray(appt.service_names) && appt.service_names.length
+                        ? appt.service_names.join(', ')
+                        : ''
+                      const addonList = Array.isArray(appt.add_ons) ? appt.add_ons : []
+                      const apptCustomerId = Number((appt as any)?.customer_id ?? 0)
+                      const lockedId = settlementLockedCustomerId ?? null
+                      const isLockedMismatchById = Boolean(lockedId && apptCustomerId && lockedId !== apptCustomerId)
+                      const lockedName = (cartAppointmentSettlementItems[0]?.customer_name ?? '').trim()
+                      const apptName = String((appt as any)?.customer_name ?? '').trim()
+                      const isLockedMismatchByName = Boolean(lockedId && lockedName && apptName && lockedName !== apptName)
+                      const isLockedMismatch = isLockedMismatchById || isLockedMismatchByName
+                      const cartHasGuestContext = Boolean(
+                        checkoutIdentityMode === 'guest' &&
+                          (cartServiceItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim() || row.guest_name?.trim())) ||
+                            Boolean(guestContactCache.email.trim()) ||
+                            Boolean(guestContactCache.name.trim())),
+                      )
+                      const disableSettlementAdd = isLockedMismatch || cartHasGuestContext
+                      const disableReason = isLockedMismatch
+                        ? 'Different member. Remove current settlement to change.'
+                        : cartHasGuestContext
+                          ? 'Guest checkout in cart. Settlement requires member; remove guest items or clear guest details first.'
+                          : ''
+
+                      return (
+                        <div key={appt.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900">
+                              {String(appt.booking_code ?? `BOOKING-${appt.id}`)}
+                              {serviceLabel ? <span className="text-gray-400"> · </span> : null}
+                              {serviceLabel ? <span className="text-gray-700">{serviceLabel}</span> : null}
+                            </p>
+                            <p className="mt-0.5 truncate text-xs text-gray-500">
+                              {String(appt.customer_name ?? '-')}
+                              {appt.staff_name ? <span className="text-gray-300"> · </span> : null}
+                              {appt.staff_name ? <span>{String(appt.staff_name)}</span> : null}
+                            </p>
+                            {appt.appointment_start_at ? (
+                              <p className="mt-1 text-[11px] text-gray-500">
+                                Time: {formatDateTimeRange(appt.appointment_start_at, appt.appointment_end_at)}
+                              </p>
+                            ) : null}
+                            {serviceLabel ? (
+                              <p className="mt-1 text-[11px] text-gray-600">Service: {serviceLabel}</p>
+                            ) : null}
+                            {addonList.length > 0 ? (
+                              <p className="mt-1 text-[11px] text-gray-600">
+                                Add-ons: {addonList.map((a) => a?.name).filter(Boolean).join(', ')}
+                              </p>
+                            ) : null}
+                          </div>
+                          <div className="flex flex-col items-end gap-2">
+                            <span className="text-sm font-bold text-gray-900">RM {Number.isFinite(due) ? due.toFixed(2) : '0.00'}</span>
+                            <button
+                              type="button"
+                              disabled={disableSettlementAdd}
+                              onClick={() => void addAppointmentSettlementToCart(appt.id)}
+                              className={`rounded-md px-3 py-1.5 text-xs font-semibold text-white ${disableSettlementAdd ? 'cursor-not-allowed bg-gray-300' : 'bg-blue-600 hover:bg-blue-700'}`}
+                            >
+                              Add to Cart
+                            </button>
+                            {disableSettlementAdd && disableReason ? (
+                              <p className="max-w-[220px] text-right text-[11px] text-amber-700">{disableReason}</p>
+                            ) : null}
+                          </div>
+                        </div>
+                      )
+                    })
+                  )}
+                </div>
+              </div>
             ) : null}
           </div>
         </div>
@@ -3576,9 +3920,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                          <span className="text-[10px] text-gray-500 tabular-nums">
-                            Pkg bal. {serviceAvailabilityMap[serviceItem.id] ?? 0}
-                          </span>
+                          {serviceItem.package_claim_status === 'reserved' || (serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? (
+                            <span className="text-[10px] text-gray-500 tabular-nums">
+                              Pkg bal. {serviceAvailabilityMap[serviceItem.id] ?? 0}
+                            </span>
+                          ) : null}
                           {serviceItem.package_claim_status === 'reserved' ? (
                             <button
                               type="button"
@@ -3706,6 +4052,162 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                   )
                 })}
+
+                {cartAppointmentSettlementItems.map((settlement) => (
+                  <div
+                    key={`settlement-${settlement.id}`}
+                    className="rounded-xl border border-cyan-200 bg-gradient-to-b from-cyan-50/70 to-white p-3 shadow-sm sm:p-4"
+                  >
+                    <div className="border-b border-cyan-200/60 pb-2">
+                        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
+                        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
+                          {settlement.package_status?.status === 'reserved' || (settlementAvailabilityMap[settlement.id] ?? 0) > 0 ? (
+                            <span className="text-[10px] text-gray-500 tabular-nums">
+                              Pkg bal. {settlementAvailabilityMap[settlement.id] ?? 0}
+                            </span>
+                          ) : null}
+                            {settlement.package_status?.status === 'reserved' ? (
+                              <button
+                                type="button"
+                                disabled={settlementUnclaimingIds[settlement.id] || settlementRedeemingIds[settlement.id]}
+                                onClick={() => void unclaimSettlementPackage(settlement.booking_id, settlement.id)}
+                                className="rounded-lg border border-amber-400/90 bg-amber-50/90 px-3 py-1.5 text-[11px] font-semibold text-amber-950 shadow-sm transition-colors hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {settlementUnclaimingIds[settlement.id] ? 'Releasing…' : 'Unclaim Package'}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={
+                                  !selectedMember?.id ||
+                                  !settlement.customer_id ||
+                                  (settlementAvailabilityMap[settlement.id] ?? 0) <= 0 ||
+                                  settlementRedeemingIds[settlement.id] ||
+                                  settlementUnclaimingIds[settlement.id] ||
+                                  settlement.package_status?.status === 'consumed'
+                                }
+                                onClick={() => void claimSettlementPackage(settlement.booking_id, settlement.id)}
+                                className="rounded-lg border border-cyan-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-cyan-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                              >
+                                {settlementRedeemingIds[settlement.id] ? 'Reserving…' : 'Claim package'}
+                              </button>
+                            )}
+                          <button
+                            type="button"
+                            onClick={() => void removeAppointmentSettlementItem(settlement.id)}
+                            className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-700 shadow-sm"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
+                        <h4 className="text-sm font-bold text-gray-900" title={settlement.booking_code}>
+                          {settlement.booking_code}
+                          {settlement.service_name ? <span className="text-gray-400"> · </span> : null}
+                          {settlement.service_name ? <span className="font-semibold text-gray-900">{settlement.service_name}</span> : null}
+                        </h4>
+                      </div>
+
+                      <div className="mt-2 space-y-1 text-xs text-gray-600">
+                        <p>Name: {settlement.customer_name || '—'}</p>
+                        <p>Staff: {settlement.staff_name || '—'}</p>
+                        {settlement.appointment_start_at ? (
+                          <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}</p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {(() => {
+                      const pkgOffset = Number(settlement.package_offset ?? 0)
+                      const serviceTotal = Number(settlement.service_total ?? 0)
+                      const serviceDue = Number(settlement.service_balance_due ?? serviceTotal)
+                      const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotal > 0.0001
+                      const addonRows = settlement.addon_settlement_items ?? []
+                      const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
+                      const depositCredit = Number(settlement.deposit_contribution ?? 0)
+                      const totalDue = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
+
+                      return (
+                        <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-cyan-200/80">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p>
+                          <div className="mt-2 space-y-2 text-[11px]">
+                            {mainCoveredByPkg ? (
+                              <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 pb-2">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium text-gray-900">{settlement.service_name ?? 'Service'}</p>
+                                  <p className="mt-0.5 text-[10px] leading-snug text-cyan-800">
+                                    Included in your package (main service)
+                                  </p>
+                                </div>
+                                <div className="shrink-0 text-right tabular-nums">
+                                  <span className="text-gray-400 line-through">RM {serviceTotal.toFixed(2)}</span>{' '}
+                                  <span className="text-sm font-semibold text-gray-900">RM 0.00</span>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
+                                <span className="text-gray-700">Service</span>
+                                <span className="font-semibold tabular-nums text-gray-900">RM {serviceTotal.toFixed(2)}</span>
+                              </div>
+                            )}
+
+                            {addonRows.length > 0 ? (
+                              <div className="space-y-1.5 border-b border-gray-200 pb-2">
+                                <div className="flex justify-between gap-2">
+                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</span>
+                                  {/* <span className="font-semibold tabular-nums text-gray-900">RM {addonDueSum.toFixed(2)}</span> */}
+                                </div>
+                                <div className="space-y-1 pl-1">
+                                  {addonRows.map((addon, idx) => (
+                                    <div
+                                      key={`settlement-addon-${settlement.id}-${addon.id ?? addon.name}-${idx}`}
+                                      className="flex justify-between gap-2 tabular-nums text-gray-700"
+                                    >
+                                      <span className="min-w-0">
+                                        <span className="text-gray-500"> </span>+{addon.name}
+                                      </span>
+                                      <span className="shrink-0 font-semibold text-gray-900">
+                                        + RM {Number(addon.balance_due ?? addon.extra_price ?? 0).toFixed(2)}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {mainCoveredByPkg && addonDueSum > 0.0001 ? (
+                              <p className="text-[10px] leading-snug text-gray-600">
+                                Your package covers the <strong className="font-medium text-gray-900">main service</strong>{' '}
+                                only. Add-ons above are still due at checkout.
+                              </p>
+                            ) : null}
+
+                            {depositCredit > 0.0001 ? (
+                              <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
+                                <span className="text-gray-700">Deposit</span>
+                                <span className="font-semibold tabular-nums text-gray-900">
+                                  − RM {depositCredit.toFixed(2)}
+                                </span>
+                              </div>
+                            ) : null}
+
+                            <div className="mt-2 flex items-baseline justify-between gap-3 pt-2">
+                              <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
+                                Total to pay
+                              </span>
+                              <span className="text-sm font-bold tabular-nums text-orange-700">
+                                RM {totalDue.toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                ))}
 
                 {cartPackageItems.map((packageItem) => (
                   <div
@@ -4375,6 +4877,137 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       )
                     })}
 
+                    {cartAppointmentSettlementItems.map((settlement) => {
+                      const stRowClass =
+                        'bg-cyan-50/50 hover:bg-cyan-50/80 transition-colors border-t border-cyan-200/50'
+
+                      const addons = settlement.addon_settlement_items ?? []
+                      const addonCount = addons.length
+                      const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
+                      const serviceDue = Number(settlement.service_balance_due ?? settlement.service_total ?? 0)
+                      const serviceTotalRef = Number(settlement.service_total ?? 0)
+                      const depositCredit = Number(settlement.deposit_contribution ?? 0)
+                      const pkgOffset = Number(settlement.package_offset ?? 0)
+                      const totalDue = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
+                      const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotalRef > 0.0001
+
+                      return (
+                        <Fragment key={`checkout-settlement-${settlement.id}`}>
+                          <tr className={`${stRowClass} align-top`}>
+                            <td className="px-4 py-3.5 sm:px-5">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
+                              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                                <span className="text-base font-bold leading-snug text-gray-900">{settlement.booking_code}</span>
+                                {settlement.service_name ? (
+                                  <span className="text-sm font-semibold text-gray-800">· {settlement.service_name}</span>
+                                ) : null}
+                              </div>
+                              <div className="mt-2 space-y-0.5 text-xs text-gray-600">
+                                <p>Name: {settlement.customer_name || '—'}</p>
+                                <p>Staff: {settlement.staff_name || '—'}</p>
+                                {settlement.appointment_start_at ? (
+                                  <p>
+                                    Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}
+                                  </p>
+                                ) : null}
+                              </div>
+                            </td>
+                            <td className="min-w-[260px] px-4 py-3.5 align-top">
+                              <p className="text-xs leading-relaxed text-gray-700">
+                                {settlement.staff_name ? `Staff: ${settlement.staff_name}` : 'Completed appointment settlement'}
+                              </p>
+                            </td>
+                            <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
+                            <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
+                              <p className="text-xs text-gray-400">—</p>
+                            </td>
+                          </tr>
+
+                          <tr className={`${stRowClass} align-top`}>
+                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement</p>
+                              <p className="mt-1 text-xs text-gray-700">Service</p>
+                              {mainCoveredByPkg ? (
+                                <p className="mt-1 text-[10px] leading-snug text-cyan-800">
+                                  Included in your package (main service)
+                                </p>
+                              ) : null}
+                            </td>
+                            <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
+                            <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
+                              {mainCoveredByPkg ? (
+                                <span>
+                                  <span className="text-gray-400 line-through">RM {serviceTotalRef.toFixed(2)}</span>{' '}
+                                  <span className="font-medium">RM 0.00</span>
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
+                              <p className="text-lg font-bold leading-tight text-orange-700">
+                                RM {(mainCoveredByPkg ? 0 : serviceTotalRef).toFixed(2)}
+                              </p>
+                            </td>
+                          </tr>
+
+                          {addonCount > 0 ? (
+                            <>
+                              <tr className={`${stRowClass} align-top`}>
+                                <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-ons</p>
+                                </td>
+                                <td className="min-w-[260px] px-4 py-1.5" aria-hidden />
+                                <td className="px-4 py-1.5" colSpan={2} aria-hidden />
+                              </tr>
+                              {addons.map((addon, idx) => {
+                                const due = Number(addon.balance_due ?? addon.extra_price ?? 0)
+                                return (
+                                  <tr
+                                    key={`chk-st-addon-${settlement.id}-${addon.id ?? addon.name}-${idx}`}
+                                    className={`${stRowClass} align-top`}
+                                  >
+                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
+                                      <span className="text-gray-500">+</span> {addon.name}
+                                    </td>
+                                    <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                      <p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                              {mainCoveredByPkg && addonDueSum > 0.0001 ? (
+                                <tr className={`${stRowClass} align-top`}>
+                                  <td
+                                    className="px-4 py-2 pl-7 text-[10px] leading-snug text-gray-600 sm:px-5 sm:pl-8"
+                                    colSpan={4}
+                                  >
+                                    Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
+                                    only. Add-ons above are still due at checkout.
+                                  </td>
+                                </tr>
+                              ) : null}
+                            </>
+                          ) : null}
+
+                          {depositCredit > 0.0001 ? (
+                            <tr className={`${stRowClass} align-top`}>
+                              <td className="px-4 py-2 pl-7 text-xs text-gray-700 sm:px-5 sm:pl-8">
+                                Deposit
+                              </td>
+                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                <p className="text-lg font-bold leading-tight text-orange-700">− RM {depositCredit.toFixed(2)}</p>
+                              </td>
+                            </tr>
+                          ) : null}
+                        </Fragment>
+                      )
+                    })}
+
                     {cartPackageItems.map((packageItem) => {
                       const splitRows = packageCheckoutSplits[packageItem.id] ?? []
 
@@ -4488,26 +5121,34 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div className="mt-3 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
                       <button
                         type="button"
+                        disabled={hasCartAppointmentSettlements}
                         onClick={() => {
                           setCheckoutIdentityMode('member')
                           setCheckoutError(null)
                         }}
-                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${checkoutIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
                         Member
                       </button>
                       <button
                         type="button"
+                        disabled={hasCartAppointmentSettlements || checkoutRequiresMemberOnly}
                         onClick={() => {
                           setCheckoutIdentityMode('guest')
                           setSelectedMember(null)
                           setCheckoutError(null)
                         }}
-                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${checkoutIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(hasCartAppointmentSettlements || checkoutRequiresMemberOnly) ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
                         Guest details
                       </button>
                     </div>
+                  ) : null}
+
+                  {hasCartAppointmentSettlements ? (
+                    <p className="mt-2 text-[11px] text-amber-700">
+                      Settlement is in the cart — member/guest is locked. Remove the settlement item to change customer.
+                    </p>
                   ) : null}
 
                   {(checkoutRequiresMemberOnly || checkoutIdentityMode === 'member') && (
@@ -4516,8 +5157,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <label className="text-xs font-semibold text-gray-600">Member</label>
                         <button
                           type="button"
+                          disabled={hasCartAppointmentSettlements}
                           onClick={() => void toggleMemberDropdown()}
-                          className="shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all hover:bg-blue-50"
+                          className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                         >
                           {selectedMember ? 'Change Member' : 'Assign Member'}
                         </button>
@@ -4814,9 +5456,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       {packageModalOpen && packageDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">Add Package to Cart</h3>
-            <p className="mt-1 text-sm text-gray-600">{packageDraft.name}</p>
-            {selectedMember ? (
+            <h3 className="text-xl font-bold text-gray-900">Add Package to Cart</h3>
+            <p className="mt-1 text-base text-gray-600">{packageDraft.name}</p>
+            {hasCartAppointmentSettlements ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                Settlement is in the cart — this package will use <span className="font-semibold">{selectedMember?.name ?? 'selected member'}</span>. Member switching is disabled.
+              </p>
+            ) : selectedMember ? (
               <p className="mt-2 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                 Using member from your cart: <span className="font-semibold">{selectedMember.name}</span> — pre-filled below. Change here if needed.
               </p>
@@ -4827,51 +5473,130 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             )}
 
             <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm">
-                <p className="font-semibold text-gray-900">Package Summary</p>
-                <p className="mt-1 text-xs text-gray-600">Selling Price: RM {Number(packageDraft.selling_price ?? 0).toFixed(2)}</p>
-                <p className="text-xs text-gray-600">Validity: {Number(packageDraft.valid_days ?? 0) > 0 ? `${packageDraft.valid_days} day(s)` : 'No expiry'}</p>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                <p className="text-base font-bold text-gray-900">Package Summary</p>
                 {(packageDraft.items_summary ?? []).length > 0 ? (
-                  <div className="mt-1 space-y-0.5">
+                  <div className="mt-2 space-y-1">
                     {(packageDraft.items_summary ?? []).map((summary, idx) => (
-                      <p key={`package-summary-${idx}`} className="text-xs text-gray-600">{summary}</p>
+                      <p key={`package-summary-${idx}`} className="text-sm font-medium text-gray-800">{summary}</p>
                     ))}
                   </div>
-                ) : null}
+                ) : (
+                  <p className="mt-2 text-sm text-gray-600">No items summary.</p>
+                )}
+                <div className="mt-3 space-y-1 text-sm text-gray-700">
+                  <p>Selling Price: <span className="font-semibold text-gray-900">RM {Number(packageDraft.selling_price ?? 0).toFixed(2)}</span></p>
+                  <p>Validity: <span className="font-semibold text-gray-900">{Number(packageDraft.valid_days ?? 0) > 0 ? `${packageDraft.valid_days} day(s)` : 'No expiry'}</span></p>
+                </div>
               </div>
 
-              <div className="rounded-lg border border-gray-200 p-3">
-                <label className="block text-xs font-semibold text-gray-600">Member</label>
-                <input
-                  value={packageMemberQuery}
-                  onChange={(event) => setPackageMemberQuery(event.target.value)}
-                  placeholder="Search member by name / phone / email"
-                  className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                />
-                <div className="mt-2 max-h-28 overflow-y-auto rounded border border-gray-200">
-                  {packageMembersLoading ? (
-                    <p className="px-3 py-2 text-xs text-gray-500">Loading members...</p>
-                  ) : packageMembers.length === 0 ? (
-                    <p className="px-3 py-2 text-xs text-gray-500">No members found.</p>
-                  ) : (
-                    packageMembers.map((member) => (
-                      <button
-                        key={`package-member-${member.id}`}
-                        type="button"
-                        onClick={() => {
-                          setPackageSelectedMember(member)
-                          setPackageMemberQuery(member.name)
-                        }}
-                        className={`block w-full border-b border-gray-100 px-3 py-2 text-left text-xs last:border-b-0 ${packageSelectedMember?.id === member.id ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50 text-gray-700'}`}
-                      >
-                        {member.name}{member.phone ? ` (${member.phone})` : ''}
-                      </button>
-                    ))
-                  )}
+              <div className="rounded-lg border border-gray-200 p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <label className="block text-sm font-semibold text-gray-700">Member</label>
+                  <button
+                    type="button"
+                    disabled={hasCartAppointmentSettlements}
+                    onClick={() => setPackageMemberPickerOpen(true)}
+                    className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
+                  >
+                    {packageSelectedMember ? 'Change Member' : 'Assign Member'}
+                  </button>
                 </div>
-                <p className="mt-1 text-xs text-gray-600">Selected: {packageSelectedMember ? packageSelectedMember.name : 'None'}</p>
+
+                <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                  {packageSelectedMember
+                    ? `${packageSelectedMember.name}${packageSelectedMember.phone ? ` (${packageSelectedMember.phone})` : ''}`
+                    : 'No member selected'}
+                </div>
+
+                {hasCartAppointmentSettlements ? (
+                  <p className="mt-2 text-[11px] text-amber-700">
+                    Settlement is in the cart — member is locked.
+                  </p>
+                ) : null}
               </div>
             </div>
+
+            {packageMemberPickerOpen ? (
+              <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+                  <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+                    <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
+                    <button
+                      type="button"
+                      onClick={() => setPackageMemberPickerOpen(false)}
+                      className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      <span className="text-2xl leading-none">×</span>
+                    </button>
+                  </div>
+
+                  <div className="border-b-2 border-gray-200 bg-white p-5">
+                    <div className="relative">
+                      <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                      </svg>
+                      <input
+                        value={packageMemberQuery}
+                        onChange={(e) => setPackageMemberQuery(e.target.value)}
+                        className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="Search by phone, email, member code, name..."
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+
+                  <div className="max-h-[65vh] overflow-auto">
+                    {packageMembersLoading ? (
+                      <div className="p-6 text-sm text-gray-500">Loading members...</div>
+                    ) : (
+                      packageMembers.map((member) => (
+                        <button
+                          key={`package-member-modal-${member.id}`}
+                          className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
+                          onClick={() => {
+                            setPackageSelectedMember(member)
+                            setPackageMemberQuery('')
+                            setPackageMemberPickerOpen(false)
+                          }}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={member.avatar_url || '/images/default_user_image.jpg'} alt={member.name} className="h-full w-full object-cover" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-gray-900 text-base leading-tight">
+                                {member.name}
+                                {member.phone && <span className="ml-2 text-sm font-normal text-gray-500">({member.phone})</span>}
+                              </p>
+                              {member.email && (
+                                <p className="mt-1.5 text-sm text-gray-600 flex items-center gap-1.5">
+                                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                  </svg>
+                                  {member.email}
+                                </p>
+                              )}
+                            </div>
+                            <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
+                        </button>
+                      ))
+                    )}
+
+                    {!packageMembersLoading && packageMembers.length === 0 && (
+                      <div className="p-12 text-center">
+                        <p className="text-sm font-medium text-gray-600">No members found</p>
+                        <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               Staff split and commission preview will be configured in Checkout Confirmation.
@@ -4902,7 +5627,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
             <div className="border-b border-gray-200 bg-white px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -4913,196 +5638,231 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Selected Service</p>
                 <p className="mt-1 text-sm font-semibold text-gray-900">{bookingServiceDraft.name} ({bookingServiceDraft.service_type})</p>
+                <p className="mt-0.5 text-xs font-semibold text-gray-600 tabular-nums">
+                  Base time: {Number(bookingServiceDraft.duration_min ?? 0)} min
+                </p>
               </div>
             </div>
-            <div className="p-5">
+            <div className="p-5 overflow-y-auto max-h-[calc(90vh-120px)]">
             {bookingModalError ? (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {bookingModalError}
               </div>
             ) : null}
-            <div className="space-y-3">
-              <div>
-                <p className="text-xs font-semibold text-gray-600">Customer</p>
-                <div className="mt-1 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="space-y-3">
+                {bookingQuestions.length > 0 ? (
+                  <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-sm font-semibold text-gray-800">Add-ons / Questions</p>
+                    {bookingQuestions.map((question) => (
+                      <div key={question.id} className="rounded border border-gray-200 bg-white p-2">
+                        <p className="text-xs font-semibold text-gray-800">
+                          {question.title}
+                          {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
+                        </p>
+                        {question.description ? <p className="text-[11px] text-gray-500">{question.description}</p> : null}
+                        <div className="mt-2 space-y-1">
+                          {question.options.map((option) => {
+                            const checked = bookingSelectedOptionIds.includes(option.id)
+                            return (
+                              <label key={option.id} className="flex cursor-pointer items-center justify-between gap-3 text-sm text-gray-800">
+                                <span className="flex min-w-0 items-start gap-2">
+                                  <input
+                                    type="checkbox"
+                                    name={`booking-question-${question.id}`}
+                                    checked={checked}
+                                    onChange={() => {
+                                      setBookingSelectedOptionIds((prev) => {
+                                        if (question.question_type === 'single_choice') {
+                                          const withoutQuestion = prev.filter((id) => !question.options.some((opt) => opt.id === id))
+                                          return checked ? withoutQuestion : [...withoutQuestion, option.id]
+                                        }
+                                        return checked ? prev.filter((id) => id !== option.id) : [...prev, option.id]
+                                      })
+                                    }}
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block truncate font-medium text-gray-900">{option.label}</span>
+                                    <span className="mt-0.5 block text-[11px] font-semibold text-gray-600 tabular-nums">
+                                      TIME: {Number(option.extra_duration_min ?? 0)} min
+                                    </span>
+                                  </span>
+                                </span>
+                                <span className="shrink-0 tabular-nums font-semibold text-gray-900">
+                                  +RM{Number(option.extra_price ?? 0).toFixed(2)}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                    <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-800">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600">Total</p>
+                      <div className="mt-2 space-y-1">
+                        <p className="font-medium">
+                          Duration: {Number(bookingServiceDraft.duration_min ?? 0) + bookingAddonDurationTotal} min
+                        </p>
+                        <p className="font-medium">
+                          Total price: RM{(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0) + bookingAddonPriceTotal).toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-500">
+                    No add-ons for this service.
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <div>
+                  <p className="text-xs font-semibold text-gray-600">Customer</p>
+                  <div className="mt-1 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
                   <button
                     type="button"
+                    disabled={hasCartAppointmentSettlements}
                     onClick={() => {
                       setBookingIdentityMode('member')
                       setBookingModalError(null)
                     }}
-                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${bookingIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                   >
                     Member
                   </button>
                   <button
                     type="button"
+                    disabled={hasCartAppointmentSettlements || checkoutRequiresMemberOnly}
                     onClick={() => {
                       setBookingIdentityMode('guest')
                       setBookingModalError(null)
                     }}
-                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${bookingIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(hasCartAppointmentSettlements || checkoutRequiresMemberOnly) ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                   >
                     Guest details
                   </button>
+                  </div>
+                  {hasCartAppointmentSettlements ? (
+                    <p className="mt-2 text-[11px] text-amber-700">
+                      Settlement is in the cart — guest details is disabled. Remove settlement to change customer mode.
+                    </p>
+                  ) : null}
                 </div>
-              </div>
 
-              {bookingIdentityMode === 'member' ? (
-                <div>
-                  <div className="flex items-center justify-between gap-2">
-                    <label className="text-xs font-semibold text-gray-600">Member</label>
-                    <button
-                      type="button"
-                      onClick={() => void toggleMemberDropdown()}
-                      className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
-                    >
-                      {selectedMember ? 'Change Member' : 'Assign Member'}
-                    </button>
-                  </div>
-                  <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
-                    {selectedMember
-                      ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
-                      : 'No member selected'}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs font-semibold text-gray-700">Guest details</p>
+                {bookingIdentityMode === 'member' ? (
                   <div>
-                    <label className="text-[11px] font-semibold text-gray-600">Name *</label>
-                    <input
-                      value={bookingGuestName}
-                      onChange={(e) => setBookingGuestName(e.target.value)}
-                      className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                      placeholder="Name *"
-                      autoComplete="name"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-600">Phone *</label>
-                    <input
-                      value={bookingGuestPhone}
-                      onChange={(e) => setBookingGuestPhone(e.target.value)}
-                      className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                      placeholder="Phone *"
-                      autoComplete="tel"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] font-semibold text-gray-600">Email *</label>
-                    <input
-                      type="email"
-                      value={bookingGuestEmail}
-                      onChange={(e) => setBookingGuestEmail(e.target.value)}
-                      className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                      placeholder="Email *"
-                      autoComplete="email"
-                    />
-                  </div>
-                </div>
-              )}
-              {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
-                <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  This service is temporarily unavailable because no eligible staff is assigned.
-                </div>
-              ) : null}
-              {bookingQuestions.length > 0 ? (
-                <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <p className="text-xs font-semibold text-gray-700">Add-ons / Questions</p>
-                  {bookingQuestions.map((question) => (
-                    <div key={question.id} className="rounded border border-gray-200 bg-white p-2">
-                      <p className="text-xs font-semibold text-gray-800">
-                        {question.title}
-                        {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
-                      </p>
-                      {question.description ? <p className="text-[11px] text-gray-500">{question.description}</p> : null}
-                      <div className="mt-2 space-y-1">
-                        {question.options.map((option) => {
-                          const checked = bookingSelectedOptionIds.includes(option.id)
-                          const inputType = question.question_type === 'single_choice' ? 'radio' : 'checkbox'
-                          return (
-                            <label key={option.id} className="flex cursor-pointer items-center justify-between gap-2 text-xs text-gray-700">
-                              <span className="flex items-center gap-2">
-                                <input
-                                  type={inputType}
-                                  name={`booking-question-${question.id}`}
-                                  checked={checked}
-                                  onChange={() => {
-                                    setBookingSelectedOptionIds((prev) => {
-                                      if (question.question_type === 'single_choice') {
-                                        const withoutQuestion = prev.filter((id) => !question.options.some((opt) => opt.id === id))
-                                        return checked ? withoutQuestion : [...withoutQuestion, option.id]
-                                      }
-                                      return checked ? prev.filter((id) => id !== option.id) : [...prev, option.id]
-                                    })
-                                  }}
-                                />
-                                <span>{option.label}</span>
-                              </span>
-                              <span className="text-gray-500">
-                                +{Number(option.extra_duration_min ?? 0)} mins • +RM{Number(option.extra_price ?? 0).toFixed(2)}
-                              </span>
-                            </label>
-                          )
-                        })}
-                      </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="text-xs font-semibold text-gray-600">Member</label>
+                      <button
+                        type="button"
+                        disabled={hasCartAppointmentSettlements}
+                        onClick={() => void toggleMemberDropdown()}
+                        className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
+                      >
+                        {selectedMember ? 'Change Member' : 'Assign Member'}
+                      </button>
                     </div>
-                  ))}
-                  <div className="text-xs text-gray-700">
-                    <p>Add-on total duration: +{bookingAddonDurationTotal} mins</p>
-                    <p>Add-on total price: +RM{bookingAddonPriceTotal.toFixed(2)}</p>
+                    <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                      {selectedMember
+                        ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
+                        : 'No member selected'}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <p className="text-xs font-semibold text-gray-700">Guest details</p>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-600">Name *</label>
+                      <input
+                        value={bookingGuestName}
+                        onChange={(e) => setBookingGuestName(e.target.value)}
+                        className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        placeholder="Name *"
+                        autoComplete="name"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-600">Phone *</label>
+                      <input
+                        value={bookingGuestPhone}
+                        onChange={(e) => setBookingGuestPhone(e.target.value)}
+                        className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        placeholder="Phone *"
+                        autoComplete="tel"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[11px] font-semibold text-gray-600">Email *</label>
+                      <input
+                        type="email"
+                        value={bookingGuestEmail}
+                        onChange={(e) => setBookingGuestEmail(e.target.value)}
+                        className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        placeholder="Email *"
+                        autoComplete="email"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
+                  <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    This service is temporarily unavailable because no eligible staff is assigned.
+                  </div>
+                ) : null}
+
+                <div>
+                  <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
+                  <select
+                    value={bookingAssignedStaffId ?? ''}
+                    onChange={(e) => setBookingAssignedStaffId(Number(e.target.value) || null)}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  >
+                    <option value="">Select staff</option>
+                    {(bookingServiceDraft.allowed_staffs ?? []).map((staff) => (
+                      <option key={staff.id} value={staff.id}>{staff.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Appointment Date</label>
+                    <input
+                      type="date"
+                      value={bookingDate}
+                      onChange={(e) => setBookingDate(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
+                    <select
+                      value={bookingSlotValue}
+                      onChange={(e) => setBookingSlotValue(e.target.value)}
+                      disabled={!bookingAssignedStaffId || !bookingDate || bookingSlotsLoading}
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                    >
+                      <option value="">{bookingSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
+                      {bookingSlots.map((slot) => (
+                        <option key={slot.start_at} value={slot.start_at}>
+                          {formatTimeRange(slot.start_at, slot.end_at)}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
-              ) : null}
 
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
-                <select
-                  value={bookingAssignedStaffId ?? ''}
-                  onChange={(e) => setBookingAssignedStaffId(Number(e.target.value) || null)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                >
-                  <option value="">Select staff</option>
-                  {(bookingServiceDraft.allowed_staffs ?? []).map((staff) => (
-                    <option key={staff.id} value={staff.id}>{staff.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Appointment Date</label>
-                <input
-                  type="date"
-                  value={bookingDate}
-                  onChange={(e) => setBookingDate(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
-                <select
-                  value={bookingSlotValue}
-                  onChange={(e) => setBookingSlotValue(e.target.value)}
-                  disabled={!bookingAssignedStaffId || !bookingDate || bookingSlotsLoading}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
-                >
-                  <option value="">{bookingSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
-                  {bookingSlots.map((slot) => (
-                    <option key={slot.start_at} value={slot.start_at}>
-                      {formatTimeRange(slot.start_at, slot.end_at)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
-                <textarea
-                  value={bookingNotes}
-                  onChange={(e) => setBookingNotes(e.target.value)}
-                  rows={2}
-                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                />
+                <div>
+                  <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
+                  <textarea
+                    value={bookingNotes}
+                    onChange={(e) => setBookingNotes(e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
               </div>
             </div>
             <div className="mt-5 flex justify-end gap-2">
@@ -5143,6 +5903,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <span className="text-2xl leading-none">×</span>
               </button>
             </div>
+            {hasCartAppointmentSettlements ? (
+              <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-xs text-amber-800">
+                Settlement is in the cart — member is locked. Remove settlement to change member.
+              </div>
+            ) : null}
 
             <div className="border-b-2 border-gray-200 bg-white p-5">
               <div className="relative">

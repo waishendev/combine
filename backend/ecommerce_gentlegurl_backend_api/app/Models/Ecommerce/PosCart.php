@@ -40,5 +40,10 @@ class PosCart extends Model
     {
         return $this->hasMany(PosCartPackageItem::class);
     }
+
+    public function appointmentSettlementItems()
+    {
+        return $this->hasMany(PosCartAppointmentSettlementItem::class, 'pos_cart_id');
+    }
 }
 
