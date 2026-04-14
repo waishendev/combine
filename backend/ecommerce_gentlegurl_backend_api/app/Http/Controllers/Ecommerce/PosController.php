@@ -47,6 +47,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class PosController extends Controller
@@ -717,6 +718,96 @@ class PosController extends Controller
         ]);
 
         return $this->addResolvedToCart($request, $variant, $product, $qty, 'manual');
+    }
+
+    /**
+     * POS pooled availability: pick time first (no staff_id required).
+     * This is a POS-only endpoint so we can iterate UI safely without impacting public booking flows.
+     */
+    public function availabilityPooled(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'date' => ['required', 'date_format:Y-m-d'],
+            'extra_duration_min' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        if ($validator->fails()) {
+            return $this->respondError(__('Invalid availability request.'), 422, [
+                'date' => (string) $request->input('date', ''),
+                'service_id' => (int) $request->input('service_id', 0),
+                'duration_min' => null,
+                'buffer_min' => null,
+                'slot_step_min' => 15,
+                'visible_slots' => [],
+                'errors' => $validator->errors(),
+            ]);
+        }
+
+        $validated = $validator->validated();
+        $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail((int) $validated['service_id']);
+        $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
+
+        $staffIds = $service->allowedStaffs->pluck('id')->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $configuredPrimarySlots = $service->primarySlots
+            ->where('is_active', true)
+            ->sortBy('sort_order')
+            ->values()
+            ->map(fn ($slot) => substr((string) $slot->start_time, 0, 5))
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($staffIds === []) {
+            return $this->respond([
+                'date' => (string) $validated['date'],
+                'service_id' => (int) $validated['service_id'],
+                'staff_id' => null,
+                'duration_min' => (int) $service->duration_min + $extraDurationMin,
+                'buffer_min' => (int) $service->buffer_min,
+                'slot_step_min' => 15,
+                'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
+                'configured_primary_slots' => $configuredPrimarySlots,
+                'visible_slots' => [],
+                'slots' => [],
+            ]);
+        }
+
+        $mergedByStart = [];
+        foreach ($staffIds as $staffId) {
+            // POS should ignore primary slot display policy; show all available times.
+            $slots = $this->availabilityService->getAvailableSlots($service, $staffId, (string) $validated['date'], 15, $extraDurationMin, false);
+            foreach ($slots as $slot) {
+                $key = $slot['start_at'] ?? null;
+                if (! $key) continue;
+                if (! isset($mergedByStart[$key])) {
+                    $mergedByStart[$key] = $slot;
+                    $mergedByStart[$key]['available_staff_ids'] = [];
+                }
+                $mergedByStart[$key]['available_staff_ids'][] = (int) $staffId;
+            }
+        }
+
+        $visible = array_values($mergedByStart);
+        foreach ($visible as &$row) {
+            $row['available_staff_ids'] = array_values(array_unique($row['available_staff_ids'] ?? []));
+        }
+        unset($row);
+
+        usort($visible, fn ($a, $b) => strcmp((string) ($a['start_at'] ?? ''), (string) ($b['start_at'] ?? '')));
+
+        return $this->respond([
+            'date' => (string) $validated['date'],
+            'service_id' => (int) $validated['service_id'],
+            'staff_id' => null,
+            'duration_min' => (int) $service->duration_min + $extraDurationMin,
+            'buffer_min' => (int) $service->buffer_min,
+            'slot_step_min' => 15,
+            'has_primary_slot_policy' => ! empty($configuredPrimarySlots),
+            'configured_primary_slots' => $configuredPrimarySlots,
+            'visible_slots' => $visible,
+            'slots' => $visible,
+        ]);
     }
 
     public function addService(Request $request)

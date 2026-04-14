@@ -25,7 +25,7 @@ class BookingAvailabilityService
      *   is_fallback?:bool
      * }>
      */
-    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0): array
+    public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0, bool $applyPrimarySlotPolicy = true): array
     {
         $day = Carbon::parse($date);
         $schedule = BookingStaffSchedule::where('staff_id', $staffId)
@@ -61,7 +61,9 @@ class BookingAvailabilityService
             ];
         }
 
-        $slots = $this->applyPrimarySlotDisplayPolicy($service, $slots);
+        if ($applyPrimarySlotPolicy) {
+            $slots = $this->applyPrimarySlotDisplayPolicy($service, $slots);
+        }
 
         return $slots;
     }
