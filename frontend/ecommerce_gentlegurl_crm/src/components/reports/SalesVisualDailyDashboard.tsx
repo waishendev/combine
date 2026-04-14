@@ -124,23 +124,23 @@ export default function SalesVisualDailyDashboard({ mode }: { mode: Mode }) {
   return (
     <div className="mb-8 space-y-4">
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <button
+        {/* <button
           type="button"
           onClick={() => shiftDay(-1)}
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-600 text-white shadow-sm hover:bg-blue-700"
           aria-label="Previous day"
         >
           ‹
-        </button>
+        </button> */}
         <span className="min-w-[10rem] text-center text-base font-semibold text-slate-800">{formatDisplayDay(date)}</span>
-        <button
+        {/* <button
           type="button"
           onClick={() => shiftDay(1)}
           className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-600 text-white shadow-sm hover:bg-blue-700"
           aria-label="Next day"
         >
           ›
-        </button>
+        </button> */}
       </div>
 
       {oo ? (

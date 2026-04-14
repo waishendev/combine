@@ -22,22 +22,17 @@ export default async function BookingLandingPageSettingsPage() {
 
   return (
     <div className="overflow-y-auto py-6 px-10">
-      <div className="text-xs mb-4 flex items-center text-gray-500">
-        <span>Booking</span>
+      <div className="text-xs mb-4">
+        <span className="text-gray-500">Booking</span>
         <span className="mx-1">/</span>
         <Link href="/booking/landing-page" className="text-blue-600 hover:underline">
           Landing Page
         </Link>
+        <span className="mx-1">/</span>
+        <span className="text-gray-700">Edit</span>
       </div>
-
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-3xl font-semibold text-slate-900 leading-tight">Landing Page Editor</h2>
-          <p className="text-sm text-slate-500 mt-2 max-w-2xl">
-            Manage the booking shop home page sections: Hero, Gallery, Service Menu, FAQ, and Policy Notes.
-          </p>
-        </div>
-      </div>
+      <h2 className="text-3xl font-semibold mb-2">Landing Page Editor</h2>
+      <p className="mb-6 text-sm text-gray-500">All changes remain local until you press Save All Changes.</p>
 
       <BookingLandingPageEditor canEdit={canUpdate} />
     </div>
