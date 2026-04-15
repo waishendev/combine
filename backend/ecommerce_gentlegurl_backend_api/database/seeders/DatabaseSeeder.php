@@ -38,18 +38,18 @@ class DatabaseSeeder extends Seeder
             BookingLandingPageSeeder::class,
 
             
-            // // upper all should open , no command to avoid error seed
-            // DemoMembersSeederTesting::class,
+            // upper all should open , no command to avoid error seed
+            DemoMembersSeederTesting::class,
 
-            // FrontendTestDataSeeder::class,
-            // LoyaltyRewardSeederTesting::class,
-            // LoyaltyDemoCustomerSeederTesting::class,
-            // // // SelfPickupCompletedOrderSeeder::class,
-            // // // GuestCompletedOrderSeeder::class,
+            FrontendTestDataSeeder::class,
+            LoyaltyRewardSeederTesting::class,
+            LoyaltyDemoCustomerSeederTesting::class,
+            // // SelfPickupCompletedOrderSeeder::class,
+            // // GuestCompletedOrderSeeder::class,
             
-            // BookingTestingSeeder::class,
-            // BookingLeaveTestingSeeder::class,
-            // ServicePackageTestingSeeder::class,
+            BookingTestingSeeder::class,
+            BookingLeaveTestingSeeder::class,
+            ServicePackageTestingSeeder::class,
 
             //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,

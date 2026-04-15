@@ -1074,7 +1074,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <span className="text-[var(--text-muted)]">Packages</span>
                   <span className="font-medium tabular-nums text-[var(--foreground)]">RM {Number(cart?.package_total ?? 0).toFixed(2)}</span>
                 </div>
-                {estimatedPayLaterTotal > 0 ? (
+                {/* {estimatedPayLaterTotal > 0 ? (
                   <div
                     className="flex justify-between gap-3 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2.5 text-sm ring-1 ring-[var(--status-success)]/10"
                     role="note"
@@ -1084,7 +1084,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       RM {estimatedPayLaterTotal.toFixed(2)}
                     </span>
                   </div>
-                ) : null}
+                ) : null} */}
                 <div className="border-t border-[var(--card-border)] pt-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <div className="min-w-0">

@@ -442,7 +442,7 @@ export default function ServiceStaffPage() {
                     </div>
                   </div> */}
                 </li>
-                <li className="flex items-center justify-between gap-4 px-4 py-3.5 text-sm">
+                {/* <li className="flex items-center justify-between gap-4 px-4 py-3.5 text-sm">
                   <span className="flex items-center gap-2 text-[var(--text-muted)]">
                     <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-tag text-xs" />
@@ -450,7 +450,7 @@ export default function ServiceStaffPage() {
                     Total (Pay Later)
                   </span>
                   <span className="font-semibold tabular-nums text-[var(--accent-strong)]">RM {estimatedTotalCost.toFixed(2)}</span>
-                </li>
+                </li> */}
               </ul>
 
               {error && confirmStaff ? <p className="mt-3 text-sm text-[var(--status-error)]">{error}</p> : null}

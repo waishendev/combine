@@ -324,27 +324,27 @@ export default function ServiceAddonsPage() {
                         </div>
                       </div> */}
                     </li>
-                    <li className="flex flex-wrap items-start justify-between gap-2">
+                    {/* <li className="flex flex-wrap items-start justify-between gap-2">
                       <div>
                       <span className="font-medium text-[var(--foreground)]">Remaining</span>
                       <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                         Pay after your service at the salon
                       </p>
-                        {/* <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">
                           {depositCoversFullMenu
                             ? "Deposit meets or exceeds this menu total—confirm at desk if anything is left to settle."
                             : "Estimated balance after your deposit is applied to this appointment total."}
-                        </p> */}
+                        </p>
                       </div>
                       <div className="text-right">
                         <span className="block text-lg font-semibold tabular-nums text-[var(--accent-strong)]">
                           RM {estimatedBalanceAtSalon.toFixed(2)}
                         </span>
-                        {/* <span className="mt-1 inline-block rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                        <span className="mt-1 inline-block rounded-full bg-[var(--muted)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                           Est. balance
-                        </span> */}
+                        </span>
                       </div>
-                    </li>
+                    </li> */}
                   </ul>
                   {depositNote ? (
                     <p className="mt-4 border-t border-[var(--card-border)] pt-3 text-xs leading-relaxed text-[var(--text-muted)]">{depositNote}</p>

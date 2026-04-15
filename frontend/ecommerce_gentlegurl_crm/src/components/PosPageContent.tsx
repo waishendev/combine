@@ -74,6 +74,9 @@ type AppointmentSettlementCartItem = {
   booking_code: string
   customer_id?: number | null
   customer_name?: string | null
+  guest_name?: string | null
+  guest_phone?: string | null
+  guest_email?: string | null
   service_name?: string | null
   staff_name?: string | null
   appointment_start_at?: string | null
@@ -671,10 +674,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const hasCartBookServices = cartServiceItems.length > 0
   const hasCartPackages = cartPackageItems.length > 0
   const hasCartAppointmentSettlements = cartAppointmentSettlementItems.length > 0
+  const hasCartGuestSettlement = useMemo(() => {
+    return cartAppointmentSettlementItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim()))
+  }, [cartAppointmentSettlementItems])
   /** Member/guest validation before pay (product-only carts skip) */
   const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
   /** Rules C,E,F,G: any package ⇒ member only, no guest */
-  const checkoutRequiresMemberOnly = hasCartPackages || hasCartAppointmentSettlements
+  const checkoutRequiresMemberOnly = hasCartPackages || (hasCartAppointmentSettlements && !hasCartGuestSettlement)
   /** Rules B,D: book services without packages ⇒ member or guest */
   const checkoutAllowsGuestToggle = hasCartBookServices && !hasCartPackages
   /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear */
@@ -694,6 +700,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   useEffect(() => {
     if (!hasCartAppointmentSettlements) return
+    if (hasCartGuestSettlement) {
+      setCheckoutIdentityMode('guest')
+      setBookingIdentityMode('guest')
+      return
+    }
     // Settlement is member-only and should freeze identity switching.
     setCheckoutIdentityMode('member')
     setBookingIdentityMode('member')
@@ -704,6 +715,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [
     cartAppointmentSettlementItems,
+    hasCartGuestSettlement,
     hasCartAppointmentSettlements,
     selectedMember?.id,
     settlementLockedCustomerId,
@@ -3263,14 +3275,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         phone: String(guestLine.guest_phone ?? '').trim(),
         email: String(guestLine.guest_email ?? '').trim(),
       })
+      // Ensure stale member selection doesn't override guest checkout UI.
+      setSelectedMember(null)
     }
 
     if (checkoutRequiresMemberOnly) {
       setCheckoutIdentityMode('member')
     } else if (checkoutAllowsGuestToggle || !checkoutRequiresCustomerValidation) {
-      if (selectedMember?.id) {
+      // If cart already has guest booking lines, default checkout to guest (avoid stale member selection).
+      if (guestLine) {
+        setCheckoutIdentityMode('guest')
+      } else if (selectedMember?.id) {
         setCheckoutIdentityMode('member')
-      } else if (guestLine || (guestContactCache.email.trim() && guestContactCache.name.trim())) {
+      } else if (guestContactCache.email.trim() && guestContactCache.name.trim()) {
         setCheckoutIdentityMode('guest')
       } else {
         setCheckoutIdentityMode('member')

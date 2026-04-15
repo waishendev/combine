@@ -195,10 +195,17 @@ class PosController extends Controller
 
         $rows = collect($paginator->items())->map(function (Booking $booking) {
             $summary = $this->resolveAppointmentFinancialSummary($booking);
+            $guestName = trim((string) ($booking->guest_name ?? ''));
+            $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+            $guestEmail = trim((string) ($booking->guest_email ?? ''));
             return [
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
-                'customer_name' => (string) ($booking->customer?->name ?? '-'),
+                'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName : '-')),
+                'guest_name' => $guestName !== '' ? $guestName : null,
+                'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
+                'guest_email' => $guestEmail !== '' ? $guestEmail : null,
                 'service_names' => [(string) ($booking->service?->name ?? '-')],
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
@@ -1117,12 +1124,19 @@ class PosController extends Controller
         $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
         $qty = (int) ($validated['qty'] ?? 1);
         $cart = $this->resolveCart((int) $request->user()->id)->load([
-            'appointmentSettlementItems.booking:id,customer_id',
+            'appointmentSettlementItems.booking:id,customer_id,guest_email',
             'packageItems:id,customer_id',
         ]);
 
         // If settlement exists in cart, all lines must belong to the same member.
         if ($cart->appointmentSettlementItems->isNotEmpty()) {
+            $guestSettlementExists = $cart->appointmentSettlementItems->contains(function (PosCartAppointmentSettlementItem $row) {
+                return empty($row->booking?->customer_id) && trim((string) ($row->booking?->guest_email ?? '')) !== '';
+            });
+            if ($guestSettlementExists) {
+                return $this->respondError(__('Cannot add service package when cart has guest settlement. Remove settlement to continue.'), 422);
+            }
+
             $settlementCustomerIds = $cart->appointmentSettlementItems
                 ->map(fn (PosCartAppointmentSettlementItem $row) => (int) ($row->booking?->customer_id ?? 0))
                 ->filter(fn (int $id) => $id > 0)
@@ -1201,20 +1215,23 @@ class PosController extends Controller
             return $this->respondError(__('Only COMPLETED appointments can be settled from POS cart.'), 422);
         }
 
-        if (empty($booking->customer_id)) {
-            return $this->respondError(__('Settlement appointment must belong to a member.'), 422);
+        if ((string) ($booking->payment_status ?? '') !== 'UNPAID') {
+            return $this->respondError(__('Only UNPAID completed appointments can be settled from POS cart.'), 422);
         }
 
-        $summary = $this->resolveAppointmentFinancialSummary($booking);
-        $balanceDue = (float) ($summary['balance_due'] ?? 0);
-        if ($balanceDue <= 0.0001) {
-            return $this->respondError(__('No balance due for this appointment.'), 422);
+        $hasMember = !empty($booking->customer_id);
+        $guestName = trim((string) ($booking->guest_name ?? ''));
+        $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+        $guestEmail = trim((string) ($booking->guest_email ?? ''));
+        $hasGuestSnapshot = $guestName !== '' && $guestPhone !== '' && $guestEmail !== '';
+        if (! $hasMember && ! $hasGuestSnapshot) {
+            return $this->respondError(__('Settlement appointment must have a member or complete guest details.'), 422);
         }
 
         $cart = $this->resolveCart((int) $request->user()->id)->load([
             'serviceItems',
             'packageItems:id,customer_id',
-            'appointmentSettlementItems.booking:id,customer_id',
+            'appointmentSettlementItems.booking:id,customer_id,guest_email',
         ]);
 
         $hasGuestServiceContext = $cart->serviceItems->contains(function (PosCartServiceItem $item) {
@@ -1235,6 +1252,9 @@ class PosController extends Controller
                 return $this->respondError(__('All service packages in one cart must belong to the same member.'), 422);
             }
             $lockedPackageCustomerId = (int) $existingPackageCustomerIds->first();
+            if (! $hasMember) {
+                return $this->respondError(__('Cannot add guest settlement while cart has service packages. Remove packages to continue.'), 422);
+            }
             if ($lockedPackageCustomerId > 0 && $lockedPackageCustomerId !== (int) $booking->customer_id) {
                 return $this->respondError(__('This settlement belongs to a different member. Remove current package item(s) to change member.'), 422);
             }
@@ -1245,13 +1265,36 @@ class PosController extends Controller
             ->filter(fn (int $id) => $id > 0)
             ->unique()
             ->values();
-        if ($existingSettlementCustomerIds->count() > 0) {
+        $existingSettlementGuestEmails = $cart->appointmentSettlementItems
+            ->map(fn (PosCartAppointmentSettlementItem $row) => strtolower(trim((string) ($row->booking?->guest_email ?? ''))))
+            ->filter(fn (string $email) => $email !== '')
+            ->unique()
+            ->values();
+
+        if ($existingSettlementCustomerIds->isNotEmpty() && $existingSettlementGuestEmails->isNotEmpty()) {
+            return $this->respondError(__('Appointment settlement items cannot mix member and guest in one cart.'), 422);
+        }
+        if ($existingSettlementCustomerIds->isNotEmpty()) {
             if ($existingSettlementCustomerIds->count() !== 1) {
                 return $this->respondError(__('All appointment settlement items in one cart must belong to the same member.'), 422);
+            }
+            if (! $hasMember) {
+                return $this->respondError(__('This cart already has member settlement. Remove settlement to switch to guest.'), 422);
             }
             $lockedCustomerId = (int) $existingSettlementCustomerIds->first();
             if ($lockedCustomerId > 0 && $lockedCustomerId !== (int) $booking->customer_id) {
                 return $this->respondError(__('This settlement belongs to a different member. Remove the current settlement item(s) to change member.'), 422);
+            }
+        } elseif ($existingSettlementGuestEmails->isNotEmpty()) {
+            if ($existingSettlementGuestEmails->count() !== 1) {
+                return $this->respondError(__('All appointment settlement items in one cart must belong to the same guest.'), 422);
+            }
+            if ($hasMember) {
+                return $this->respondError(__('This cart already has guest settlement. Remove settlement to switch to member.'), 422);
+            }
+            $lockedEmail = (string) $existingSettlementGuestEmails->first();
+            if ($lockedEmail !== strtolower($guestEmail)) {
+                return $this->respondError(__('This settlement belongs to a different guest. Remove the current settlement item(s) to change guest.'), 422);
             }
         }
 
@@ -1952,17 +1995,31 @@ class PosController extends Controller
                     ->unique()
                     ->values();
 
-                if ($settlementCustomerIds->count() !== 1) {
-                    abort(422, __('All appointment settlement items in one checkout must belong to the same member.'));
-                }
-
-                $settlementCustomerId = (int) $settlementCustomerIds->first();
-                if (empty($customerId)) {
-                    $customerId = $settlementCustomerId;
-                }
-
-                if ((int) $customerId !== $settlementCustomerId) {
-                    abort(422, __('Selected checkout member does not match settlement member.'));
+                if ($settlementCustomerIds->count() === 1) {
+                    $settlementCustomerId = (int) $settlementCustomerIds->first();
+                    if (empty($customerId)) {
+                        $customerId = $settlementCustomerId;
+                    }
+                    if ((int) $customerId !== $settlementCustomerId) {
+                        abort(422, __('Selected checkout member does not match settlement member.'));
+                    }
+                } elseif ($settlementCustomerIds->count() === 0) {
+                    // Guest settlement: allow checkout without member, but do not allow mixing with packages.
+                    if ($cart->packageItems->isNotEmpty()) {
+                        abort(422, __('Cannot checkout guest settlement together with service packages.'));
+                    }
+                    $guestEmails = $cart->appointmentSettlementItems
+                        ->map(fn (PosCartAppointmentSettlementItem $row) => strtolower(trim((string) ($row->booking?->guest_email ?? ''))))
+                        ->filter(fn (string $email) => $email !== '')
+                        ->unique()
+                        ->values();
+                    if ($guestEmails->count() !== 1) {
+                        abort(422, __('All appointment settlement items in one checkout must belong to the same guest.'));
+                    }
+                    // Force member to be null for guest settlement.
+                    $customerId = null;
+                } else {
+                    abort(422, __('All appointment settlement items in one checkout must belong to the same member or guest.'));
                 }
             }
 
@@ -2039,6 +2096,22 @@ class PosController extends Controller
                     $guestName = trim((string) ($guestLine->guest_name ?? ''));
                     $guestPhone = trim((string) ($guestLine->guest_phone ?? ''));
                     $guestEmail = trim((string) ($guestLine->guest_email ?? ''));
+                    if ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                        $hasGuestPayload = true;
+                    }
+                }
+            }
+            if (empty($customerId) && ! $hasGuestPayload && $cart->appointmentSettlementItems->isNotEmpty()) {
+                $guestBooking = $cart->appointmentSettlementItems
+                    ->map(fn (PosCartAppointmentSettlementItem $row) => $row->booking)
+                    ->filter()
+                    ->first(function (Booking $booking) {
+                        return empty($booking->customer_id) && trim((string) ($booking->guest_email ?? '')) !== '';
+                    });
+                if ($guestBooking) {
+                    $guestName = trim((string) ($guestBooking->guest_name ?? ''));
+                    $guestPhone = trim((string) ($guestBooking->guest_phone ?? ''));
+                    $guestEmail = trim((string) ($guestBooking->guest_email ?? ''));
                     if ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                         $hasGuestPayload = true;
                     }
@@ -2865,9 +2938,9 @@ class PosController extends Controller
             }
             $summary = $this->resolveAppointmentFinancialSummary($booking);
             $balanceDue = (float) ($summary['balance_due'] ?? 0);
-            if ($balanceDue <= 0.0001) {
-                return null;
-            }
+            $guestName = trim((string) ($booking->guest_name ?? ''));
+            $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+            $guestEmail = trim((string) ($booking->guest_email ?? ''));
 
             return [
                 'id' => (int) $item->id,
@@ -2875,7 +2948,10 @@ class PosController extends Controller
                 'booking_service_id' => (int) ($booking->service_id ?? 0),
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) ($booking->customer?->name ?? '-'),
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName : '-')),
+                'guest_name' => $guestName !== '' ? $guestName : null,
+                'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
+                'guest_email' => $guestEmail !== '' ? $guestEmail : null,
                 'service_name' => (string) ($booking->service?->name ?? '-'),
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
