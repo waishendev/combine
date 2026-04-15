@@ -35,19 +35,21 @@ class DatabaseSeeder extends Seeder
             AddServicePackagePermissionsSeeder::class,
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
-
-            // upper all should open , no command to avoid error seed
-            DemoMembersSeederTesting::class,
-
-            FrontendTestDataSeeder::class,
-            LoyaltyRewardSeederTesting::class,
-            LoyaltyDemoCustomerSeederTesting::class,
-            // // SelfPickupCompletedOrderSeeder::class,
-            // // GuestCompletedOrderSeeder::class,
             BookingLandingPageSeeder::class,
-            BookingTestingSeeder::class,
-            BookingLeaveTestingSeeder::class,
-            ServicePackageTestingSeeder::class,
+
+            
+            // // upper all should open , no command to avoid error seed
+            // DemoMembersSeederTesting::class,
+
+            // FrontendTestDataSeeder::class,
+            // LoyaltyRewardSeederTesting::class,
+            // LoyaltyDemoCustomerSeederTesting::class,
+            // // // SelfPickupCompletedOrderSeeder::class,
+            // // // GuestCompletedOrderSeeder::class,
+            
+            // BookingTestingSeeder::class,
+            // BookingLeaveTestingSeeder::class,
+            // ServicePackageTestingSeeder::class,
 
             //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,
