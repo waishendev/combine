@@ -496,8 +496,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               const addonDep = Number(item.addon_deposit_amount ?? 0);
               const hasAddons = (item.selected_options?.length || 0) > 0;
               const lineDeposit = Number(depositDisplay.perItem[item.id] ?? item.deposit_amount ?? 0);
+              const itemIsRange = item.price_mode === 'range' && item.price_range_min != null && item.price_range_max != null;
               const menuListedTotal = Number(item.listed_service_price ?? 0) + Number(item.addon_price ?? 0);
               const payLaterLine = menuListedTotal > 0 ? Math.max(0, menuListedTotal - lineDeposit) : null;
+              const payLaterRangeMin = itemIsRange ? Math.max(0, Number(item.price_range_min) + Number(item.addon_price ?? 0) - lineDeposit) : null;
+              const payLaterRangeMax = itemIsRange ? Math.max(0, Number(item.price_range_max) + Number(item.addon_price ?? 0) - lineDeposit) : null;
 
               return (
                 <article
@@ -602,7 +605,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         <span className="text-sm font-semibold tabular-nums text-[var(--accent-strong)]">RM {lineDeposit.toFixed(2)}</span>
                       </div>
 
-                      {payLaterLine !== null ? (
+                      {(payLaterLine !== null || itemIsRange) ? (
                         <div
                           className="mt-2 space-y-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 py-2 ring-1 ring-[var(--status-success)]/10"
                           role="note"
@@ -611,7 +614,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                             <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--status-success)]">
                               Total (Pay later)
                             </span>
-                            <span className="text-sm font-semibold tabular-nums text-[var(--status-success)]">RM {payLaterLine.toFixed(2)}</span>
+                            <span className="text-sm font-semibold tabular-nums text-[var(--status-success)]">
+                              {itemIsRange && payLaterRangeMin != null && payLaterRangeMax != null
+                                ? `RM ${payLaterRangeMin.toFixed(2)} - ${payLaterRangeMax.toFixed(2)}`
+                                : `RM ${(payLaterLine ?? 0).toFixed(2)}`}
+                            </span>
                           </div>
                           <p className="text-[9px] leading-snug text-[var(--status-success)]/90">
                               Pay after your service at the salon

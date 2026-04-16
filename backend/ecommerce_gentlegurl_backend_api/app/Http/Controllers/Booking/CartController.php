@@ -670,7 +670,7 @@ class CartController extends Controller
     {
         $cart->load([
             'items' => fn ($q) => $q->where('status', 'active')->orderBy('expires_at'),
-            'items.service:id,name,deposit_amount,service_type,service_price,price',
+            'items.service:id,name,deposit_amount,service_type,service_price,price,price_mode,price_range_min,price_range_max',
             'items.staff:id,name',
             'packageItems' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
         ]);
@@ -703,6 +703,9 @@ class CartController extends Controller
                 'addon_duration_min' => (int) ($item->addon_duration_min ?? 0),
                 'addon_price' => (float) ($item->addon_price ?? 0),
                 'listed_service_price' => (float) ($item->service?->price ?? $item->service?->service_price ?? 0),
+                'price_mode' => (string) ($item->service?->price_mode ?? 'fixed'),
+                'price_range_min' => $item->service?->price_range_min !== null ? (float) $item->service->price_range_min : null,
+                'price_range_max' => $item->service?->price_range_max !== null ? (float) $item->service->price_range_max : null,
                 'selected_options' => $item->question_answers_json['selected_options'] ?? [],
                 'expires_at' => $item->expires_at?->toIso8601String(),
                 'status' => $item->status,

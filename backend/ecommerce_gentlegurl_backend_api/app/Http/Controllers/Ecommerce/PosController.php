@@ -21,6 +21,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingSetting;
 use App\Models\Booking\CustomerServicePackageUsage;
@@ -153,7 +154,7 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,service_price,price,service_type', 'staff:id,name']);
+        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'staff:id,name']);
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
@@ -222,6 +223,12 @@ class PosController extends Controller
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
                 'service_total' => (float) $summary['service_total'],
+                'settled_service_amount' => $summary['settled_service_amount'] ?? null,
+                'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
+                'requires_settled_amount' => (bool) ($summary['requires_settled_amount'] ?? false),
+                'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
+                'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
+                'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
                 'addon_total_price' => (float) ($summary['addon_total_price'] ?? 0),
                 'add_ons' => $summary['add_ons'] ?? [],
                 'package_status' => $summary['package_status'],
@@ -268,7 +275,7 @@ class PosController extends Controller
     public function appointmentDetail(int $id)
     {
         $booking = Booking::query()
-            ->with(['customer:id,name,phone,email', 'service:id,name,service_price,price,service_type', 'staff:id,name'])
+            ->with(['customer:id,name,phone,email', 'service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'staff:id,name'])
             ->findOrFail($id);
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -306,6 +313,9 @@ class PosController extends Controller
                 'id' => (int) ($booking->service?->id ?? 0),
                 'name' => (string) ($booking->service?->name ?? '-'),
                 'service_type' => (string) ($booking->service?->service_type ?? ''),
+                'price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
+                'price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
+                'price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
             ],
             'staff' => [
                 'id' => (int) ($booking->staff?->id ?? 0),
@@ -313,6 +323,9 @@ class PosController extends Controller
             ],
             'staff_splits' => $staffSplits,
             'service_total' => (float) $summary['service_total'],
+            'settled_service_amount' => $summary['settled_service_amount'],
+            'is_range_priced' => (bool) $summary['is_range_priced'],
+            'requires_settled_amount' => (bool) $summary['requires_settled_amount'],
             'deposit_contribution' => (float) $summary['deposit_contribution'],
             'deposit_paid' => (float) $summary['deposit_contribution'],
             'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
@@ -387,6 +400,10 @@ class PosController extends Controller
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
         if (! $booking->customer_id || ! $booking->service_id) {
             return $this->respondError(__('Appointment must have customer and service before settlement.'), 422);
+        }
+
+        if (($booking->service?->price_mode ?? 'fixed') === 'range' && $booking->settled_service_amount === null) {
+            return $this->respondError(__('Please set the service amount before collecting payment. This service uses range pricing.'), 422);
         }
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -479,6 +496,110 @@ class PosController extends Controller
             'amount_due_now' => (float) $freshSummary['amount_due_now'],
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Appointment payment collected.'));
+    }
+
+    public function editAppointmentSettlement(Request $request, int $id)
+    {
+        $booking = Booking::query()->with(['service.questions.options.linkedBookingService', 'customer', 'staff'])->findOrFail($id);
+        if (! $booking->service_id) {
+            return $this->respondError(__('Appointment must have a service.'), 422);
+        }
+
+        $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
+        $validated = $request->validate([
+            'settled_service_amount' => [$isRangePriced ? 'required' : 'nullable', 'numeric', 'min:0'],
+            'addon_option_ids' => ['nullable', 'array'],
+            'addon_option_ids.*' => ['integer'],
+        ]);
+
+        if ($isRangePriced && isset($validated['settled_service_amount'])) {
+            $amount = (float) $validated['settled_service_amount'];
+            $rangeMin = (float) ($booking->service->price_range_min ?? 0);
+            $rangeMax = (float) ($booking->service->price_range_max ?? 0);
+            if ($amount < $rangeMin - 0.005 || $amount > $rangeMax + 0.005) {
+                return $this->respondError(__('Service amount must be between RM :min and RM :max.', [
+                    'min' => number_format($rangeMin, 2),
+                    'max' => number_format($rangeMax, 2),
+                ]), 422);
+            }
+            $booking->settled_service_amount = round($amount, 2);
+        } elseif (! $isRangePriced) {
+            $booking->settled_service_amount = null;
+        }
+
+        if ($request->has('addon_option_ids')) {
+            $optionIds = collect($validated['addon_option_ids'] ?? []);
+            $availableOptions = $booking->service->questions
+                ->flatMap(fn ($q) => $q->options)
+                ->filter(fn ($opt) => $opt->is_active)
+                ->keyBy('id');
+
+            $newAddonItems = $optionIds
+                ->map(fn ($optId) => $availableOptions->get($optId))
+                ->filter()
+                ->map(fn (BookingServiceQuestionOption $option) => [
+                    'id' => (int) $option->id,
+                    'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                    'extra_duration_min' => $option->linkedBookingService
+                        ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                        : max(0, (int) ($option->extra_duration_min ?? 0)),
+                    'extra_price' => $option->linkedBookingService
+                        ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                        : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                    'linked_booking_service_id' => $option->linkedBookingService
+                        ? (int) $option->linkedBookingService->id
+                        : null,
+                    'linked_service_type' => $option->linkedBookingService
+                        ? (string) $option->linkedBookingService->service_type
+                        : null,
+                    'linked_deposit_amount' => $option->linkedBookingService
+                        ? round(max(0, (float) ($option->linkedBookingService->deposit_amount ?? 0)), 2)
+                        : null,
+                ])->values()->all();
+
+            $booking->addon_items_json = $newAddonItems;
+            $booking->addon_price = round(collect($newAddonItems)->sum('extra_price'), 2);
+            $booking->addon_duration_min = (int) collect($newAddonItems)->sum('extra_duration_min');
+        }
+
+        $booking->save();
+
+        $booking->load(['service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking),
+            'service_total' => (float) $summary['service_total'],
+            'settled_service_amount' => $summary['settled_service_amount'],
+            'requires_settled_amount' => (bool) $summary['requires_settled_amount'],
+            'balance_due' => (float) $summary['balance_due'],
+            'amount_due_now' => (float) $summary['amount_due_now'],
+            'add_ons' => $summary['add_ons'],
+        ], __('Appointment settlement updated.'));
+    }
+
+    public function getServiceAddonOptions(int $serviceId)
+    {
+        $service = BookingService::query()->with(['questions.options.linkedBookingService'])->findOrFail($serviceId);
+
+        $questions = $service->questions->map(fn (BookingServiceQuestion $question) => [
+            'id' => (int) $question->id,
+            'title' => (string) $question->title,
+            'question_type' => (string) $question->question_type,
+            'is_required' => (bool) $question->is_required,
+            'options' => $question->options->filter(fn ($opt) => $opt->is_active)->map(fn (BookingServiceQuestionOption $option) => [
+                'id' => (int) $option->id,
+                'label' => (string) $option->label,
+                'extra_duration_min' => $option->linkedBookingService
+                    ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                    : max(0, (int) ($option->extra_duration_min ?? 0)),
+                'extra_price' => $option->linkedBookingService
+                    ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                    : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+            ])->values(),
+        ]);
+
+        return $this->respond(['questions' => $questions]);
     }
 
     public function markAppointmentCompleted(int $id)
@@ -1194,7 +1315,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ], __('Package added to POS cart.'));
@@ -1314,7 +1435,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ], __('Appointment settlement added to POS cart.'));
@@ -1336,7 +1457,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ], __('Appointment settlement removed from POS cart.'));
@@ -1363,7 +1484,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ]);
@@ -1385,7 +1506,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ]);
@@ -1654,7 +1775,7 @@ class PosController extends Controller
             'packageItems.servicePackage',
             'packageItems.customer:id,name',
             'appointmentSettlementItems.booking.customer:id,name',
-            'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
             'appointmentSettlementItems.booking.staff:id,name',
         ]);
 
@@ -1745,7 +1866,7 @@ class PosController extends Controller
             'packageItems.servicePackage',
             'packageItems.customer:id,name',
             'appointmentSettlementItems.booking.customer:id,name',
-            'appointmentSettlementItems.booking.service:id,name,service_price,price,service_type',
+            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
             'appointmentSettlementItems.booking.staff:id,name',
         ]);
         if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty() && $cart->appointmentSettlementItems->isEmpty()) {
@@ -1989,6 +2110,13 @@ class PosController extends Controller
             }
 
             if ($cart->appointmentSettlementItems->isNotEmpty()) {
+                foreach ($cart->appointmentSettlementItems as $settlementItem) {
+                    $stlBooking = $settlementItem->booking;
+                    if ($stlBooking && ($stlBooking->service?->price_mode ?? 'fixed') === 'range' && $stlBooking->settled_service_amount === null) {
+                        abort(422, __('Please set the service amount for all range-priced settlement items before checkout.'));
+                    }
+                }
+
                 $settlementCustomerIds = $cart->appointmentSettlementItems
                     ->map(fn (PosCartAppointmentSettlementItem $row) => (int) ($row->booking?->customer_id ?? 0))
                     ->filter(fn (int $id) => $id > 0)
@@ -2953,11 +3081,17 @@ class PosController extends Controller
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
                 'service_name' => (string) ($booking->service?->name ?? '-'),
+                'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
+                'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
+                'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
                 'balance_due' => round($balanceDue, 2),
                 'service_total' => (float) ($summary['service_total'] ?? 0),
+                'settled_service_amount' => $summary['settled_service_amount'] ?? null,
+                'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
+                'requires_settled_amount' => (bool) ($summary['requires_settled_amount'] ?? false),
                 'addon_total_price' => (float) ($summary['addon_total_price'] ?? 0),
                 'deposit_contribution' => (float) ($summary['deposit_contribution'] ?? 0),
                 'package_offset' => (float) ($summary['package_offset'] ?? 0),
@@ -3401,8 +3535,14 @@ class PosController extends Controller
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'customer_name' => (string) ($booking->customer?->name ?? '-'),
             'service_name' => (string) ($booking->service?->name ?? '-'),
+            'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
+            'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
+            'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
             'staff_name' => (string) ($booking->staff?->name ?? '-'),
             'service_total' => (float) $summary['service_total'],
+            'settled_service_amount' => $summary['settled_service_amount'],
+            'is_range_priced' => (bool) $summary['is_range_priced'],
+            'requires_settled_amount' => (bool) $summary['requires_settled_amount'],
             'deposit_contribution' => (float) $summary['deposit_contribution'],
             'deposit_paid' => (float) $summary['deposit_contribution'],
             'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
@@ -3468,7 +3608,11 @@ class PosController extends Controller
 
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
-        $serviceTotal = (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+        $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
+        $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
+        $serviceTotal = $settledServiceAmount !== null
+            ? $settledServiceAmount
+            : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
         $addonItems = collect($booking->addon_items_json ?? [])->map(fn ($item) => [
             'id' => isset($item['id']) ? (int) $item['id'] : null,
             'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
@@ -3616,6 +3760,9 @@ class PosController extends Controller
 
         return [
             'service_total' => round($serviceTotal, 2),
+            'settled_service_amount' => $settledServiceAmount !== null ? round($settledServiceAmount, 2) : null,
+            'is_range_priced' => $isRangePriced,
+            'requires_settled_amount' => $isRangePriced && $settledServiceAmount === null,
             'add_ons' => $addonItems->all(),
             'addon_settlement_items' => $addonSettlementItems->all(),
             'addon_total_duration_min' => $addonTotalDurationMin,

@@ -60,7 +60,10 @@ export default function ServiceAddonsPage() {
   const totalAddonPrice = selectedOptions.reduce((sum, o) => sum + Number(o.extra_price || 0), 0);
   const baseDurationMin = service ? Number(service.duration_minutes || 0) : 0;
   const estimatedTotalMinutes = baseDurationMin + totalAddonDuration;
+  const isRangePrice = service?.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null;
   const listedServicePrice = service ? Number(service.price ?? 0) : 0;
+  const listedPriceRangeMin = service ? Number(service.price_range_min ?? 0) : 0;
+  const listedPriceRangeMax = service ? Number(service.price_range_max ?? 0) : 0;
   const estimatedTotalCost = listedServicePrice + totalAddonPrice;
   const depositPreview = useMemo(() => depositPreviewForService(service, selectedOptionIds), [service, selectedOptionIds]);
   /** Typical salon model: deposit is credited toward the appointment; balance due after service. */
@@ -226,7 +229,11 @@ export default function ServiceAddonsPage() {
                  
                     <li className="flex flex-wrap justify-between gap-2">
                       <span className="text-[var(--text-muted)]">Listed service price</span>
-                      <span className="font-medium tabular-nums text-[var(--foreground)]">RM {listedServicePrice.toFixed(2)}</span>
+                      <span className="font-medium tabular-nums text-[var(--foreground)]">
+                        {isRangePrice
+                          ? `RM ${listedPriceRangeMin.toFixed(2)} - ${listedPriceRangeMax.toFixed(2)}`
+                          : `RM ${listedServicePrice.toFixed(2)}`}
+                      </span>
                     </li>
                   </ul>
                 </div>

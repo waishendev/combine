@@ -12,6 +12,9 @@ export interface BookingServiceRowData {
   description: string
   duration_min: number
   service_price: string | number
+  price_mode?: 'fixed' | 'range' | string
+  price_range_min?: number | null
+  price_range_max?: number | null
   deposit_amount: string | number
   buffer_min: number
   isActive: boolean
@@ -94,7 +97,11 @@ export default function BookingServiceRow({
       <td className="px-4 py-2 border border-gray-200">{service.serviceType || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{service.description || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{service.duration_min}</td>
-      <td className="px-4 py-2 border border-gray-200">{service.service_price}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        {service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
+          ? `RM ${Number(service.price_range_min).toFixed(2)} - ${Number(service.price_range_max).toFixed(2)}`
+          : service.service_price}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{service.deposit_amount}</td>
       <td className="px-4 py-2 border border-gray-200">{service.buffer_min}</td>
       <td className="border border-gray-200 px-4 py-2">

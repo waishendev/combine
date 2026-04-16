@@ -9,7 +9,7 @@ use Illuminate\Support\Facades\Storage;
 class BookingService extends Model
 {
     protected $fillable = [
-        'name', 'service_type', 'description', 'image_path', 'service_price', 'price', 'is_package_eligible', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
+        'name', 'service_type', 'description', 'image_path', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
     ];
 
     protected $appends = [
@@ -23,6 +23,9 @@ class BookingService extends Model
         'is_package_eligible' => 'boolean',
         'service_price' => 'decimal:2',
         'price' => 'decimal:2',
+        'price_mode' => 'string',
+        'price_range_min' => 'decimal:2',
+        'price_range_max' => 'decimal:2',
     ];
 
 

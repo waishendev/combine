@@ -78,6 +78,12 @@ type AppointmentSettlementCartItem = {
   guest_phone?: string | null
   guest_email?: string | null
   service_name?: string | null
+  service_price_mode?: string | null
+  service_price_range_min?: number | null
+  service_price_range_max?: number | null
+  settled_service_amount?: number | null
+  is_range_priced?: boolean
+  requires_settled_amount?: boolean
   staff_name?: string | null
   appointment_start_at?: string | null
   appointment_end_at?: string | null
@@ -195,6 +201,9 @@ type BookingServiceOption = {
   service_type?: string | null
   price?: number
   service_price?: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
@@ -538,6 +547,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [serviceUnclaimingIds, setServiceUnclaimingIds] = useState<Record<number, boolean>>({})
   const [settlementRedeemingIds, setSettlementRedeemingIds] = useState<Record<number, boolean>>({})
   const [settlementUnclaimingIds, setSettlementUnclaimingIds] = useState<Record<number, boolean>>({})
+
+  const [cartEditSettlementOpen, setCartEditSettlementOpen] = useState(false)
+  const [cartEditSettlementBookingId, setCartEditSettlementBookingId] = useState<number | null>(null)
+  const [cartEditSettlementServiceId, setCartEditSettlementServiceId] = useState<number | null>(null)
+  const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
+  const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
+  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>>([])
+  const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
+  const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
+  const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
+  const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -1412,6 +1432,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
             price: Number(maybe.price ?? 0),
             service_price: Number(maybe.service_price ?? 0),
+            price_mode: typeof maybe.price_mode === 'string' ? maybe.price_mode : 'fixed',
+            price_range_min: maybe.price_range_min != null ? Number(maybe.price_range_min) : null,
+            price_range_max: maybe.price_range_max != null ? Number(maybe.price_range_max) : null,
             duration_min: Number(maybe.duration_min ?? 0),
             is_active: Boolean(maybe.is_active ?? true),
             allowed_staffs: Array.isArray(maybe.allowed_staffs)
@@ -2061,6 +2084,91 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void fetchUnpaidCompletedAppointments(settlementQuery)
   }
 
+  const openCartEditSettlement = async (settlement: AppointmentSettlementCartItem) => {
+    setCartEditSettlementError(null)
+    setCartEditSettlementLoading(false)
+    setCartEditSettlementItem(settlement)
+    setCartEditSettlementBookingId(settlement.booking_id)
+    setCartEditSettlementServiceId(settlement.booking_service_id ?? null)
+
+    const currentAddonIds = new Set(
+      (settlement.addon_settlement_items ?? [])
+        .map((a) => a.id)
+        .filter((id): id is number => id != null),
+    )
+    setCartEditSelectedAddonIds(currentAddonIds)
+    setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
+
+    setCartEditAddonOptionsLoading(true)
+    setCartEditSettlementOpen(true)
+    try {
+      const serviceId = settlement.booking_service_id
+      if (serviceId) {
+        const res = await fetch(`/api/proxy/pos/services/${serviceId}/addon-options`)
+        const json = await res.json().catch(() => null)
+        setCartEditAddonQuestions((json?.data?.questions ?? []) as typeof cartEditAddonQuestions)
+      } else {
+        setCartEditAddonQuestions([])
+      }
+    } catch {
+      setCartEditAddonQuestions([])
+    } finally {
+      setCartEditAddonOptionsLoading(false)
+    }
+  }
+
+  const toggleCartEditAddon = (optionId: number) => {
+    setCartEditSelectedAddonIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(optionId)) next.delete(optionId)
+      else next.add(optionId)
+      return next
+    })
+  }
+
+  const saveCartEditSettlement = async () => {
+    if (!cartEditSettlementBookingId) return
+    setCartEditSettlementError(null)
+    setCartEditSettlementLoading(true)
+    try {
+      const isRange = cartEditSettlementItem?.is_range_priced
+      const payload: Record<string, unknown> = {
+        addon_option_ids: Array.from(cartEditSelectedAddonIds),
+      }
+      if (isRange) {
+        const amt = parseFloat(cartEditSettledAmount)
+        if (!Number.isFinite(amt) || amt < 0) {
+          setCartEditSettlementError('Please enter a valid service amount.')
+          return
+        }
+        const min = Number(cartEditSettlementItem?.service_price_range_min ?? 0)
+        const max = Number(cartEditSettlementItem?.service_price_range_max ?? 0)
+        if (amt < min - 0.005 || amt > max + 0.005) {
+          setCartEditSettlementError(`Service amount must be between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.`)
+          return
+        }
+        payload.settled_service_amount = amt
+      }
+
+      const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        setCartEditSettlementError(json?.message ?? 'Failed to update settlement.')
+        return
+      }
+      showMsg('Settlement updated.', 'success')
+      setCartEditSettlementOpen(false)
+      await loadCart()
+      void fetchUnpaidCompletedAppointments(settlementQuery)
+    } finally {
+      setCartEditSettlementLoading(false)
+    }
+  }
+
   const claimSettlementPackage = async (bookingId: number, cartSettlementItemId: number) => {
     if (settlementRedeemingIds[cartSettlementItemId]) return
     setSettlementRedeemingIds((prev) => ({ ...prev, [cartSettlementItemId]: true }))
@@ -2688,7 +2796,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const cashReceivedAmount = Number(cashReceived || 0)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
-  const canCheckout = hasCartItems && !checkingOut
+  const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
+  const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
@@ -3603,9 +3712,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
                   ) : (
                     filteredServices.map((service) => {
+                      const isRange = service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
                       const displayPrice = Number.isFinite(service.price) && Number(service.price) > 0
                         ? Number(service.price)
                         : Number(service.service_price ?? 0)
+                      const priceLabel = isRange
+                        ? `RM ${Number(service.price_range_min).toFixed(2)} - ${Number(service.price_range_max).toFixed(2)}`
+                        : `RM ${displayPrice.toFixed(2)}`
 
                       return (
                         <div key={service.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
@@ -3614,7 +3727,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <p className="text-xs text-gray-500">Type: {(service.service_type ?? 'standard').toUpperCase()}</p>
                           </div>
                           <div className="flex flex-col items-end gap-2">
-                            <span className="text-sm font-bold text-gray-900">RM {displayPrice.toFixed(2)}</span>
+                            <span className="text-sm font-bold text-gray-900">{priceLabel}</span>
                             <button
                               type="button"
                               onClick={() => void openBookingModal(service)}
@@ -3710,6 +3823,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ) : (
                     settlementAppointments.map((appt) => {
                       const due = Number(appt.amount_due_now ?? appt.balance_due ?? 0)
+                      const isRangeAppt = appt.requires_settled_amount === true
                       const serviceLabel = Array.isArray(appt.service_names) && appt.service_names.length
                         ? appt.service_names.join(', ')
                         : ''
@@ -3762,7 +3876,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             ) : null}
                           </div>
                           <div className="flex flex-col items-end gap-2">
-                            <span className="text-sm font-bold text-gray-900">RM {Number.isFinite(due) ? due.toFixed(2) : '0.00'}</span>
+                            <span className="text-sm font-bold text-gray-900">
+                              {isRangeAppt
+                                ? `RM ${Number(appt.service_price_range_min ?? 0).toFixed(2)} - ${Number(appt.service_price_range_max ?? 0).toFixed(2)}`
+                                : `RM ${Number.isFinite(due) ? due.toFixed(2) : '0.00'}`}
+                            </span>
                             <button
                               type="button"
                               disabled={disableSettlementAdd}
@@ -4128,6 +4246,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             )}
                           <button
                             type="button"
+                            onClick={() => void openCartEditSettlement(settlement)}
+                            className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-800 shadow-sm hover:bg-indigo-100"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => void removeAppointmentSettlementItem(settlement.id)}
                             className="rounded-lg border border-red-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-red-700 shadow-sm"
                           >
@@ -4151,6 +4276,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}</p>
                         ) : null}
                       </div>
+                      {settlement.requires_settled_amount ? (
+                        <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
+                          <p className="text-[11px] font-semibold text-amber-900">
+                            Range pricing — click Edit to set the service amount before checkout.
+                          </p>
+                        </div>
+                      ) : null}
                     </div>
 
                     {(() => {
@@ -4162,6 +4294,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const totalDue = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
+                      const isRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
+                      const servicePriceLabel = isRangeUnsettled
+                        ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
+                        : `RM ${serviceTotal.toFixed(2)}`
+                      const totalDueLabel = isRangeUnsettled
+                        ? `RM ${(Number(settlement.service_price_range_min) + addonDueSum - depositCredit - pkgOffset).toFixed(2)} - ${(Number(settlement.service_price_range_max) + addonDueSum - depositCredit - pkgOffset).toFixed(2)}`
+                        : `RM ${totalDue.toFixed(2)}`
 
                       return (
                         <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-cyan-200/80">
@@ -4176,14 +4315,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   </p>
                                 </div>
                                 <div className="shrink-0 text-right tabular-nums">
-                                  <span className="text-gray-400 line-through">RM {serviceTotal.toFixed(2)}</span>{' '}
+                                  <span className="text-gray-400 line-through">{servicePriceLabel}</span>{' '}
                                   <span className="text-sm font-semibold text-gray-900">RM 0.00</span>
                                 </div>
                               </div>
                             ) : (
                               <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
                                 <span className="text-gray-700">Service</span>
-                                <span className="font-semibold tabular-nums text-gray-900">RM {serviceTotal.toFixed(2)}</span>
+                                <span className="font-semibold tabular-nums text-gray-900">{servicePriceLabel}</span>
                               </div>
                             )}
 
@@ -4232,7 +4371,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 Total to pay
                               </span>
                               <span className="text-sm font-bold tabular-nums text-orange-700">
-                                RM {totalDue.toFixed(2)}
+                                {totalDueLabel}
                               </span>
                             </div>
                           </div>
@@ -4626,6 +4765,157 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       )}
 
+      {cartEditSettlementOpen && cartEditSettlementItem && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+              <div>
+                <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
+                <p className="text-xs text-gray-500">{cartEditSettlementItem.booking_code} · {cartEditSettlementItem.service_name ?? '—'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCartEditSettlementOpen(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+              {cartEditSettlementItem.is_range_priced ? (
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-1">Service Amount</label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Range: RM {Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} – RM {Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}
+                  </p>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
+                    <input
+                      type="number"
+                      min={Number(cartEditSettlementItem.service_price_range_min ?? 0)}
+                      max={Number(cartEditSettlementItem.service_price_range_max ?? 0)}
+                      step="0.01"
+                      value={cartEditSettledAmount}
+                      onChange={(e) => { setCartEditSettlementError(null); setCartEditSettledAmount(e.target.value) }}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder={`${Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} - ${Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}`}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <div>
+                <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
+                {cartEditAddonOptionsLoading ? (
+                  <p className="text-xs text-gray-500">Loading add-on options...</p>
+                ) : cartEditAddonQuestions.length === 0 ? (
+                  <p className="text-xs text-gray-500">No add-on options available for this service.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {cartEditAddonQuestions.map((question) => (
+                      <div key={question.id}>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">{question.title}</p>
+                        <div className="space-y-1.5">
+                          {question.options.map((opt) => {
+                            const checked = cartEditSelectedAddonIds.has(opt.id)
+                            return (
+                              <label
+                                key={opt.id}
+                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
+                                  checked
+                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleCartEditAddon(opt.id)}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                  />
+                                  <span className="text-sm font-medium text-gray-900">{opt.label}</span>
+                                </div>
+                                <span className="text-xs font-semibold tabular-nums text-gray-600">
+                                  +RM {Number(opt.extra_price).toFixed(2)}
+                                  {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {(() => {
+                const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
+                const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
+                const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
+                const isRange = cartEditSettlementItem.is_range_priced
+                const settledAmt = parseFloat(cartEditSettledAmount)
+                const serviceAmt = isRange && Number.isFinite(settledAmt) ? settledAmt : Number(cartEditSettlementItem.service_total ?? 0)
+                return (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Summary</p>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Service</span>
+                        <span className="font-semibold tabular-nums text-gray-900">
+                          {isRange && !Number.isFinite(settledAmt)
+                            ? `RM ${Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} - ${Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}`
+                            : `RM ${serviceAmt.toFixed(2)}`}
+                        </span>
+                      </div>
+                      {selectedAddons.length > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Add-ons ({selectedAddons.length})</span>
+                          <span className="font-semibold tabular-nums text-gray-900">+RM {addonTotal.toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between border-t border-gray-200 pt-1.5">
+                        <span className="font-bold text-gray-900">Subtotal</span>
+                        <span className="font-bold tabular-nums text-gray-900">
+                          {isRange && !Number.isFinite(settledAmt)
+                            ? `RM ${(Number(cartEditSettlementItem.service_price_range_min ?? 0) + addonTotal).toFixed(2)} - ${(Number(cartEditSettlementItem.service_price_range_max ?? 0) + addonTotal).toFixed(2)}`
+                            : `RM ${(serviceAmt + addonTotal).toFixed(2)}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="border-t border-gray-200 bg-gray-50 px-5 py-4">
+              {cartEditSettlementError ? (
+                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">{cartEditSettlementError}</p>
+              ) : null}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setCartEditSettlementOpen(false)}
+                  className="flex-1 rounded-lg border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={cartEditSettlementLoading}
+                  onClick={() => void saveCartEditSettlement()}
+                  className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {cartEditSettlementLoading ? 'Saving...' : 'Save'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {checkoutConfirmationOpen && hasCartItems ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
           <div className="w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
@@ -4923,6 +5213,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const pkgOffset = Number(settlement.package_offset ?? 0)
                       const totalDue = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
                       const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotalRef > 0.0001
+                      const stIsRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
+                      const stServiceLabel = stIsRangeUnsettled
+                        ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
+                        : `RM ${serviceTotalRef.toFixed(2)}`
 
                       return (
                         <Fragment key={`checkout-settlement-${settlement.id}`}>
@@ -4970,7 +5264,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
                               {mainCoveredByPkg ? (
                                 <span>
-                                  <span className="text-gray-400 line-through">RM {serviceTotalRef.toFixed(2)}</span>{' '}
+                                  <span className="text-gray-400 line-through">{stServiceLabel}</span>{' '}
                                   <span className="font-medium">RM 0.00</span>
                                 </span>
                               ) : (
@@ -4979,7 +5273,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                             <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
                               <p className="text-lg font-bold leading-tight text-orange-700">
-                                RM {(mainCoveredByPkg ? 0 : serviceTotalRef).toFixed(2)}
+                                {mainCoveredByPkg ? 'RM 0.00' : stServiceLabel}
                               </p>
                             </td>
                           </tr>
@@ -5737,7 +6031,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           Duration: {Number(bookingServiceDraft.duration_min ?? 0) + bookingAddonDurationTotal} min
                         </p>
                         <p className="font-medium">
-                          Total price: RM{(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0) + bookingAddonPriceTotal).toFixed(2)}
+                          Total price: {bookingServiceDraft.price_mode === 'range' && bookingServiceDraft.price_range_min != null && bookingServiceDraft.price_range_max != null
+                            ? `RM${(Number(bookingServiceDraft.price_range_min) + bookingAddonPriceTotal).toFixed(2)} - RM${(Number(bookingServiceDraft.price_range_max) + bookingAddonPriceTotal).toFixed(2)}`
+                            : `RM${(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0) + bookingAddonPriceTotal).toFixed(2)}`}
                         </p>
                       </div>
                     </div>

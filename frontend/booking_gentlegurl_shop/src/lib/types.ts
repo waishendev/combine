@@ -18,6 +18,9 @@ export type Service = {
   deposit_amount: number;
   payment_status?: string;
   price: number;
+  price_mode?: "fixed" | "range" | string;
+  price_range_min?: number | null;
+  price_range_max?: number | null;
   category?: string;
   image_path?: string | null;
   image_url?: string | null;
@@ -85,6 +88,9 @@ export type BookingCartItem = {
   staff_id: number;
   staff_name: string;
   service_type: "premium" | "standard";
+  price_mode?: "fixed" | "range" | string;
+  price_range_min?: number | null;
+  price_range_max?: number | null;
   start_at: string;
   end_at: string;
   addon_duration_min?: number;

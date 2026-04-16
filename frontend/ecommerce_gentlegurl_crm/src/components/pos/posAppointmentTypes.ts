@@ -30,6 +30,12 @@ export type PosAppointmentListItem = {
   balance_due: number
   amount_due_now?: number
   service_total?: number
+  settled_service_amount?: number | null
+  is_range_priced?: boolean
+  requires_settled_amount?: boolean
+  service_price_mode?: string | null
+  service_price_range_min?: number | null
+  service_price_range_max?: number | null
 }
 
 export type PosAppointmentDetail = {
@@ -39,10 +45,13 @@ export type PosAppointmentDetail = {
   appointment_start_at?: string | null
   appointment_end_at?: string | null
   customer?: { id: number; name: string; phone?: string | null; email?: string | null }
-  service?: { id: number; name: string; service_type?: string | null }
+  service?: { id: number; name: string; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
   service_total: number
+  settled_service_amount?: number | null
+  is_range_priced?: boolean
+  requires_settled_amount?: boolean
   add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
   addon_total_duration_min?: number
   addon_total_price?: number
@@ -57,11 +66,25 @@ export type PosAppointmentDetail = {
   deposit_previously_collected_amount?: number
   package_offset?: number
   settlement_paid: number
-  /** Service subtotal after deposit credit, package offset, and service settlement (matches balance math). */
   service_balance_due?: number
   balance_due: number
   amount_due_now?: number
   package_status?: { status?: string; used_qty?: number } | null
   payment_history?: Array<{ order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
+}
+
+export type ServiceAddonOption = {
+  id: number
+  label: string
+  extra_duration_min: number
+  extra_price: number
+}
+
+export type ServiceAddonQuestion = {
+  id: number
+  title: string
+  question_type: string
+  is_required: boolean
+  options: ServiceAddonOption[]
 }

@@ -13,7 +13,7 @@ import {
   formatPosPaymentHistoryLineType,
   formatTimeRange,
 } from './posAppointmentHelpers'
-import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem } from './posAppointmentTypes'
+import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem, ServiceAddonQuestion, ServiceAddonOption } from './posAppointmentTypes'
 
 type StaffOption = {
   id: number
@@ -177,6 +177,14 @@ export default function PosAppointmentsWorkspace({
   const [appointmentQrCodeFullscreen, setAppointmentQrCodeFullscreen] = useState(false)
   const [appointmentReceiptQrLoaded, setAppointmentReceiptQrLoaded] = useState(false)
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
+
+  const [editSettlementOpen, setEditSettlementOpen] = useState(false)
+  const [editSettlementLoading, setEditSettlementLoading] = useState(false)
+  const [editSettlementError, setEditSettlementError] = useState<string | null>(null)
+  const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
+  const [editSelectedAddonIds, setEditSelectedAddonIds] = useState<Set<number>>(new Set())
+  const [editSettledAmount, setEditSettledAmount] = useState('')
+  const [editAddonOptionsLoading, setEditAddonOptionsLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
   const [appointmentRescheduleDate, setAppointmentRescheduleDate] = useState('')
@@ -581,6 +589,89 @@ export default function PosAppointmentsWorkspace({
     refreshOpenedAppointmentDetail,
     showMsg,
   ])
+
+  const openEditSettlement = useCallback(async () => {
+    if (!appointmentDetail?.service?.id) return
+    setEditSettlementError(null)
+    setEditSettlementLoading(false)
+
+    const currentAddonIds = new Set(
+      (appointmentDetail.add_ons ?? [])
+        .map((a) => a.id)
+        .filter((id): id is number => id != null),
+    )
+    setEditSelectedAddonIds(currentAddonIds)
+
+    const settled = appointmentDetail.settled_service_amount
+    setEditSettledAmount(settled != null ? String(settled) : '')
+
+    setEditAddonOptionsLoading(true)
+    setEditSettlementOpen(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/services/${appointmentDetail.service.id}/addon-options`)
+      const json = await res.json().catch(() => null)
+      setEditAddonQuestions((json?.data?.questions ?? []) as ServiceAddonQuestion[])
+    } catch {
+      setEditAddonQuestions([])
+    } finally {
+      setEditAddonOptionsLoading(false)
+    }
+  }, [appointmentDetail])
+
+  const toggleEditAddon = useCallback((optionId: number) => {
+    setEditSelectedAddonIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(optionId)) {
+        next.delete(optionId)
+      } else {
+        next.add(optionId)
+      }
+      return next
+    })
+  }, [])
+
+  const saveEditSettlement = useCallback(async () => {
+    if (!appointmentDetail?.id) return
+    setEditSettlementError(null)
+    setEditSettlementLoading(true)
+    try {
+      const isRange = appointmentDetail.is_range_priced
+      const payload: Record<string, unknown> = {
+        addon_option_ids: Array.from(editSelectedAddonIds),
+      }
+      if (isRange) {
+        const amt = parseFloat(editSettledAmount)
+        if (!Number.isFinite(amt) || amt < 0) {
+          setEditSettlementError('Please enter a valid service amount.')
+          return
+        }
+        const min = Number(appointmentDetail.service?.price_range_min ?? 0)
+        const max = Number(appointmentDetail.service?.price_range_max ?? 0)
+        if (amt < min - 0.005 || amt > max + 0.005) {
+          setEditSettlementError(`Service amount must be between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.`)
+          return
+        }
+        payload.settled_service_amount = amt
+      }
+
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        setEditSettlementError(json?.message ?? 'Failed to update settlement.')
+        return
+      }
+      showMsg('Settlement updated.', 'success')
+      setEditSettlementOpen(false)
+      await fetchAppointments()
+      await refreshOpenedAppointmentDetail()
+    } finally {
+      setEditSettlementLoading(false)
+    }
+  }, [appointmentDetail, editSelectedAddonIds, editSettledAmount, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -1215,6 +1306,26 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     ) : null}
 
+                    {!appointmentIsTerminalCancelled ? (
+                      <div className="mt-3">
+                        {appointmentDetail.requires_settled_amount ? (
+                          <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+                            <p className="text-xs font-semibold text-amber-900">
+                              This service uses range pricing (RM {Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - RM {Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}). Please click Edit to set the final service amount before checkout.
+                            </p>
+                          </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void openEditSettlement()}
+                          disabled={appointmentActionLoading}
+                          className="w-full rounded-lg border-2 border-indigo-300 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-800 shadow-sm transition-colors hover:bg-indigo-100 disabled:opacity-50"
+                        >
+                          Edit Settlement
+                        </button>
+                      </div>
+                    ) : null}
+
                     <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff</span>
@@ -1259,7 +1370,11 @@ export default function PosAppointmentsWorkspace({
                     <div className="divide-y divide-slate-100 px-4 text-sm">
                       <div className="flex items-center justify-between gap-3 py-3.5">
                         <span className="text-slate-600">Service</span>
-                        <span className="font-medium tabular-nums text-slate-900">RM {appointmentServiceAmount.toFixed(2)}</span>
+                        <span className="font-medium tabular-nums text-slate-900">
+                          {appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
+                            ? `RM ${Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - ${Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}`
+                            : `RM ${appointmentServiceAmount.toFixed(2)}`}
+                        </span>
                       </div>
                       <div className="flex flex-col gap-1 py-3.5">
                         <div className="flex items-center justify-between gap-3">
@@ -1295,7 +1410,19 @@ export default function PosAppointmentsWorkspace({
 
                       <div className="-mx-4 flex items-center justify-between gap-3 border-t-2 border-slate-200 bg-emerald-50/50 px-4 py-4">
                         <span className="text-base font-bold text-slate-900">Total Amount to Pay</span>
-                        <span className="text-xl font-bold tabular-nums text-emerald-800">RM {appointmentDueAmountNow.toFixed(2)}</span>
+                        <span className="text-xl font-bold tabular-nums text-emerald-800">
+                          {appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
+                            ? (() => {
+                                const rangeMin = Number(appointmentDetail.service?.price_range_min ?? 0)
+                                const rangeMax = Number(appointmentDetail.service?.price_range_max ?? 0)
+                                const totalMin = Math.max(0, rangeMin + appointmentAddonDueForBreakdown - appointmentDepositTotalForBreakdown - appointmentPackageOffsetAmount)
+                                const totalMax = Math.max(0, rangeMax + appointmentAddonDueForBreakdown - appointmentDepositTotalForBreakdown - appointmentPackageOffsetAmount)
+                                return totalMin === totalMax
+                                  ? `RM ${totalMin.toFixed(2)}`
+                                  : `RM ${totalMin.toFixed(2)} - ${totalMax.toFixed(2)}`
+                              })()
+                            : `RM ${appointmentDueAmountNow.toFixed(2)}`}
+                        </span>
                       </div>
                     </div>
                     {/* <p className="border-t border-slate-100 px-4 py-2.5 text-[11px] leading-relaxed text-slate-500">
@@ -1322,7 +1449,7 @@ export default function PosAppointmentsWorkspace({
                         <div className={`grid gap-2 ${appointmentShowApplyPackageButton ? 'grid-cols-2' : 'grid-cols-1'}`}>
                           <button
                             type="button"
-                            disabled={appointmentActionLoading || appointmentDueAmountNow <= 0}
+                            disabled={appointmentActionLoading || appointmentDueAmountNow <= 0 || !!appointmentDetail?.requires_settled_amount}
                             onClick={() => {
                               const due = appointmentDueAmountNow
                               setAppointmentPaymentMethod('cash')
@@ -1331,6 +1458,7 @@ export default function PosAppointmentsWorkspace({
                               setAppointmentCheckoutConfirmationOpen(true)
                             }}
                             className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
+                            title={appointmentDetail?.requires_settled_amount ? 'Set the service amount via Edit Settlement first' : undefined}
                           >
                             Checkout
                           </button>
@@ -1763,6 +1891,159 @@ export default function PosAppointmentsWorkspace({
               >
                 {appointmentRescheduleSubmitting ? 'Rescheduling...' : 'Confirm Reschedule'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {editSettlementOpen && appointmentDetail && (
+        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+              <div>
+                <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
+                <p className="text-xs text-gray-500">{appointmentDetail.booking_code} · {appointmentDetail.service?.name ?? '—'}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditSettlementOpen(false)}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+              {appointmentDetail.is_range_priced ? (
+                <div>
+                  <label className="block text-sm font-bold text-gray-900 mb-1">
+                    Service Amount
+                  </label>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Range: RM {Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} – RM {Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}
+                  </p>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
+                    <input
+                      type="number"
+                      min={Number(appointmentDetail.service?.price_range_min ?? 0)}
+                      max={Number(appointmentDetail.service?.price_range_max ?? 0)}
+                      step="0.01"
+                      value={editSettledAmount}
+                      onChange={(e) => { setEditSettlementError(null); setEditSettledAmount(e.target.value) }}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                      placeholder={`${Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - ${Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}`}
+                    />
+                  </div>
+                </div>
+              ) : null}
+
+              <div>
+                <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
+                {editAddonOptionsLoading ? (
+                  <p className="text-xs text-gray-500">Loading add-on options...</p>
+                ) : editAddonQuestions.length === 0 ? (
+                  <p className="text-xs text-gray-500">No add-on options available for this service.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {editAddonQuestions.map((question) => (
+                      <div key={question.id}>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">{question.title}</p>
+                        <div className="space-y-1.5">
+                          {question.options.map((opt) => {
+                            const checked = editSelectedAddonIds.has(opt.id)
+                            return (
+                              <label
+                                key={opt.id}
+                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
+                                  checked
+                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleEditAddon(opt.id)}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                  />
+                                  <span className="text-sm font-medium text-gray-900">{opt.label}</span>
+                                </div>
+                                <span className="text-xs font-semibold tabular-nums text-gray-600">
+                                  +RM {Number(opt.extra_price).toFixed(2)}
+                                  {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {(() => {
+                const allOptions = editAddonQuestions.flatMap((q) => q.options)
+                const selectedAddons = allOptions.filter((o) => editSelectedAddonIds.has(o.id))
+                const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
+                const isRange = appointmentDetail.is_range_priced
+                const settledAmt = parseFloat(editSettledAmount)
+                const serviceAmt = isRange && Number.isFinite(settledAmt) ? settledAmt : Number(appointmentDetail.service_total ?? 0)
+                return (
+                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Summary</p>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Service</span>
+                        <span className="font-semibold tabular-nums text-gray-900">
+                          {isRange && !Number.isFinite(settledAmt)
+                            ? `RM ${Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - ${Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}`
+                            : `RM ${serviceAmt.toFixed(2)}`}
+                        </span>
+                      </div>
+                      {selectedAddons.length > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Add-ons ({selectedAddons.length})</span>
+                          <span className="font-semibold tabular-nums text-gray-900">+RM {addonTotal.toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                      <div className="flex justify-between border-t border-gray-200 pt-1.5">
+                        <span className="font-bold text-gray-900">Subtotal</span>
+                        <span className="font-bold tabular-nums text-gray-900">
+                          {isRange && !Number.isFinite(settledAmt)
+                            ? `RM ${(Number(appointmentDetail.service?.price_range_min ?? 0) + addonTotal).toFixed(2)} - ${(Number(appointmentDetail.service?.price_range_max ?? 0) + addonTotal).toFixed(2)}`
+                            : `RM ${(serviceAmt + addonTotal).toFixed(2)}`}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })()}
+            </div>
+
+            <div className="border-t border-gray-200 bg-gray-50 px-5 py-4">
+              {editSettlementError ? (
+                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">{editSettlementError}</p>
+              ) : null}
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setEditSettlementOpen(false)}
+                  className="flex-1 rounded-lg border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={editSettlementLoading}
+                  onClick={() => void saveEditSettlement()}
+                  className="flex-1 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {editSettlementLoading ? 'Saving...' : 'Save'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -7,6 +7,9 @@ export type BookingServiceApiItem = {
   service_type?: 'premium' | 'standard' | string | null
   duration_min?: number | string | null
   service_price?: string | number | null
+  price_mode?: string | null
+  price_range_min?: string | number | null
+  price_range_max?: string | number | null
   deposit_amount?: string | number | null
   buffer_min?: number | string | null
   is_active?: boolean | number | string | null
@@ -43,6 +46,9 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     : (item.buffer_min ? Number(item.buffer_min) : 0)
 
   const servicePrice = item.service_price ?? 0
+  const priceMode = item.price_mode === 'range' ? 'range' : 'fixed'
+  const priceRangeMin = item.price_range_min != null ? Number(item.price_range_min) : null
+  const priceRangeMax = item.price_range_max != null ? Number(item.price_range_max) : null
   const depositAmount = item.deposit_amount ?? 0
 
   return {
@@ -55,6 +61,9 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     description: item.description ?? '',
     duration_min: durationMin,
     service_price: servicePrice,
+    price_mode: priceMode,
+    price_range_min: priceRangeMin,
+    price_range_max: priceRangeMax,
     deposit_amount: depositAmount,
     buffer_min: bufferMin,
     isActive,

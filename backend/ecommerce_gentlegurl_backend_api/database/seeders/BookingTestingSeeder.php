@@ -195,9 +195,9 @@ class BookingTestingSeeder extends Seeder
     private function seedServices(): array
     {
         $serviceSpecs = [
-            ['name' => 'Haircut', 'service_type' => 'standard', 'service_price' => 5200, 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
-            ['name' => 'Coloring', 'service_type' => 'premium', 'service_price' => 680, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
-            ['name' => 'Treatment', 'service_type' => 'premium', 'service_price' => 450, 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
+            ['name' => 'Haircut', 'service_type' => 'standard', 'service_price' => 5200, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
+            ['name' => 'Coloring', 'service_type' => 'premium', 'service_price' => 680, 'price_mode' => 'range', 'price_range_min' => 680, 'price_range_max' => 1200, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
+            ['name' => 'Treatment', 'service_type' => 'premium', 'service_price' => 450, 'price_mode' => 'fixed', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
         ];
 
         $services = [];
@@ -214,6 +214,12 @@ class BookingTestingSeeder extends Seeder
 
             if (Schema::hasColumn('booking_services', 'service_price')) {
                 $payload['service_price'] = $spec['service_price'];
+            }
+
+            if (Schema::hasColumn('booking_services', 'price_mode')) {
+                $payload['price_mode'] = $spec['price_mode'] ?? 'fixed';
+                $payload['price_range_min'] = $spec['price_range_min'] ?? null;
+                $payload['price_range_max'] = $spec['price_range_max'] ?? null;
             }
 
             $services[$spec['name']] = BookingService::query()->create($payload);

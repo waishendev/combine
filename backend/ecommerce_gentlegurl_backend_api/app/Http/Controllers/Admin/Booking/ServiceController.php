@@ -53,6 +53,9 @@ class ServiceController extends Controller
             'image' => ['nullable', 'image', 'max:5120'],
             'service_price' => ['nullable', 'numeric', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
+            'price_mode' => ['nullable', 'in:fixed,range'],
+            'price_range_min' => ['nullable', 'numeric', 'min:0'],
+            'price_range_max' => ['nullable', 'numeric', 'min:0'],
             'duration_min' => ['required', 'integer', 'min:1'],
             'deposit_amount' => ['required', 'numeric', 'min:0'],
             'buffer_min' => ['nullable', 'integer', 'min:0'],
@@ -80,6 +83,14 @@ class ServiceController extends Controller
         ]);
         $data['service_price'] = $data['service_price'] ?? 0;
         $data['price'] = $data['price'] ?? $data['service_price'];
+        $data['price_mode'] = $data['price_mode'] ?? 'fixed';
+        if ($data['price_mode'] === 'range') {
+            $data['price_range_min'] = $data['price_range_min'] ?? 0;
+            $data['price_range_max'] = $data['price_range_max'] ?? 0;
+        } else {
+            $data['price_range_min'] = null;
+            $data['price_range_max'] = null;
+        }
         $data['is_package_eligible'] = (bool) ($data['is_package_eligible'] ?? true);
 
         if ($request->hasFile('image')) {
@@ -121,6 +132,9 @@ class ServiceController extends Controller
             'image' => ['nullable', 'image', 'max:5120'],
             'service_price' => ['sometimes', 'numeric', 'min:0'],
             'price' => ['sometimes', 'numeric', 'min:0'],
+            'price_mode' => ['sometimes', 'in:fixed,range'],
+            'price_range_min' => ['nullable', 'numeric', 'min:0'],
+            'price_range_max' => ['nullable', 'numeric', 'min:0'],
             'is_package_eligible' => ['sometimes', 'boolean'],
             'duration_min' => ['sometimes', 'integer', 'min:1'],
             'deposit_amount' => ['sometimes', 'numeric', 'min:0'],
@@ -155,6 +169,16 @@ class ServiceController extends Controller
                 sprintf('%s-%s.%s', now()->format('YmdHis'), Str::uuid(), $request->file('image')->getClientOriginalExtension()),
                 'public'
             );
+        }
+
+        if (array_key_exists('price_mode', $data)) {
+            if ($data['price_mode'] === 'range') {
+                $data['price_range_min'] = $data['price_range_min'] ?? 0;
+                $data['price_range_max'] = $data['price_range_max'] ?? 0;
+            } else {
+                $data['price_range_min'] = null;
+                $data['price_range_max'] = null;
+            }
         }
 
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
