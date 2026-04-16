@@ -1233,6 +1233,238 @@ class PosController extends Controller
         ], __('Booking created successfully.'));
     }
 
+    /**
+     * Directly create POS appointment without checkout/deposit collection.
+     * Used by POS Appointments "Create Appointment" modal.
+     */
+    public function createAppointment(Request $request)
+    {
+        $validated = $request->validate([
+            'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:32'],
+            'guest_email' => ['nullable', 'string', 'email', 'max:255'],
+            'start_at' => ['required', 'date'],
+            'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'selected_option_ids' => ['nullable', 'array'],
+            'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+            'staff_splits' => ['nullable', 'array'],
+            'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $service = BookingService::query()
+            ->with('allowedStaffs:id')
+            ->where('is_active', true)
+            ->findOrFail((int) $validated['booking_service_id']);
+
+        $customer = null;
+        $guestName = null;
+        $guestPhone = null;
+        $guestEmail = null;
+
+        if (! empty($validated['customer_id'])) {
+            $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
+        } else {
+            $guestName = trim((string) ($validated['guest_name'] ?? ''));
+            $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+            $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
+
+            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
+            }
+
+            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
+            }
+
+            $guestEmail = Str::lower($guestEmail);
+        }
+
+        $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+        if (! $service->isStaffAllowed((int) $staff->id)) {
+            return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
+        }
+
+        $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        $serviceQuestions = $service->questions()
+            ->where('is_active', true)
+            ->with(['options' => fn ($query) => $query->where('is_active', true)])
+            ->get();
+
+        $selectedOptions = BookingServiceQuestionOption::query()
+            ->whereIn('id', $selectedOptionIds->all())
+            ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
+            ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
+            ->get();
+
+        foreach ($serviceQuestions as $question) {
+            $selectedForQuestion = $selectedOptions->where('booking_service_question_id', $question->id)->values();
+            if ((bool) $question->is_required && $selectedForQuestion->isEmpty()) {
+                return $this->respondError(__('Please complete required booking questions.'), 422);
+            }
+            if ((string) $question->question_type === 'single_choice' && $selectedForQuestion->count() > 1) {
+                return $this->respondError(__('Single choice question allows only one option.'), 422);
+            }
+        }
+
+        $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
+            return $option->linkedBookingService
+                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                : max(0, (int) ($option->extra_duration_min ?? 0));
+        });
+
+        $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
+            return $option->linkedBookingService
+                ? max(0, (float) ($option->linkedBookingService->service_price ?? 0))
+                : max(0, (float) ($option->extra_price ?? 0));
+        }), 2);
+
+        $addonItems = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
+            'id' => (int) $option->id,
+            'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+            'extra_duration_min' => $option->linkedBookingService
+                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                : max(0, (int) ($option->extra_duration_min ?? 0)),
+            'extra_price' => $option->linkedBookingService
+                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+            'linked_booking_service_id' => $option->linkedBookingService
+                ? (int) $option->linkedBookingService->id
+                : null,
+            'linked_service_type' => $option->linkedBookingService
+                ? (string) $option->linkedBookingService->service_type
+                : null,
+            'linked_deposit_amount' => $option->linkedBookingService
+                ? round(max(0, (float) ($option->linkedBookingService->deposit_amount ?? 0)), 2)
+                : null,
+        ])->values()->all();
+
+        $startAt = Carbon::parse((string) $validated['start_at']);
+        $endAt = $startAt->copy()->addMinutes((int) ($service->duration_min ?? 0) + $addonDurationMin);
+        $bufferMin = (int) ($service->buffer_min ?? 0);
+
+        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
+            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        }
+
+        $daySlots = $this->availabilityService->getAvailableSlots(
+            $service,
+            (int) $staff->id,
+            $startAt->toDateString(),
+            15,
+            $addonDurationMin,
+            false
+        );
+        $slotStillVisible = collect($daySlots)->contains(function (array $slot) use ($startAt) {
+            return (string) ($slot['start_at'] ?? '') === $startAt->toIso8601String();
+        });
+        if (! $slotStillVisible) {
+            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        }
+
+        $splits = collect($validated['staff_splits'] ?? [
+            ['staff_id' => (int) $staff->id, 'share_percent' => 100],
+        ])->values();
+
+        $sum = (int) $splits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+        $uniqueCount = $splits->pluck('staff_id')->filter()->unique()->count();
+        if ($sum !== 100 || $uniqueCount !== $splits->count()) {
+            return $this->respondError(__('Invalid staff split. Total must be 100% and staffs must be unique.'), 422);
+        }
+
+        $staffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
+        foreach ($staffIds as $splitStaffId) {
+            if (! $service->isStaffAllowed((int) $splitStaffId)) {
+                return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
+            }
+        }
+
+        $staffCommissionRates = DB::table('staffs')
+            ->whereIn('id', $staffIds)
+            ->pluck('service_commission_rate', 'id')
+            ->map(fn ($rate) => (float) $rate)
+            ->all();
+
+        $normalizedSplits = $splits->map(fn (array $split) => [
+            'staff_id' => (int) $split['staff_id'],
+            'share_percent' => (int) $split['share_percent'],
+            'service_commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+        ])->values()->all();
+
+        $primaryStaffId = (int) ($normalizedSplits[0]['staff_id'] ?? $staff->id);
+
+        $booking = DB::transaction(function () use (
+            $request,
+            $service,
+            $customer,
+            $guestName,
+            $guestPhone,
+            $guestEmail,
+            $primaryStaffId,
+            $startAt,
+            $endAt,
+            $bufferMin,
+            $addonDurationMin,
+            $addonPrice,
+            $addonItems,
+            $normalizedSplits,
+            $validated
+        ) {
+            $booking = Booking::query()->create([
+                'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                'source' => 'STAFF',
+                'customer_id' => $customer?->id,
+                'guest_name' => $customer ? null : $guestName,
+                'guest_phone' => $customer ? null : $guestPhone,
+                'guest_email' => $customer ? null : $guestEmail,
+                'staff_id' => $primaryStaffId,
+                'service_id' => $service->id,
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+                'buffer_min' => $bufferMin,
+                'status' => 'CONFIRMED',
+                'deposit_amount' => 0,
+                'addon_duration_min' => $addonDurationMin,
+                'addon_price' => $addonPrice,
+                'addon_items_json' => $addonItems,
+                'payment_status' => 'UNPAID',
+                'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
+                'notes' => $validated['notes'] ?? null,
+            ]);
+
+            DB::table('booking_service_staff_splits')->insert(
+                collect($normalizedSplits)
+                    ->map(fn (array $split) => [
+                        'booking_id' => (int) $booking->id,
+                        'staff_id' => (int) ($split['staff_id'] ?? 0),
+                        'split_percent' => (int) ($split['share_percent'] ?? 0),
+                        'service_commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ])
+                    ->filter(fn (array $row) => $row['staff_id'] > 0)
+                    ->values()
+                    ->all()
+            );
+
+            return $booking;
+        });
+
+        return $this->respond([
+            'id' => (int) $booking->id,
+            'booking_code' => (string) ($booking->booking_code ?? ''),
+            'status' => (string) $booking->status,
+        ], __('Appointment created successfully.'));
+    }
+
     public function addPackageToCart(Request $request)
     {
         $validated = $request->validate([

@@ -25,6 +25,20 @@ type StaffOption = {
   is_active?: boolean | number | string | null
 }
 
+type BookingServiceOption = {
+  id: number
+  name: string
+  service_type?: string | null
+  price?: number
+  service_price?: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+  duration_min?: number
+  is_active?: boolean
+  allowed_staffs?: Array<{ id: number; name: string }>
+}
+
 type PosCancellationRequestRow = {
   id: number
   booking_id: number
@@ -134,6 +148,25 @@ export default function PosAppointmentsWorkspace({
   const [appointmentStaffOptions, setAppointmentStaffOptions] = useState<StaffOption[]>([])
   const [appointmentStaffLoading, setAppointmentStaffLoading] = useState(false)
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
+  const [createAppointmentModalOpen, setCreateAppointmentModalOpen] = useState(false)
+  const [createAppointmentServices, setCreateAppointmentServices] = useState<BookingServiceOption[]>([])
+  const [createAppointmentServicesLoading, setCreateAppointmentServicesLoading] = useState(false)
+  const [createAppointmentSubmitting, setCreateAppointmentSubmitting] = useState(false)
+  const [createAppointmentError, setCreateAppointmentError] = useState<string | null>(null)
+  const [createAppointmentServiceDraft, setCreateAppointmentServiceDraft] = useState<BookingServiceOption | null>(null)
+  const [createAppointmentCustomerId, setCreateAppointmentCustomerId] = useState<number | null>(null)
+  const [createAppointmentIdentityMode, setCreateAppointmentIdentityMode] = useState<'member' | 'guest'>('member')
+  const [createAppointmentGuestName, setCreateAppointmentGuestName] = useState('')
+  const [createAppointmentGuestPhone, setCreateAppointmentGuestPhone] = useState('')
+  const [createAppointmentGuestEmail, setCreateAppointmentGuestEmail] = useState('')
+  const [createAppointmentAssignedStaffId, setCreateAppointmentAssignedStaffId] = useState<number | null>(null)
+  const [createAppointmentDate, setCreateAppointmentDate] = useState('')
+  const [createAppointmentSlotValue, setCreateAppointmentSlotValue] = useState('')
+  const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
+  const [createAppointmentSlotsLoading, setCreateAppointmentSlotsLoading] = useState(false)
+  const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
+  const [createAppointmentQuestions, setCreateAppointmentQuestions] = useState<ServiceAddonQuestion[]>([])
+  const [createAppointmentSelectedOptionIds, setCreateAppointmentSelectedOptionIds] = useState<number[]>([])
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
@@ -375,6 +408,241 @@ export default function PosAppointmentsWorkspace({
     appointmentStatusFilter,
     posApptCalendarMonth,
     posApptViewMode,
+  ])
+
+  const fetchCreateAppointmentServices = useCallback(async () => {
+    setCreateAppointmentServicesLoading(true)
+    try {
+      const res = await fetch('/api/proxy/booking/services', { cache: 'no-store' })
+      if (!res.ok) {
+        setCreateAppointmentServices([])
+        return
+      }
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: unknown }).data
+        : json
+      const list = Array.isArray(payload) ? payload : []
+      const mapped = list
+        .map((item): BookingServiceOption | null => {
+          if (!item || typeof item !== 'object') return null
+          const maybe = item as Record<string, unknown>
+          const id = Number(maybe.id)
+          if (!Number.isFinite(id) || id <= 0) return null
+          return {
+            id,
+            name: String(maybe.name ?? '').trim(),
+            service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
+            price: Number(maybe.price ?? 0),
+            service_price: Number(maybe.service_price ?? 0),
+            price_mode: typeof maybe.price_mode === 'string' ? maybe.price_mode : 'fixed',
+            price_range_min: maybe.price_range_min != null ? Number(maybe.price_range_min) : null,
+            price_range_max: maybe.price_range_max != null ? Number(maybe.price_range_max) : null,
+            duration_min: Number(maybe.duration_min ?? 0),
+            is_active: Boolean(maybe.is_active ?? true),
+            allowed_staffs: Array.isArray(maybe.allowed_staffs)
+              ? (maybe.allowed_staffs as Array<Record<string, unknown>>)
+                .map((staff) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim() }))
+                .filter((staff) => staff.id > 0 && staff.name)
+              : [],
+          }
+        })
+        .filter((item): item is BookingServiceOption => Boolean(item && item.name))
+      setCreateAppointmentServices(mapped)
+    } catch {
+      setCreateAppointmentServices([])
+    } finally {
+      setCreateAppointmentServicesLoading(false)
+    }
+  }, [])
+
+  const loadCreateAppointmentQuestions = useCallback(async (serviceId: number) => {
+    if (!serviceId) {
+      setCreateAppointmentQuestions([])
+      return
+    }
+    try {
+      const res = await fetch(`/api/proxy/booking/services/${serviceId}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
+      const mappedQuestions: ServiceAddonQuestion[] = questionsRaw
+        .map((raw) => {
+          if (!raw || typeof raw !== 'object') return null
+          const record = raw as Record<string, unknown>
+          const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
+          return {
+            id: Number(record.id ?? 0),
+            title: String(record.title ?? 'Question'),
+            question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
+            is_required: Boolean(record.is_required),
+            options: optionsRaw
+              .map((optionRaw) => {
+                if (!optionRaw || typeof optionRaw !== 'object') return null
+                const option = optionRaw as Record<string, unknown>
+                return {
+                  id: Number(option.id ?? 0),
+                  label: String(option.label ?? 'Add-on'),
+                  extra_duration_min: Number(option.extra_duration_min ?? 0),
+                  extra_price: Number(option.extra_price ?? 0),
+                } as ServiceAddonOption
+              })
+              .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
+          } as ServiceAddonQuestion
+        })
+        .filter((question): question is ServiceAddonQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
+      setCreateAppointmentQuestions(mappedQuestions)
+    } catch {
+      setCreateAppointmentQuestions([])
+    }
+  }, [])
+
+  const openCreateAppointmentModal = useCallback(() => {
+    setCreateAppointmentError(null)
+    setCreateAppointmentSubmitting(false)
+    setCreateAppointmentServiceDraft(null)
+    setCreateAppointmentSelectedOptionIds([])
+    setCreateAppointmentQuestions([])
+    setCreateAppointmentAssignedStaffId(currentUser.staff_id ?? null)
+    setCreateAppointmentDate(appointmentDateFilter || '')
+    setCreateAppointmentSlotValue('')
+    setCreateAppointmentSlots([])
+    setCreateAppointmentNotes('')
+    setCreateAppointmentIdentityMode('member')
+    setCreateAppointmentCustomerId(null)
+    setCreateAppointmentGuestName('')
+    setCreateAppointmentGuestPhone('')
+    setCreateAppointmentGuestEmail('')
+    setCreateAppointmentModalOpen(true)
+    if (!createAppointmentServices.length) {
+      void fetchCreateAppointmentServices()
+    }
+  }, [appointmentDateFilter, createAppointmentServices.length, currentUser.staff_id, fetchCreateAppointmentServices])
+
+  const createAppointmentSelectedOptions = useMemo(() => {
+    const selected = new Set(createAppointmentSelectedOptionIds)
+    return createAppointmentQuestions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
+  }, [createAppointmentQuestions, createAppointmentSelectedOptionIds])
+
+  const createAppointmentAddonDurationTotal = useMemo(
+    () => createAppointmentSelectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0),
+    [createAppointmentSelectedOptions],
+  )
+
+  const createAppointmentAddonPriceTotal = useMemo(
+    () => createAppointmentSelectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0),
+    [createAppointmentSelectedOptions],
+  )
+
+  const submitCreateAppointment = useCallback(async () => {
+    if (!createAppointmentServiceDraft) {
+      setCreateAppointmentError('Please select service first.')
+      return
+    }
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const phonePattern = /^\+?[0-9]{8,15}$/
+
+    if (createAppointmentIdentityMode === 'member') {
+      if (!createAppointmentCustomerId) {
+        setCreateAppointmentError('Please assign member.')
+        return
+      }
+    } else {
+      if (!createAppointmentGuestName.trim()) {
+        setCreateAppointmentError('Guest name is required.')
+        return
+      }
+      if (!createAppointmentGuestPhone.trim() || !phonePattern.test(createAppointmentGuestPhone.trim())) {
+        setCreateAppointmentError('Please enter a valid guest phone (8-15 digits, optional +).')
+        return
+      }
+      if (!createAppointmentGuestEmail.trim() || !emailPattern.test(createAppointmentGuestEmail.trim())) {
+        setCreateAppointmentError('Please enter a valid guest email.')
+        return
+      }
+    }
+
+    if (!createAppointmentAssignedStaffId) {
+      setCreateAppointmentError('Please select assigned staff.')
+      return
+    }
+    if (!createAppointmentDate) {
+      setCreateAppointmentError('Please select appointment date.')
+      return
+    }
+    if (!createAppointmentSlotValue) {
+      setCreateAppointmentError('Please select appointment slot/time.')
+      return
+    }
+    for (const question of createAppointmentQuestions) {
+      if (!question.is_required) continue
+      const hasSelection = question.options.some((option) => createAppointmentSelectedOptionIds.includes(option.id))
+      if (!hasSelection) {
+        setCreateAppointmentError(`Please answer required question: ${question.title}`)
+        return
+      }
+    }
+
+    setCreateAppointmentSubmitting(true)
+    setCreateAppointmentError(null)
+    try {
+      const payload: Record<string, unknown> = {
+        booking_service_id: createAppointmentServiceDraft.id,
+        assigned_staff_id: createAppointmentAssignedStaffId,
+        selected_option_ids: createAppointmentSelectedOptionIds,
+        start_at: createAppointmentSlotValue,
+        notes: createAppointmentNotes.trim() ? createAppointmentNotes.trim() : null,
+        staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
+        qty: 1,
+      }
+      if (createAppointmentIdentityMode === 'member') {
+        payload.customer_id = createAppointmentCustomerId
+      } else {
+        payload.guest_name = createAppointmentGuestName.trim()
+        payload.guest_phone = createAppointmentGuestPhone.trim()
+        payload.guest_email = createAppointmentGuestEmail.trim()
+      }
+
+      const res = await fetch('/api/proxy/pos/appointments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        setCreateAppointmentError(String(json?.message ?? 'Unable to create appointment.'))
+        return
+      }
+
+      showMsg('Appointment created successfully. No deposit collected in this flow.', 'success')
+      setCreateAppointmentModalOpen(false)
+      await fetchAppointments()
+
+      const createdId = Number(json?.data?.id ?? json?.data?.booking_id ?? 0)
+      if (createdId > 0) {
+        const detailRes = await fetch(`/api/proxy/pos/appointments/${createdId}`, { cache: 'no-store' })
+        const detailJson = await detailRes.json().catch(() => null)
+        if (detailRes.ok) {
+          setAppointmentDetail((detailJson?.data ?? null) as PosAppointmentDetail | null)
+        }
+      }
+    } finally {
+      setCreateAppointmentSubmitting(false)
+    }
+  }, [
+    createAppointmentAssignedStaffId,
+    createAppointmentCustomerId,
+    createAppointmentDate,
+    createAppointmentGuestEmail,
+    createAppointmentGuestName,
+    createAppointmentGuestPhone,
+    createAppointmentIdentityMode,
+    createAppointmentNotes,
+    createAppointmentQuestions,
+    createAppointmentSelectedOptionIds,
+    createAppointmentServiceDraft,
+    createAppointmentSlotValue,
+    fetchAppointments,
+    showMsg,
   ])
 
   const openAppointmentDetail = useCallback(
@@ -840,6 +1108,57 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentDetail?.service?.id, appointmentRescheduleDate, appointmentRescheduleOpen, appointmentRescheduleStaffId])
 
   useEffect(() => {
+    const loadCreateSlots = async () => {
+      if (!createAppointmentModalOpen || !createAppointmentServiceDraft?.id || !createAppointmentDate) {
+        setCreateAppointmentSlots([])
+        setCreateAppointmentSlotValue('')
+        return
+      }
+
+      setCreateAppointmentSlotsLoading(true)
+      try {
+        const params = new URLSearchParams({
+          service_id: String(createAppointmentServiceDraft.id),
+          date: createAppointmentDate,
+          extra_duration_min: String(createAppointmentAddonDurationTotal || 0),
+        })
+        const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
+        const json = await res.json().catch(() => null)
+        const rows: unknown[] = Array.isArray(json?.data?.visible_slots)
+          ? json.data.visible_slots
+          : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
+        const slots = rows
+          .map((row: unknown) => {
+            if (!row || typeof row !== 'object') return null
+            const maybe = row as Record<string, unknown>
+            const startAt = String(maybe.start_at ?? '')
+            const endAt = String(maybe.end_at ?? '')
+            if (!startAt || !endAt) return null
+            const staffIds = Array.isArray(maybe.available_staff_ids)
+              ? (maybe.available_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+              : undefined
+            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds } as {
+              start_at: string
+              end_at: string
+              available_staff_ids?: number[]
+            }
+          })
+          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
+        setCreateAppointmentSlots(slots)
+        setCreateAppointmentSlotValue((prev) => (slots.some((slot) => slot.start_at === prev) ? prev : ''))
+      } finally {
+        setCreateAppointmentSlotsLoading(false)
+      }
+    }
+    void loadCreateSlots()
+  }, [
+    createAppointmentAddonDurationTotal,
+    createAppointmentDate,
+    createAppointmentModalOpen,
+    createAppointmentServiceDraft?.id,
+  ])
+
+  useEffect(() => {
     void fetchAppointments()
   }, [
     appointmentCustomerFilter,
@@ -1128,6 +1447,13 @@ export default function PosAppointmentsWorkspace({
                     />
                   </svg>
                   Refresh
+                </button>
+                <button
+                  type="button"
+                  onClick={openCreateAppointmentModal}
+                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-blue-600 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                >
+                  Create Appointment
                 </button>
                 <button
                   type="button"
@@ -1597,6 +1923,277 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
       </div>
+
+      {createAppointmentModalOpen ? (
+        <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Create Appointment</h3>
+                <p className="mt-0.5 text-xs text-gray-500">Create directly without deposit and without receipt.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setCreateAppointmentModalOpen(false)}
+                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Service</label>
+                    <select
+                      value={createAppointmentServiceDraft?.id ?? ''}
+                      onChange={(e) => {
+                        const nextId = Number(e.target.value) || 0
+                        const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
+                        setCreateAppointmentServiceDraft(service)
+                        setCreateAppointmentSelectedOptionIds([])
+                        setCreateAppointmentAssignedStaffId(
+                          service?.allowed_staffs?.some((staff) => staff.id === currentUser.staff_id)
+                            ? (currentUser.staff_id ?? null)
+                            : (service?.allowed_staffs?.[0]?.id ?? currentUser.staff_id ?? null),
+                        )
+                        setCreateAppointmentSlotValue('')
+                        setCreateAppointmentSlots([])
+                        if (service?.id) {
+                          void loadCreateAppointmentQuestions(service.id)
+                        } else {
+                          setCreateAppointmentQuestions([])
+                        }
+                      }}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                    >
+                      <option value="">{createAppointmentServicesLoading ? 'Loading services...' : 'Select service'}</option>
+                      {createAppointmentServices.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {service.name} {service.service_type ? `(${service.service_type})` : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {createAppointmentServiceDraft ? (
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
+                      <p className="font-semibold">{createAppointmentServiceDraft.name}</p>
+                      <p>Base time: {Number(createAppointmentServiceDraft.duration_min ?? 0)} min</p>
+                    </div>
+                  ) : null}
+
+                  {createAppointmentQuestions.map((question) => (
+                    <div key={question.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                      <p className="text-sm font-semibold text-gray-900">{question.title}</p>
+                      <div className="mt-2 space-y-1.5">
+                        {question.options.map((option) => {
+                          const checked = createAppointmentSelectedOptionIds.includes(option.id)
+                          return (
+                            <label key={option.id} className="flex cursor-pointer items-start justify-between gap-2 rounded-md px-1 py-1 hover:bg-gray-50">
+                              <span className="flex items-start gap-2">
+                                <input
+                                  type={question.question_type === 'multi_choice' ? 'checkbox' : 'radio'}
+                                  name={`create-question-${question.id}`}
+                                  checked={checked}
+                                  onChange={() => {
+                                    setCreateAppointmentSelectedOptionIds((prev) => {
+                                      if (question.question_type === 'single_choice') {
+                                        const keep = prev.filter((id) => !question.options.some((opt) => opt.id === id))
+                                        return checked ? keep : [...keep, option.id]
+                                      }
+                                      return checked ? prev.filter((id) => id !== option.id) : [...prev, option.id]
+                                    })
+                                  }}
+                                />
+                                <span className="text-sm text-gray-800">{option.label}</span>
+                              </span>
+                              <span className="text-xs font-semibold text-gray-700">
+                                +RM{Number(option.extra_price ?? 0).toFixed(2)}
+                              </span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  ))}
+
+                  {createAppointmentServiceDraft ? (
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700">
+                      <p>Duration: {Number(createAppointmentServiceDraft.duration_min ?? 0) + createAppointmentAddonDurationTotal} min</p>
+                      <p>
+                        Total price:{' '}
+                        {createAppointmentServiceDraft.price_mode === 'range' &&
+                        createAppointmentServiceDraft.price_range_min != null &&
+                        createAppointmentServiceDraft.price_range_max != null
+                          ? `RM${(Number(createAppointmentServiceDraft.price_range_min) + createAppointmentAddonPriceTotal).toFixed(2)} - RM${(Number(createAppointmentServiceDraft.price_range_max) + createAppointmentAddonPriceTotal).toFixed(2)}`
+                          : `RM${(Number(createAppointmentServiceDraft.price ?? createAppointmentServiceDraft.service_price ?? 0) + createAppointmentAddonPriceTotal).toFixed(2)}`}
+                      </p>
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Customer</label>
+                    <div className="mt-1 inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1">
+                      <button
+                        type="button"
+                        onClick={() => setCreateAppointmentIdentityMode('member')}
+                        className={`rounded-md px-3 py-1.5 text-xs font-semibold ${createAppointmentIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'}`}
+                      >
+                        Member
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCreateAppointmentIdentityMode('guest')}
+                        className={`rounded-md px-3 py-1.5 text-xs font-semibold ${createAppointmentIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'}`}
+                      >
+                        Guest
+                      </button>
+                    </div>
+                  </div>
+
+                  {createAppointmentIdentityMode === 'member' ? (
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Member</label>
+                      <select
+                        value={createAppointmentCustomerId ?? ''}
+                        onChange={(e) => setCreateAppointmentCustomerId(Number(e.target.value) || null)}
+                        className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      >
+                        <option value="">{appointmentCustomerLoading ? 'Loading members...' : 'Select member'}</option>
+                        {appointmentCustomerOptions.map((customer) => (
+                          <option key={`create-member-${customer.id}`} value={customer.id}>
+                            {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <input
+                        value={createAppointmentGuestName}
+                        onChange={(e) => setCreateAppointmentGuestName(e.target.value)}
+                        placeholder="Guest name"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      />
+                      <input
+                        value={createAppointmentGuestPhone}
+                        onChange={(e) => setCreateAppointmentGuestPhone(e.target.value)}
+                        placeholder="Guest phone"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      />
+                      <input
+                        value={createAppointmentGuestEmail}
+                        onChange={(e) => setCreateAppointmentGuestEmail(e.target.value)}
+                        placeholder="Guest email"
+                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
+                    <select
+                      value={createAppointmentAssignedStaffId ?? ''}
+                      onChange={(e) => setCreateAppointmentAssignedStaffId(Number(e.target.value) || null)}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      disabled={!createAppointmentServiceDraft}
+                    >
+                      <option value="">Select staff</option>
+                      {(createAppointmentServiceDraft?.allowed_staffs ?? []).map((staff) => {
+                        const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
+                        const staffIds = slot?.available_staff_ids
+                        const available = !staffIds || staffIds.includes(staff.id)
+                        return (
+                          <option key={`create-staff-${staff.id}`} value={staff.id} disabled={!available}>
+                            {staff.name}{available ? '' : ' (Unavailable)'}
+                          </option>
+                        )
+                      })}
+                    </select>
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Appointment Date</label>
+                      <input
+                        type="date"
+                        value={createAppointmentDate}
+                        onChange={(e) => setCreateAppointmentDate(e.target.value)}
+                        className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
+                      <select
+                        value={createAppointmentSlotValue}
+                        onChange={(e) => {
+                          const next = e.target.value
+                          setCreateAppointmentSlotValue(next)
+                          const slot = createAppointmentSlots.find((s) => s.start_at === next)
+                          const staffIds = slot?.available_staff_ids
+                          if (staffIds && (!createAppointmentAssignedStaffId || !staffIds.includes(Number(createAppointmentAssignedStaffId)))) {
+                            setCreateAppointmentAssignedStaffId(staffIds[0] ?? null)
+                          }
+                        }}
+                        disabled={!createAppointmentDate || createAppointmentSlotsLoading}
+                        className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:bg-gray-100"
+                      >
+                        <option value="">{createAppointmentSlotsLoading ? 'Loading slots...' : 'Select slot'}</option>
+                        {createAppointmentSlots.map((slot) => (
+                          <option key={slot.start_at} value={slot.start_at}>
+                            {formatTimeRange(slot.start_at, slot.end_at)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
+                    <textarea
+                      rows={3}
+                      value={createAppointmentNotes}
+                      onChange={(e) => setCreateAppointmentNotes(e.target.value)}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {createAppointmentError ? (
+              <div className="mx-5 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                {createAppointmentError}
+              </div>
+            ) : null}
+
+            <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setCreateAppointmentModalOpen(false)}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitCreateAppointment()}
+                disabled={createAppointmentSubmitting}
+                className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {createAppointmentSubmitting ? 'Creating...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {cancellationRequestsModalOpen ? (
         <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
