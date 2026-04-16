@@ -7,6 +7,17 @@ import { getBookingServiceCategories, getBookingServices } from "@/lib/apiClient
 import { BookingServiceCategory, Service } from "@/lib/types";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 
+function getServicePriceLabel(service: Service): string {
+  const mode = String(service.price_mode ?? "fixed").toLowerCase();
+  const fixed = Math.max(0, Number(service.price ?? 0));
+  if (mode === "range") {
+    const min = Math.max(0, Number(service.range_min ?? service.price ?? 0));
+    const max = Math.max(min, Number(service.range_max ?? min));
+    return `RM ${min.toFixed(2)} - RM ${max.toFixed(2)}`;
+  }
+  return `RM ${fixed.toFixed(2)}`;
+}
+
 export default function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -161,7 +172,7 @@ export default function BookingPageContent() {
                   </p>
                   <p className="flex justify-between gap-2">
                     <span className="text-[var(--text-muted)]">Price</span>
-                    <span className="font-medium tabular-nums">RM {Number(service.price).toFixed(2)}</span>
+                    <span className="font-medium tabular-nums">{getServicePriceLabel(service)}</span>
                   </p>
                 </div>
               </div>

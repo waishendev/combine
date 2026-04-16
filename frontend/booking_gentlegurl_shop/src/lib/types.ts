@@ -18,6 +18,9 @@ export type Service = {
   deposit_amount: number;
   payment_status?: string;
   price: number;
+  price_mode?: "fixed" | "range" | null;
+  range_min?: number;
+  range_max?: number;
   category?: string;
   image_path?: string | null;
   image_url?: string | null;

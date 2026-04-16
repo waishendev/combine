@@ -7,6 +7,9 @@ export type BookingServiceApiItem = {
   service_type?: 'premium' | 'standard' | string | null
   duration_min?: number | string | null
   service_price?: string | number | null
+  price_mode?: 'fixed' | 'range' | string | null
+  range_min?: string | number | null
+  range_max?: string | number | null
   deposit_amount?: string | number | null
   buffer_min?: number | string | null
   is_active?: boolean | number | string | null
@@ -17,6 +20,30 @@ export type BookingServiceApiItem = {
   allowed_staff_count?: number | string | null
   allowed_staff_names?: string[] | null
   primary_slots?: Array<{ start_time?: string | null }> | null
+}
+
+const toNonNegativeNumber = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value ?? 0)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.max(0, parsed)
+}
+
+export const formatBookingServicePriceLabel = (input: {
+  service_price?: string | number | null
+  price_mode?: string | null
+  range_min?: string | number | null
+  range_max?: string | number | null
+}): string => {
+  const mode = String(input.price_mode ?? 'fixed').toLowerCase()
+  const fixed = toNonNegativeNumber(input.service_price)
+  const min = toNonNegativeNumber(input.range_min)
+  const maxRaw = toNonNegativeNumber(input.range_max)
+  const max = Math.max(min, maxRaw)
+
+  if (mode === 'range') {
+    return `RM ${min.toFixed(2)} - RM ${max.toFixed(2)}`
+  }
+  return `RM ${fixed.toFixed(2)}`
 }
 
 
@@ -44,6 +71,9 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
 
   const servicePrice = item.service_price ?? 0
   const depositAmount = item.deposit_amount ?? 0
+  const priceMode = String(item.price_mode ?? 'fixed').toLowerCase() === 'range' ? 'range' : 'fixed'
+  const rangeMin = toNonNegativeNumber(item.range_min)
+  const rangeMax = Math.max(rangeMin, toNonNegativeNumber(item.range_max))
 
   return {
     id: normalizedId,
@@ -55,6 +85,9 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     description: item.description ?? '',
     duration_min: durationMin,
     service_price: servicePrice,
+    price_mode: priceMode,
+    range_min: rangeMin,
+    range_max: rangeMax,
     deposit_amount: depositAmount,
     buffer_min: bufferMin,
     isActive,

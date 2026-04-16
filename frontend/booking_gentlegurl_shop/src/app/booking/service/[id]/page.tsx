@@ -9,6 +9,17 @@ import { getBookingServiceDepositNote, getBookingServiceDetail } from "@/lib/api
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { BookingServiceQuestion, BookingServiceQuestionOption, Service } from "@/lib/types";
 
+function getServicePriceRange(service: Service | null): { isRange: boolean; min: number; max: number; label: string } {
+  const fixed = service ? Math.max(0, Number(service.price ?? 0)) : 0;
+  const mode = String(service?.price_mode ?? "fixed").toLowerCase();
+  if (mode === "range") {
+    const min = Math.max(0, Number(service?.range_min ?? service?.price ?? 0));
+    const max = Math.max(min, Number(service?.range_max ?? min));
+    return { isRange: true, min, max, label: `RM ${min.toFixed(2)} - RM ${max.toFixed(2)}` };
+  }
+  return { isRange: false, min: fixed, max: fixed, label: `RM ${fixed.toFixed(2)}` };
+}
+
 export default function ServiceAddonsPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -60,8 +71,9 @@ export default function ServiceAddonsPage() {
   const totalAddonPrice = selectedOptions.reduce((sum, o) => sum + Number(o.extra_price || 0), 0);
   const baseDurationMin = service ? Number(service.duration_minutes || 0) : 0;
   const estimatedTotalMinutes = baseDurationMin + totalAddonDuration;
-  const listedServicePrice = service ? Number(service.price ?? 0) : 0;
-  const estimatedTotalCost = listedServicePrice + totalAddonPrice;
+  const servicePriceRange = useMemo(() => getServicePriceRange(service), [service]);
+  const listedServicePrice = servicePriceRange.min;
+  const estimatedTotalCost = servicePriceRange.min + totalAddonPrice;
   const depositPreview = useMemo(() => depositPreviewForService(service, selectedOptionIds), [service, selectedOptionIds]);
   /** Typical salon model: deposit is credited toward the appointment; balance due after service. */
   const estimatedBalanceAtSalon = Math.max(0, estimatedTotalCost - depositPreview.depositTotal);
@@ -226,7 +238,7 @@ export default function ServiceAddonsPage() {
                  
                     <li className="flex flex-wrap justify-between gap-2">
                       <span className="text-[var(--text-muted)]">Listed service price</span>
-                      <span className="font-medium tabular-nums text-[var(--foreground)]">RM {listedServicePrice.toFixed(2)}</span>
+                      <span className="font-medium tabular-nums text-[var(--foreground)]">{servicePriceRange.label}</span>
                     </li>
                   </ul>
                 </div>
@@ -302,6 +314,19 @@ export default function ServiceAddonsPage() {
                         <span className="block font-semibold tabular-nums">{estimatedTotalMinutes} min</span>
                       </div>
                     </li>
+                    {servicePriceRange.isRange ? (
+                      <li className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--card-border)] border-dotted pb-3">
+                        <div>
+                          <span className="font-medium text-[var(--foreground)]">Estimated total range</span>
+                          <p className="mt-0.5 text-xs text-[var(--text-muted)]">Main service range + selected add-ons</p>
+                        </div>
+                        <div className="text-right">
+                          <span className="block font-semibold tabular-nums">
+                            RM {(servicePriceRange.min + totalAddonPrice).toFixed(2)} - RM {(servicePriceRange.max + totalAddonPrice).toFixed(2)}
+                          </span>
+                        </div>
+                      </li>
+                    ) : null}
                     <li className="flex flex-col gap-3 border-b border-[var(--card-border)] border-dotted pb-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>

@@ -140,6 +140,9 @@ type ServiceCartItem = {
   notes?: string | null
   staff_splits?: Array<{ staff_id: number; share_percent: number; service_commission_rate_snapshot?: number }>
   commission_rate_used?: number
+  price_mode?: 'fixed' | 'range' | null
+  range_min?: number
+  range_max?: number
 }
 
 function formatPosServiceCartIdentity(
@@ -189,12 +192,38 @@ function formatPosPackageMemberLabel(
   return name ? `Member: ${name}` : `Member: (#${packageItem.customer_id})`
 }
 
+const normalizeMoney = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value ?? 0)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.max(0, parsed)
+}
+
+function getServicePriceRangeSummary(service: {
+  price_mode?: string | null
+  range_min?: number
+  range_max?: number
+  price?: number
+  service_price?: number
+}): { isRange: boolean; min: number; max: number; label: string } {
+  const fixed = normalizeMoney(service.price ?? service.service_price ?? 0)
+  const mode = String(service.price_mode ?? 'fixed').toLowerCase()
+  if (mode === 'range') {
+    const min = normalizeMoney(service.range_min ?? service.service_price ?? service.price ?? 0)
+    const max = Math.max(min, normalizeMoney(service.range_max ?? min))
+    return { isRange: true, min, max, label: `RM ${min.toFixed(2)} - RM ${max.toFixed(2)}` }
+  }
+  return { isRange: false, min: fixed, max: fixed, label: `RM ${fixed.toFixed(2)}` }
+}
+
 type BookingServiceOption = {
   id: number
   name: string
   service_type?: string | null
   price?: number
   service_price?: number
+  price_mode?: 'fixed' | 'range' | null
+  range_min?: number
+  range_max?: number
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
@@ -669,6 +698,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     () => cart?.appointment_settlement_items ?? [],
     [cart?.appointment_settlement_items],
   )
+  const cartServiceRangeSummary = useMemo(() => {
+    const ranges = cartServiceItems
+      .filter((item) => String(item.price_mode ?? '').toLowerCase() === 'range')
+      .map((item) => {
+        const summary = getServicePriceRangeSummary(item)
+        return { min: summary.min, max: summary.max }
+      })
+    if (ranges.length === 0) return null
+    const min = ranges.reduce((sum, row) => sum + row.min, 0)
+    const max = ranges.reduce((sum, row) => sum + row.max, 0)
+    return { min, max, count: ranges.length }
+  }, [cartServiceItems])
 
   const hasCartProducts = cartItems.length > 0
   const hasCartBookServices = cartServiceItems.length > 0
@@ -1412,6 +1453,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
             price: Number(maybe.price ?? 0),
             service_price: Number(maybe.service_price ?? 0),
+            price_mode: String(maybe.price_mode ?? 'fixed').toLowerCase() === 'range' ? 'range' : 'fixed',
+            range_min: Number(maybe.range_min ?? maybe.service_price ?? maybe.price ?? 0),
+            range_max: Number(maybe.range_max ?? maybe.service_price ?? maybe.price ?? 0),
             duration_min: Number(maybe.duration_min ?? 0),
             is_active: Boolean(maybe.is_active ?? true),
             allowed_staffs: Array.isArray(maybe.allowed_staffs)
@@ -3603,9 +3647,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
                   ) : (
                     filteredServices.map((service) => {
-                      const displayPrice = Number.isFinite(service.price) && Number(service.price) > 0
-                        ? Number(service.price)
-                        : Number(service.service_price ?? 0)
+                      const priceSummary = getServicePriceRangeSummary(service)
 
                       return (
                         <div key={service.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
@@ -3614,7 +3656,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <p className="text-xs text-gray-500">Type: {(service.service_type ?? 'standard').toUpperCase()}</p>
                           </div>
                           <div className="flex flex-col items-end gap-2">
-                            <span className="text-sm font-bold text-gray-900">RM {displayPrice.toFixed(2)}</span>
+                            <span className="text-sm font-bold text-gray-900">{priceSummary.label}</span>
                             <button
                               type="button"
                               onClick={() => void openBookingModal(service)}
@@ -4008,6 +4050,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </span>
                         <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
                       </div>
+                      {serviceItem.price_mode === 'range' ? (
+                        <p className="mt-1 text-xs font-medium text-gray-600">
+                          Listed price: {getServicePriceRangeSummary(serviceItem).label}
+                        </p>
+                      ) : null}
                       {serviceItem.start_at ? (
                         <p className="mt-2 text-xs text-gray-600">
                           Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
@@ -4340,6 +4387,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <span className="text-gray-900">Total</span>
                   <span className="text-lg text-orange-700">RM {cartTotal.toFixed(2)}</span>
                 </div>
+                {cartServiceRangeSummary ? (
+                  <p className="text-xs text-amber-700">
+                    Service range in cart: +RM {cartServiceRangeSummary.min.toFixed(2)} to +RM {cartServiceRangeSummary.max.toFixed(2)}
+                  </p>
+                ) : null}
                 {/* {cartPackageItems.length > 0 && (
                   <div className="border-t border-gray-200 pt-2 text-xs text-gray-700">
                     Package assignment: {selectedMember ? selectedMember.name : 'No member selected'}
@@ -4805,6 +4857,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </span>
                             <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
                           </div>
+                          {serviceItem.price_mode === 'range' ? (
+                            <p className="mt-1 text-xs font-medium text-gray-600">
+                              Listed price: {getServicePriceRangeSummary(serviceItem).label}
+                            </p>
+                          ) : null}
                           {serviceItem.start_at ? (
                             <p className="mt-2 text-xs text-gray-600">
                               Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
@@ -5119,6 +5176,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <p className="text-base font-semibold text-gray-700">Net Amount</p>
                     <p className="text-2xl font-bold text-orange-700">RM {cartTotal.toFixed(2)}</p>
                   </div>
+                  {cartServiceRangeSummary ? (
+                    <p className="text-xs text-amber-700">
+                      Service range in cart: +RM {cartServiceRangeSummary.min.toFixed(2)} to +RM {cartServiceRangeSummary.max.toFixed(2)}
+                    </p>
+                  ) : null}
                 </div>
               </div>
 
@@ -5736,9 +5798,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <p className="font-medium">
                           Duration: {Number(bookingServiceDraft.duration_min ?? 0) + bookingAddonDurationTotal} min
                         </p>
-                        <p className="font-medium">
-                          Total price: RM{(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0) + bookingAddonPriceTotal).toFixed(2)}
-                        </p>
+                        {(() => {
+                          const priceSummary = getServicePriceRangeSummary(bookingServiceDraft)
+                          if (priceSummary.isRange) {
+                            return (
+                              <p className="font-medium">
+                                Total price: RM{(priceSummary.min + bookingAddonPriceTotal).toFixed(2)} - RM{(priceSummary.max + bookingAddonPriceTotal).toFixed(2)}
+                              </p>
+                            )
+                          }
+                          return (
+                            <p className="font-medium">
+                              Total price: RM{(priceSummary.min + bookingAddonPriceTotal).toFixed(2)}
+                            </p>
+                          )
+                        })()}
                       </div>
                     </div>
                   </div>
