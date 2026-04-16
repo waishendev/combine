@@ -48,6 +48,7 @@ class DatabaseSeeder extends Seeder
             // // GuestCompletedOrderSeeder::class,
             
             BookingTestingSeeder::class,
+            BookingPriceModeTestingSeeder::class,
             BookingLeaveTestingSeeder::class,
             ServicePackageTestingSeeder::class,
 
