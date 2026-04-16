@@ -12,13 +12,14 @@ class StaffCommissionService
     public function recalculateForStaffMonth(int $staffId, int $year, int $month): StaffMonthlySale
     {
         $start = Carbon::create($year, $month, 1)->startOfMonth();
-        $end = $start->copy()->endOfMonth();
+        $nextMonthStart = $start->copy()->addMonth();
 
         $bookings = Booking::query()
             ->with('service:id,service_price')
             ->where('staff_id', $staffId)
             ->where('status', 'COMPLETED')
-            ->whereBetween('completed_at', [$start, $end])
+            ->where('completed_at', '>=', $start)
+            ->where('completed_at', '<', $nextMonthStart)
             ->get();
 
         $totalSales = round((float) $bookings->sum(fn (Booking $booking) => (float) optional($booking->service)->service_price), 2);
@@ -49,11 +50,12 @@ class StaffCommissionService
     public function recalculateForMonthAll(int $year, int $month): array
     {
         $start = Carbon::create($year, $month, 1)->startOfMonth();
-        $end = $start->copy()->endOfMonth();
+        $nextMonthStart = $start->copy()->addMonth();
 
         $staffIds = Booking::query()
             ->where('status', 'COMPLETED')
-            ->whereBetween('completed_at', [$start, $end])
+            ->where('completed_at', '>=', $start)
+            ->where('completed_at', '<', $nextMonthStart)
             ->pluck('staff_id')
             ->filter()
             ->unique()
