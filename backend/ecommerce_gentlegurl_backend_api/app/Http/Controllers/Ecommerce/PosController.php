@@ -111,13 +111,24 @@ class PosController extends Controller
         }
 
         return $this->respond([
-            'data' => $builder->with(['allowedStaffs:id,name'])->get(['id', 'name', 'service_type', 'service_price', 'price', 'duration_min', 'buffer_min'])->map(function (BookingService $service) {
+            'data' => $builder->with(['allowedStaffs:id,name'])->get(['id', 'name', 'service_type', 'service_price', 'price', 'duration_min', 'buffer_min', 'rules_json'])->map(function (BookingService $service) {
+                $rules = is_array($service->rules_json) ? $service->rules_json : [];
+                $priceMode = in_array(($rules['price_mode'] ?? 'fixed'), ['fixed', 'range'], true) ? $rules['price_mode'] : 'fixed';
+                $rangeMin = (float) ($rules['range_min'] ?? $service->service_price);
+                $rangeMax = (float) ($rules['range_max'] ?? $rangeMin);
+                if ($rangeMax < $rangeMin) {
+                    $rangeMax = $rangeMin;
+                }
+
                 return [
                     'id' => (int) $service->id,
                     'name' => $service->name,
                     'service_type' => $service->service_type,
                     'service_price' => (float) $service->service_price,
                     'price' => (float) ($service->price ?? $service->service_price),
+                    'price_mode' => $priceMode,
+                    'range_min' => $rangeMin,
+                    'range_max' => $rangeMax,
                     'duration_min' => (int) $service->duration_min,
                     'buffer_min' => (int) $service->buffer_min,
                     'allowed_staffs' => $service->allowedStaffs->map(fn (Staff $staff) => [

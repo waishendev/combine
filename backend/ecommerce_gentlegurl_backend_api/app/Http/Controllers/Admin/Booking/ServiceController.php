@@ -52,6 +52,9 @@ class ServiceController extends Controller
             'service_type' => ['required', 'in:premium,standard'],
             'image' => ['nullable', 'image', 'max:5120'],
             'service_price' => ['nullable', 'numeric', 'min:0'],
+            'price_mode' => ['nullable', 'in:fixed,range'],
+            'range_min' => ['nullable', 'numeric', 'min:0'],
+            'range_max' => ['nullable', 'numeric', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'duration_min' => ['required', 'integer', 'min:1'],
             'deposit_amount' => ['required', 'numeric', 'min:0'],
@@ -78,6 +81,7 @@ class ServiceController extends Controller
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
         ]);
+        $data = $this->applyPricingMetaToData($data);
         $data['service_price'] = $data['service_price'] ?? 0;
         $data['price'] = $data['price'] ?? $data['service_price'];
         $data['is_package_eligible'] = (bool) ($data['is_package_eligible'] ?? true);
@@ -120,6 +124,9 @@ class ServiceController extends Controller
             'service_type' => ['required', 'in:premium,standard'],
             'image' => ['nullable', 'image', 'max:5120'],
             'service_price' => ['sometimes', 'numeric', 'min:0'],
+            'price_mode' => ['sometimes', 'in:fixed,range'],
+            'range_min' => ['sometimes', 'numeric', 'min:0'],
+            'range_max' => ['sometimes', 'numeric', 'min:0'],
             'price' => ['sometimes', 'numeric', 'min:0'],
             'is_package_eligible' => ['sometimes', 'boolean'],
             'duration_min' => ['sometimes', 'integer', 'min:1'],
@@ -147,6 +154,7 @@ class ServiceController extends Controller
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
         ]);
+        $data = $this->applyPricingMetaToData($data, $service);
 
         $oldImagePath = $service->image_path;
         if ($request->hasFile('image')) {
@@ -300,6 +308,7 @@ class ServiceController extends Controller
 
     private function formatService(BookingService $service): array
     {
+        $pricingMeta = $this->resolvePricingMeta($service);
         $allowedStaffs = $service->allowedStaffs
             ->sortBy('name')
             ->values()
@@ -325,6 +334,9 @@ class ServiceController extends Controller
             ->all();
 
         return array_merge($service->toArray(), [
+            'price_mode' => $pricingMeta['price_mode'],
+            'range_min' => $pricingMeta['range_min'],
+            'range_max' => $pricingMeta['range_max'],
             'allowed_staffs' => $allowedStaffs,
             'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
             'allowed_staff_count' => count($allowedStaffs),
@@ -360,6 +372,66 @@ class ServiceController extends Controller
             'extra_price' => $extraPrice,
             'sort_order' => (int) $option->sort_order,
             'is_active' => (bool) $option->is_active,
+        ];
+    }
+
+    private function applyPricingMetaToData(array $data, ?BookingService $service = null): array
+    {
+        $existingRules = [];
+        if ($service && is_array($service->rules_json)) {
+            $existingRules = $service->rules_json;
+        } elseif (isset($data['rules_json']) && is_array($data['rules_json'])) {
+            $existingRules = $data['rules_json'];
+        }
+
+        $modeRaw = $data['price_mode'] ?? ($existingRules['price_mode'] ?? null);
+        $priceMode = in_array($modeRaw, ['fixed', 'range'], true) ? $modeRaw : 'fixed';
+        $fallbackPrice = isset($data['service_price'])
+            ? (float) $data['service_price']
+            : (float) ($service?->service_price ?? 0);
+
+        $rangeMin = isset($data['range_min']) ? (float) $data['range_min'] : (float) ($existingRules['range_min'] ?? $fallbackPrice);
+        $rangeMax = isset($data['range_max']) ? (float) $data['range_max'] : (float) ($existingRules['range_max'] ?? $rangeMin);
+        if ($rangeMax < $rangeMin) {
+            $rangeMax = $rangeMin;
+        }
+
+        if ($priceMode === 'range') {
+            $data['service_price'] = $rangeMin;
+            if (! array_key_exists('price', $data) || $data['price'] === null) {
+                $data['price'] = $rangeMin;
+            }
+        }
+
+        $data['rules_json'] = array_merge($existingRules, [
+            'price_mode' => $priceMode,
+            'range_min' => $rangeMin,
+            'range_max' => $rangeMax,
+        ]);
+
+        unset($data['price_mode'], $data['range_min'], $data['range_max']);
+
+        return $data;
+    }
+
+    private function resolvePricingMeta(BookingService $service): array
+    {
+        $rules = is_array($service->rules_json) ? $service->rules_json : [];
+        $priceMode = $rules['price_mode'] ?? 'fixed';
+        if (! in_array($priceMode, ['fixed', 'range'], true)) {
+            $priceMode = 'fixed';
+        }
+
+        $rangeMin = isset($rules['range_min']) ? (float) $rules['range_min'] : (float) ($service->service_price ?? 0);
+        $rangeMax = isset($rules['range_max']) ? (float) $rules['range_max'] : $rangeMin;
+        if ($rangeMax < $rangeMin) {
+            $rangeMax = $rangeMin;
+        }
+
+        return [
+            'price_mode' => $priceMode,
+            'range_min' => $rangeMin,
+            'range_max' => $rangeMax,
         ];
     }
 }

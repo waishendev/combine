@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 
 import StatusBadge from '../StatusBadge'
+import { formatBookingServicePriceLabel } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 
 export interface BookingServiceRowData {
@@ -12,6 +13,9 @@ export interface BookingServiceRowData {
   description: string
   duration_min: number
   service_price: string | number
+  price_mode?: 'fixed' | 'range'
+  range_min?: number
+  range_max?: number
   deposit_amount: string | number
   buffer_min: number
   isActive: boolean
@@ -94,7 +98,9 @@ export default function BookingServiceRow({
       <td className="px-4 py-2 border border-gray-200">{service.serviceType || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{service.description || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{service.duration_min}</td>
-      <td className="px-4 py-2 border border-gray-200">{service.service_price}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        {formatBookingServicePriceLabel(service)}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{service.deposit_amount}</td>
       <td className="px-4 py-2 border border-gray-200">{service.buffer_min}</td>
       <td className="border border-gray-200 px-4 py-2">

@@ -88,6 +88,23 @@ function ymdInInclusiveRange(needle: string, start: string, end: string): boolea
   return n >= s && n <= e
 }
 
+const normalizeMoney = (value: unknown): number => {
+  const parsed = typeof value === 'number' ? value : Number(value ?? 0)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.max(0, parsed)
+}
+
+const getAppointmentServiceRange = (service: PosAppointmentDetail['service'] | undefined) => {
+  const fixed = normalizeMoney(service?.service_price ?? 0)
+  const mode = String(service?.price_mode ?? 'fixed').toLowerCase()
+  if (mode === 'range') {
+    const min = normalizeMoney(service?.range_min ?? fixed)
+    const max = Math.max(min, normalizeMoney(service?.range_max ?? min))
+    return { isRange: true, min, max, label: `RM ${min.toFixed(2)} - RM ${max.toFixed(2)}` }
+  }
+  return { isRange: false, min: fixed, max: fixed, label: `RM ${fixed.toFixed(2)}` }
+}
+
 export default function PosAppointmentsWorkspace({
   currentUser,
   permissions = [],
@@ -891,6 +908,10 @@ export default function PosAppointmentsWorkspace({
     () => Number(appointmentDetail?.service_total ?? 0),
     [appointmentDetail?.service_total],
   )
+  const appointmentServiceRange = useMemo(
+    () => getAppointmentServiceRange(appointmentDetail?.service),
+    [appointmentDetail?.service],
+  )
 
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
@@ -920,6 +941,15 @@ export default function PosAppointmentsWorkspace({
   )
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
+  const appointmentDueRangeSummary = useMemo(() => {
+    if (!appointmentServiceRange.isRange) return null
+    const fixedService = appointmentServiceAmount
+    const minAdjustment = appointmentServiceRange.min - fixedService
+    const maxAdjustment = appointmentServiceRange.max - fixedService
+    const minDue = Math.max(0, appointmentDueAmountNow + minAdjustment)
+    const maxDue = Math.max(minDue, appointmentDueAmountNow + maxAdjustment)
+    return { minDue, maxDue }
+  }, [appointmentDueAmountNow, appointmentServiceAmount, appointmentServiceRange])
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
   const appointmentPackageApplied = ['reserved', 'consumed'].includes(
     String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
@@ -1194,6 +1224,9 @@ export default function PosAppointmentsWorkspace({
                     <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-900">Services</p>
                       <p className="mt-1.5 text-sm font-semibold leading-snug text-slate-900">{appointmentDetail.service?.name ?? '—'}</p>
+                      {appointmentServiceRange.isRange ? (
+                        <p className="mt-1 text-xs font-medium text-indigo-900/80">Listed price: {appointmentServiceRange.label}</p>
+                      ) : null}
                     </div>
 
                     {appointmentDetail.add_ons?.length ? (
@@ -1259,7 +1292,9 @@ export default function PosAppointmentsWorkspace({
                     <div className="divide-y divide-slate-100 px-4 text-sm">
                       <div className="flex items-center justify-between gap-3 py-3.5">
                         <span className="text-slate-600">Service</span>
-                        <span className="font-medium tabular-nums text-slate-900">RM {appointmentServiceAmount.toFixed(2)}</span>
+                        <span className="font-medium tabular-nums text-slate-900">
+                          {appointmentServiceRange.isRange ? appointmentServiceRange.label : `RM ${appointmentServiceAmount.toFixed(2)}`}
+                        </span>
                       </div>
                       <div className="flex flex-col gap-1 py-3.5">
                         <div className="flex items-center justify-between gap-3">
@@ -1297,6 +1332,11 @@ export default function PosAppointmentsWorkspace({
                         <span className="text-base font-bold text-slate-900">Total Amount to Pay</span>
                         <span className="text-xl font-bold tabular-nums text-emerald-800">RM {appointmentDueAmountNow.toFixed(2)}</span>
                       </div>
+                      {appointmentDueRangeSummary ? (
+                        <p className="py-2 text-right text-xs font-medium text-emerald-900">
+                          Range estimate: RM {appointmentDueRangeSummary.minDue.toFixed(2)} - RM {appointmentDueRangeSummary.maxDue.toFixed(2)}
+                        </p>
+                      ) : null}
                     </div>
                     {/* <p className="border-t border-slate-100 px-4 py-2.5 text-[11px] leading-relaxed text-slate-500">
                       Package: {appointmentDetail.package_status?.status ?? 'Not applied'}

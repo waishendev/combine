@@ -39,7 +39,15 @@ export type PosAppointmentDetail = {
   appointment_start_at?: string | null
   appointment_end_at?: string | null
   customer?: { id: number; name: string; phone?: string | null; email?: string | null }
-  service?: { id: number; name: string; service_type?: string | null }
+  service?: {
+    id: number
+    name: string
+    service_type?: string | null
+    price_mode?: 'fixed' | 'range' | null
+    service_price?: number
+    range_min?: number
+    range_max?: number
+  }
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
   service_total: number
