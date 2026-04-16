@@ -10,6 +10,12 @@ export type BookingServiceApiItem = {
   price_mode?: 'fixed' | 'range' | string | null
   range_min?: string | number | null
   range_max?: string | number | null
+  rules_json?: {
+    price_mode?: 'fixed' | 'range' | string | null
+    range_min?: string | number | null
+    range_max?: string | number | null
+    [key: string]: unknown
+  } | null
   deposit_amount?: string | number | null
   buffer_min?: number | string | null
   is_active?: boolean | number | string | null
@@ -71,9 +77,11 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
 
   const servicePrice = item.service_price ?? 0
   const depositAmount = item.deposit_amount ?? 0
-  const priceMode = String(item.price_mode ?? 'fixed').toLowerCase() === 'range' ? 'range' : 'fixed'
-  const rangeMin = toNonNegativeNumber(item.range_min)
-  const rangeMax = Math.max(rangeMin, toNonNegativeNumber(item.range_max))
+  const rules = item.rules_json ?? null
+  const rawPriceMode = item.price_mode ?? rules?.price_mode ?? 'fixed'
+  const priceMode = String(rawPriceMode).toLowerCase() === 'range' ? 'range' : 'fixed'
+  const rangeMin = toNonNegativeNumber(item.range_min ?? rules?.range_min ?? item.service_price ?? 0)
+  const rangeMax = Math.max(rangeMin, toNonNegativeNumber(item.range_max ?? rules?.range_max ?? rangeMin))
 
   return {
     id: normalizedId,

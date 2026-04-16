@@ -8,6 +8,7 @@ use App\Models\Booking\BookingServiceCategory;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 
 class ServiceController extends Controller
 {
@@ -55,6 +56,7 @@ class ServiceController extends Controller
                 'buffer_min',
                 'is_active',
                 'image_path',
+                'rules_json',
             ]);
 
         $payload = $services->map(fn (BookingService $service) => $this->mapService($service, false))->values();
@@ -107,6 +109,9 @@ class ServiceController extends Controller
             'duration_minutes' => (int) $service->duration_min,
             'service_price' => (float) $service->service_price,
             'price' => (float) ($service->price ?? $service->service_price),
+            'price_mode' => Arr::get($service->rules_json, 'price_mode', 'fixed'),
+            'range_min' => (float) Arr::get($service->rules_json, 'range_min', $service->service_price),
+            'range_max' => (float) Arr::get($service->rules_json, 'range_max', Arr::get($service->rules_json, 'range_min', $service->service_price)),
             'is_package_eligible' => (bool) ($service->is_package_eligible ?? true),
             'deposit_amount' => (float) $service->deposit_amount,
             'buffer_min' => (int) $service->buffer_min,

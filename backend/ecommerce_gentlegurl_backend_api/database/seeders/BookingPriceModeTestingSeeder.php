@@ -64,7 +64,10 @@ class BookingPriceModeTestingSeeder extends Seeder
             return (int) $existingId;
         }
 
-        return (int) DB::table('booking_services')->insertGetId($this->filterExistingColumns($payload));
+        return (int) DB::table('booking_services')->insertGetId($this->filterExistingColumns([
+            'name' => $name,
+            ...$payload,
+        ]));
     }
 
     private function applyPricingMode(int $serviceId, string $priceMode, float $rangeMin, float $rangeMax): void
@@ -117,4 +120,3 @@ class BookingPriceModeTestingSeeder extends Seeder
             ->all();
     }
 }
-

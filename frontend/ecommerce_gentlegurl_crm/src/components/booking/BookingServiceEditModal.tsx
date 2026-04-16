@@ -121,6 +121,19 @@ export default function BookingServiceEditModal({
         setLoadedService(mappedService)
         setImagePreview(mappedService.imageUrl || null)
 
+        const serviceRules = (service as { rules_json?: Record<string, unknown> | null }).rules_json ?? null
+        const derivedPriceMode = String(
+          (service as { price_mode?: unknown }).price_mode ?? serviceRules?.price_mode ?? 'fixed',
+        ).toLowerCase() === 'range'
+          ? 'range'
+          : 'fixed'
+        const derivedRangeMin = String(
+          (service as { range_min?: unknown }).range_min ?? serviceRules?.range_min ?? service.service_price ?? 0,
+        )
+        const derivedRangeMax = String(
+          (service as { range_max?: unknown }).range_max ?? serviceRules?.range_max ?? service.service_price ?? 0,
+        )
+
         setForm({
           name: typeof service.name === 'string' ? service.name : '',
           description: typeof service.description === 'string' ? service.description : '',
@@ -129,10 +142,10 @@ export default function BookingServiceEditModal({
               ? service.service_type
               : 'standard',
           duration_min: String(service.duration_min ?? 30),
-          price_mode: String((service as { price_mode?: unknown }).price_mode ?? 'fixed').toLowerCase() === 'range' ? 'range' : 'fixed',
+          price_mode: derivedPriceMode,
           service_price: String(service.service_price ?? 0),
-          range_min: String((service as { range_min?: unknown }).range_min ?? service.service_price ?? 0),
-          range_max: String((service as { range_max?: unknown }).range_max ?? service.service_price ?? 0),
+          range_min: derivedRangeMin,
+          range_max: derivedRangeMax,
           deposit_amount: String(service.deposit_amount ?? 0),
           buffer_min: String(service.buffer_min ?? 15),
           is_active:
@@ -703,26 +716,28 @@ export default function BookingServiceEditModal({
                 </select>
               </div>
 
-              <div>
-                <label
-                  htmlFor="edit-service_price"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Service Price <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-service_price"
-                  name="service_price"
-                  type="number"
-                  min={0}
-                  step="0.01"
-                  value={form.service_price}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="0"
-                  disabled={disableForm || form.price_mode === 'range'}
-                />
-              </div>
+              {form.price_mode === 'fixed' ? (
+                <div>
+                  <label
+                    htmlFor="edit-service_price"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Service Price <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-service_price"
+                    name="service_price"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={form.service_price}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="0"
+                    disabled={disableForm}
+                  />
+                </div>
+              ) : null}
 
               {form.price_mode === 'range' ? (
                 <>
