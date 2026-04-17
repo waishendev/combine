@@ -15,7 +15,11 @@ class CommissionController extends Controller
 
     public function index(Request $request)
     {
-        $query = StaffMonthlySale::query()->with('staff:id,name');
+        $type = $this->staffCommissionService->normalizeType($request->query('type', StaffCommissionService::TYPE_BOOKING));
+
+        $query = StaffMonthlySale::query()
+            ->with('staff:id,name')
+            ->where('type', $type);
 
         if ($request->filled('year')) {
             $query->where('year', (int) $request->query('year'));
@@ -58,16 +62,19 @@ class CommissionController extends Controller
             'year' => ['required', 'integer', 'min:2000', 'max:3000'],
             'month' => ['required', 'integer', 'min:1', 'max:12'],
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
+            'type' => ['nullable', 'string', 'in:BOOKING,ECOMMERCE,booking,ecommerce'],
         ]);
 
         $year = (int) $data['year'];
         $month = (int) $data['month'];
+        $type = $this->staffCommissionService->normalizeType($data['type'] ?? StaffCommissionService::TYPE_BOOKING);
 
         if (!empty($data['staff_id'])) {
-            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $data['staff_id'], $year, $month);
+            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $data['staff_id'], $year, $month, $type);
 
             return $this->respond([
                 'mode' => 'staff',
+                'type' => $type,
                 'year' => $year,
                 'month' => $month,
                 'rows' => [$row->fresh('staff:id,name')],
@@ -75,10 +82,11 @@ class CommissionController extends Controller
             ]);
         }
 
-        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month);
+        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type);
 
         return $this->respond([
             'mode' => 'month_all_staff',
+            'type' => $type,
             'year' => $year,
             'month' => $month,
             'rows' => collect($rows)->map(fn (StaffMonthlySale $row) => $row->fresh('staff:id,name'))->values(),

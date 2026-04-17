@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class StaffMonthlySale extends Model
 {
     protected $fillable = [
+        'type',
         'staff_id',
         'year',
         'month',
@@ -32,4 +33,3 @@ class StaffMonthlySale extends Model
         return $this->belongsTo(Staff::class, 'staff_id');
     }
 }
-

@@ -343,6 +343,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
+            key: 'ecommerce-tier-commission',
+            label: 'Tier Commissions',
+            href: '/ecommerce/commissions',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
             key: 'my-pos-summary',
             label: 'My POS Summary',
             href: '/reports/my-pos-summary',

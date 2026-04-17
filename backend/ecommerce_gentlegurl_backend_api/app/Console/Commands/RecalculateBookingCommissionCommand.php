@@ -10,9 +10,10 @@ class RecalculateBookingCommissionCommand extends Command
     protected $signature = 'booking:commission-recalculate
         {year : Target year (e.g. 2026)}
         {month : Target month (1-12)}
-        {--staff_id= : Optional staff id. If omitted recalculates all staff in the month}';
+        {--staff_id= : Optional staff id. If omitted recalculates all staff in the month}
+        {--type=BOOKING : Commission type (BOOKING or ECOMMERCE)}';
 
-    protected $description = 'Recalculate booking commission by month for a staff or all staff';
+    protected $description = 'Recalculate monthly commission by type for a staff or all staff';
 
     public function __construct(private readonly StaffCommissionService $staffCommissionService)
     {
@@ -24,6 +25,7 @@ class RecalculateBookingCommissionCommand extends Command
         $year = (int) $this->argument('year');
         $month = (int) $this->argument('month');
         $staffId = $this->option('staff_id');
+        $type = $this->staffCommissionService->normalizeType((string) $this->option('type'));
 
         if ($month < 1 || $month > 12) {
             $this->error('Month must be between 1 and 12.');
@@ -31,9 +33,10 @@ class RecalculateBookingCommissionCommand extends Command
         }
 
         if ($staffId !== null && $staffId !== '') {
-            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $staffId, $year, $month);
+            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $staffId, $year, $month, $type);
             $this->info(sprintf(
-                'Recalculated staff #%d for %04d-%02d => sales: %.2f, bookings: %d, tier: %.2f%%, commission: %.2f',
+                'Recalculated %s staff #%d for %04d-%02d => sales: %.2f, items: %d, tier: %.2f%%, commission: %.2f',
+                $row->type,
                 $row->staff_id,
                 $row->year,
                 $row->month,
@@ -46,8 +49,8 @@ class RecalculateBookingCommissionCommand extends Command
             return self::SUCCESS;
         }
 
-        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month);
-        $this->info(sprintf('Recalculated %d staff rows for %04d-%02d.', count($rows), $year, $month));
+        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type);
+        $this->info(sprintf('Recalculated %d %s staff rows for %04d-%02d.', count($rows), $type, $year, $month));
 
         return self::SUCCESS;
     }

@@ -67,6 +67,7 @@ export default function BookingCommissionTiersTable({ permissions = [] }: Bookin
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
+      qs.set('type', 'BOOKING')
 
       const res = await fetch(`/api/proxy/admin/booking/commission-tiers?${qs.toString()}`, {
         cache: 'no-store',
@@ -159,7 +160,7 @@ export default function BookingCommissionTiersTable({ permissions = [] }: Bookin
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ min_sales: minSales, commission_percent: percent }),
+      body: JSON.stringify({ type: 'BOOKING', min_sales: minSales, commission_percent: percent }),
     })
 
     if (!res.ok) {

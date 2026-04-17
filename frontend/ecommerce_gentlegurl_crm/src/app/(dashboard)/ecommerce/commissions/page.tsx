@@ -14,7 +14,7 @@ export default async function Page() {
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'booking.commissions.view' || perm === 'booking.commissions.override',
+    (perm) => perm === 'ecommerce.reports.sales.view' || perm === 'booking.commissions.override',
   )
 
   if (!hasPermission) {
@@ -24,14 +24,14 @@ export default async function Page() {
   return (
     <div className="overflow-y-auto py-6 px-10">
       <div className="text-xs mb-4">
-        <span className="text-gray-500">Booking</span>
+        <span className="text-gray-500">Ecommerce</span>
         <span className="mx-1">/</span>
-        <Link href="/booking/commissions" className="text-blue-600 hover:underline">
+        <Link href="/ecommerce/commissions" className="text-blue-600 hover:underline">
           Staff Commissions
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">Staff Commissions</h2>
-      <StaffCommissionsTable type="BOOKING" routeBasePath="/booking/commissions" countLabel="Booking Count" />
+      <h2 className="text-3xl font-semibold mb-6">Ecommerce Staff Commissions</h2>
+      <StaffCommissionsTable type="ECOMMERCE" routeBasePath="/ecommerce/commissions" countLabel="Sales Count" />
     </div>
   )
 }
