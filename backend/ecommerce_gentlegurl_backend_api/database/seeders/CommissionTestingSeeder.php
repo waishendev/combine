@@ -6,11 +6,17 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\StaffCommissionTier;
 use App\Models\Booking\StaffMonthlySale;
+use App\Models\Ecommerce\Order;
+use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderItemStaffSplit;
+use App\Models\Ecommerce\Product;
+use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\StaffCommissionService;
 use Carbon\Carbon;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 
 class CommissionTestingSeeder extends Seeder
@@ -31,8 +37,11 @@ class CommissionTestingSeeder extends Seeder
         $services = $this->resolveServices();
 
         $this->seedCompletedBookingsAcrossMonths($staffIds, $services);
+        $this->seedEcommerceAndPackageSplits($staffIds);
+
         $this->seedManualMonthlySalesRows($staffIds);
         $this->recalculateFromBookings($staffIds);
+        $this->recalculateFromEcommerceSplits();
     }
 
     private function truncateCommissionTables(): void
@@ -71,11 +80,13 @@ class CommissionTestingSeeder extends Seeder
             ['min_sales' => 8000, 'commission_percent' => 10],
         ];
 
-        foreach ($rows as $row) {
-            StaffCommissionTier::query()->updateOrCreate(
-                ['min_sales' => $row['min_sales']],
-                ['commission_percent' => $row['commission_percent']]
-            );
+        foreach ([StaffCommissionService::TYPE_BOOKING, StaffCommissionService::TYPE_ECOMMERCE] as $type) {
+            foreach ($rows as $row) {
+                StaffCommissionTier::query()->updateOrCreate(
+                    ['type' => $type, 'min_sales' => $row['min_sales']],
+                    ['commission_percent' => $row['commission_percent']]
+                );
+            }
         }
     }
 
@@ -90,10 +101,18 @@ class CommissionTestingSeeder extends Seeder
                 'name' => 'Commission Testing Staff ' . $index,
                 'phone' => '6011999000' . $index,
                 'email' => 'commission.testing.staff.' . $index . '@example.com',
-                'commission_rate' => 0,
+                'commission_rate' => 0.10,
+                'service_commission_rate' => 0.12,
                 'is_active' => true,
             ]);
             $ids[] = $staff->id;
+        }
+
+        foreach (array_values(array_slice($ids, 0, 3)) as $idx => $staffId) {
+            Staff::query()->where('id', $staffId)->update([
+                'commission_rate' => [0.10, 0.08, 0.12][$idx] ?? 0.1,
+                'service_commission_rate' => [0.12, 0.10, 0.15][$idx] ?? 0.12,
+            ]);
         }
 
         return array_values(array_slice($ids, 0, 3));
@@ -170,15 +189,161 @@ class CommissionTestingSeeder extends Seeder
         }
     }
 
+    private function seedEcommerceAndPackageSplits(array $staffIds): void
+    {
+        $now = Carbon::now();
+        $customerId = $this->resolveCustomerId();
+
+        $product = Product::query()->updateOrCreate(
+            ['slug' => 'commission-test-product'],
+            [
+                'name' => 'Commission Test Product',
+                'sku' => 'CM-PROD-001',
+                'price' => 1000,
+                'stock' => 100,
+                'is_active' => true,
+            ]
+        );
+
+        $servicePackageId = (int) DB::table('service_packages')->updateOrInsert(
+            ['name' => 'Commission Test Package'],
+            [
+                'description' => 'Seeder package for ecommerce commission tier test',
+                'selling_price' => 800,
+                'valid_days' => 90,
+                'is_active' => true,
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+
+        $servicePackageId = (int) DB::table('service_packages')->where('name', 'Commission Test Package')->value('id');
+
+        $windows = [
+            ['label' => 'current', 'date' => $now->copy()->startOfMonth()->addDays(5)],
+            ['label' => 'previous', 'date' => $now->copy()->subMonth()->startOfMonth()->addDays(8)],
+        ];
+
+        foreach ($windows as $window) {
+            $order = Order::query()->updateOrCreate(
+                ['order_number' => 'CM-ECOM-' . strtoupper($window['label']) . '-' . $now->format('Ym')],
+                [
+                    'customer_id' => $customerId,
+                    'status' => 'completed',
+                    'payment_status' => 'paid',
+                    'payment_method' => 'cash',
+                    'subtotal' => 1800,
+                    'discount_total' => 0,
+                    'shipping_fee' => 0,
+                    'grand_total' => 1800,
+                    'pickup_or_shipping' => 'pickup',
+                    'placed_at' => $window['date'],
+                    'paid_at' => $window['date'],
+                    'completed_at' => $window['date'],
+                ]
+            );
+            $order->created_at = $window['date'];
+            $order->updated_at = $window['date'];
+            $order->save();
+
+            $orderItem = OrderItem::query()->updateOrCreate(
+                [
+                    'order_id' => $order->id,
+                    'product_name_snapshot' => 'Commission Test Product',
+                ],
+                [
+                    'product_id' => $product->id,
+                    'sku_snapshot' => 'CM-PROD-001',
+                    'price_snapshot' => 1000,
+                    'quantity' => 1,
+                    'line_total' => 1000,
+                    'line_total_snapshot' => 1000,
+                    'effective_line_total' => 1000,
+                    'is_package' => false,
+                ]
+            );
+
+            OrderItemStaffSplit::query()->updateOrCreate(
+                ['order_item_id' => $orderItem->id, 'staff_id' => $staffIds[0]],
+                [
+                    'share_percent' => 60,
+                    'commission_rate_snapshot' => 0.10,
+                ]
+            );
+
+            OrderItemStaffSplit::query()->updateOrCreate(
+                ['order_item_id' => $orderItem->id, 'staff_id' => $staffIds[1]],
+                [
+                    'share_percent' => 40,
+                    'commission_rate_snapshot' => 0.08,
+                ]
+            );
+
+            $customerServicePackageId = (int) DB::table('customer_service_packages')->updateOrInsert(
+                [
+                    'customer_id' => $customerId,
+                    'service_package_id' => $servicePackageId,
+                    'purchased_from' => 'POS',
+                    'purchased_ref_id' => $order->id,
+                ],
+                [
+                    'status' => 'active',
+                    'started_at' => $window['date'],
+                    'expires_at' => $window['date']->copy()->addDays(90),
+                    'updated_at' => now(),
+                    'created_at' => now(),
+                ]
+            );
+
+            $customerServicePackageId = (int) DB::table('customer_service_packages')
+                ->where('customer_id', $customerId)
+                ->where('service_package_id', $servicePackageId)
+                ->where('purchased_ref_id', $order->id)
+                ->value('id');
+
+            ServicePackageStaffSplit::query()->updateOrCreate(
+                [
+                    'order_id' => $order->id,
+                    'customer_service_package_id' => $customerServicePackageId,
+                    'staff_id' => $staffIds[0],
+                ],
+                [
+                    'service_package_id' => $servicePackageId,
+                    'customer_id' => $customerId,
+                    'share_percent' => 50,
+                    'split_sales_amount' => 400,
+                    'service_commission_rate_snapshot' => 0.12,
+                    'commission_amount_snapshot' => 48,
+                ]
+            );
+
+            ServicePackageStaffSplit::query()->updateOrCreate(
+                [
+                    'order_id' => $order->id,
+                    'customer_service_package_id' => $customerServicePackageId,
+                    'staff_id' => $staffIds[2],
+                ],
+                [
+                    'service_package_id' => $servicePackageId,
+                    'customer_id' => $customerId,
+                    'share_percent' => 50,
+                    'split_sales_amount' => 400,
+                    'service_commission_rate_snapshot' => 0.15,
+                    'commission_amount_snapshot' => 60,
+                ]
+            );
+        }
+    }
+
     private function seedManualMonthlySalesRows(array $staffIds): void
     {
-        // Extra fixture rows to test override/tiers immediately in commissions UI.
         $now = Carbon::now();
         $targetYear = (int) $now->format('Y');
         $targetMonth = (int) $now->format('m');
 
         StaffMonthlySale::query()->updateOrCreate(
             [
+                'type' => StaffCommissionService::TYPE_BOOKING,
                 'staff_id' => $staffIds[0],
                 'year' => $targetYear,
                 'month' => $targetMonth,
@@ -195,6 +360,7 @@ class CommissionTestingSeeder extends Seeder
 
         StaffMonthlySale::query()->updateOrCreate(
             [
+                'type' => StaffCommissionService::TYPE_BOOKING,
                 'staff_id' => $staffIds[1],
                 'year' => $targetYear,
                 'month' => $targetMonth,
@@ -206,6 +372,23 @@ class CommissionTestingSeeder extends Seeder
                 'commission_amount' => 1200,
                 'is_overridden' => true,
                 'override_amount' => 1200,
+            ]
+        );
+
+        StaffMonthlySale::query()->updateOrCreate(
+            [
+                'type' => StaffCommissionService::TYPE_ECOMMERCE,
+                'staff_id' => $staffIds[2],
+                'year' => $targetYear,
+                'month' => $targetMonth,
+            ],
+            [
+                'total_sales' => 0,
+                'booking_count' => 0,
+                'tier_percent' => 0,
+                'commission_amount' => 0,
+                'is_overridden' => false,
+                'override_amount' => null,
             ]
         );
     }
@@ -231,7 +414,48 @@ class CommissionTestingSeeder extends Seeder
             }
 
             $seen[$key] = true;
-            $service->recalculateForStaffMonth((int) $booking->staff_id, $year, $month);
+            $service->recalculateForStaffMonth((int) $booking->staff_id, $year, $month, StaffCommissionService::TYPE_BOOKING);
         }
+    }
+
+    private function recalculateFromEcommerceSplits(): void
+    {
+        /** @var StaffCommissionService $service */
+        $service = app(StaffCommissionService::class);
+
+        $months = Order::query()
+            ->where(function ($query) {
+                $query->where('status', 'completed')
+                    ->orWhere('payment_status', 'paid');
+            })
+            ->whereNotIn('status', ['cancelled', 'draft'])
+            ->whereNull('refunded_at')
+            ->selectRaw('EXTRACT(YEAR FROM created_at)::int AS year')
+            ->selectRaw('EXTRACT(MONTH FROM created_at)::int AS month')
+            ->groupByRaw('EXTRACT(YEAR FROM created_at), EXTRACT(MONTH FROM created_at)')
+            ->get();
+
+        foreach ($months as $monthRow) {
+            $service->recalculateForMonthAll((int) $monthRow->year, (int) $monthRow->month, StaffCommissionService::TYPE_ECOMMERCE);
+        }
+    }
+
+    private function resolveCustomerId(): int
+    {
+        $existing = DB::table('customers')->orderBy('id')->value('id');
+        if ($existing) {
+            return (int) $existing;
+        }
+
+        return (int) DB::table('customers')->insertGetId([
+            'name' => 'Commission Seeder Customer',
+            'email' => 'commission.seeder.customer@example.com',
+            'phone' => '60112223399',
+            'password' => Hash::make('Password123!'),
+            'tier' => 'basic',
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
     }
 }
