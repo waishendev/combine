@@ -8,10 +8,11 @@ use Illuminate\Console\Command;
 class RecalculateBookingCommissionCommand extends Command
 {
     protected $signature = 'booking:commission-recalculate
-        {year : Target year (e.g. 2026)}
-        {month : Target month (1-12)}
+        {year? : Target year (e.g. 2026)}
+        {month? : Target month (1-12)}
         {--staff_id= : Optional staff id. If omitted recalculates all staff in the month}
-        {--type=BOOKING : Commission type (BOOKING or ECOMMERCE)}';
+        {--type=BOOKING : Commission type (BOOKING or ECOMMERCE)}
+        {--all : Recalculate all available months for the selected type}';
 
     protected $description = 'Recalculate monthly commission by type for a staff or all staff';
 
@@ -22,10 +23,29 @@ class RecalculateBookingCommissionCommand extends Command
 
     public function handle(): int
     {
-        $year = (int) $this->argument('year');
-        $month = (int) $this->argument('month');
+        $yearArgument = $this->argument('year');
+        $monthArgument = $this->argument('month');
+        $year = $yearArgument !== null ? (int) $yearArgument : null;
+        $month = $monthArgument !== null ? (int) $monthArgument : null;
         $staffId = $this->option('staff_id');
         $type = $this->staffCommissionService->normalizeType((string) $this->option('type'));
+        $runAll = (bool) $this->option('all');
+
+        if ($runAll) {
+            $rows = $this->staffCommissionService->recalculateAllMonths(
+                $staffId !== null && $staffId !== '' ? (int) $staffId : null,
+                $type
+            );
+            $scope = $staffId !== null && $staffId !== '' ? ('staff #' . (int) $staffId) : 'all staff';
+            $this->info(sprintf('Recalculated %d rows across all available months for %s (%s).', count($rows), $type, $scope));
+
+            return self::SUCCESS;
+        }
+
+        if ($year === null || $month === null) {
+            $this->error('Year and month are required unless you pass --all.');
+            return self::FAILURE;
+        }
 
         if ($month < 1 || $month > 12) {
             $this->error('Month must be between 1 and 12.');

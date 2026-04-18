@@ -6,6 +6,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\StaffCommissionTier;
 use App\Models\Booking\StaffMonthlySale;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class StaffCommissionService
@@ -38,6 +39,29 @@ class StaffCommissionService
         return $resolvedType === self::TYPE_ECOMMERCE
             ? $this->recalculateEcommerceForMonthAll($year, $month)
             : $this->recalculateBookingForMonthAll($year, $month);
+    }
+
+    public function recalculateAllMonths(?int $staffId = null, ?string $type = null): array
+    {
+        $resolvedType = $this->normalizeType($type);
+        $months = $resolvedType === self::TYPE_ECOMMERCE
+            ? $this->resolveEcommerceMonths($staffId)
+            : $this->resolveBookingMonths($staffId);
+
+        $results = [];
+        foreach ($months as $month) {
+            $year = (int) $month['year'];
+            $monthValue = (int) $month['month'];
+
+            if ($staffId) {
+                $results[] = $this->recalculateForStaffMonth($staffId, $year, $monthValue, $resolvedType);
+            } else {
+                $rows = $this->recalculateForMonthAll($year, $monthValue, $resolvedType);
+                array_push($results, ...$rows);
+            }
+        }
+
+        return $results;
     }
 
     public function applyCompletedBooking(Booking $booking): void
@@ -325,5 +349,74 @@ class StaffCommissionService
         $start = Carbon::create($year, $month, 1)->startOfMonth();
 
         return [$start, $start->copy()->addMonth()];
+    }
+
+    private function resolveBookingMonths(?int $staffId = null): Collection
+    {
+        return Booking::query()
+            ->where('status', 'COMPLETED')
+            ->when($staffId, fn ($query) => $query->where('staff_id', $staffId))
+            ->whereNotNull('completed_at')
+            ->selectRaw('EXTRACT(YEAR FROM completed_at)::int AS year')
+            ->selectRaw('EXTRACT(MONTH FROM completed_at)::int AS month')
+            ->groupByRaw('EXTRACT(YEAR FROM completed_at), EXTRACT(MONTH FROM completed_at)')
+            ->orderBy('year')
+            ->orderBy('month')
+            ->get()
+            ->map(fn ($row) => [
+                'year' => (int) $row->year,
+                'month' => (int) $row->month,
+            ]);
+    }
+
+    private function resolveEcommerceMonths(?int $staffId = null): Collection
+    {
+        $productMonths = DB::table('orders')
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->when($staffId, fn ($query) => $query->where('order_item_staff_splits.staff_id', $staffId))
+            ->where(function ($query) {
+                $query->where('orders.status', 'completed')
+                    ->orWhere('orders.payment_status', 'paid');
+            })
+            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at')
+            ->selectRaw('EXTRACT(YEAR FROM orders.created_at)::int AS year')
+            ->selectRaw('EXTRACT(MONTH FROM orders.created_at)::int AS month')
+            ->groupByRaw('EXTRACT(YEAR FROM orders.created_at), EXTRACT(MONTH FROM orders.created_at)')
+            ->get();
+
+        $packageMonths = DB::table('orders')
+            ->join('customer_service_packages', function ($join) {
+                $join->on('customer_service_packages.purchased_ref_id', '=', 'orders.id')
+                    ->where('customer_service_packages.purchased_from', 'POS');
+            })
+            ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
+            ->when($staffId, fn ($query) => $query->where('service_package_staff_splits.staff_id', $staffId))
+            ->where(function ($query) {
+                $query->where('orders.status', 'completed')
+                    ->orWhere('orders.payment_status', 'paid');
+            })
+            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at')
+            ->selectRaw('EXTRACT(YEAR FROM orders.created_at)::int AS year')
+            ->selectRaw('EXTRACT(MONTH FROM orders.created_at)::int AS month')
+            ->groupByRaw('EXTRACT(YEAR FROM orders.created_at), EXTRACT(MONTH FROM orders.created_at)')
+            ->get();
+
+        return collect($productMonths)
+            ->concat($packageMonths)
+            ->map(fn ($row) => ['year' => (int) $row->year, 'month' => (int) $row->month])
+            ->unique(fn ($month) => $month['year'] . '-' . $month['month'])
+            ->sortBy(fn ($month) => sprintf('%04d-%02d', $month['year'], $month['month']))
+            ->values();
     }
 }
