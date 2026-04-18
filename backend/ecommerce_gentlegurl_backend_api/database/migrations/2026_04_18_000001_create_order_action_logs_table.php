@@ -16,7 +16,7 @@ return new class extends Migration {
             $table->json('after_value')->nullable();
             $table->text('remark')->nullable();
             $table->foreignId('created_by')->nullable()->constrained('users')->nullOnDelete();
-            $table->timestamp('created_at')->useCurrent();
+            $table->timestamps();
 
             $table->index(['entity_type', 'entity_id']);
             $table->index('action_type');
