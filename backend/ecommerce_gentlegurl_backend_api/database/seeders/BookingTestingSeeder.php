@@ -40,7 +40,7 @@ class BookingTestingSeeder extends Seeder
         $this->seedServiceCategoriesAndPrimarySlots($services);
         $this->seedServiceQuestionsAndOptions($services);
 
-        $this->seedCommissionTiers();
+        // $this->seedCommissionTiers();
         $this->seedServiceStaffMappings($services, [$staffOneId, $staffTwoId, $staffThreeId]);
         $this->seedSchedules([$staffOneId, $staffTwoId, $staffThreeId]);
         $this->seedBlocksAndTimeoffs($staffOneId, $staffTwoId);
@@ -236,7 +236,7 @@ class BookingTestingSeeder extends Seeder
 
         $now = now();
         $rows = [
-            ['min_sales' => 0, 'commission_percent' => 0],
+            ['min_sales' => 0, 'commission_percent' => 1],
             ['min_sales' => 5000, 'commission_percent' => 5],
             ['min_sales' => 8000, 'commission_percent' => 10],
         ];

@@ -50,7 +50,7 @@ class DatabaseSeeder extends Seeder
             BookingTestingSeeder::class,
             BookingLeaveTestingSeeder::class,
             ServicePackageTestingSeeder::class,
-
+            CommissionTestingSeeder::class,
             //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,
             //ReturnRequestSeeder::class,

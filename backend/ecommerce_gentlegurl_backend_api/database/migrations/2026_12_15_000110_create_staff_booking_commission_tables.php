@@ -38,10 +38,10 @@ return new class extends Migration {
         });
 
         DB::table('staff_commission_tiers')->insert([
-            ['type' => 'BOOKING', 'min_sales' => 0, 'commission_percent' => 0, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'BOOKING', 'min_sales' => 0, 'commission_percent' => 2, 'created_at' => now(), 'updated_at' => now()],
             ['type' => 'BOOKING', 'min_sales' => 5000, 'commission_percent' => 5, 'created_at' => now(), 'updated_at' => now()],
             ['type' => 'BOOKING', 'min_sales' => 8000, 'commission_percent' => 10, 'created_at' => now(), 'updated_at' => now()],
-            ['type' => 'ECOMMERCE', 'min_sales' => 0, 'commission_percent' => 0, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'ECOMMERCE', 'min_sales' => 0, 'commission_percent' => 1, 'created_at' => now(), 'updated_at' => now()],
             ['type' => 'ECOMMERCE', 'min_sales' => 5000, 'commission_percent' => 5, 'created_at' => now(), 'updated_at' => now()],
             ['type' => 'ECOMMERCE', 'min_sales' => 8000, 'commission_percent' => 10, 'created_at' => now(), 'updated_at' => now()],
         ]);

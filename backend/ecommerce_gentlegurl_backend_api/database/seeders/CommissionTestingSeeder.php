@@ -75,7 +75,7 @@ class CommissionTestingSeeder extends Seeder
         }
 
         $rows = [
-            ['min_sales' => 0, 'commission_percent' => 0],
+            ['min_sales' => 0, 'commission_percent' => 2],
             ['min_sales' => 5000, 'commission_percent' => 5],
             ['min_sales' => 8000, 'commission_percent' => 10],
         ];
@@ -110,8 +110,8 @@ class CommissionTestingSeeder extends Seeder
 
         foreach (array_values(array_slice($ids, 0, 3)) as $idx => $staffId) {
             Staff::query()->where('id', $staffId)->update([
-                'commission_rate' => [0.10, 0.08, 0.12][$idx] ?? 0.1,
-                'service_commission_rate' => [0.12, 0.10, 0.15][$idx] ?? 0.12,
+                'commission_rate' => [1, 1, 1][$idx] ?? 1,
+                'service_commission_rate' => [1, 1, 1][$idx] ?? 1,
             ]);
         }
 
