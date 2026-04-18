@@ -59,27 +59,30 @@ return new class extends Migration {
             ->implode(', ');
 
         $newConstraintName = "{$table}_{$column}_check";
-        $constraintPattern = "%{$column}%";
+        $constraintPattern = '%' . $column . '%';
+
+        $constraints = DB::select(
+            <<<SQL
+SELECT conname
+FROM pg_constraint
+WHERE conrelid = ?::regclass
+  AND contype = 'c'
+  AND pg_get_constraintdef(oid) ILIKE ?
+SQL,
+            [$table, $constraintPattern]
+        );
+
+        foreach ($constraints as $constraint) {
+            if (! isset($constraint->conname)) {
+                continue;
+            }
+
+            $escapedConstraintName = str_replace('"', '""', (string) $constraint->conname);
+            DB::statement("ALTER TABLE {$table} DROP CONSTRAINT \"{$escapedConstraintName}\"");
+        }
 
         DB::statement(
-            <<<SQL
-DO $$
-DECLARE
-    check_constraint RECORD;
-BEGIN
-    FOR check_constraint IN
-        SELECT conname
-        FROM pg_constraint
-        WHERE conrelid = '{$table}'::regclass
-          AND contype = 'c'
-          AND pg_get_constraintdef(oid) ILIKE '{$constraintPattern}'
-    LOOP
-        EXECUTE format('ALTER TABLE {$table} DROP CONSTRAINT %I', check_constraint.conname);
-    END LOOP;
-
-    EXECUTE 'ALTER TABLE {$table} ADD CONSTRAINT {$newConstraintName} CHECK ({$column} IN ({$allowedValues}))';
-END $$;
-SQL
+            "ALTER TABLE {$table} ADD CONSTRAINT {$newConstraintName} CHECK ({$column} IN ({$allowedValues}))"
         );
     }
 };
