@@ -9,6 +9,7 @@ use App\Http\Controllers\Ecommerce\AnnouncementController;
 use App\Http\Controllers\Ecommerce\BankAccountController;
 use App\Http\Controllers\Ecommerce\CustomerController as EcommerceCustomerController;
 use App\Http\Controllers\Ecommerce\OrderController;
+use App\Http\Controllers\Ecommerce\OfflineOrderManagementController;
 use App\Http\Controllers\Ecommerce\PaymentGatewayController;
 use App\Http\Controllers\Ecommerce\PublicCustomerAddressController;
 use App\Http\Controllers\Ecommerce\CartMergeController;
@@ -704,6 +705,15 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.orders.update');
 
         Route::put('/orders/{order}/cancel-order', [OrderController::class, 'cancelOrder'])
+            ->middleware('permission:ecommerce.orders.update');
+
+        Route::put('/orders/{order}/offline-actions/sales-person', [OfflineOrderManagementController::class, 'updateSalesPerson'])
+            ->middleware('permission:ecommerce.orders.update');
+
+        Route::put('/orders/{order}/offline-actions/payment-method', [OfflineOrderManagementController::class, 'updatePaymentMethod'])
+            ->middleware('permission:ecommerce.orders.update');
+
+        Route::put('/orders/{order}/offline-actions/void', [OfflineOrderManagementController::class, 'voidOrder'])
             ->middleware('permission:ecommerce.orders.update');
 
         Route::put('/orders/{order}/refund', [OrderController::class, 'refund'])

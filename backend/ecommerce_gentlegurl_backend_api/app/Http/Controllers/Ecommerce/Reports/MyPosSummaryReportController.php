@@ -315,7 +315,7 @@ class MyPosSummaryReportController extends Controller
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function (Builder $query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');

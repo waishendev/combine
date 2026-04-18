@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import OfflineOrderActions from './reports/OfflineOrderActions'
 
 type Summary = {
   orders_count: number
@@ -614,17 +615,26 @@ export default function MyPosSummaryPage({
                       {row.has_staff_assignment ? 'Yes' : 'No'}
                     </td>
                     <td className="px-4 py-2 border border-gray-200 text-center">
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
-                        onClick={() => {
-                          setSelectedRow(row)
-                          setDetailOpen(true)
-                        }}
-                        aria-label={`View details for ${row.order_no ?? row.order_id}`}
-                      >
-                        <i className="fa-solid fa-eye" />
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
+                          onClick={() => {
+                            setSelectedRow(row)
+                            setDetailOpen(true)
+                          }}
+                          aria-label={`View details for ${row.order_no ?? row.order_id}`}
+                        >
+                          <i className="fa-solid fa-eye" />
+                        </button>
+                        <OfflineOrderActions
+                          orderId={row.order_id}
+                          channel="offline"
+                          onDone={() => {
+                            void loadData(currentPage)
+                          }}
+                        />
+                      </div>
                     </td>
                   </tr>
                 </Fragment>

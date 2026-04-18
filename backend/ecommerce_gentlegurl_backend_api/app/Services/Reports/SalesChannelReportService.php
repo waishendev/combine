@@ -31,7 +31,7 @@ class SalesChannelReportService
                 $w->where("{$alias}.status", 'completed')
                     ->orWhere("{$alias}.payment_status", 'paid');
             })
-            ->whereNotIn("{$alias}.status", ['cancelled', 'draft'])
+            ->whereNotIn("{$alias}.status", ['cancelled', 'draft', 'voided'])
             ->where(function (Builder $w) use ($alias) {
                 $w->where("{$alias}.payment_status", '!=', 'refunded')
                     ->orWhereNull("{$alias}.payment_status");
@@ -55,6 +55,7 @@ class SalesChannelReportService
 
         $rows = collect($paginator->items())->map(function ($row) {
             return [
+                'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
                 'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
@@ -113,6 +114,7 @@ class SalesChannelReportService
             ->cursor()
             ->map(function ($row) {
                 return [
+                    'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
                     'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
@@ -143,6 +145,7 @@ class SalesChannelReportService
 
         $rows = collect($paginator->items())->map(function ($row) {
             return [
+                'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
                 'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
@@ -215,6 +218,7 @@ class SalesChannelReportService
             ->cursor()
             ->map(function ($row) {
                 return [
+                    'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
                     'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
