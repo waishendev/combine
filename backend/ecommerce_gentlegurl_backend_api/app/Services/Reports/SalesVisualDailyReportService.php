@@ -27,7 +27,7 @@ class SalesVisualDailyReportService
                 $w->where("{$alias}.status", 'completed')
                     ->orWhere("{$alias}.payment_status", 'paid');
             })
-            ->whereNotIn("{$alias}.status", ['cancelled', 'draft'])
+            ->whereNotIn("{$alias}.status", ['cancelled', 'draft', 'voided'])
             ->where(function (Builder $w) use ($alias) {
                 $w->where("{$alias}.payment_status", '!=', 'refunded')
                     ->orWhereNull("{$alias}.payment_status");

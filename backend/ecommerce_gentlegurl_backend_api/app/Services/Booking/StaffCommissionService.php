@@ -232,6 +232,13 @@ class StaffCommissionService
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<', $nextMonthStart)
             ->pluck('staff_id')
+            ->concat(
+                StaffMonthlySale::query()
+                    ->where('type', self::TYPE_BOOKING)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->pluck('staff_id')
+            )
             ->filter()
             ->unique()
             ->values();
@@ -306,6 +313,13 @@ class StaffCommissionService
 
         $staffIds = collect($productStaffIds)
             ->concat($packageStaffIds)
+            ->concat(
+                StaffMonthlySale::query()
+                    ->where('type', self::TYPE_ECOMMERCE)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->pluck('staff_id')
+            )
             ->filter()
             ->unique()
             ->values();
@@ -329,7 +343,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');
@@ -351,7 +365,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');
@@ -409,7 +423,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');
@@ -431,7 +445,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');
