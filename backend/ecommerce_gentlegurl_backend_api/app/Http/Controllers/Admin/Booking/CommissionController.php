@@ -151,6 +151,40 @@ class CommissionController extends Controller
         return $this->respond($monthly->fresh('staff:id,name'));
     }
 
+    public function freezeMonth(Request $request)
+    {
+        $data = $request->validate([
+            'year' => ['required', 'integer', 'min:2000', 'max:3000'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'type' => ['nullable', 'string', 'in:BOOKING,ECOMMERCE,booking,ecommerce'],
+        ]);
+
+        $year = (int) $data['year'];
+        $month = (int) $data['month'];
+        $type = $this->staffCommissionService->normalizeType($data['type'] ?? StaffCommissionService::TYPE_BOOKING);
+        $rows = $this->staffCommissionService->monthRows($year, $month, $type);
+
+        foreach ($rows as $row) {
+            $before = $row->only(['status', 'frozen_at', 'frozen_by']);
+            $updated = $this->staffCommissionService->freezeMonthly($row, optional($request->user())->id);
+            $this->staffCommissionService->logAction(
+                'FREEZE',
+                $updated,
+                $before,
+                $updated->only(['status', 'frozen_at', 'frozen_by']),
+                optional($request->user())->id,
+                'Month action'
+            );
+        }
+
+        return $this->respond([
+            'type' => $type,
+            'year' => $year,
+            'month' => $month,
+            'updated_count' => $rows->count(),
+        ]);
+    }
+
     public function reopen(Request $request, int $id)
     {
         $monthly = StaffMonthlySale::query()->findOrFail($id);
@@ -166,5 +200,39 @@ class CommissionController extends Controller
         );
 
         return $this->respond($monthly->fresh('staff:id,name'));
+    }
+
+    public function reopenMonth(Request $request)
+    {
+        $data = $request->validate([
+            'year' => ['required', 'integer', 'min:2000', 'max:3000'],
+            'month' => ['required', 'integer', 'min:1', 'max:12'],
+            'type' => ['nullable', 'string', 'in:BOOKING,ECOMMERCE,booking,ecommerce'],
+        ]);
+
+        $year = (int) $data['year'];
+        $month = (int) $data['month'];
+        $type = $this->staffCommissionService->normalizeType($data['type'] ?? StaffCommissionService::TYPE_BOOKING);
+        $rows = $this->staffCommissionService->monthRows($year, $month, $type);
+
+        foreach ($rows as $row) {
+            $before = $row->only(['status', 'reopened_at', 'reopened_by']);
+            $updated = $this->staffCommissionService->reopenMonthly($row, optional($request->user())->id);
+            $this->staffCommissionService->logAction(
+                'REOPEN',
+                $updated,
+                $before,
+                $updated->only(['status', 'reopened_at', 'reopened_by']),
+                optional($request->user())->id,
+                'Month action'
+            );
+        }
+
+        return $this->respond([
+            'type' => $type,
+            'year' => $year,
+            'month' => $month,
+            'updated_count' => $rows->count(),
+        ]);
     }
 }

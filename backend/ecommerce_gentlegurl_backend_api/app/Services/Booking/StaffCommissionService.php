@@ -462,6 +462,15 @@ class StaffCommissionService
         return $monthly->refresh();
     }
 
+    public function monthRows(int $year, int $month, ?string $type = null): Collection
+    {
+        return StaffMonthlySale::query()
+            ->where('type', $this->normalizeType($type))
+            ->where('year', $year)
+            ->where('month', $month)
+            ->get();
+    }
+
     public function reopenMonthly(StaffMonthlySale $monthly, ?int $performedBy = null): StaffMonthlySale
     {
         $monthly->status = self::STATUS_OPEN;

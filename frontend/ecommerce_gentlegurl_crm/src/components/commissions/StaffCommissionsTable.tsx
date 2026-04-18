@@ -110,6 +110,12 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [overrideTarget, setOverrideTarget] = useState<CommissionRow | null>(null)
+  const [monthActionType, setMonthActionType] = useState<'freeze' | 'reopen' | null>(null)
+  const [monthActionLoading, setMonthActionLoading] = useState(false)
+  const [monthActionForm, setMonthActionForm] = useState({
+    year: String(new Date().getFullYear()),
+    month: String(new Date().getMonth() + 1),
+  })
   const [refreshKey, setRefreshKey] = useState(0)
 
   const loadStaffs = useCallback(async () => {
@@ -234,6 +240,43 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     }
   }
 
+  const openMonthActionModal = (action: 'freeze' | 'reopen') => {
+    const now = new Date()
+    setMonthActionForm({
+      year: resolvedParams.year || String(now.getFullYear()),
+      month: resolvedParams.month || String(now.getMonth() + 1),
+    })
+    setMonthActionType(action)
+  }
+
+  const handleMonthAction = async () => {
+    if (!monthActionType) return
+    setMonthActionLoading(true)
+    try {
+      const endpoint = monthActionType === 'freeze' ? 'freeze-month' : 'reopen-month'
+      const res = await fetch(`/api/proxy/admin/booking/commissions/${endpoint}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type,
+          year: Number(monthActionForm.year),
+          month: Number(monthActionForm.month),
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.message || 'Failed to update selected month.')
+      }
+      setRefreshKey((prev) => prev + 1)
+      setMonthActionType(null)
+      alert(`${monthActionType === 'freeze' ? 'Freeze' : 'Reopen'} month done. Updated rows: ${json?.data?.updated_count ?? 0}`)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to update selected month.')
+    } finally {
+      setMonthActionLoading(false)
+    }
+  }
+
   const summaryCards = useMemo(() => {
     const totalSales = rows.reduce((sum, row) => sum + Number(row.total_sales || 0), 0)
     const totalCount = rows.reduce((sum, row) => sum + (row.booking_count || 0), 0)
@@ -316,12 +359,95 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
         </div>
       ) : null}
 
-      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
-        <button type="button" onClick={() => setIsFilterOpen(true)} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50" disabled={loading}>
-          <i className="fa-solid fa-filter" />
-          Filter
-        </button>
+      {monthActionType ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+          <div className="absolute inset-0 bg-black/50" onClick={() => setMonthActionType(null)} />
+          <div className="relative w-full max-w-md mx-auto bg-white rounded-lg shadow-lg p-5 space-y-4" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">{monthActionType === 'freeze' ? 'Freeze Month' : 'Reopen Month'}</h2>
+              <button
+                type="button"
+                onClick={() => setMonthActionType(null)}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                aria-label="Close"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Apply this action to all {type.toLowerCase()} commission rows in the selected month.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Year</label>
+                <select
+                  value={monthActionForm.year}
+                  onChange={(e) => setMonthActionForm((prev) => ({ ...prev, year: e.target.value }))}
+                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                >
+                  {years.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Month</label>
+                <select
+                  value={monthActionForm.month}
+                  onChange={(e) => setMonthActionForm((prev) => ({ ...prev, month: e.target.value }))}
+                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                >
+                  {months.map((month) => (
+                    <option key={month} value={month}>{monthNames[month - 1]}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setMonthActionType(null)}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+                disabled={monthActionLoading}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void handleMonthAction()}
+                className={`px-4 py-2 text-sm text-white rounded-md disabled:opacity-50 ${monthActionType === 'freeze' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                disabled={monthActionLoading}
+              >
+                {monthActionLoading ? 'Processing...' : monthActionType === 'freeze' ? 'Freeze Month' : 'Reopen Month'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={() => setIsFilterOpen(true)} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50" disabled={loading}>
+            <i className="fa-solid fa-filter" />
+            Filter
+          </button>
+          <button
+            type="button"
+            onClick={() => openMonthActionModal('freeze')}
+            className="bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            Freeze Month
+          </button>
+          <button
+            type="button"
+            onClick={() => openMonthActionModal('reopen')}
+            className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            Reopen Month
+          </button>
+        </div>
         <div className="flex items-center gap-3">
           <label htmlFor="pageSize" className="text-sm text-gray-700">Show</label>
           <select id="pageSize" value={resolvedParams.perPage} onChange={(event) => updateQuery({ per_page: event.target.value, page: String(DEFAULT_PAGE) })} className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50" disabled={loading}>
@@ -357,15 +483,14 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Tier % (Snapshot)</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Commission</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Calculated At</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Freeze/Reopen</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={10} />
+              <TableLoadingRow colSpan={9} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={10} />
+              <TableEmptyState colSpan={9} />
             ) : (
               rows.map((row) => {
                 const commissionAmount = row.is_overridden && row.override_amount
@@ -398,35 +523,35 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                       <div className="text-xs text-gray-500">R: {formatDateTime(row.reopened_at)}</div>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      {status === 'FROZEN' ? (
+                      <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          disabled={actionLoadingId === row.id}
-                          onClick={() => void handleStatusAction(row, 'reopen')}
-                          className="text-emerald-700 hover:text-emerald-900 text-sm disabled:opacity-50"
+                          disabled={status === 'FROZEN'}
+                          onClick={() => setOverrideTarget(row)}
+                          className="text-blue-600 hover:text-blue-800 text-sm disabled:text-gray-400 disabled:cursor-not-allowed"
                         >
-                          Reopen
+                          {row.is_overridden ? 'Edit Override' : 'Override'}
                         </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={actionLoadingId === row.id}
-                          onClick={() => void handleStatusAction(row, 'freeze')}
-                          className="text-amber-700 hover:text-amber-900 text-sm disabled:opacity-50"
-                        >
-                          Freeze
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      <button
-                        type="button"
-                        disabled={status === 'FROZEN'}
-                        onClick={() => setOverrideTarget(row)}
-                        className="text-blue-600 hover:text-blue-800 text-sm disabled:text-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {row.is_overridden ? 'Edit Override' : 'Override'}
-                      </button>
+                        {status === 'FROZEN' ? (
+                          <button
+                            type="button"
+                            disabled={actionLoadingId === row.id}
+                            onClick={() => void handleStatusAction(row, 'reopen')}
+                            className="text-emerald-700 hover:text-emerald-900 text-sm disabled:opacity-50"
+                          >
+                            Reopen
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={actionLoadingId === row.id}
+                            onClick={() => void handleStatusAction(row, 'freeze')}
+                            className="text-amber-700 hover:text-amber-900 text-sm disabled:opacity-50"
+                          >
+                            Freeze
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
