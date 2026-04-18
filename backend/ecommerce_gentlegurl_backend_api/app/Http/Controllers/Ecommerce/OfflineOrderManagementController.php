@@ -14,17 +14,35 @@ class OfflineOrderManagementController extends Controller
     {
     }
 
+    public function salesPersonDraft(Order $order)
+    {
+        try {
+            $items = $this->service->getSalesPersonDraft($order);
+        } catch (RuntimeException $e) {
+            return $this->respondError($e->getMessage(), 422);
+        }
+
+        return $this->respond([
+            'order_id' => (int) $order->id,
+            'items' => $items,
+        ]);
+    }
+
     public function updateSalesPerson(Request $request, Order $order)
     {
         $validated = $request->validate([
-            'created_by_user_id' => ['required', 'integer', 'exists:users,id'],
+            'item_splits' => ['required', 'array', 'min:1'],
+            'item_splits.*.order_item_id' => ['required', 'integer'],
+            'item_splits.*.splits' => ['required', 'array', 'min:1'],
+            'item_splits.*.splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'item_splits.*.splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
             'remark' => ['nullable', 'string', 'max:1000'],
         ]);
 
         try {
             $updated = $this->service->updateSalesPerson(
                 $order,
-                (int) $validated['created_by_user_id'],
+                $validated['item_splits'],
                 isset($validated['remark']) ? trim((string) $validated['remark']) : null,
                 $request->user()?->id,
             );
@@ -32,7 +50,7 @@ class OfflineOrderManagementController extends Controller
             return $this->respondError($e->getMessage(), 422);
         }
 
-        return $this->respond($updated, 'Sales person updated successfully.');
+        return $this->respond($updated, 'Item staff split updated successfully.');
     }
 
     public function updatePaymentMethod(Request $request, Order $order)
