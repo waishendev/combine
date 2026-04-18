@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
 import PaginationControls from '@/components/PaginationControls'
@@ -49,6 +49,11 @@ type CommissionApiResponse = {
     total?: number
   }
 }
+
+type ToastState = {
+  message: string
+  tone: 'info' | 'success' | 'warning' | 'error'
+} | null
 
 const DEFAULT_PAGE_SIZE = 15
 const DEFAULT_PAGE = 1
@@ -109,6 +114,8 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   })
   const [loading, setLoading] = useState(true)
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [recalculatingRowIds, setRecalculatingRowIds] = useState<number[]>([])
+  const [isMonthlyRecalculating, setIsMonthlyRecalculating] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [overrideTarget, setOverrideTarget] = useState<CommissionRow | null>(null)
   const [monthActionType, setMonthActionType] = useState<'freeze' | 'reopen' | 'recalculate' | null>(null)
@@ -117,7 +124,20 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     year: String(new Date().getFullYear()),
     month: String(new Date().getMonth() + 1),
   })
+  const [toast, setToast] = useState<ToastState>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const showToast = useCallback((message: string, tone: ToastState['tone'] = 'info') => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+    }
+    setToast({ message, tone })
+    toastTimerRef.current = setTimeout(() => {
+      setToast(null)
+      toastTimerRef.current = null
+    }, 2800)
+  }, [])
 
   const loadStaffs = useCallback(async () => {
     try {
@@ -159,7 +179,6 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   }, [resolvedParams.hasValidPage, resolvedParams.hasValidPerPage, routeBasePath, router, searchParams])
 
   const fetchCommissions = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true)
     const qs = new URLSearchParams()
     if (resolvedParams.staffId) qs.set('staff_id', resolvedParams.staffId)
     if (resolvedParams.year) qs.set('year', resolvedParams.year)
@@ -174,42 +193,108 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
         signal,
       })
 
-      if (!response.ok) {
-        setRows([])
-        setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
-        return
-      }
+      if (!response.ok) return null
 
       const data: CommissionApiResponse = await response.json()
       const responseData = data.data
 
-      if (!responseData || typeof responseData !== 'object' || !Array.isArray(responseData.data)) {
-        setRows([])
-        setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
-        return
-      }
+      if (!responseData || typeof responseData !== 'object' || !Array.isArray(responseData.data)) return null
 
-      setRows(responseData.data)
-      setPagination({
-        total: responseData.total ?? responseData.data.length,
-        per_page: responseData.per_page ?? resolvedParams.perPage,
-        current_page: responseData.current_page ?? resolvedParams.page,
-        last_page: responseData.last_page ?? 1,
-      })
+      return {
+        rows: responseData.data,
+        pagination: {
+          total: responseData.total ?? responseData.data.length,
+          per_page: responseData.per_page ?? resolvedParams.perPage,
+          current_page: responseData.current_page ?? resolvedParams.page,
+          last_page: responseData.last_page ?? 1,
+        },
+      }
     } catch {
-      if (signal?.aborted) return
-      setRows([])
-      setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
-    } finally {
-      if (!signal?.aborted) setLoading(false)
+      if (signal?.aborted) return null
+      return null
     }
   }, [resolvedParams.staffId, resolvedParams.year, resolvedParams.month, resolvedParams.page, resolvedParams.perPage, type])
 
+  const refetchTable = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    if (!silent) setLoading(true)
+    try {
+      const snapshot = await fetchCommissions()
+      if (!snapshot) {
+        if (!silent) {
+          setRows([])
+          setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
+        }
+        return null
+      }
+      setRows(snapshot.rows)
+      setPagination(snapshot.pagination)
+      return snapshot
+    } finally {
+      if (!silent) setLoading(false)
+    }
+  }, [fetchCommissions])
+
+  const waitForLatestCalculation = useCallback(async ({
+    targetRowIds,
+    baselineMap,
+    attempts = 5,
+    intervalMs = 1300,
+  }: {
+    targetRowIds: number[]
+    baselineMap: Record<number, number | null>
+    attempts?: number
+    intervalMs?: number
+  }) => {
+    const hasUpdated = (candidateRows: CommissionRow[]) => targetRowIds.some((rowId) => {
+      const latest = candidateRows.find((row) => row.id === rowId)
+      if (!latest?.calculated_at) return false
+      const latestTs = new Date(latest.calculated_at).getTime()
+      if (Number.isNaN(latestTs)) return false
+      const baseline = baselineMap[rowId]
+      if (baseline == null) return true
+      return latestTs > baseline
+    })
+
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (attempt > 0) {
+        await new Promise((resolve) => setTimeout(resolve, intervalMs))
+      }
+      const snapshot = await refetchTable({ silent: true })
+      if (snapshot && hasUpdated(snapshot.rows)) {
+        return true
+      }
+    }
+
+    return false
+  }, [refetchTable])
+
   useEffect(() => {
+    setLoading(true)
     const controller = new AbortController()
-    void fetchCommissions(controller.signal)
+    void (async () => {
+      try {
+        const snapshot = await fetchCommissions(controller.signal)
+        if (!snapshot) {
+          setRows([])
+          setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
+          return
+        }
+        setRows(snapshot.rows)
+        setPagination(snapshot.pagination)
+      } finally {
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    })()
     return () => controller.abort()
   }, [fetchCommissions, refreshKey])
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current)
+      }
+    }
+  }, [])
 
   const updateQuery = (next: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -233,9 +318,9 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       if (!res.ok) {
         throw new Error('Failed to update month status.')
       }
-      setRefreshKey((prev) => prev + 1)
+      void refetchTable()
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to update month status.')
+      showToast(error instanceof Error ? error.message : 'Failed to update month status.', 'error')
     } finally {
       setActionLoadingId(null)
     }
@@ -255,7 +340,16 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     setMonthActionLoading(true)
     try {
       const isRecalculate = monthActionType === 'recalculate'
+      if (isRecalculate) {
+        setIsMonthlyRecalculating(true)
+        setRecalculatingRowIds(rows.map((row) => row.id))
+        showToast('Monthly calculation started...', 'info')
+      }
       const endpoint = monthActionType === 'freeze' ? 'freeze-month' : 'reopen-month'
+      const baselineMap = rows.reduce<Record<number, number | null>>((carry, row) => {
+        carry[row.id] = row.calculated_at ? new Date(row.calculated_at).getTime() : null
+        return carry
+      }, {})
       const res = isRecalculate
         ? await fetch('/api/proxy/admin/booking/commissions/recalculate', {
             method: 'POST',
@@ -279,17 +373,27 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       if (!res.ok) {
         throw new Error(json?.message || 'Failed to update selected month.')
       }
-      setRefreshKey((prev) => prev + 1)
-      setMonthActionType(null)
       if (isRecalculate) {
-        alert(`Monthly recalculation done. Updated rows: ${json?.data?.count ?? 0}`)
+        const watchedRowIds = rows.map((row) => row.id)
+        const isUpdated = await waitForLatestCalculation({ targetRowIds: watchedRowIds, baselineMap })
+        if (isUpdated) {
+          showToast(`Monthly recalculation completed. Updated rows: ${json?.data?.count ?? watchedRowIds.length}`, 'success')
+        } else {
+          showToast('Calculation is still processing, latest values may take a moment to appear.', 'warning')
+        }
       } else {
-        alert(`${monthActionType === 'freeze' ? 'Freeze' : 'Reopen'} month done. Updated rows: ${json?.data?.updated_count ?? 0}`)
+        showToast(`${monthActionType === 'freeze' ? 'Freeze' : 'Reopen'} month done. Updated rows: ${json?.data?.updated_count ?? 0}`, 'success')
+        void refetchTable()
       }
+      setMonthActionType(null)
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to update selected month.')
+      showToast(error instanceof Error ? error.message : 'Failed to update selected month.', 'error')
     } finally {
       setMonthActionLoading(false)
+      if (monthActionType === 'recalculate') {
+        setIsMonthlyRecalculating(false)
+        setRecalculatingRowIds([])
+      }
     }
   }
 
@@ -301,7 +405,12 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     }
 
     setActionLoadingId(row.id)
+    setRecalculatingRowIds((prev) => Array.from(new Set([...prev, row.id])))
     try {
+      showToast('Recalculation started...', 'info')
+      const baselineMap = {
+        [row.id]: row.calculated_at ? new Date(row.calculated_at).getTime() : null,
+      }
       const res = await fetch('/api/proxy/admin/booking/commissions/recalculate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -316,11 +425,17 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       if (!res.ok) {
         throw new Error(json?.message || 'Failed to recalculate row.')
       }
-      setRefreshKey((prev) => prev + 1)
+      const isUpdated = await waitForLatestCalculation({ targetRowIds: [row.id], baselineMap })
+      if (isUpdated) {
+        showToast('Recalculating latest commission data...done.', 'success')
+      } else {
+        showToast('Calculation is still processing, latest values may take a moment to appear.', 'warning')
+      }
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to recalculate row.')
+      showToast(error instanceof Error ? error.message : 'Failed to recalculate row.', 'error')
     } finally {
       setActionLoadingId(null)
+      setRecalculatingRowIds((prev) => prev.filter((id) => id !== row.id))
     }
   }
 
@@ -353,6 +468,22 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
 
   return (
     <div className="space-y-6">
+      {toast ? (
+        <div className="fixed right-4 top-4 z-[60]">
+          <div className={`rounded-md px-4 py-3 text-sm text-white shadow-lg ${
+            toast.tone === 'success'
+              ? 'bg-emerald-600'
+              : toast.tone === 'warning'
+                ? 'bg-amber-600'
+                : toast.tone === 'error'
+                  ? 'bg-rose-600'
+                  : 'bg-slate-700'
+          }`}>
+            {toast.message}
+          </div>
+        </div>
+      ) : null}
+
       {isFilterOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/50" onClick={() => setIsFilterOpen(false)} />
@@ -480,7 +611,9 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                 disabled={monthActionLoading}
               >
                 {monthActionLoading
-                  ? 'Processing...'
+                  ? monthActionType === 'recalculate'
+                    ? 'Calculating...'
+                    : 'Processing...'
                   : monthActionType === 'freeze'
                     ? 'Freeze Month'
                     : monthActionType === 'reopen'
@@ -502,9 +635,9 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
             type="button"
             onClick={() => openMonthActionModal('recalculate')}
             className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
-            disabled={loading}
+            disabled={loading || isMonthlyRecalculating}
           >
-            Monthly Calculation
+            {isMonthlyRecalculating ? 'Calculating...' : 'Monthly Calculation'}
           </button>
           <button
             type="button"
@@ -573,6 +706,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                   : Number(row.commission_amount || 0)
                 const status = row.status ?? 'OPEN'
                 const tierDisplay = Number(row.tier_percent_snapshot ?? row.tier_percent ?? 0).toFixed(2)
+                const rowValueLoading = isMonthlyRecalculating || recalculatingRowIds.includes(row.id)
 
                 return (
                   <tr key={row.id} className="hover:bg-gray-50">
@@ -583,17 +717,29 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                         {status}
                       </span>
                     </td>
-                    <td className="px-4 py-2 border border-gray-200">RM {formatAmount(Number(row.total_sales || 0))}</td>
-                    <td className="px-4 py-2 border border-gray-200">{row.booking_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">{tierDisplay}%</td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <div className="flex flex-col">
-                        <span>RM {formatAmount(commissionAmount)}</span>
-                        {row.is_overridden && <span className="text-xs text-amber-600">(Overridden)</span>}
-                      </div>
+                      {rowValueLoading ? <span className="inline-block h-4 w-20 animate-pulse rounded bg-slate-200" /> : `RM ${formatAmount(Number(row.total_sales || 0))}`}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <div className="text-xs text-gray-600">{formatDateTime(row.calculated_at)}</div>
+                      {rowValueLoading ? <span className="inline-block h-4 w-12 animate-pulse rounded bg-slate-200" /> : row.booking_count}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      {rowValueLoading ? <span className="inline-block h-4 w-14 animate-pulse rounded bg-slate-200" /> : `${tierDisplay}%`}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      {rowValueLoading ? (
+                        <span className="inline-block h-4 w-24 animate-pulse rounded bg-slate-200" />
+                      ) : (
+                        <div className="flex flex-col">
+                          <span>RM {formatAmount(commissionAmount)}</span>
+                          {row.is_overridden && <span className="text-xs text-amber-600">(Overridden)</span>}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      <div className="text-xs text-gray-600">
+                        {rowValueLoading ? <span className="inline-block h-3 w-28 animate-pulse rounded bg-slate-200" /> : formatDateTime(row.calculated_at)}
+                      </div>
                       <div className="text-xs text-gray-500">F: {formatDateTime(row.frozen_at)}</div>
                       <div className="text-xs text-gray-500">R: {formatDateTime(row.reopened_at)}</div>
                     </td>
@@ -601,11 +747,11 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                       <div className="flex items-center gap-3">
                         <button
                           type="button"
-                          disabled={actionLoadingId === row.id}
+                          disabled={actionLoadingId === row.id || isMonthlyRecalculating}
                           onClick={() => void handleRowRecalculate(row)}
                           className="text-indigo-600 hover:text-indigo-800 text-sm disabled:text-gray-400 disabled:cursor-not-allowed"
                         >
-                          Recalculate
+                          {recalculatingRowIds.includes(row.id) ? 'Recalculating...' : 'Recalculate'}
                         </button>
                         <button
                           type="button"
