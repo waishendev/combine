@@ -10,15 +10,18 @@ return new class extends Migration {
     {
         Schema::create('staff_commission_tiers', function (Blueprint $table) {
             $table->id();
+            $table->string('type', 20)->default('BOOKING');
             $table->decimal('min_sales', 12, 2);
             $table->decimal('commission_percent', 5, 2);
             $table->timestamps();
 
-            $table->index('min_sales');
+            $table->index(['type', 'min_sales']);
+            $table->unique(['type', 'min_sales']);
         });
 
         Schema::create('staff_monthly_sales', function (Blueprint $table) {
             $table->id();
+            $table->string('type', 20)->default('BOOKING');
             $table->foreignId('staff_id')->constrained('staffs')->cascadeOnDelete();
             $table->unsignedSmallInteger('year');
             $table->unsignedTinyInteger('month');
@@ -30,14 +33,17 @@ return new class extends Migration {
             $table->decimal('override_amount', 12, 2)->nullable();
             $table->timestamps();
 
-            $table->unique(['staff_id', 'year', 'month']);
-            $table->index(['year', 'month']);
+            $table->unique(['type', 'staff_id', 'year', 'month']);
+            $table->index(['type', 'year', 'month']);
         });
 
         DB::table('staff_commission_tiers')->insert([
-            ['min_sales' => 0, 'commission_percent' => 0, 'created_at' => now(), 'updated_at' => now()],
-            ['min_sales' => 5000, 'commission_percent' => 5, 'created_at' => now(), 'updated_at' => now()],
-            ['min_sales' => 8000, 'commission_percent' => 10, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'BOOKING', 'min_sales' => 0, 'commission_percent' => 2, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'BOOKING', 'min_sales' => 5000, 'commission_percent' => 5, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'BOOKING', 'min_sales' => 8000, 'commission_percent' => 10, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'ECOMMERCE', 'min_sales' => 0, 'commission_percent' => 1, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'ECOMMERCE', 'min_sales' => 5000, 'commission_percent' => 5, 'created_at' => now(), 'updated_at' => now()],
+            ['type' => 'ECOMMERCE', 'min_sales' => 8000, 'commission_percent' => 10, 'created_at' => now(), 'updated_at' => now()],
         ]);
     }
 
@@ -47,4 +53,3 @@ return new class extends Migration {
         Schema::dropIfExists('staff_commission_tiers');
     }
 };
-

@@ -5,8 +5,6 @@ import { redirect } from 'next/navigation'
 
 import BookingCommissionTiersTable from '@/components/booking/BookingCommissionTiersTable'
 import { getCurrentUser } from '@/lib/auth'
-import { getTranslator } from '@/lib/i18n-server'
-import type { LangCode } from '@/lib/i18n'
 
 export default async function Page() {
   const user = await getCurrentUser()
@@ -23,10 +21,6 @@ export default async function Page() {
   if (!hasPermission) {
     redirect('/dashboard')
   }
-
-  // Default to EN for now, can be extended later for multi-language support
-  const lang: LangCode = 'EN'
-  const t = await getTranslator(lang)
 
   return (
     <div className="overflow-y-auto py-6 px-10">

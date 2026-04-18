@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 
 import type { CustomerRowData } from './CustomerRow'
 import { mapCustomerApiItemToRow, type CustomerApiItem } from './customerUtils'
@@ -16,6 +16,7 @@ interface FormState {
   email: string
   phone: string
   password: string
+  customerTypeId: string
 }
 
 const initialFormState: FormState = {
@@ -23,6 +24,7 @@ const initialFormState: FormState = {
   email: '',
   phone: '',
   password: '',
+  customerTypeId: '',
 }
 
 export default function CustomerCreateModal({
@@ -33,6 +35,7 @@ export default function CustomerCreateModal({
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [customerTypes, setCustomerTypes] = useState<Array<{ id: number; name: string }>>([])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -40,6 +43,31 @@ export default function CustomerCreateModal({
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
   }
+
+  useEffect(() => {
+    const loadCustomerTypes = async () => {
+      try {
+        const res = await fetch('/api/proxy/customer-types?per_page=200', { cache: 'no-store' })
+        const data = await res.json().catch(() => null)
+        const rows = Array.isArray(data?.data?.data) ? data.data.data : Array.isArray(data?.data) ? data.data : []
+        const mapped = rows
+          .map((item: unknown) => {
+            if (!item || typeof item !== 'object') return null
+            const rawId = (item as { id?: unknown }).id
+            const rawName = (item as { name?: unknown }).name
+            const id = typeof rawId === 'number' ? rawId : Number(rawId)
+            if (!Number.isFinite(id) || typeof rawName !== 'string') return null
+            return { id, name: rawName }
+          })
+          .filter((item): item is { id: number; name: string } => item !== null)
+        setCustomerTypes(mapped)
+      } catch {
+        setCustomerTypes([])
+      }
+    }
+
+    loadCustomerTypes().catch(() => setCustomerTypes([]))
+  }, [])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -49,7 +77,7 @@ export default function CustomerCreateModal({
     const trimmedPhone = form.phone.trim()
     const trimmedPassword = form.password.trim()
 
-    if (!trimmedName || !trimmedEmail || !trimmedPhone || !trimmedPassword) {
+    if (!trimmedName || !trimmedEmail || !trimmedPhone || !trimmedPassword || !form.customerTypeId) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -69,6 +97,7 @@ export default function CustomerCreateModal({
           email: trimmedEmail,
           phone: trimmedPhone,
           password: trimmedPassword,
+          customer_type_id: Number(form.customerTypeId),
           is_active: true,
         }),
       })
@@ -110,6 +139,7 @@ export default function CustomerCreateModal({
             email: trimmedEmail,
             phone: trimmedPhone,
             tier: '-',
+            type: customerTypes.find((item) => String(item.id) === form.customerTypeId)?.name ?? '-',
             isActive: true,
             createdAt: '',
             updatedAt: '',
@@ -204,6 +234,30 @@ export default function CustomerCreateModal({
               placeholder="Enter phone"
               disabled={submitting}
             />
+          </div>
+
+          <div>
+            <label
+              htmlFor="customerTypeId"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Type <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="customerTypeId"
+              name="customerTypeId"
+              value={form.customerTypeId}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              disabled={submitting}
+            >
+              <option value="">Select type</option>
+              {customerTypes.map((type) => (
+                <option key={type.id} value={String(type.id)}>
+                  {type.name}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div>

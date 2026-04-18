@@ -3,7 +3,7 @@ export const dynamic = 'force-dynamic'
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
-import BookingCommissionsTable from '@/components/booking/BookingCommissionsTable'
+import StaffCommissionsTable from '@/components/commissions/StaffCommissionsTable'
 import { getCurrentUser } from '@/lib/auth'
 
 export default async function Page() {
@@ -13,7 +13,6 @@ export default async function Page() {
     redirect('/login')
   }
 
-  // Check if user has permission to view booking commissions
   const hasPermission = user.permissions.some(
     (perm) => perm === 'booking.commissions.view' || perm === 'booking.commissions.override',
   )
@@ -32,7 +31,7 @@ export default async function Page() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Staff Commissions</h2>
-      <BookingCommissionsTable />
+      <StaffCommissionsTable type="BOOKING" routeBasePath="/booking/commissions" countLabel="Booking Count" />
     </div>
   )
 }

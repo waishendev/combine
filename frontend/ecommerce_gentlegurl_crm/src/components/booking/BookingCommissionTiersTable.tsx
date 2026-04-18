@@ -37,9 +37,13 @@ type CommissionTierApiResponse = {
 
 interface BookingCommissionTiersTableProps {
   permissions?: string[]
+  tierType?: 'BOOKING' | 'ECOMMERCE'
 }
 
-export default function BookingCommissionTiersTable({ permissions = [] }: BookingCommissionTiersTableProps) {
+export default function BookingCommissionTiersTable({
+  permissions = [],
+  tierType = 'BOOKING',
+}: BookingCommissionTiersTableProps) {
   const { t } = useI18n()
   const [tiers, setTiers] = useState<Tier[]>([])
   const [pageSize, setPageSize] = useState(50)
@@ -67,6 +71,7 @@ export default function BookingCommissionTiersTable({ permissions = [] }: Bookin
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
+      qs.set('type', tierType)
 
       const res = await fetch(`/api/proxy/admin/booking/commission-tiers?${qs.toString()}`, {
         cache: 'no-store',
@@ -133,7 +138,7 @@ export default function BookingCommissionTiersTable({ permissions = [] }: Bookin
     } finally {
       setLoading(false)
     }
-  }, [currentPage, pageSize])
+  }, [currentPage, pageSize, tierType])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -159,7 +164,7 @@ export default function BookingCommissionTiersTable({ permissions = [] }: Bookin
     const res = await fetch(url, {
       method,
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ min_sales: minSales, commission_percent: percent }),
+      body: JSON.stringify({ type: tierType, min_sales: minSales, commission_percent: percent }),
     })
 
     if (!res.ok) {

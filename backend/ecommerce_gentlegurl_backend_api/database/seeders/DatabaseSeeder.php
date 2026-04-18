@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
             StoreLocationsSeederReal::class,
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
+            CustomerTypeSeeder::class,
 
             SuperAdminRoleSeeder::class,
             SuperAdminSeeder::class,
@@ -50,7 +51,7 @@ class DatabaseSeeder extends Seeder
             BookingTestingSeeder::class,
             BookingLeaveTestingSeeder::class,
             ServicePackageTestingSeeder::class,
-
+            CommissionTestingSeeder::class,
             //ReturnDemoSeeder::class,
             // SalesReportSeeder::class,
             //ReturnRequestSeeder::class,

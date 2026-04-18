@@ -33,6 +33,8 @@ class CustomerController extends Controller
             ->when($request->filled('phone'), fn($q) => $q->where('phone', $request->string('phone')->toString()))
             ->when($request->filled('tier'), fn($q) => $q->where('tier', $request->string('tier')->toString()))
             ->when($request->filled('is_active'), fn($q) => $q->where('is_active', $request->boolean('is_active')))
+            ->when($request->filled('customer_type_id'), fn($q) => $q->where('customer_type_id', $request->integer('customer_type_id')))
+            ->when($request->filled('type'), fn($q) => $q->whereHas('customerType', fn($typeQuery) => $typeQuery->where('name', $request->string('type')->toString())))
             ->when($request->filled('created_from'), fn($q) => $q->whereDate('created_at', '>=', $request->date('created_from')))
             ->when($request->filled('created_to'), fn($q) => $q->whereDate('created_at', '<=', $request->date('created_to')))
             ->orderByDesc('created_at')
@@ -51,6 +53,7 @@ class CustomerController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['nullable', 'string', 'max:30', 'unique:customers,phone'],
             'tier' => ['sometimes', 'string'],
+            'customer_type_id' => ['nullable', 'integer', 'exists:customer_types,id'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -77,6 +80,7 @@ class CustomerController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:30', Rule::unique('customers', 'phone')->ignore($customer->id)],
             'tier' => ['sometimes', 'string'],
+            'customer_type_id' => ['nullable', 'integer', 'exists:customer_types,id'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
 
@@ -204,6 +208,8 @@ class CustomerController extends Controller
         return [
             'id' => $customer->id,
             'name' => $customer->name,
+            'customer_type_id' => $customer->customer_type_id,
+            'type' => $customer->customerType?->name,
             'email' => $customer->email,
             'phone' => $customer->phone,
             'tier' => $customer->tier,

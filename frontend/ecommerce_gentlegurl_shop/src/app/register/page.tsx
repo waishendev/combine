@@ -118,6 +118,7 @@ export default function RegisterPage() {
             ) : (
               <>
                 <RegisterForm
+                  registrationType="product"
                   onSubmittingChange={(submitting) => {
                     setIsSubmitting(submitting);
                     // When form submission completes (submitting becomes false),

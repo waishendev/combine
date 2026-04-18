@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Concerns\ResolvesCurrentCustomer;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Customer;
+use App\Models\Ecommerce\CustomerType;
 use App\Services\Ecommerce\CartService;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Auth\Events\Verified;
@@ -34,9 +35,15 @@ class PublicCustomerAuthController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['nullable', 'string', 'max:50'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
+            'type' => ['required', 'string', 'max:100'],
+        ]);
+
+        $customerType = CustomerType::firstOrCreate([
+            'name' => trim((string) $validated['type']),
         ]);
 
         $customer = Customer::create([
+            'customer_type_id' => $customerType->id,
             'name' => $validated['name'],
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
@@ -298,6 +305,7 @@ class PublicCustomerAuthController extends Controller
             'email' => ['required', 'email'],
             'token' => ['required', 'string'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
+            'type' => ['required', 'string', 'max:100'],
         ]);
 
         $status = Password::broker('customers')->reset(
@@ -366,6 +374,7 @@ class PublicCustomerAuthController extends Controller
         $data = $request->validate([
             'current_password' => ['required', 'string'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
+            'type' => ['required', 'string', 'max:100'],
             'password_confirmation' => ['required', 'string'],
         ]);
 
@@ -392,6 +401,8 @@ class PublicCustomerAuthController extends Controller
             'gender' => $customer->gender,
             'date_of_birth' => optional($customer->date_of_birth)->toDateString(),
             'tier' => $customer->tier,
+            'customer_type_id' => $customer->customer_type_id,
+            'type' => $customer->customerType?->name,
         ];
 
         if ($token) {

@@ -62,7 +62,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
     setSubmitting(true);
     setError(null);
     try {
-      await register(registerForm);
+      await register({ ...registerForm, type: 'product' });
       resetState();
       onClose();
     } catch (err: unknown) {

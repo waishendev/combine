@@ -18,6 +18,7 @@ interface FormState {
   phone: string
   password: string
   isActive: 'true' | 'false'
+  customerTypeId: string
 }
 
 const initialFormState: FormState = {
@@ -26,6 +27,7 @@ const initialFormState: FormState = {
   phone: '',
   password: '',
   isActive: 'true',
+  customerTypeId: '',
 }
 
 export default function CustomerEditModal({
@@ -39,9 +41,31 @@ export default function CustomerEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [loadedCustomer, setLoadedCustomer] = useState<CustomerRowData | null>(null)
+  const [customerTypes, setCustomerTypes] = useState<Array<{ id: number; name: string }>>([])
 
   useEffect(() => {
     const controller = new AbortController()
+
+    const loadCustomerTypes = async () => {
+      try {
+        const res = await fetch('/api/proxy/customer-types?per_page=200', { cache: 'no-store', signal: controller.signal })
+        const data = await res.json().catch(() => null)
+        const rows = Array.isArray(data?.data?.data) ? data.data.data : Array.isArray(data?.data) ? data.data : []
+        const mapped = rows
+          .map((item: unknown) => {
+            if (!item || typeof item !== 'object') return null
+            const rawId = (item as { id?: unknown }).id
+            const rawName = (item as { name?: unknown }).name
+            const id = typeof rawId === 'number' ? rawId : Number(rawId)
+            if (!Number.isFinite(id) || typeof rawName !== 'string') return null
+            return { id, name: rawName }
+          })
+          .filter((item): item is { id: number; name: string } => item !== null)
+        setCustomerTypes(mapped)
+      } catch {
+        setCustomerTypes([])
+      }
+    }
 
     const loadCustomer = async () => {
       setLoading(true)
@@ -94,6 +118,10 @@ export default function CustomerEditModal({
             customer.is_active === true || customer.is_active === 'true' || customer.is_active === 1
               ? 'true'
               : 'false',
+          customerTypeId:
+            customer.customer_type_id === null || customer.customer_type_id === undefined
+              ? ''
+              : String(customer.customer_type_id),
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -103,6 +131,8 @@ export default function CustomerEditModal({
         setLoading(false)
       }
     }
+
+    loadCustomerTypes().catch(() => setCustomerTypes([]))
 
     loadCustomer().catch(() => {
       setLoading(false)
@@ -127,7 +157,7 @@ export default function CustomerEditModal({
     const trimmedPhone = form.phone.trim()
     const trimmedPassword = form.password.trim()
 
-    if (!trimmedName || !trimmedEmail || !trimmedPhone) {
+    if (!trimmedName || !trimmedEmail || !trimmedPhone || !form.customerTypeId) {
       setError(t('common.allFieldsRequired'))
       return
     }
@@ -141,6 +171,7 @@ export default function CustomerEditModal({
         email: trimmedEmail,
         phone: trimmedPhone,
         is_active: form.isActive === 'true',
+        customer_type_id: Number(form.customerTypeId),
         ...(trimmedPassword ? { password: trimmedPassword } : {}),
       }
 
@@ -201,6 +232,7 @@ export default function CustomerEditModal({
             email: trimmedEmail,
             phone: trimmedPhone,
             tier: loadedCustomer?.tier ?? '-',
+            type: customerTypes.find((item) => String(item.id) === form.customerTypeId)?.name ?? loadedCustomer?.type ?? '-',
             isActive: form.isActive === 'true',
             createdAt: loadedCustomer?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
@@ -301,6 +333,30 @@ export default function CustomerEditModal({
                   placeholder="Enter phone"
                   disabled={disableForm}
                 />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-customerTypeId"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Type <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="edit-customerTypeId"
+                  name="customerTypeId"
+                  value={form.customerTypeId}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={disableForm}
+                >
+                  <option value="">Select type</option>
+                  {customerTypes.map((type) => (
+                    <option key={type.id} value={String(type.id)}>
+                      {type.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div>

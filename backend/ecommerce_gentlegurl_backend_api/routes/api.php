@@ -4,6 +4,7 @@ use App\Http\Controllers\AdminController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
+use App\Http\Controllers\CustomerTypeController;
 use App\Http\Controllers\Ecommerce\AnnouncementController;
 use App\Http\Controllers\Ecommerce\BankAccountController;
 use App\Http\Controllers\Ecommerce\CustomerController as EcommerceCustomerController;
@@ -345,6 +346,21 @@ $protectedRoutes = function () {
 
     Route::post('/customers/{customer}/verify-email', [CustomerController::class, 'verifyEmail'])
         ->middleware('permission:customers.verify');
+
+    Route::get('/customer-types', [CustomerTypeController::class, 'index'])
+        ->middleware('permission:customers.view|customers.create|customers.update|pos.checkout');
+
+    Route::post('/customer-types', [CustomerTypeController::class, 'store'])
+        ->middleware('permission:customers.create');
+
+    Route::get('/customer-types/{customerType}', [CustomerTypeController::class, 'show'])
+        ->middleware('permission:customers.view');
+
+    Route::put('/customer-types/{customerType}', [CustomerTypeController::class, 'update'])
+        ->middleware('permission:customers.update');
+
+    Route::delete('/customer-types/{customerType}', [CustomerTypeController::class, 'destroy'])
+        ->middleware('permission:customers.delete');
 
 
     Route::get('/service-packages', [ServicePackageController::class, 'index'])
@@ -1111,6 +1127,11 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)
         ->only(['index', 'store', 'update', 'destroy']);
     Route::get('/commissions', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'index']);
+    Route::get('/commission-logs', [\App\Http\Controllers\Admin\Booking\CommissionLogController::class, 'index']);
+    Route::patch('/commissions/freeze-month', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'freezeMonth']);
+    Route::patch('/commissions/reopen-month', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'reopenMonth']);
     Route::patch('/commissions/{id}/override', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'override']);
+    Route::patch('/commissions/{id}/freeze', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'freeze']);
+    Route::patch('/commissions/{id}/reopen', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'reopen']);
     Route::post('/commissions/recalculate', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'recalculate']);
 });

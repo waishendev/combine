@@ -63,9 +63,11 @@ function Field({
 }
 
 export function RegisterForm({
+  registrationType,
   onSubmittingChange,
   onSuccess,
 }: {
+  registrationType: string;
   onSubmittingChange?: (isSubmitting: boolean) => void;
   onSuccess?: (email: string) => void;
 }) {
@@ -115,7 +117,7 @@ export function RegisterForm({
     setError(null);
 
     try {
-      await register(formState);
+      await register({ ...formState, type: registrationType });
       onSuccess?.(formState.email);
     } catch (err: unknown) {
       setError(extractApiError(err));

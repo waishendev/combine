@@ -1,5 +1,6 @@
 <?php
 
+use App\Jobs\SendDailyOrderSummaryEmailJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -24,5 +25,20 @@ Schedule::command('ecommerce:expire-pending-orders')
 
 Schedule::command('ecommerce:expire-approved-returns')
     ->daily()
+    ->onOneServer()
+    ->withoutOverlapping();
+
+Schedule::command('booking:expire-holds')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping();
+
+Schedule::command('booking:expire-cart-items')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping();
+
+Schedule::job(new SendDailyOrderSummaryEmailJob())
+    ->dailyAt('10:00')
     ->onOneServer()
     ->withoutOverlapping();

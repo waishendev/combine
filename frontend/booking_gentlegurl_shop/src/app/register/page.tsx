@@ -107,6 +107,7 @@ function RegisterPageContent() {
               ) : (
                 <>
                   <RegisterForm
+                    registrationType="nail salon"
                     onSubmittingChange={(submitting) => {
                       setIsSubmitting(submitting);
                       if (!submitting) {
