@@ -30,6 +30,12 @@ class OfflineOrderManagementService
                 'oi.display_name_snapshot',
                 'oi.customer_service_package_id',
                 'oi.quantity',
+                'oi.effective_unit_price',
+                'oi.unit_price_snapshot',
+                'oi.price_snapshot',
+                'oi.effective_line_total',
+                'oi.line_total_after_discount',
+                'oi.line_total',
             ]);
 
         $orderItemIds = $items->pluck('id')->map(fn ($v) => (int) $v)->all();
@@ -72,6 +78,8 @@ class OfflineOrderManagementService
                 'item_type' => $isPackage ? 'service_package' : 'product',
                 'name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Item'),
                 'qty' => (int) ($item->quantity ?? 0),
+                'unit_amount' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
+                'line_total' => (float) ($item->effective_line_total ?? $item->line_total_after_discount ?? $item->line_total ?? 0),
                 'customer_service_package_id' => $item->customer_service_package_id ? (int) $item->customer_service_package_id : null,
                 'splits' => $splitRows->map(fn ($split) => [
                     'staff_id' => (int) ($split->staff_id ?? 0),
