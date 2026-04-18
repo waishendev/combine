@@ -10,6 +10,7 @@ type RegisterPayload = {
   phone: string;
   password: string;
   password_confirmation: string;
+  type: string;
 };
 
 type AuthContextValue = {

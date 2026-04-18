@@ -499,6 +499,7 @@ export async function changeCustomerPassword(payload: {
   current_password: string;
   password: string;
   password_confirmation: string;
+  type: string;
 }) {
   return put<{ data: CustomerProfileWithAddresses }>("/public/auth/password", payload);
 }
@@ -547,6 +548,7 @@ export async function registerCustomer(payload: {
   phone: string;
   password: string;
   password_confirmation: string;
+  type: string;
 }) {
   return post<{ success: boolean }>("/public/auth/register", payload);
 }
@@ -584,6 +586,7 @@ export async function resetCustomerPassword(payload: {
   token: string;
   password: string;
   password_confirmation: string;
+  type: string;
 }) {
   return post<{ success: boolean; message?: string }>("/public/shop/auth/password/reset", payload);
 }

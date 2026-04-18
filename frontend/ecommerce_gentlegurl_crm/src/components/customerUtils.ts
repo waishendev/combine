@@ -6,6 +6,8 @@ export type CustomerApiItem = {
   email?: string | null
   phone?: string | null
   tier?: string | null
+  customer_type_id?: number | string | null
+  type?: string | null
   tier_marked_pending_at?: string | null
   tier_effective_at?: string | null
   is_active?: boolean | number | string | null
@@ -39,6 +41,7 @@ export const mapCustomerApiItemToRow = (item: CustomerApiItem): CustomerRowData 
     email: item.email ?? '-',
     phone: item.phone ?? '-',
     tier: item.tier ?? '-',
+    type: item.type ?? '-',
     isActive,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',

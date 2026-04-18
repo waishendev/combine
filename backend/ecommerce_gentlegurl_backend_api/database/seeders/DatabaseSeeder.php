@@ -27,6 +27,7 @@ class DatabaseSeeder extends Seeder
             StoreLocationsSeederReal::class,
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
+            CustomerTypeSeeder::class,
 
             SuperAdminRoleSeeder::class,
             SuperAdminSeeder::class,

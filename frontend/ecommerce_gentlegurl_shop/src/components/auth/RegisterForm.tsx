@@ -65,9 +65,11 @@ function Field({
 }
 
 export function RegisterForm({
+  registrationType,
   onSubmittingChange,
   onSuccess,
 }: {
+  registrationType: string;
   onSubmittingChange?: (isSubmitting: boolean) => void;
   onSuccess?: (email: string) => void;
 }) {
@@ -117,7 +119,7 @@ export function RegisterForm({
     setError(null);
 
     try {
-      await register(formState);
+      await register({ ...formState, type: registrationType });
       // Registration successful - call onSuccess callback
       // This will show the success message, not redirect
       onSuccess?.(formState.email);

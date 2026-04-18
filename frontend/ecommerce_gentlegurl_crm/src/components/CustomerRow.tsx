@@ -9,6 +9,7 @@ export interface CustomerRowData {
   email: string
   phone: string
   tier: string
+  type?: string
   isActive: boolean
   createdAt: string
   updatedAt: string

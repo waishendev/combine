@@ -197,6 +197,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             requiredPermission: 'customers.view',
           },
           {
+            key: 'customer-types',
+            label: 'Customer Types',
+            href: '/customer-types',
+            requiredPermission: 'customers.view',
+          },
+          {
             key: 'membership',
             label: 'Membership',
             href: '/membership',
