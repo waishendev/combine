@@ -126,12 +126,9 @@ class OfflineOrderManagementService
                 }
 
                 $splits = collect($itemSplit['splits'] ?? []);
-                if ($splits->isEmpty()) {
-                    throw new RuntimeException('Each item must have at least one staff split.');
-                }
                 $sum = (int) $splits->sum(fn (array $row) => (int) ($row['share_percent'] ?? 0));
                 $unique = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->count();
-                if ($sum !== 100 || $unique !== $splits->count()) {
+                if (! $splits->isEmpty() && ($sum !== 100 || $unique !== $splits->count())) {
                     throw new RuntimeException('Invalid staff split. Total must be 100% and staffs must be unique.');
                 }
 
@@ -178,7 +175,9 @@ class OfflineOrderManagementService
                         ];
                     })->values()->all();
 
-                    DB::table('service_package_staff_splits')->insert($rows);
+                    if (! empty($rows)) {
+                        DB::table('service_package_staff_splits')->insert($rows);
+                    }
 
                     $after = DB::table('service_package_staff_splits')
                         ->where('customer_service_package_id', (int) $orderItem->customer_service_package_id)
@@ -204,7 +203,9 @@ class OfflineOrderManagementService
                         ];
                     })->values()->all();
 
-                    DB::table('order_item_staff_splits')->insert($rows);
+                    if (! empty($rows)) {
+                        DB::table('order_item_staff_splits')->insert($rows);
+                    }
 
                     $after = DB::table('order_item_staff_splits')
                         ->where('order_item_id', $orderItemId)
@@ -261,7 +262,9 @@ class OfflineOrderManagementService
             throw new RuntimeException('Order is not in a valid status for void.');
         }
 
-        DB::transaction(function () use ($order, $remark, $actorId) {
+        $bookingRecalculateTargets = [];
+
+        DB::transaction(function () use ($order, $remark, $actorId, &$bookingRecalculateTargets) {
             $order->refresh();
             if ($order->status === 'voided') {
                 throw new RuntimeException('This order is already voided.');
@@ -312,6 +315,17 @@ class OfflineOrderManagementService
                     ->get();
 
                 foreach ($bookings as $booking) {
+                    if ($booking->staff_id && $booking->completed_at) {
+                        $completedAt = $booking->completed_at instanceof Carbon
+                            ? $booking->completed_at
+                            : Carbon::parse((string) $booking->completed_at);
+                        $bookingRecalculateTargets[] = [
+                            'staff_id' => (int) $booking->staff_id,
+                            'year' => (int) $completedAt->format('Y'),
+                            'month' => (int) $completedAt->format('m'),
+                        ];
+                    }
+
                     $beforeBooking = [
                         'status' => $booking->status,
                         'payment_status' => $booking->payment_status,
@@ -386,8 +400,48 @@ class OfflineOrderManagementService
         });
 
         $this->recalculateEcommerceCommissionForOrderMonth($order, 'void_order', $remark, $actorId);
+        $this->recalculateBookingCommissionsForTargets($bookingRecalculateTargets, $order, 'void_order', $remark, $actorId);
 
         return $order->fresh();
+    }
+
+    private function recalculateBookingCommissionsForTargets(
+        array $targets,
+        Order $order,
+        string $actionType,
+        ?string $remark,
+        ?int $actorId,
+    ): void {
+        $frozenCount = 0;
+
+        foreach (collect($targets)->unique(fn (array $target) => implode('-', [$target['staff_id'], $target['year'], $target['month']]))->values() as $target) {
+            $row = $this->staffCommissionService->recalculateForStaffMonth(
+                (int) $target['staff_id'],
+                (int) $target['year'],
+                (int) $target['month'],
+                StaffCommissionService::TYPE_BOOKING,
+                false,
+            );
+
+            if (strtoupper((string) ($row->status ?? '')) === StaffCommissionService::STATUS_FROZEN) {
+                $frozenCount++;
+            }
+        }
+
+        if ($frozenCount > 0) {
+            $this->log(
+                'order',
+                (int) $order->id,
+                $actionType,
+                null,
+                [
+                    'booking_commission_recalculation' => 'skipped_for_frozen_month',
+                    'frozen_staff_month_count' => $frozenCount,
+                ],
+                $remark,
+                $actorId,
+            );
+        }
     }
 
     private function recalculateEcommerceCommissionForOrderMonth(

@@ -33,7 +33,7 @@ class OfflineOrderManagementController extends Controller
         $validated = $request->validate([
             'item_splits' => ['required', 'array', 'min:1'],
             'item_splits.*.order_item_id' => ['required', 'integer'],
-            'item_splits.*.splits' => ['required', 'array', 'min:1'],
+            'item_splits.*.splits' => ['required', 'array'],
             'item_splits.*.splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'item_splits.*.splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
             'remark' => ['nullable', 'string', 'max:1000'],

@@ -120,7 +120,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
               share_percent: Number(split.share_percent),
               search: split.staff_name ?? '',
             }))
-          : [createSplitRow({ share_percent: 100 })]
+          : []
 
         return {
           order_item_id: Number(row.order_item_id),
@@ -155,7 +155,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
   }
 
   const validateItem = (item: ItemSplitDraft): string | null => {
-    if (item.rows.length === 0) return `${item.name}: please add at least one staff row.`
+    if (item.rows.length === 0) return null
     const seen = new Set<number>()
     const total = item.rows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)
     for (const row of item.rows) {
