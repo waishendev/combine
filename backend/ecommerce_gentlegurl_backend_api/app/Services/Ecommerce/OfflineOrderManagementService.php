@@ -9,12 +9,18 @@ use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Staff;
+use App\Services\Booking\StaffCommissionService;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
 class OfflineOrderManagementService
 {
     private const ALLOWED_VOID_STATUSES = ['paid', 'completed', 'confirmed', 'packed', 'shipped', 'ready_for_pickup'];
+
+    public function __construct(private StaffCommissionService $staffCommissionService)
+    {
+    }
 
     public function getSalesPersonDraft(Order $order): array
     {
@@ -220,6 +226,8 @@ class OfflineOrderManagementService
             }
         });
 
+        $this->recalculateEcommerceCommissionForOrderMonth($order, 'edit_sales_person', $remark, $actorId);
+
         return $order;
     }
 
@@ -377,7 +385,48 @@ class OfflineOrderManagementService
             }
         });
 
+        $this->recalculateEcommerceCommissionForOrderMonth($order, 'void_order', $remark, $actorId);
+
         return $order->fresh();
+    }
+
+    private function recalculateEcommerceCommissionForOrderMonth(
+        Order $order,
+        string $actionType,
+        ?string $remark,
+        ?int $actorId,
+    ): void {
+        $at = $order->created_at instanceof Carbon
+            ? $order->created_at
+            : Carbon::parse((string) $order->created_at);
+
+        $rows = $this->staffCommissionService->recalculateForMonthAll(
+            (int) $at->format('Y'),
+            (int) $at->format('m'),
+            StaffCommissionService::TYPE_ECOMMERCE,
+            false,
+        );
+
+        $frozenCount = collect($rows)
+            ->filter(fn ($row) => strtoupper((string) ($row->status ?? '')) === StaffCommissionService::STATUS_FROZEN)
+            ->count();
+
+        if ($frozenCount > 0) {
+            $this->log(
+                'order',
+                (int) $order->id,
+                $actionType,
+                null,
+                [
+                    'commission_recalculation' => 'skipped_for_frozen_month',
+                    'frozen_staff_count' => $frozenCount,
+                    'year' => (int) $at->format('Y'),
+                    'month' => (int) $at->format('m'),
+                ],
+                $remark,
+                $actorId,
+            );
+        }
     }
 
     private function ensureOfflineOrder(Order $order): void

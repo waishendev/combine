@@ -222,6 +222,7 @@ export default function SalesChannelReportPage({
   const [pagination, setPagination] = useState<Pagination>({ total: 0, per_page: DEFAULT_PAGE_SIZE, current_page: 1, last_page: 1 })
   const [loading, setLoading] = useState(true)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     setInputs(resolved)
@@ -276,7 +277,7 @@ export default function SalesChannelReportPage({
 
     void fetchData()
     return () => controller.abort()
-  }, [mode, resolved])
+  }, [mode, resolved, refreshKey])
 
   const updateQuery = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString())
@@ -538,7 +539,7 @@ export default function SalesChannelReportPage({
                         orderId={row.order_id}
                         channel={row.channel}
                         currentPaymentMethod={row.payment_method}
-                        onDone={() => updateQuery({ [pageKey]: String(resolved.page) })}
+                        onDone={() => setRefreshKey((prev) => prev + 1)}
                       />
                     </td>
                   </tr>
@@ -566,7 +567,7 @@ export default function SalesChannelReportPage({
                       orderId={row.order_id}
                       channel={row.channel}
                       currentPaymentMethod={row.payment_method}
-                      onDone={() => updateQuery({ [pageKey]: String(resolved.page) })}
+                      onDone={() => setRefreshKey((prev) => prev + 1)}
                     />
                   </td>
                 </tr>
