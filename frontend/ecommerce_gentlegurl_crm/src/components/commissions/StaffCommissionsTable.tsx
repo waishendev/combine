@@ -337,17 +337,27 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
 
   const handleMonthAction = async () => {
     if (!monthActionType) return
+    const selectedAction = monthActionType
+    const selectedYear = Number(monthActionForm.year)
+    const selectedMonth = Number(monthActionForm.month)
     setMonthActionLoading(true)
     try {
-      const isRecalculate = monthActionType === 'recalculate'
+      const isRecalculate = selectedAction === 'recalculate'
+      const targetRowIds = rows
+        .filter((row) => row.year === selectedYear && row.month === selectedMonth)
+        .map((row) => row.id)
+
       if (isRecalculate) {
         setIsMonthlyRecalculating(true)
-        setRecalculatingRowIds(rows.map((row) => row.id))
+        setRecalculatingRowIds(targetRowIds)
         showToast('Monthly calculation started...', 'info')
+        setMonthActionType(null)
       }
-      const endpoint = monthActionType === 'freeze' ? 'freeze-month' : 'reopen-month'
+      const endpoint = selectedAction === 'freeze' ? 'freeze-month' : 'reopen-month'
       const baselineMap = rows.reduce<Record<number, number | null>>((carry, row) => {
-        carry[row.id] = row.calculated_at ? new Date(row.calculated_at).getTime() : null
+        if (targetRowIds.includes(row.id)) {
+          carry[row.id] = row.calculated_at ? new Date(row.calculated_at).getTime() : null
+        }
         return carry
       }, {})
       const res = isRecalculate
@@ -356,8 +366,8 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               type,
-              year: Number(monthActionForm.year),
-              month: Number(monthActionForm.month),
+              year: selectedYear,
+              month: selectedMonth,
             }),
           })
         : await fetch(`/api/proxy/admin/booking/commissions/${endpoint}`, {
@@ -365,8 +375,8 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               type,
-              year: Number(monthActionForm.year),
-              month: Number(monthActionForm.month),
+              year: selectedYear,
+              month: selectedMonth,
             }),
           })
       const json = await res.json().catch(() => ({}))
@@ -374,23 +384,28 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
         throw new Error(json?.message || 'Failed to update selected month.')
       }
       if (isRecalculate) {
-        const watchedRowIds = rows.map((row) => row.id)
-        const isUpdated = await waitForLatestCalculation({ targetRowIds: watchedRowIds, baselineMap })
-        if (isUpdated) {
-          showToast(`Monthly recalculation completed. Updated rows: ${json?.data?.count ?? watchedRowIds.length}`, 'success')
+        const watchedRowIds = targetRowIds
+        if (watchedRowIds.length === 0) {
+          await refetchTable({ silent: true })
+          showToast('Monthly recalculation started for selected month.', 'success')
         } else {
-          showToast('Calculation is still processing, latest values may take a moment to appear.', 'warning')
+          const isUpdated = await waitForLatestCalculation({ targetRowIds: watchedRowIds, baselineMap })
+          if (isUpdated) {
+            showToast(`Monthly recalculation completed. Updated rows: ${json?.data?.count ?? watchedRowIds.length}`, 'success')
+          } else {
+            showToast('Calculation is still processing, latest values may take a moment to appear.', 'warning')
+          }
         }
       } else {
-        showToast(`${monthActionType === 'freeze' ? 'Freeze' : 'Reopen'} month done. Updated rows: ${json?.data?.updated_count ?? 0}`, 'success')
+        showToast(`${selectedAction === 'freeze' ? 'Freeze' : 'Reopen'} month done. Updated rows: ${json?.data?.updated_count ?? 0}`, 'success')
         void refetchTable()
+        setMonthActionType(null)
       }
-      setMonthActionType(null)
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Failed to update selected month.', 'error')
     } finally {
       setMonthActionLoading(false)
-      if (monthActionType === 'recalculate') {
+      if (selectedAction === 'recalculate') {
         setIsMonthlyRecalculating(false)
         setRecalculatingRowIds([])
       }
