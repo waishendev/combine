@@ -12,7 +12,8 @@ class RecalculateBookingCommissionCommand extends Command
         {month? : Target month (1-12)}
         {--staff_id= : Optional staff id. If omitted recalculates all staff in the month}
         {--type=BOOKING : Commission type (BOOKING or ECOMMERCE)}
-        {--all : Recalculate all available months for the selected type}';
+        {--all : Recalculate all available months for the selected type}
+        {--force : Force recalculation even for FROZEN months}';
 
     protected $description = 'Recalculate monthly commission by type for a staff or all staff';
 
@@ -30,14 +31,26 @@ class RecalculateBookingCommissionCommand extends Command
         $staffId = $this->option('staff_id');
         $type = $this->staffCommissionService->normalizeType((string) $this->option('type'));
         $runAll = (bool) $this->option('all');
+        $force = (bool) $this->option('force');
 
         if ($runAll) {
             $rows = $this->staffCommissionService->recalculateAllMonths(
                 $staffId !== null && $staffId !== '' ? (int) $staffId : null,
-                $type
+                $type,
+                $force
             );
             $scope = $staffId !== null && $staffId !== '' ? ('staff #' . (int) $staffId) : 'all staff';
             $this->info(sprintf('Recalculated %d rows across all available months for %s (%s).', count($rows), $type, $scope));
+            foreach ($rows as $row) {
+                $this->staffCommissionService->logAction(
+                    'RECALCULATE',
+                    $row,
+                    null,
+                    $row->only(['total_sales', 'booking_count', 'commission_amount', 'tier_percent_snapshot', 'status']),
+                    null,
+                    sprintf('Command recalculate --all%s', $force ? ' --force' : '')
+                );
+            }
 
             return self::SUCCESS;
         }
@@ -53,7 +66,15 @@ class RecalculateBookingCommissionCommand extends Command
         }
 
         if ($staffId !== null && $staffId !== '') {
-            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $staffId, $year, $month, $type);
+            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $staffId, $year, $month, $type, $force);
+            $this->staffCommissionService->logAction(
+                'RECALCULATE',
+                $row,
+                null,
+                $row->only(['total_sales', 'booking_count', 'commission_amount', 'tier_percent_snapshot', 'status']),
+                null,
+                sprintf('Command recalculate%s', $force ? ' --force' : '')
+            );
             $this->info(sprintf(
                 'Recalculated %s staff #%d for %04d-%02d => sales: %.2f, items: %d, tier: %.2f%%, commission: %.2f',
                 $row->type,
@@ -69,7 +90,17 @@ class RecalculateBookingCommissionCommand extends Command
             return self::SUCCESS;
         }
 
-        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type);
+        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type, $force);
+        foreach ($rows as $row) {
+            $this->staffCommissionService->logAction(
+                'RECALCULATE',
+                $row,
+                null,
+                $row->only(['total_sales', 'booking_count', 'commission_amount', 'tier_percent_snapshot', 'status']),
+                null,
+                sprintf('Command recalculate%s', $force ? ' --force' : '')
+            );
+        }
         $this->info(sprintf('Recalculated %d %s staff rows for %04d-%02d.', count($rows), $type, $year, $month));
 
         return self::SUCCESS;

@@ -9,6 +9,7 @@ import TableLoadingRow from '@/components/TableLoadingRow'
 import BookingCommissionOverrideModal from '@/components/booking/BookingCommissionOverrideModal'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
+type CommissionStatus = 'OPEN' | 'FROZEN'
 
 type CommissionRow = {
   id: number
@@ -18,7 +19,12 @@ type CommissionRow = {
   total_sales: string | number
   booking_count: number
   tier_percent: string | number
+  tier_percent_snapshot?: string | number | null
   commission_amount: string | number
+  calculated_at?: string | null
+  status?: CommissionStatus
+  frozen_at?: string | null
+  reopened_at?: string | null
   is_overridden: boolean
   override_amount?: string | number | null
   staff?: { id: number; name: string }
@@ -34,7 +40,7 @@ type Pagination = {
 }
 
 type CommissionApiResponse = {
-  data?: CommissionRow[] | {
+  data?: {
     data?: CommissionRow[]
     current_page?: number
     last_page?: number
@@ -52,6 +58,13 @@ const formatAmount = (amount: number) =>
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
+
+const formatDateTime = (value?: string | null) => {
+  if (!value) return '—'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleString()
+}
 
 type Props = {
   type: CommissionType
@@ -94,8 +107,10 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     last_page: 1,
   })
   const [loading, setLoading] = useState(true)
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [overrideTarget, setOverrideTarget] = useState<CommissionRow | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   const loadStaffs = useCallback(async () => {
     try {
@@ -136,62 +151,58 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     router.replace(`${routeBasePath}?${nextParams.toString()}`)
   }, [resolvedParams.hasValidPage, resolvedParams.hasValidPerPage, routeBasePath, router, searchParams])
 
-  useEffect(() => {
-    const controller = new AbortController()
+  const fetchCommissions = useCallback(async (signal?: AbortSignal) => {
+    setLoading(true)
+    const qs = new URLSearchParams()
+    if (resolvedParams.staffId) qs.set('staff_id', resolvedParams.staffId)
+    if (resolvedParams.year) qs.set('year', resolvedParams.year)
+    if (resolvedParams.month) qs.set('month', resolvedParams.month)
+    qs.set('type', type)
+    qs.set('page', String(resolvedParams.page))
+    qs.set('per_page', String(resolvedParams.perPage))
 
-    const fetchCommissions = async () => {
-      setLoading(true)
-      const qs = new URLSearchParams()
-      if (resolvedParams.staffId) qs.set('staff_id', resolvedParams.staffId)
-      if (resolvedParams.year) qs.set('year', resolvedParams.year)
-      if (resolvedParams.month) qs.set('month', resolvedParams.month)
-      qs.set('type', type)
-      qs.set('page', String(resolvedParams.page))
-      qs.set('per_page', String(resolvedParams.perPage))
+    try {
+      const response = await fetch(`/api/proxy/admin/booking/commissions?${qs.toString()}`, {
+        cache: 'no-store',
+        signal,
+      })
 
-      try {
-        const response = await fetch(`/api/proxy/admin/booking/commissions?${qs.toString()}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
-
-        if (!response.ok) {
-          setRows([])
-          setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
-          return
-        }
-
-        const data: CommissionApiResponse = await response.json()
-        const responseData = data.data
-
-        if (!responseData || typeof responseData !== 'object' || !Array.isArray(responseData.data)) {
-          setRows([])
-          setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
-          return
-        }
-
-        setRows(responseData.data)
-        setPagination({
-          total: responseData.total ?? responseData.data.length,
-          per_page: responseData.per_page ?? resolvedParams.perPage,
-          current_page: responseData.current_page ?? resolvedParams.page,
-          last_page: responseData.last_page ?? 1,
-        })
-      } catch {
-        if (controller.signal.aborted) return
+      if (!response.ok) {
         setRows([])
         setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
-      } finally {
-        if (!controller.signal.aborted) {
-          setLoading(false)
-        }
+        return
       }
+
+      const data: CommissionApiResponse = await response.json()
+      const responseData = data.data
+
+      if (!responseData || typeof responseData !== 'object' || !Array.isArray(responseData.data)) {
+        setRows([])
+        setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
+        return
+      }
+
+      setRows(responseData.data)
+      setPagination({
+        total: responseData.total ?? responseData.data.length,
+        per_page: responseData.per_page ?? resolvedParams.perPage,
+        current_page: responseData.current_page ?? resolvedParams.page,
+        last_page: responseData.last_page ?? 1,
+      })
+    } catch {
+      if (signal?.aborted) return
+      setRows([])
+      setPagination((prev) => ({ ...prev, total: 0, last_page: 1 }))
+    } finally {
+      if (!signal?.aborted) setLoading(false)
     }
-
-    void fetchCommissions()
-
-    return () => controller.abort()
   }, [resolvedParams.staffId, resolvedParams.year, resolvedParams.month, resolvedParams.page, resolvedParams.perPage, type])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetchCommissions(controller.signal)
+    return () => controller.abort()
+  }, [fetchCommissions, refreshKey])
 
   const updateQuery = (next: Record<string, string>) => {
     const params = new URLSearchParams(searchParams.toString())
@@ -203,6 +214,24 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       }
     })
     router.push(`${routeBasePath}?${params.toString()}`)
+  }
+
+  const handleStatusAction = async (row: CommissionRow, action: 'freeze' | 'reopen') => {
+    setActionLoadingId(row.id)
+    try {
+      const res = await fetch(`/api/proxy/admin/booking/commissions/${row.id}/${action}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+      })
+      if (!res.ok) {
+        throw new Error('Failed to update month status.')
+      }
+      setRefreshKey((prev) => prev + 1)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to update month status.')
+    } finally {
+      setActionLoadingId(null)
+    }
   }
 
   const summaryCards = useMemo(() => {
@@ -322,31 +351,41 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
             <tr>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Staff</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Period</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Status</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Total Sales</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">{countLabel}</th>
-              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Tier %</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Tier % (Snapshot)</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Commission</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Calculated At</th>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Freeze/Reopen</th>
               <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Actions</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={7} />
+              <TableLoadingRow colSpan={10} />
             ) : rows.length === 0 ? (
-              <TableEmptyState colSpan={7} />
+              <TableEmptyState colSpan={10} />
             ) : (
               rows.map((row) => {
                 const commissionAmount = row.is_overridden && row.override_amount
                   ? Number(row.override_amount)
                   : Number(row.commission_amount || 0)
+                const status = row.status ?? 'OPEN'
+                const tierDisplay = Number(row.tier_percent_snapshot ?? row.tier_percent ?? 0).toFixed(2)
 
                 return (
                   <tr key={row.id} className="hover:bg-gray-50">
                     <td className="px-4 py-2 border border-gray-200 font-medium">{row.staff?.name ?? '-'}</td>
                     <td className="px-4 py-2 border border-gray-200">{row.year}-{String(row.month).padStart(2, '0')}</td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      <span className={`inline-flex rounded-full px-2 py-1 text-xs font-semibold ${status === 'FROZEN' ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {status}
+                      </span>
+                    </td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(Number(row.total_sales || 0))}</td>
                     <td className="px-4 py-2 border border-gray-200">{row.booking_count}</td>
-                    <td className="px-4 py-2 border border-gray-200">{Number(row.tier_percent || 0).toFixed(2)}%</td>
+                    <td className="px-4 py-2 border border-gray-200">{tierDisplay}%</td>
                     <td className="px-4 py-2 border border-gray-200">
                       <div className="flex flex-col">
                         <span>RM {formatAmount(commissionAmount)}</span>
@@ -354,7 +393,38 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                       </div>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <button type="button" onClick={() => setOverrideTarget(row)} className="text-blue-600 hover:text-blue-800 text-sm">
+                      <div className="text-xs text-gray-600">{formatDateTime(row.calculated_at)}</div>
+                      <div className="text-xs text-gray-500">F: {formatDateTime(row.frozen_at)}</div>
+                      <div className="text-xs text-gray-500">R: {formatDateTime(row.reopened_at)}</div>
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      {status === 'FROZEN' ? (
+                        <button
+                          type="button"
+                          disabled={actionLoadingId === row.id}
+                          onClick={() => void handleStatusAction(row, 'reopen')}
+                          className="text-emerald-700 hover:text-emerald-900 text-sm disabled:opacity-50"
+                        >
+                          Reopen
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={actionLoadingId === row.id}
+                          onClick={() => void handleStatusAction(row, 'freeze')}
+                          className="text-amber-700 hover:text-amber-900 text-sm disabled:opacity-50"
+                        >
+                          Freeze
+                        </button>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      <button
+                        type="button"
+                        disabled={status === 'FROZEN'}
+                        onClick={() => setOverrideTarget(row)}
+                        className="text-blue-600 hover:text-blue-800 text-sm disabled:text-gray-400 disabled:cursor-not-allowed"
+                      >
                         {row.is_overridden ? 'Edit Override' : 'Override'}
                       </button>
                     </td>
@@ -378,7 +448,10 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
         <BookingCommissionOverrideModal
           commission={overrideTarget}
           onClose={() => setOverrideTarget(null)}
-          onSuccess={() => setOverrideTarget(null)}
+          onSuccess={() => {
+            setOverrideTarget(null)
+            setRefreshKey((prev) => prev + 1)
+          }}
         />
       )}
     </div>

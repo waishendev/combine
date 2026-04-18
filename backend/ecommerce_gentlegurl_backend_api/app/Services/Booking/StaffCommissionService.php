@@ -3,6 +3,7 @@
 namespace App\Services\Booking;
 
 use App\Models\Booking\Booking;
+use App\Models\Booking\StaffCommissionLog;
 use App\Models\Booking\StaffCommissionTier;
 use App\Models\Booking\StaffMonthlySale;
 use Carbon\Carbon;
@@ -13,6 +14,8 @@ class StaffCommissionService
 {
     public const TYPE_BOOKING = 'BOOKING';
     public const TYPE_ECOMMERCE = 'ECOMMERCE';
+    public const STATUS_OPEN = 'OPEN';
+    public const STATUS_FROZEN = 'FROZEN';
 
     public function normalizeType(?string $type): string
     {
@@ -23,25 +26,25 @@ class StaffCommissionService
             : self::TYPE_BOOKING;
     }
 
-    public function recalculateForStaffMonth(int $staffId, int $year, int $month, ?string $type = null): StaffMonthlySale
+    public function recalculateForStaffMonth(int $staffId, int $year, int $month, ?string $type = null, bool $force = false): StaffMonthlySale
     {
         $resolvedType = $this->normalizeType($type);
 
         return $resolvedType === self::TYPE_ECOMMERCE
-            ? $this->recalculateEcommerceForStaffMonth($staffId, $year, $month)
-            : $this->recalculateBookingForStaffMonth($staffId, $year, $month);
+            ? $this->recalculateEcommerceForStaffMonth($staffId, $year, $month, $force)
+            : $this->recalculateBookingForStaffMonth($staffId, $year, $month, $force);
     }
 
-    public function recalculateForMonthAll(int $year, int $month, ?string $type = null): array
+    public function recalculateForMonthAll(int $year, int $month, ?string $type = null, bool $force = false): array
     {
         $resolvedType = $this->normalizeType($type);
 
         return $resolvedType === self::TYPE_ECOMMERCE
-            ? $this->recalculateEcommerceForMonthAll($year, $month)
-            : $this->recalculateBookingForMonthAll($year, $month);
+            ? $this->recalculateEcommerceForMonthAll($year, $month, $force)
+            : $this->recalculateBookingForMonthAll($year, $month, $force);
     }
 
-    public function recalculateAllMonths(?int $staffId = null, ?string $type = null): array
+    public function recalculateAllMonths(?int $staffId = null, ?string $type = null, bool $force = false): array
     {
         $resolvedType = $this->normalizeType($type);
         $months = $resolvedType === self::TYPE_ECOMMERCE
@@ -54,9 +57,9 @@ class StaffCommissionService
             $monthValue = (int) $month['month'];
 
             if ($staffId) {
-                $results[] = $this->recalculateForStaffMonth($staffId, $year, $monthValue, $resolvedType);
+                $results[] = $this->recalculateForStaffMonth($staffId, $year, $monthValue, $resolvedType, $force);
             } else {
-                $rows = $this->recalculateForMonthAll($year, $monthValue, $resolvedType);
+                $rows = $this->recalculateForMonthAll($year, $monthValue, $resolvedType, $force);
                 array_push($results, ...$rows);
             }
         }
@@ -90,11 +93,16 @@ class StaffCommissionService
                 'tier_percent' => 0,
                 'commission_amount' => 0,
                 'is_overridden' => false,
+                'status' => self::STATUS_OPEN,
             ]
         );
 
         $monthly->total_sales = (float) $monthly->total_sales + $servicePrice;
         $monthly->booking_count = (int) $monthly->booking_count + 1;
+
+        if ($this->isFrozen($monthly)) {
+            return;
+        }
 
         $this->recalculateMonthly($monthly);
 
@@ -127,14 +135,22 @@ class StaffCommissionService
 
         $monthly->total_sales = max(0, (float) $monthly->total_sales - $servicePrice);
         $monthly->booking_count = max(0, (int) $monthly->booking_count - 1);
+
+        if ($this->isFrozen($monthly)) {
+            return;
+        }
+
         $this->recalculateMonthly($monthly);
 
         $booking->forceFill(['commission_counted_at' => null])->save();
     }
 
-    public function recalculateMonthly(StaffMonthlySale $monthly): StaffMonthlySale
+    public function recalculateMonthly(StaffMonthlySale $monthly, bool $force = false): StaffMonthlySale
     {
         $resolvedType = $this->normalizeType((string) ($monthly->type ?? self::TYPE_BOOKING));
+        if (! $force && $this->isFrozen($monthly)) {
+            return $monthly->refresh();
+        }
 
         $tier = StaffCommissionTier::query()
             ->where('type', $resolvedType)
@@ -147,6 +163,10 @@ class StaffCommissionService
 
         $monthly->type = $resolvedType;
         $monthly->tier_percent = $tierPercent;
+        $monthly->tier_id_snapshot = $tier?->id;
+        $monthly->tier_percent_snapshot = $tierPercent;
+        $monthly->tier_min_sales_snapshot = (float) ($tier?->min_sales ?? 0);
+        $monthly->calculated_at = now();
         if ($monthly->is_overridden) {
             $monthly->commission_amount = (float) ($monthly->override_amount ?? 0);
         } else {
@@ -158,7 +178,7 @@ class StaffCommissionService
         return $monthly->refresh();
     }
 
-    private function recalculateBookingForStaffMonth(int $staffId, int $year, int $month): StaffMonthlySale
+    private function recalculateBookingForStaffMonth(int $staffId, int $year, int $month, bool $force = false): StaffMonthlySale
     {
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $nextMonthStart = $start->copy()->addMonth();
@@ -187,17 +207,22 @@ class StaffCommissionService
                 'tier_percent' => 0,
                 'commission_amount' => 0,
                 'is_overridden' => false,
+                'status' => self::STATUS_OPEN,
             ]
         );
+
+        if (! $force && $this->isFrozen($monthly)) {
+            return $monthly->refresh();
+        }
 
         $monthly->total_sales = $totalSales;
         $monthly->booking_count = $bookingCount;
         $monthly->save();
 
-        return $this->recalculateMonthly($monthly);
+        return $this->recalculateMonthly($monthly, $force);
     }
 
-    private function recalculateBookingForMonthAll(int $year, int $month): array
+    private function recalculateBookingForMonthAll(int $year, int $month, bool $force = false): array
     {
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $nextMonthStart = $start->copy()->addMonth();
@@ -213,13 +238,13 @@ class StaffCommissionService
 
         $result = [];
         foreach ($staffIds as $staffId) {
-            $result[] = $this->recalculateBookingForStaffMonth((int) $staffId, $year, $month);
+            $result[] = $this->recalculateBookingForStaffMonth((int) $staffId, $year, $month, $force);
         }
 
         return $result;
     }
 
-    private function recalculateEcommerceForStaffMonth(int $staffId, int $year, int $month): StaffMonthlySale
+    private function recalculateEcommerceForStaffMonth(int $staffId, int $year, int $month, bool $force = false): StaffMonthlySale
     {
         [$start, $nextMonthStart] = $this->monthWindow($year, $month);
 
@@ -254,17 +279,22 @@ class StaffCommissionService
                 'tier_percent' => 0,
                 'commission_amount' => 0,
                 'is_overridden' => false,
+                'status' => self::STATUS_OPEN,
             ]
         );
+
+        if (! $force && $this->isFrozen($monthly)) {
+            return $monthly->refresh();
+        }
 
         $monthly->total_sales = round($productSales + $packageSales, 2);
         $monthly->booking_count = $productCount + $packageCount;
         $monthly->save();
 
-        return $this->recalculateMonthly($monthly);
+        return $this->recalculateMonthly($monthly, $force);
     }
 
-    private function recalculateEcommerceForMonthAll(int $year, int $month): array
+    private function recalculateEcommerceForMonthAll(int $year, int $month, bool $force = false): array
     {
         [$start, $nextMonthStart] = $this->monthWindow($year, $month);
 
@@ -282,7 +312,7 @@ class StaffCommissionService
 
         $result = [];
         foreach ($staffIds as $staffId) {
-            $result[] = $this->recalculateEcommerceForStaffMonth((int) $staffId, $year, $month);
+            $result[] = $this->recalculateEcommerceForStaffMonth((int) $staffId, $year, $month, $force);
         }
 
         return $result;
@@ -418,5 +448,54 @@ class StaffCommissionService
             ->unique(fn ($month) => $month['year'] . '-' . $month['month'])
             ->sortBy(fn ($month) => sprintf('%04d-%02d', $month['year'], $month['month']))
             ->values();
+    }
+
+    public function freezeMonthly(StaffMonthlySale $monthly, ?int $performedBy = null): StaffMonthlySale
+    {
+        if ($monthly->status !== self::STATUS_FROZEN) {
+            $monthly->status = self::STATUS_FROZEN;
+            $monthly->frozen_at = now();
+            $monthly->frozen_by = $performedBy;
+            $monthly->save();
+        }
+
+        return $monthly->refresh();
+    }
+
+    public function reopenMonthly(StaffMonthlySale $monthly, ?int $performedBy = null): StaffMonthlySale
+    {
+        $monthly->status = self::STATUS_OPEN;
+        $monthly->reopened_at = now();
+        $monthly->reopened_by = $performedBy;
+        $monthly->save();
+
+        return $monthly->refresh();
+    }
+
+    public function isFrozen(StaffMonthlySale $monthly): bool
+    {
+        return strtoupper((string) ($monthly->status ?? self::STATUS_OPEN)) === self::STATUS_FROZEN;
+    }
+
+    public function logAction(
+        string $action,
+        StaffMonthlySale $monthly,
+        ?array $oldValues = null,
+        ?array $newValues = null,
+        ?int $performedBy = null,
+        ?string $remarks = null
+    ): void {
+        StaffCommissionLog::query()->create([
+            'staff_monthly_sale_id' => $monthly->id,
+            'staff_id' => $monthly->staff_id,
+            'type' => $monthly->type,
+            'year' => $monthly->year,
+            'month' => $monthly->month,
+            'action' => strtoupper($action),
+            'old_values' => $oldValues,
+            'new_values' => $newValues,
+            'remarks' => $remarks,
+            'performed_by' => $performedBy,
+        ]);
     }
 }

@@ -18,6 +18,15 @@ class StaffMonthlySale extends Model
         'commission_amount',
         'is_overridden',
         'override_amount',
+        'tier_id_snapshot',
+        'tier_percent_snapshot',
+        'tier_min_sales_snapshot',
+        'calculated_at',
+        'status',
+        'frozen_at',
+        'frozen_by',
+        'reopened_at',
+        'reopened_by',
     ];
 
     protected $casts = [
@@ -26,6 +35,11 @@ class StaffMonthlySale extends Model
         'commission_amount' => 'decimal:2',
         'override_amount' => 'decimal:2',
         'is_overridden' => 'boolean',
+        'tier_percent_snapshot' => 'decimal:2',
+        'tier_min_sales_snapshot' => 'decimal:2',
+        'calculated_at' => 'datetime',
+        'frozen_at' => 'datetime',
+        'reopened_at' => 'datetime',
     ];
 
     public function staff()

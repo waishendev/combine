@@ -44,6 +44,13 @@ class CommissionController extends Controller
         ]);
 
         $monthly = StaffMonthlySale::query()->findOrFail($id);
+        if ($this->staffCommissionService->isFrozen($monthly)) {
+            return $this->respondError('Frozen month cannot be overridden. Please reopen first.', 422);
+        }
+
+        $before = $monthly->only([
+            'is_overridden', 'override_amount', 'commission_amount', 'tier_percent', 'tier_percent_snapshot',
+        ]);
         $monthly->is_overridden = (bool) $data['is_overridden'];
         $monthly->override_amount = $monthly->is_overridden
             ? (float) ($data['override_amount'] ?? 0)
@@ -52,8 +59,19 @@ class CommissionController extends Controller
         $monthly->save();
 
         $this->staffCommissionService->recalculateMonthly($monthly);
+        $monthly = $monthly->fresh('staff:id,name');
 
-        return $this->respond($monthly->fresh('staff:id,name'));
+        $this->staffCommissionService->logAction(
+            'OVERRIDE',
+            $monthly,
+            $before,
+            $monthly->only([
+                'is_overridden', 'override_amount', 'commission_amount', 'tier_percent', 'tier_percent_snapshot',
+            ]),
+            optional($request->user())->id
+        );
+
+        return $this->respond($monthly);
     }
 
     public function recalculate(Request $request)
@@ -63,34 +81,90 @@ class CommissionController extends Controller
             'month' => ['required', 'integer', 'min:1', 'max:12'],
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
             'type' => ['nullable', 'string', 'in:BOOKING,ECOMMERCE,booking,ecommerce'],
+            'force' => ['nullable', 'boolean'],
         ]);
 
         $year = (int) $data['year'];
         $month = (int) $data['month'];
         $type = $this->staffCommissionService->normalizeType($data['type'] ?? StaffCommissionService::TYPE_BOOKING);
+        $force = (bool) ($data['force'] ?? false);
 
         if (!empty($data['staff_id'])) {
-            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $data['staff_id'], $year, $month, $type);
+            $row = $this->staffCommissionService->recalculateForStaffMonth((int) $data['staff_id'], $year, $month, $type, $force);
+            $row = $row->fresh('staff:id,name');
+            $this->staffCommissionService->logAction(
+                'RECALCULATE',
+                $row,
+                null,
+                $row->only(['total_sales', 'booking_count', 'commission_amount', 'tier_percent_snapshot', 'status']),
+                optional($request->user())->id,
+                sprintf('Manual API recalculate%s', $force ? ' (force)' : '')
+            );
 
             return $this->respond([
                 'mode' => 'staff',
                 'type' => $type,
                 'year' => $year,
                 'month' => $month,
-                'rows' => [$row->fresh('staff:id,name')],
+                'rows' => [$row],
                 'count' => 1,
             ]);
         }
 
-        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type);
+        $rows = $this->staffCommissionService->recalculateForMonthAll($year, $month, $type, $force);
+        $rowsCollection = collect($rows)->map(fn (StaffMonthlySale $row) => $row->fresh('staff:id,name'))->values();
+        foreach ($rowsCollection as $row) {
+            $this->staffCommissionService->logAction(
+                'RECALCULATE',
+                $row,
+                null,
+                $row->only(['total_sales', 'booking_count', 'commission_amount', 'tier_percent_snapshot', 'status']),
+                optional($request->user())->id,
+                sprintf('Manual API recalculate%s', $force ? ' (force)' : '')
+            );
+        }
 
         return $this->respond([
             'mode' => 'month_all_staff',
             'type' => $type,
             'year' => $year,
             'month' => $month,
-            'rows' => collect($rows)->map(fn (StaffMonthlySale $row) => $row->fresh('staff:id,name'))->values(),
+            'rows' => $rowsCollection,
             'count' => count($rows),
         ]);
+    }
+
+    public function freeze(Request $request, int $id)
+    {
+        $monthly = StaffMonthlySale::query()->findOrFail($id);
+        $before = $monthly->only(['status', 'frozen_at', 'frozen_by']);
+        $monthly = $this->staffCommissionService->freezeMonthly($monthly, optional($request->user())->id);
+
+        $this->staffCommissionService->logAction(
+            'FREEZE',
+            $monthly,
+            $before,
+            $monthly->only(['status', 'frozen_at', 'frozen_by']),
+            optional($request->user())->id
+        );
+
+        return $this->respond($monthly->fresh('staff:id,name'));
+    }
+
+    public function reopen(Request $request, int $id)
+    {
+        $monthly = StaffMonthlySale::query()->findOrFail($id);
+        $before = $monthly->only(['status', 'reopened_at', 'reopened_by']);
+        $monthly = $this->staffCommissionService->reopenMonthly($monthly, optional($request->user())->id);
+
+        $this->staffCommissionService->logAction(
+            'REOPEN',
+            $monthly,
+            $before,
+            $monthly->only(['status', 'reopened_at', 'reopened_by']),
+            optional($request->user())->id
+        );
+
+        return $this->respond($monthly->fresh('staff:id,name'));
     }
 }
