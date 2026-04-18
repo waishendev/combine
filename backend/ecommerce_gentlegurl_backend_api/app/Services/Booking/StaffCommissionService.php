@@ -196,10 +196,10 @@ class StaffCommissionService
         $bookings = Booking::query()
             ->with('service:id,service_price')
             ->where('staff_id', $staffId)
-            ->where('status', 'COMPLETED')
-            ->where('payment_status', 'PAID')
-            ->where('completed_at', '>=', $start)
-            ->where('completed_at', '<', $nextMonthStart)
+            ->whereRaw("UPPER(COALESCE(status, '')) = ?", ['COMPLETED'])
+            ->whereRaw("UPPER(COALESCE(payment_status, '')) = ?", ['PAID'])
+            ->whereRaw("{$this->bookingCommissionDateExpr()} >= ?", [$start])
+            ->whereRaw("{$this->bookingCommissionDateExpr()} < ?", [$nextMonthStart])
             ->get();
 
         $totalSales = round((float) $bookings->sum(fn (Booking $booking) => (float) optional($booking->service)->service_price), 2);
@@ -239,10 +239,10 @@ class StaffCommissionService
         $nextMonthStart = $start->copy()->addMonth();
 
         $staffIds = Booking::query()
-            ->where('status', 'COMPLETED')
-            ->where('payment_status', 'PAID')
-            ->where('completed_at', '>=', $start)
-            ->where('completed_at', '<', $nextMonthStart)
+            ->whereRaw("UPPER(COALESCE(status, '')) = ?", ['COMPLETED'])
+            ->whereRaw("UPPER(COALESCE(payment_status, '')) = ?", ['PAID'])
+            ->whereRaw("{$this->bookingCommissionDateExpr()} >= ?", [$start])
+            ->whereRaw("{$this->bookingCommissionDateExpr()} < ?", [$nextMonthStart])
             ->pluck('staff_id')
             ->concat(
                 StaffMonthlySale::query()
@@ -410,13 +410,13 @@ class StaffCommissionService
     private function resolveBookingMonths(?int $staffId = null): Collection
     {
         return Booking::query()
-            ->where('status', 'COMPLETED')
-            ->where('payment_status', 'PAID')
+            ->whereRaw("UPPER(COALESCE(status, '')) = ?", ['COMPLETED'])
+            ->whereRaw("UPPER(COALESCE(payment_status, '')) = ?", ['PAID'])
             ->when($staffId, fn ($query) => $query->where('staff_id', $staffId))
-            ->whereNotNull('completed_at')
-            ->selectRaw('EXTRACT(YEAR FROM completed_at)::int AS year')
-            ->selectRaw('EXTRACT(MONTH FROM completed_at)::int AS month')
-            ->groupByRaw('EXTRACT(YEAR FROM completed_at), EXTRACT(MONTH FROM completed_at)')
+            ->whereRaw("{$this->bookingCommissionDateExpr()} IS NOT NULL")
+            ->selectRaw("EXTRACT(YEAR FROM {$this->bookingCommissionDateExpr()})::int AS year")
+            ->selectRaw("EXTRACT(MONTH FROM {$this->bookingCommissionDateExpr()})::int AS month")
+            ->groupByRaw("EXTRACT(YEAR FROM {$this->bookingCommissionDateExpr()}), EXTRACT(MONTH FROM {$this->bookingCommissionDateExpr()})")
             ->orderBy('year')
             ->orderBy('month')
             ->get()
@@ -517,6 +517,11 @@ class StaffCommissionService
     {
         return strtoupper((string) $booking->status) === 'COMPLETED'
             && strtoupper((string) ($booking->payment_status ?? '')) === 'PAID';
+    }
+
+    private function bookingCommissionDateExpr(): string
+    {
+        return 'COALESCE(completed_at, start_at)';
     }
 
     public function logAction(
