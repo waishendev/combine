@@ -9,6 +9,7 @@ return new class extends Migration {
     {
         Schema::create('customers', function (Blueprint $table) {
             $table->bigIncrements('id');
+            $table->unsignedBigInteger('customer_type_id')->nullable();
             $table->string('name', 255);
             $table->string('email', 255)->unique();
             $table->string('phone', 30)->unique()->nullable();

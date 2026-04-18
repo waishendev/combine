@@ -32,7 +32,8 @@ class CustomerController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%");
+                    ->orWhere('phone', 'like', "%{$search}%")
+                    ->orWhereHas('customerType', fn($typeQuery) => $typeQuery->where('name', 'like', "%{$search}%"));
             });
         })->paginate($perPage)->through(function ($customer) use ($loyaltySetting, $tierRules, $window) {
             return $this->formatCustomerWithSummary($customer, $loyaltySetting, $tierRules, $window);
@@ -48,6 +49,7 @@ class CustomerController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:customers,email'],
             'phone' => ['nullable', 'string', 'max:30', 'unique:customers,phone'],
             'password' => ['nullable', 'string', 'min:6'],
+            'customer_type_id' => ['nullable', 'integer', 'exists:customer_types,id'],
             'tier' => ['sometimes', 'string'],
             'is_active' => ['sometimes', 'boolean'],
             'avatar' => ['nullable', 'string', 'max:255'],
@@ -84,6 +86,7 @@ class CustomerController extends Controller
             'email' => ['sometimes', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customer->id)],
             'phone' => ['nullable', 'string', 'max:30', Rule::unique('customers', 'phone')->ignore($customer->id)],
             'password' => ['nullable', 'string', 'min:6'],
+            'customer_type_id' => ['nullable', 'integer', 'exists:customer_types,id'],
             'tier' => ['sometimes', 'string'],
             'is_active' => ['sometimes', 'boolean'],
             'tier_marked_pending_at' => ['nullable', 'date'],
@@ -113,12 +116,13 @@ class CustomerController extends Controller
     public function exportCsv(Request $request)
     {
         $customers = Customer::query()
-            ->with(['addresses', 'customerVouchers.voucher'])
+            ->with(['customerType', 'addresses', 'customerVouchers.voucher'])
             ->orderBy('id')
             ->get();
 
         $rows = $customers->map(function (Customer $customer) {
             $payload = $customer->toArray();
+            $payload['type'] = $customer->customerType?->name;
             unset($payload['password'], $payload['remember_token']);
 
             $payload['member_points'] = $this->getAvailablePoints($customer);
@@ -173,7 +177,7 @@ class CustomerController extends Controller
 
         if (empty($headers)) {
             $headers = [
-                'id', 'name', 'email', 'phone', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
+                'id', 'name', 'email', 'phone', 'customer_type_id', 'type', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
                 'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
                 'email_verified_at', 'member_points', 'addresses', 'vouchers', 'created_at', 'updated_at',
             ];
@@ -242,9 +246,9 @@ class CustomerController extends Controller
         }, $headers);
 
         $allowedFields = [
-            'name', 'email', 'phone', 'password', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
+            'name', 'email', 'phone', 'password', 'customer_type_id', 'tier', 'tier_marked_pending_at', 'tier_effective_at',
             'is_active', 'last_login_at', 'last_login_ip', 'avatar', 'gender', 'date_of_birth',
-            'email_verified_at', 'member_points', 'addresses', 'vouchers',
+            'email_verified_at', 'member_points', 'addresses', 'vouchers', 'type',
         ];
 
         $summary = [

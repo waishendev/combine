@@ -345,6 +345,7 @@ export async function registerCustomer(payload: {
   phone: string;
   password: string;
   password_confirmation: string;
+  type: string;
 }) {
   return request<{ success: boolean }>("/public/auth/register", {
     method: "POST",
@@ -574,6 +575,7 @@ export async function changeCustomerPassword(payload: {
   current_password: string;
   password: string;
   password_confirmation: string;
+  type: string;
 }) {
   const response = await request<{ data: CustomerProfileWithAddresses }>("/public/auth/password", {
     method: "PUT",

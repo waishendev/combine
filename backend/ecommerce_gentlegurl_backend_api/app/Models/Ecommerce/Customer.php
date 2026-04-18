@@ -10,6 +10,7 @@ use App\Support\FrontendUrlResolver;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -27,6 +28,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
     use Notifiable;
 
     protected $fillable = [
+        'customer_type_id',
         'name',
         'email',
         'phone',
@@ -181,6 +183,12 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
     public function customerVouchers()
     {
         return $this->hasMany(CustomerVoucher::class);
+    }
+
+
+    public function customerType(): BelongsTo
+    {
+        return $this->belongsTo(CustomerType::class);
     }
 
     public function addresses(): HasMany
