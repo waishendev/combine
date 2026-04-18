@@ -1111,6 +1111,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)
         ->only(['index', 'store', 'update', 'destroy']);
     Route::get('/commissions', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'index']);
+    Route::get('/commission-logs', [\App\Http\Controllers\Admin\Booking\CommissionLogController::class, 'index']);
     Route::patch('/commissions/freeze-month', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'freezeMonth']);
     Route::patch('/commissions/reopen-month', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'reopenMonth']);
     Route::patch('/commissions/{id}/override', [\App\Http\Controllers\Admin\Booking\CommissionController::class, 'override']);
