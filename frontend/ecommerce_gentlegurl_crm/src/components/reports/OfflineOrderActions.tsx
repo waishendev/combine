@@ -65,7 +65,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
     void (async () => {
       const [staffRes, draftRes] = await Promise.all([
         fetch('/api/proxy/staffs?page=1&per_page=200', { cache: 'no-store' }),
-        fetch(`/api/proxy/orders/${orderId}/offline-actions/sales-person`, { cache: 'no-store' }),
+        fetch(`/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`, { cache: 'no-store' }),
       ])
 
       if (staffRes.ok) {
@@ -157,7 +157,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
           }
         }
 
-        endpoint = `/api/proxy/orders/${orderId}/offline-actions/sales-person`
+        endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`
         payload = {
           item_splits: draftItems.map((item) => ({
             order_item_id: item.order_item_id,
@@ -167,7 +167,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
           remark: remark.trim() || null,
         }
       } else if (modal === 'payment_method') {
-        endpoint = `/api/proxy/orders/${orderId}/offline-actions/payment-method`
+        endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/payment-method`
         payload = { payment_method: paymentMethod.trim(), remark: remark.trim() || null }
       } else {
         if (!remark.trim()) {
@@ -175,7 +175,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
           setSubmitting(false)
           return
         }
-        endpoint = `/api/proxy/orders/${orderId}/offline-actions/void`
+        endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/void`
         payload = { remark: remark.trim() }
       }
 
