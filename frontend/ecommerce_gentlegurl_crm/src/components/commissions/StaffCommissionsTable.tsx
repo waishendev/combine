@@ -116,6 +116,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [recalculatingRowIds, setRecalculatingRowIds] = useState<number[]>([])
   const [isMonthlyRecalculating, setIsMonthlyRecalculating] = useState(false)
+  const [isFullTableRecalculating, setIsFullTableRecalculating] = useState(false)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [overrideTarget, setOverrideTarget] = useState<CommissionRow | null>(null)
   const [monthActionType, setMonthActionType] = useState<'freeze' | 'reopen' | 'recalculate' | null>(null)
@@ -343,13 +344,19 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     setMonthActionLoading(true)
     try {
       const isRecalculate = selectedAction === 'recalculate'
+      const hasPeriodScope = Number.isFinite(selectedYear)
+        && Number.isFinite(selectedMonth)
+        && selectedYear > 0
+        && selectedMonth >= 1
+        && selectedMonth <= 12
       const targetRowIds = rows
-        .filter((row) => row.year === selectedYear && row.month === selectedMonth)
+        .filter((row) => !hasPeriodScope || (row.year === selectedYear && row.month === selectedMonth))
         .map((row) => row.id)
 
       if (isRecalculate) {
         setIsMonthlyRecalculating(true)
         setRecalculatingRowIds(targetRowIds)
+        setIsFullTableRecalculating(!hasPeriodScope)
         showToast('Monthly calculation started...', 'info')
         setMonthActionType(null)
       }
@@ -407,6 +414,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       setMonthActionLoading(false)
       if (selectedAction === 'recalculate') {
         setIsMonthlyRecalculating(false)
+        setIsFullTableRecalculating(false)
         setRecalculatingRowIds([])
       }
     }
@@ -721,7 +729,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                   : Number(row.commission_amount || 0)
                 const status = row.status ?? 'OPEN'
                 const tierDisplay = Number(row.tier_percent_snapshot ?? row.tier_percent ?? 0).toFixed(2)
-                const rowValueLoading = isMonthlyRecalculating || recalculatingRowIds.includes(row.id)
+                const rowValueLoading = isFullTableRecalculating || recalculatingRowIds.includes(row.id)
 
                 return (
                   <tr key={row.id} className="hover:bg-gray-50">
