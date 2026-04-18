@@ -13,6 +13,7 @@ type CommissionStatus = 'OPEN' | 'FROZEN'
 
 type CommissionRow = {
   id: number
+  staff_id?: number
   type: CommissionType
   year: number
   month: number
@@ -110,7 +111,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [overrideTarget, setOverrideTarget] = useState<CommissionRow | null>(null)
-  const [monthActionType, setMonthActionType] = useState<'freeze' | 'reopen' | null>(null)
+  const [monthActionType, setMonthActionType] = useState<'freeze' | 'reopen' | 'recalculate' | null>(null)
   const [monthActionLoading, setMonthActionLoading] = useState(false)
   const [monthActionForm, setMonthActionForm] = useState({
     year: String(new Date().getFullYear()),
@@ -240,7 +241,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     }
   }
 
-  const openMonthActionModal = (action: 'freeze' | 'reopen') => {
+  const openMonthActionModal = (action: 'freeze' | 'reopen' | 'recalculate') => {
     const now = new Date()
     setMonthActionForm({
       year: resolvedParams.year || String(now.getFullYear()),
@@ -253,27 +254,73 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     if (!monthActionType) return
     setMonthActionLoading(true)
     try {
+      const isRecalculate = monthActionType === 'recalculate'
       const endpoint = monthActionType === 'freeze' ? 'freeze-month' : 'reopen-month'
-      const res = await fetch(`/api/proxy/admin/booking/commissions/${endpoint}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type,
-          year: Number(monthActionForm.year),
-          month: Number(monthActionForm.month),
-        }),
-      })
+      const res = isRecalculate
+        ? await fetch('/api/proxy/admin/booking/commissions/recalculate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type,
+              year: Number(monthActionForm.year),
+              month: Number(monthActionForm.month),
+            }),
+          })
+        : await fetch(`/api/proxy/admin/booking/commissions/${endpoint}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              type,
+              year: Number(monthActionForm.year),
+              month: Number(monthActionForm.month),
+            }),
+          })
       const json = await res.json().catch(() => ({}))
       if (!res.ok) {
         throw new Error(json?.message || 'Failed to update selected month.')
       }
       setRefreshKey((prev) => prev + 1)
       setMonthActionType(null)
-      alert(`${monthActionType === 'freeze' ? 'Freeze' : 'Reopen'} month done. Updated rows: ${json?.data?.updated_count ?? 0}`)
+      if (isRecalculate) {
+        alert(`Monthly recalculation done. Updated rows: ${json?.data?.count ?? 0}`)
+      } else {
+        alert(`${monthActionType === 'freeze' ? 'Freeze' : 'Reopen'} month done. Updated rows: ${json?.data?.updated_count ?? 0}`)
+      }
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Failed to update selected month.')
     } finally {
       setMonthActionLoading(false)
+    }
+  }
+
+  const handleRowRecalculate = async (row: CommissionRow) => {
+    const staffId = row.staff_id ?? row.staff?.id
+    if (!staffId) {
+      alert('Unable to find staff id for this record.')
+      return
+    }
+
+    setActionLoadingId(row.id)
+    try {
+      const res = await fetch('/api/proxy/admin/booking/commissions/recalculate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: row.type,
+          year: row.year,
+          month: row.month,
+          staff_id: staffId,
+        }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        throw new Error(json?.message || 'Failed to recalculate row.')
+      }
+      setRefreshKey((prev) => prev + 1)
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Failed to recalculate row.')
+    } finally {
+      setActionLoadingId(null)
     }
   }
 
@@ -364,7 +411,13 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
           <div className="absolute inset-0 bg-black/50" onClick={() => setMonthActionType(null)} />
           <div className="relative w-full max-w-md mx-auto bg-white rounded-lg shadow-lg p-5 space-y-4" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">{monthActionType === 'freeze' ? 'Freeze Month' : 'Reopen Month'}</h2>
+              <h2 className="text-lg font-semibold">
+                {monthActionType === 'freeze'
+                  ? 'Freeze Month'
+                  : monthActionType === 'reopen'
+                    ? 'Reopen Month'
+                    : 'Monthly Calculation'}
+              </h2>
               <button
                 type="button"
                 onClick={() => setMonthActionType(null)}
@@ -375,7 +428,9 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
               </button>
             </div>
             <p className="text-sm text-gray-600">
-              Apply this action to all {type.toLowerCase()} commission rows in the selected month.
+              {monthActionType === 'recalculate'
+                ? `Recalculate all ${type.toLowerCase()} commission rows for the selected month.`
+                : `Apply this action to all ${type.toLowerCase()} commission rows in the selected month.`}
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
@@ -415,10 +470,22 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
               <button
                 type="button"
                 onClick={() => void handleMonthAction()}
-                className={`px-4 py-2 text-sm text-white rounded-md disabled:opacity-50 ${monthActionType === 'freeze' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-emerald-600 hover:bg-emerald-700'}`}
+                className={`px-4 py-2 text-sm text-white rounded-md disabled:opacity-50 ${
+                  monthActionType === 'freeze'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : monthActionType === 'reopen'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
                 disabled={monthActionLoading}
               >
-                {monthActionLoading ? 'Processing...' : monthActionType === 'freeze' ? 'Freeze Month' : 'Reopen Month'}
+                {monthActionLoading
+                  ? 'Processing...'
+                  : monthActionType === 'freeze'
+                    ? 'Freeze Month'
+                    : monthActionType === 'reopen'
+                      ? 'Reopen Month'
+                      : 'Recalculate'}
               </button>
             </div>
           </div>
@@ -430,6 +497,14 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
           <button type="button" onClick={() => setIsFilterOpen(true)} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50" disabled={loading}>
             <i className="fa-solid fa-filter" />
             Filter
+          </button>
+          <button
+            type="button"
+            onClick={() => openMonthActionModal('recalculate')}
+            className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+            disabled={loading}
+          >
+            Monthly Calculation
           </button>
           <button
             type="button"
@@ -524,6 +599,14 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       <div className="flex items-center gap-3">
+                        <button
+                          type="button"
+                          disabled={actionLoadingId === row.id}
+                          onClick={() => void handleRowRecalculate(row)}
+                          className="text-indigo-600 hover:text-indigo-800 text-sm disabled:text-gray-400 disabled:cursor-not-allowed"
+                        >
+                          Recalculate
+                        </button>
                         <button
                           type="button"
                           disabled={status === 'FROZEN'}
