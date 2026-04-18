@@ -65,36 +65,95 @@ class PosController extends Controller
     {
         $query = trim((string) $request->query('q', ''));
         $page = max(1, (int) $request->query('page', 1));
-        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+        $perPage = max(1, min(20, (int) $request->query('per_page', 10)));
+
+        if (mb_strlen($query) < 3) {
+            return $this->respond([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0,
+            ]);
+        }
 
         $builder = Customer::query();
 
-        if ($query !== '') {
-            $builder->where(function ($queryBuilder) use ($query) {
-                $queryBuilder->where('name', 'like', "%{$query}%")
-                    ->orWhere('phone', 'like', "%{$query}%")
-                    ->orWhere('email', 'like', "%{$query}%")
-                    ->orWhereRaw('CAST(id AS TEXT) = ?', [$query]);
-            });
-        }
+        $builder->where(function ($queryBuilder) use ($query) {
+            $queryBuilder->where('name', 'like', "%{$query}%")
+                ->orWhere('phone', 'like', "%{$query}%");
+        });
 
         $paginator = $builder
             ->orderBy('id', 'desc')
-            ->paginate($perPage, ['id', 'name', 'phone', 'email'], 'page', $page);
+            ->paginate($perPage, ['id', 'name', 'phone'], 'page', $page);
 
         return $this->respond([
             'data' => collect($paginator->items())->map(fn (Customer $member) => [
                 'id' => $member->id,
                 'name' => $member->name,
-                'phone' => $member->phone,
+                'phone_masked' => $this->maskPhone($member->phone),
                 'member_code' => (string) $member->id,
-                'email' => $member->email,
             ])->values(),
             'current_page' => $paginator->currentPage(),
             'last_page' => $paginator->lastPage(),
             'per_page' => $paginator->perPage(),
             'total' => $paginator->total(),
         ]);
+    }
+
+    public function memberDetail(int $memberId)
+    {
+        $member = Customer::query()
+            ->with(['customerType:id,name'])
+            ->findOrFail($memberId);
+
+        $ordersQuery = Order::query()->where('customer_id', $member->id);
+        $totalOrders = (int) (clone $ordersQuery)->count();
+        $totalSpent = (float) (clone $ordersQuery)->sum('grand_total');
+        $lastOrderAt = (clone $ordersQuery)->max('created_at');
+
+        $recentOrders = $ordersQuery
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get(['id', 'order_number', 'created_at', 'status', 'grand_total', 'pickup_or_shipping'])
+            ->map(fn (Order $order) => [
+                'id' => (int) $order->id,
+                'order_number' => $order->order_number,
+                'order_date' => optional($order->created_at)->toDateTimeString(),
+                'status' => $order->status,
+                'total_amount' => (float) $order->grand_total,
+                'channel' => $order->pickup_or_shipping,
+            ])
+            ->values();
+
+        return $this->respond([
+            'member' => [
+                'id' => (int) $member->id,
+                'name' => $member->name,
+                'phone' => $member->phone,
+                'email' => $member->email,
+                'member_code' => (string) $member->id,
+                'join_date' => optional($member->created_at)->toDateTimeString(),
+                'customer_type' => $member->customerType?->name,
+                'total_orders' => $totalOrders,
+                'total_spent' => $totalSpent,
+                'last_order_date' => $lastOrderAt ? Carbon::parse($lastOrderAt)->toDateTimeString() : null,
+            ],
+            'recent_orders' => $recentOrders,
+        ]);
+    }
+
+    private function maskPhone(?string $phone): ?string
+    {
+        $phone = trim((string) $phone);
+        if ($phone === '') {
+            return null;
+        }
+
+        $suffix = mb_substr($phone, -4);
+
+        return '***' . $suffix;
     }
 
 

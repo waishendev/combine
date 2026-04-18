@@ -331,9 +331,32 @@ type Member = {
   id: number
   name: string
   phone?: string | null
+  phone_masked?: string | null
   email?: string | null
   member_code?: string | null
   avatar_url?: string | null
+}
+
+type MemberRecentOrder = {
+  id: number
+  order_number?: string | null
+  order_date?: string | null
+  status?: string | null
+  total_amount?: number | null
+  channel?: string | null
+}
+
+type MemberDetail = {
+  id: number
+  name: string
+  phone?: string | null
+  email?: string | null
+  member_code?: string | null
+  join_date?: string | null
+  customer_type?: string | null
+  total_orders?: number
+  total_spent?: number
+  last_order_date?: string | null
 }
 
 type PosVoucherOption = {
@@ -565,7 +588,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [memberPage, setMemberPage] = useState(1)
   const [memberLastPage, setMemberLastPage] = useState(1)
   const [memberLoading, setMemberLoading] = useState(false)
-  const [memberInitialLoaded, setMemberInitialLoaded] = useState(false)
+  const [memberDetailLoading, setMemberDetailLoading] = useState(false)
+  const [memberDetail, setMemberDetail] = useState<MemberDetail | null>(null)
+  const [memberRecentOrders, setMemberRecentOrders] = useState<MemberRecentOrder[]>([])
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
   const [voucherLoading, setVoucherLoading] = useState(false)
@@ -1386,13 +1411,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
+    const trimmedKeyword = keyword.trim()
+    if (trimmedKeyword.length < 3) {
+      setMembers([])
+      setMemberPage(1)
+      setMemberLastPage(1)
+      setMemberLoading(false)
+      return
+    }
+
     setMemberLoading(true)
     const params = new URLSearchParams()
     params.set('page', String(page))
-    params.set('per_page', '100')
-    if (keyword.trim()) {
-      params.set('q', keyword.trim())
-    }
+    params.set('per_page', '10')
+    params.set('q', trimmedKeyword)
 
     const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
     const json = await res.json()
@@ -1402,6 +1434,40 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberPage(paged.current_page)
     setMemberLastPage(paged.last_page)
     setMemberLoading(false)
+  }, [])
+
+  const fetchMemberDetail = useCallback(async (memberId: number) => {
+    setMemberDetailLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/members/${memberId}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(String(json?.message ?? 'Unable to load member profile.'))
+      }
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: { member?: MemberDetail; recent_orders?: MemberRecentOrder[] } }).data
+        : null
+      const loadedMember = payload?.member ?? null
+      setMemberDetail(loadedMember)
+      setMemberRecentOrders(Array.isArray(payload?.recent_orders) ? payload.recent_orders : [])
+      if (loadedMember) {
+        setSelectedMember((previous) => {
+          if (previous && previous.id !== loadedMember.id) return previous
+          return {
+            id: loadedMember.id,
+            name: loadedMember.name,
+            phone: loadedMember.phone ?? null,
+            email: loadedMember.email ?? null,
+            member_code: loadedMember.member_code ?? null,
+          }
+        })
+      }
+    } catch {
+      setMemberDetail(null)
+      setMemberRecentOrders([])
+    } finally {
+      setMemberDetailLoading(false)
+    }
   }, [])
 
   const fetchServices = useCallback(async () => {
@@ -2431,6 +2497,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   useEffect(() => {
     if (!memberOpen) return
 
+    if (memberQuery.trim().length < 3) {
+      setMembers([])
+      setMemberPage(1)
+      setMemberLastPage(1)
+      setMemberLoading(false)
+      return
+    }
+
     const handle = setTimeout(() => {
       void fetchMemberPage(1, memberQuery, false)
     }, 300)
@@ -3087,13 +3161,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (memberOpen) {
       setMemberOpen(false)
       setMemberQuery('')
+      setMembers([])
+      setMemberDetail(null)
+      setMemberRecentOrders([])
       return
     }
 
     setMemberOpen(true)
-    if (!memberInitialLoaded) {
-      setMemberInitialLoaded(true)
-      await fetchMemberPage(1, '', false)
+    setMembers([])
+    setMemberPage(1)
+    setMemberLastPage(1)
+    setMemberQuery('')
+    if (selectedMember?.id) {
+      await fetchMemberDetail(selectedMember.id)
+    } else {
+      setMemberDetail(null)
+      setMemberRecentOrders([])
     }
   }
 
@@ -3110,6 +3193,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setSelectedVoucherKey('')
     showMsg('Member assigned.', 'success')
     await syncPosCartCustomerContext({ mode: 'member', memberId: member.id })
+    await fetchMemberDetail(member.id)
   }
 
   /** Product-only: clear optional member + guest fields (same layout as booking services + Clear) */
@@ -5488,7 +5572,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           onClick={() => void toggleMemberDropdown()}
                           className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                         >
-                          {selectedMember ? 'Change Member' : 'Assign Member'}
+                          Member
                         </button>
                       </div>
                       <div className="mt-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800">
@@ -6089,7 +6173,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         onClick={() => void toggleMemberDropdown()}
                         className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
-                        {selectedMember ? 'Change Member' : 'Assign Member'}
+                        Member
                       </button>
                     </div>
                     <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -6238,125 +6322,157 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {memberOpen && (
-        <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
-              <button
-                type="button"
-                onClick={() => void toggleMemberDropdown()}
-                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
-              >
-                <span className="text-2xl leading-none">×</span>
-              </button>
-            </div>
-            {hasCartAppointmentSettlements ? (
-              <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-xs text-amber-800">
-                Settlement is in the cart — member is locked. Remove settlement to change member.
+        <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>
+          <button type="button" className="absolute inset-0 h-full w-full cursor-default" onClick={() => void toggleMemberDropdown()} aria-label="Close member panel" />
+          <div className="absolute right-0 top-0 h-full w-full max-w-3xl border-l border-gray-200 bg-white shadow-2xl">
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                <div>
+                  <h4 className="text-lg font-bold text-gray-900">Member Quick Lookup</h4>
+                  <p className="text-xs text-gray-500">Search member by name or phone</p>
+                </div>
+                <button type="button" onClick={() => void toggleMemberDropdown()} className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+                  <span className="text-xl leading-none">×</span>
+                </button>
               </div>
-            ) : null}
 
-            <div className="border-b-2 border-gray-200 bg-white p-5">
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  value={memberQuery}
-                  onChange={(e) => setMemberQuery(e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  placeholder="Search by phone, email, member code, name..."
-                  autoFocus
-                />
-              </div>
-            </div>
+              {hasCartAppointmentSettlements ? (
+                <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">
+                  Settlement is in the cart — member is locked. Remove settlement to change member.
+                </div>
+              ) : null}
 
-            <div className="max-h-[65vh] overflow-auto">
-              {members.map((member) => (
-                <button
-                  key={member.id}
-                  className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
-                  onClick={() => {
-                    void onAssignMember(member)
-                    setMemberOpen(false)
-                    setMemberQuery('')
-                    focusScanner()
-                  }}
-                >
-                  <div className="flex items-start gap-3">
-                    {member.avatar_url ? (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={member.avatar_url} alt={member.name} className="h-full w-full object-cover" />
+              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                <div className="border-b border-gray-200 p-5 md:border-b-0 md:border-r">
+                  <div className="relative">
+                    <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      value={memberQuery}
+                      onChange={(e) => setMemberQuery(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="Type name or phone"
+                      autoFocus
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">Type at least 3 characters to search.</p>
+
+                  <div className="mt-4 max-h-[52vh] overflow-auto rounded-lg border border-gray-100">
+                    {memberQuery.trim().length < 3 ? (
+                      <div className="px-4 py-8 text-center text-sm text-gray-500">
+                        <p>Search member by name or phone.</p>
+                        <p className="mt-1 text-xs">Type at least 3 characters to search.</p>
                       </div>
                     ) : (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/images/default_user_image.jpg" alt={member.name} className="h-full w-full object-cover" />
-                      </div>
+                      <>
+                        {members.map((member) => (
+                          <button
+                            key={member.id}
+                            className="block w-full border-b border-gray-100 px-4 py-3 text-left transition hover:bg-blue-50 last:border-b-0"
+                            onClick={() => {
+                              void onAssignMember(member)
+                            }}
+                          >
+                            <p className="text-sm font-semibold text-gray-900">{member.name}</p>
+                            <p className="mt-0.5 text-xs text-gray-500">{member.phone_masked ?? '***'}</p>
+                          </button>
+                        ))}
+
+                        {!memberLoading && members.length === 0 ? (
+                          <div className="px-4 py-8 text-center text-sm text-gray-500">No members found.</div>
+                        ) : null}
+                      </>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-base leading-tight">
-                        {member.name}
-                        {member.phone && <span className="ml-2 text-sm font-normal text-gray-500">({member.phone})</span>}
-                      </p>
-                      {member.email && (
-                        <p className="mt-1.5 text-sm text-gray-600 flex items-center gap-1.5">
-                          <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                          {member.email}
-                        </p>
-                      )}
+                  </div>
+
+                  {memberQuery.trim().length >= 3 && members.length > 0 ? (
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-xs text-gray-500">Page {memberPage} of {memberLastPage}</span>
+                      <button
+                        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-40"
+                        disabled={memberLoading || memberPage >= memberLastPage}
+                        onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
+                      >
+                        {memberLoading ? 'Loading...' : 'Load More'}
+                      </button>
                     </div>
-                    <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </button>
-              ))}
-
-              {!memberLoading && members.length === 0 && (
-                <div className="p-12 text-center">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-                    <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm font-medium text-gray-600">No members found</p>
-                  <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
+                  ) : null}
                 </div>
-              )}
+
+                <div className="min-h-0 overflow-y-auto p-5">
+                  {selectedMember && memberDetailLoading ? (
+                    <p className="text-sm text-gray-500">Loading member details...</p>
+                  ) : null}
+
+                  {!selectedMember ? (
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                      Select a member from the search results to view profile details and recent orders.
+                    </div>
+                  ) : memberDetail ? (
+                    <div className="space-y-5">
+                      <section>
+                        <h5 className="text-sm font-bold text-gray-900">Overview</h5>
+                        <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-gray-700">
+                          <p><span className="font-semibold text-gray-900">Full Name:</span> {memberDetail.name || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Phone:</span> {memberDetail.phone || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Email:</span> {memberDetail.email || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Join Date:</span> {memberDetail.join_date ? new Date(memberDetail.join_date).toLocaleString() : '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Customer Type:</span> {memberDetail.customer_type || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Total Orders:</span> {memberDetail.total_orders ?? 0}</p>
+                          <p><span className="font-semibold text-gray-900">Total Spent:</span> RM {Number(memberDetail.total_spent ?? 0).toFixed(2)}</p>
+                          <p><span className="font-semibold text-gray-900">Last Order Date:</span> {memberDetail.last_order_date ? new Date(memberDetail.last_order_date).toLocaleString() : '—'}</p>
+                        </div>
+                      </section>
+
+                      <section>
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-bold text-gray-900">Recent Orders</h5>
+                          <button
+                            type="button"
+                            className="text-xs font-semibold text-blue-700 hover:underline"
+                            onClick={() => {
+                              window.open(`/orders?customer_name=${encodeURIComponent(memberDetail.name)}`, '_blank', 'noopener,noreferrer')
+                            }}
+                          >
+                            View All Orders
+                          </button>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {memberRecentOrders.length === 0 ? (
+                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">No recent orders.</p>
+                          ) : memberRecentOrders.map((order) => (
+                            <div key={order.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-0.5 text-xs text-gray-600">
+                                  <p className="text-sm font-semibold text-gray-900">{order.order_number || `#${order.id}`}</p>
+                                  <p>Date: {order.order_date ? new Date(order.order_date).toLocaleString() : '—'}</p>
+                                  <p>Status: {order.status || '—'}</p>
+                                  <p>Total: RM {Number(order.total_amount ?? 0).toFixed(2)}</p>
+                                  <p>Channel: {order.channel || '—'}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!order.order_number) return
+                                    window.open(`/orders?order_no=${encodeURIComponent(order.order_number)}`, '_blank', 'noopener,noreferrer')
+                                  }}
+                                  className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                >
+                                  View Order
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+                    </div>
+                  ) : selectedMember ? (
+                    <p className="text-sm text-gray-500">Unable to load member details.</p>
+                  ) : null}
+                </div>
+              </div>
             </div>
-
-            {members.length > 0 && (
-              <div className="flex items-center justify-between border-t-2 border-gray-200 bg-gray-50 px-6 py-4 rounded-b-2xl">
-                <span className="text-xs font-medium text-gray-600">Page {memberPage} of {memberLastPage}</span>
-                <button
-                  className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 transition-all hover:border-black hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
-                  disabled={memberLoading || memberPage >= memberLastPage}
-                  onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
-                >
-                  {memberLoading ? 'Loading...' : 'Load More'}
-                </button>
-              </div>
-            )}
-
-            {cart?.promotions?.length ? (
-              <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Applied Promotion Tiers</p>
-                <div className="mt-1.5 space-y-1.5">
-                  {cart.promotions.map((promotion, index) => (
-                    <p key={`promotion-${promotion.promotion_id ?? index}`} className="text-xs text-blue-800">
-                      {promotion.promotion_name ?? 'Promotion'}: {promotion.summary ?? '-'}
-                      {typeof promotion.remaining_qty_charged_normal === 'number' && promotion.remaining_qty_charged_normal > 0
-                        ? ` (remaining ${promotion.remaining_qty_charged_normal} at normal price)`
-                        : ''}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
       )}
