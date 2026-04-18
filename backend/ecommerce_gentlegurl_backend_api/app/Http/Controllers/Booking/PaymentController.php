@@ -9,6 +9,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\PaymentGateway;
+use App\Services\Booking\BookingConfirmationEmailService;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\BillplzBaseUrl;
 use App\Support\WorkspaceType;
@@ -21,6 +22,7 @@ class PaymentController extends Controller
 {
     public function __construct(
         protected BillplzConfigResolver $configResolver,
+        protected BookingConfirmationEmailService $bookingConfirmationEmailService,
     ) {
     }
 
@@ -399,6 +401,11 @@ class PaymentController extends Controller
                 'meta' => ['payment_id' => $payment->id, 'ref' => $payment->ref],
                 'created_at' => now(),
             ]);
+
+            $this->bookingConfirmationEmailService->sendForBooking(
+                $booking->fresh(['customer', 'service', 'staff']),
+                (string) data_get($payment->raw_response, 'payment_method', 'manual_transfer')
+            );
         } else {
             $payment->update([
                 'status' => 'FAILED',
@@ -478,6 +485,11 @@ class PaymentController extends Controller
                 'booking_code' => $booking->booking_code,
                 'bill_id' => $billId,
             ]);
+
+            $this->bookingConfirmationEmailService->sendForBooking(
+                $booking->fresh(['customer', 'service', 'staff']),
+                (string) data_get($payment->raw_response, 'payment_method', 'billplz_online_banking')
+            );
         } elseif (! $isPaymentConfirmed && $state === 'due') {
             $payment->update([
                 'status' => 'FAILED',
