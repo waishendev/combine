@@ -69,7 +69,7 @@ class StaffCommissionService
 
     public function applyCompletedBooking(Booking $booking): void
     {
-        if ($booking->status !== 'COMPLETED' || !$booking->staff_id) {
+        if (! $this->isBookingCommissionEligible($booking) || !$booking->staff_id) {
             return;
         }
 
@@ -145,6 +145,16 @@ class StaffCommissionService
         $booking->forceFill(['commission_counted_at' => null])->save();
     }
 
+    public function syncBookingCommission(Booking $booking): void
+    {
+        if ($this->isBookingCommissionEligible($booking)) {
+            $this->applyCompletedBooking($booking);
+            return;
+        }
+
+        $this->reverseCompletedBooking($booking);
+    }
+
     public function recalculateMonthly(StaffMonthlySale $monthly, bool $force = false): StaffMonthlySale
     {
         $resolvedType = $this->normalizeType((string) ($monthly->type ?? self::TYPE_BOOKING));
@@ -187,6 +197,7 @@ class StaffCommissionService
             ->with('service:id,service_price')
             ->where('staff_id', $staffId)
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<', $nextMonthStart)
             ->get();
@@ -229,6 +240,7 @@ class StaffCommissionService
 
         $staffIds = Booking::query()
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<', $nextMonthStart)
             ->pluck('staff_id')
@@ -399,6 +411,7 @@ class StaffCommissionService
     {
         return Booking::query()
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->when($staffId, fn ($query) => $query->where('staff_id', $staffId))
             ->whereNotNull('completed_at')
             ->selectRaw('EXTRACT(YEAR FROM completed_at)::int AS year')
@@ -498,6 +511,12 @@ class StaffCommissionService
     public function isFrozen(StaffMonthlySale $monthly): bool
     {
         return strtoupper((string) ($monthly->status ?? self::STATUS_OPEN)) === self::STATUS_FROZEN;
+    }
+
+    private function isBookingCommissionEligible(Booking $booking): bool
+    {
+        return strtoupper((string) $booking->status) === 'COMPLETED'
+            && strtoupper((string) ($booking->payment_status ?? '')) === 'PAID';
     }
 
     public function logAction(

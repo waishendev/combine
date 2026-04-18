@@ -108,10 +108,6 @@ class AppointmentController extends Controller
                 $booking->completed_at = now();
             }
 
-            if ($previousStatus === 'COMPLETED' && $status !== 'COMPLETED') {
-                $this->staffCommissionService->reverseCompletedBooking($booking->loadMissing('service'));
-            }
-
             $booking->status = $status;
             if (in_array($status, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true)) {
                 $booking->cancelled_at = now();
@@ -126,8 +122,9 @@ class AppointmentController extends Controller
 
             if ($status === 'COMPLETED') {
                 $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
-                $this->staffCommissionService->applyCompletedBooking($booking->loadMissing('service'));
             }
+
+            $this->staffCommissionService->syncBookingCommission($booking->loadMissing('service'));
 
             if (in_array($status, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW', 'NOTIFIED_CANCELLATION'], true)) {
                 $this->customerServicePackageService->releaseReservedClaimsForBooking((int) $booking->id);

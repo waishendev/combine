@@ -33,6 +33,7 @@ use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
@@ -59,6 +60,7 @@ class PosController extends Controller
         protected InvoiceService $invoiceService,
         protected CustomerServicePackageService $customerServicePackageService,
         protected BookingAvailabilityService $availabilityService,
+        protected StaffCommissionService $staffCommissionService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -627,6 +629,8 @@ class PosController extends Controller
             if ($hasPackageUsage) {
                 $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
             }
+
+            $this->staffCommissionService->syncBookingCommission($booking->loadMissing('service'));
         });
 
         return $this->respond([
@@ -2919,6 +2923,7 @@ class PosController extends Controller
 
                 $booking->payment_status = 'PAID';
                 $booking->save();
+                $this->staffCommissionService->syncBookingCommission($booking->loadMissing('service'));
             }
 
             $order->load(['items', 'customer']);
