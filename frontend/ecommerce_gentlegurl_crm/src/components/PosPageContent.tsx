@@ -575,6 +575,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageMembers, setPackageMembers] = useState<Member[]>([])
   const [packageMembersLoading, setPackageMembersLoading] = useState(false)
   const [packageMemberPickerOpen, setPackageMemberPickerOpen] = useState(false)
+  const [assignMemberContext, setAssignMemberContext] = useState<'checkout' | 'service' | 'package'>('checkout')
+  const [packageInternalNote, setPackageInternalNote] = useState('')
   const [packageModalError, setPackageModalError] = useState<string | null>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
@@ -616,7 +618,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
 
   const [memberOpen, setMemberOpen] = useState(false)
-  const [memberPanelMode, setMemberPanelMode] = useState<'assign' | 'lookup'>('assign')
   const [memberQuery, setMemberQuery] = useState('')
   const [members, setMembers] = useState<Member[]>([])
   const [memberPage, setMemberPage] = useState(1)
@@ -2007,6 +2008,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setPackageMembers([])
     setPackageMembersLoading(false)
     setPackageMemberPickerOpen(false)
+    setPackageInternalNote('')
     setPackageModalError(null)
     setPackageModalOpen(true)
   }, [activeStaffs, fetchStaffOptions, hasCartAppointmentSettlements, selectedMember])
@@ -2051,11 +2053,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   useEffect(() => {
     let cancelled = false
     const run = async () => {
-      if (!packageModalOpen) return
+      if (!packageMemberPickerOpen) return
+      if (packageMemberQuery.trim().length < 3) {
+        setPackageMembers([])
+        setPackageMembersLoading(false)
+        return
+      }
       setPackageMembersLoading(true)
       try {
-        const params = new URLSearchParams({ page: '1', per_page: '20' })
-        if (packageMemberQuery.trim()) params.set('q', packageMemberQuery.trim())
+        const params = new URLSearchParams({ page: '1', per_page: '20', q: packageMemberQuery.trim() })
         const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
         const json = await res.json().catch(() => null)
         const paged = extractPaged<Member>(json)
@@ -2069,7 +2075,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return () => {
       cancelled = true
     }
-  }, [packageMemberQuery, packageModalOpen])
+  }, [packageMemberPickerOpen, packageMemberQuery])
 
   const removePackageCartItem = useCallback(async (itemId: number) => {
     const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
@@ -3298,17 +3304,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberOrderViewId(null)
   }
 
-  const openMemberAssignPanel = () => {
-    setMemberPanelMode('assign')
-    setMemberOpen(true)
-    setMemberQuery('')
-    setMembers([])
-    setMemberPage(1)
-    setMemberLastPage(1)
-  }
-
   const openMemberQuickLookupPanel = async () => {
-    setMemberPanelMode('lookup')
     setMemberOpen(true)
     setMemberQuery('')
     setMembers([])
@@ -3322,6 +3318,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberActivePackagesTotal(0)
     setMemberUpcomingAppointments([])
     setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
+  }
+
+  const openAssignMemberModal = (context: 'checkout' | 'service' | 'package') => {
+    setAssignMemberContext(context)
+    setPackageMemberPickerOpen(true)
+    setPackageMemberQuery('')
+    setPackageMembers([])
   }
 
   const onAssignMember = async (member: Member) => {
@@ -3339,6 +3342,30 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     await syncPosCartCustomerContext({ mode: 'member', memberId: member.id })
     await fetchMemberDetail(member.id, { page: 1 })
   }
+
+  const hydrateMemberProfile = useCallback(async (member: Member): Promise<Member> => {
+    try {
+      const params = new URLSearchParams({ recent_orders_page: '1', recent_orders_per_page: '1', appointments_page: '1', appointments_per_page: '1' })
+      const res = await fetch(`/api/proxy/pos/members/${member.id}?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) return member
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: { member?: MemberDetail } }).data
+        : null
+      const full = payload?.member
+      if (!full) return member
+      return {
+        id: full.id,
+        name: full.name,
+        phone: full.phone ?? null,
+        email: full.email ?? null,
+        member_code: full.member_code ?? null,
+        phone_masked: member.phone_masked ?? null,
+      }
+    } catch {
+      return member
+    }
+  }, [])
 
   /** Product-only: clear optional member + guest fields (same layout as booking services + Clear) */
   const clearOptionalProductSaleContext = useCallback(async () => {
@@ -5728,7 +5755,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <button
                           type="button"
                           disabled={hasCartAppointmentSettlements}
-                          onClick={() => openMemberAssignPanel()}
+                          onClick={() => openAssignMemberModal('checkout')}
                           className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                         >
                           {selectedMember ? 'Change Member' : 'Assign Member'}
@@ -6066,7 +6093,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <button
                     type="button"
                     disabled={hasCartAppointmentSettlements}
-                    onClick={() => setPackageMemberPickerOpen(true)}
+                    onClick={() => openAssignMemberModal('package')}
                     className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     {packageSelectedMember ? 'Change Member' : 'Assign Member'}
@@ -6077,6 +6104,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   {packageSelectedMember
                     ? `${packageSelectedMember.name}${packageSelectedMember.phone ? ` (${packageSelectedMember.phone})` : ''}`
                     : 'No member selected'}
+                </div>
+
+                <div className="mt-3">
+                  <label className="text-xs font-semibold text-gray-600">Remark / Note (optional)</label>
+                  <textarea
+                    value={packageInternalNote}
+                    onChange={(e) => setPackageInternalNote(e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="Internal note for staff (optional)"
+                  />
                 </div>
 
                 {hasCartAppointmentSettlements ? (
@@ -6110,22 +6148,32 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         value={packageMemberQuery}
                         onChange={(e) => setPackageMemberQuery(e.target.value)}
                         className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Search by phone, email, member code, name..."
+                        placeholder="Search by name or phone"
                         autoFocus
                       />
                     </div>
+                    <p className="mt-2 text-xs text-gray-500">Search member by name or phone. Type at least 3 characters to search.</p>
                   </div>
 
                   <div className="max-h-[65vh] overflow-auto">
-                    {packageMembersLoading ? (
+                    {packageMemberQuery.trim().length < 3 ? (
+                      <div className="p-8 text-center text-sm text-gray-500">
+                        Type at least 3 characters to search.
+                      </div>
+                    ) : packageMembersLoading ? (
                       <div className="p-6 text-sm text-gray-500">Loading members...</div>
                     ) : (
                       packageMembers.map((member) => (
                         <button
                           key={`package-member-modal-${member.id}`}
                           className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
-                          onClick={() => {
-                            setPackageSelectedMember(member)
+                          onClick={async () => {
+                            if (assignMemberContext === 'package') {
+                              const fullMember = await hydrateMemberProfile(member)
+                              setPackageSelectedMember(fullMember)
+                            } else {
+                              await onAssignMember(member)
+                            }
                             setPackageMemberQuery('')
                             setPackageMemberPickerOpen(false)
                           }}
@@ -6138,16 +6186,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <div className="flex-1 min-w-0">
                               <p className="font-semibold text-gray-900 text-base leading-tight">
                                 {member.name}
-                                {member.phone && <span className="ml-2 text-sm font-normal text-gray-500">({member.phone})</span>}
                               </p>
-                              {member.email && (
-                                <p className="mt-1.5 text-sm text-gray-600 flex items-center gap-1.5">
-                                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                  </svg>
-                                  {member.email}
-                                </p>
-                              )}
+                              <p className="mt-1 text-xs text-gray-600">{member.phone_masked ?? '***'}</p>
                             </div>
                             <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -6157,7 +6197,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       ))
                     )}
 
-                    {!packageMembersLoading && packageMembers.length === 0 && (
+                    {!packageMembersLoading && packageMemberQuery.trim().length >= 3 && packageMembers.length === 0 && (
                       <div className="p-12 text-center">
                         <p className="text-sm font-medium text-gray-600">No members found</p>
                         <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
@@ -6329,7 +6369,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <button
                         type="button"
                         disabled={hasCartAppointmentSettlements}
-                        onClick={() => openMemberAssignPanel()}
+                        onClick={() => openAssignMemberModal('service')}
                         className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
                         {selectedMember ? 'Change Member' : 'Assign Member'}
@@ -6487,10 +6527,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
                 <div>
-                  <h4 className="text-lg font-bold text-gray-900">{memberPanelMode === 'lookup' ? 'Member Quick Lookup' : 'Assign Member'}</h4>
-                  <p className="text-xs text-gray-500">
-                    {memberPanelMode === 'lookup' ? 'Search member by name or phone' : 'Search and assign member to current flow'}
-                  </p>
+                  <h4 className="text-lg font-bold text-gray-900">Member Quick Lookup</h4>
+                  <p className="text-xs text-gray-500">Search member by name or phone</p>
                 </div>
                 <button type="button" onClick={closeMemberPanel} className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
                   <span className="text-xl leading-none">×</span>
@@ -6503,7 +6541,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               ) : null}
 
-              <div className={`grid min-h-0 flex-1 grid-cols-1 ${memberPanelMode === 'lookup' ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}`}>
+              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
                 <div className="border-b border-gray-200 p-5 md:border-b-0 md:border-r">
                   <div className="relative">
                     <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -6532,12 +6570,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             key={member.id}
                             className="block w-full border-b border-gray-100 px-4 py-3 text-left transition hover:bg-blue-50 last:border-b-0"
                             onClick={() => {
-                              if (memberPanelMode === 'assign') {
-                                void onAssignMember(member)
-                                closeMemberPanel()
-                                focusScanner()
-                                return
-                              }
                               setLookupMember(member)
                               void fetchMemberDetail(member.id, { page: 1, appointmentsPage: 1, updateSelectedMember: false })
                             }}
@@ -6568,7 +6600,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ) : null}
                 </div>
 
-                {memberPanelMode === 'lookup' ? (
                 <div className="min-h-0 overflow-y-auto p-5">
                   {lookupMember && memberDetailLoading ? (
                     <p className="text-sm text-gray-500">Loading member details...</p>
@@ -6713,7 +6744,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <p className="text-sm text-gray-500">Unable to load member details.</p>
                   ) : null}
                 </div>
-                ) : null}
               </div>
             </div>
           </div>
