@@ -359,9 +359,33 @@ type MemberDetail = {
   total_orders?: number
   total_spent?: number
   last_order_date?: string | null
+  points_balance?: number
 }
 
 type MemberRecentOrdersMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+type MemberActivePackage = {
+  id: number
+  package_name?: string | null
+  expires_at?: string | null
+}
+
+type MemberUpcomingAppointment = {
+  id: number
+  booking_code?: string | null
+  status?: string | null
+  start_at?: string | null
+  end_at?: string | null
+  service_name?: string | null
+  staff_name?: string | null
+}
+
+type MemberUpcomingAppointmentsMeta = {
   current_page: number
   last_page: number
   per_page: number
@@ -607,6 +631,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     total: 0,
   })
   const [memberOrdersLoadingMore, setMemberOrdersLoadingMore] = useState(false)
+  const [memberActivePackages, setMemberActivePackages] = useState<MemberActivePackage[]>([])
+  const [memberActivePackagesTotal, setMemberActivePackagesTotal] = useState(0)
+  const [memberUpcomingAppointments, setMemberUpcomingAppointments] = useState<MemberUpcomingAppointment[]>([])
+  const [memberUpcomingAppointmentsMeta, setMemberUpcomingAppointmentsMeta] = useState<MemberUpcomingAppointmentsMeta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 2,
+    total: 0,
+  })
+  const [memberAppointmentsLoadingMore, setMemberAppointmentsLoadingMore] = useState(false)
   const [memberOrderViewId, setMemberOrderViewId] = useState<number | null>(null)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
@@ -1453,12 +1487,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberLoading(false)
   }, [])
 
-  const fetchMemberDetail = useCallback(async (memberId: number, options?: { page?: number; append?: boolean; silent?: boolean }) => {
+  const fetchMemberDetail = useCallback(async (memberId: number, options?: { page?: number; append?: boolean; silent?: boolean; appointmentsPage?: number; appendAppointments?: boolean }) => {
     const page = Math.max(1, options?.page ?? 1)
+    const appointmentsPage = Math.max(1, options?.appointmentsPage ?? 1)
     const append = Boolean(options?.append)
+    const appendAppointments = Boolean(options?.appendAppointments)
     const silent = Boolean(options?.silent)
     if (append) {
       setMemberOrdersLoadingMore(true)
+    }
+    if (appendAppointments) {
+      setMemberAppointmentsLoadingMore(true)
     } else if (!silent) {
       setMemberDetailLoading(true)
     }
@@ -1466,6 +1505,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const params = new URLSearchParams({
         recent_orders_page: String(page),
         recent_orders_per_page: '5',
+        appointments_page: String(appointmentsPage),
+        appointments_per_page: '2',
       })
       const res = await fetch(`/api/proxy/pos/members/${memberId}?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
@@ -1473,19 +1514,46 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         throw new Error(String(json?.message ?? 'Unable to load member profile.'))
       }
       const payload = (json && typeof json === 'object' && 'data' in json)
-        ? (json as { data?: { member?: MemberDetail; recent_orders?: MemberRecentOrder[]; recent_orders_meta?: Partial<MemberRecentOrdersMeta> } }).data
+        ? (json as {
+          data?: {
+            member?: MemberDetail
+            active_packages?: { total_active?: number; items?: MemberActivePackage[] }
+            upcoming_appointments?: MemberUpcomingAppointment[]
+            upcoming_appointments_meta?: Partial<MemberUpcomingAppointmentsMeta>
+            recent_orders?: MemberRecentOrder[]
+            recent_orders_meta?: Partial<MemberRecentOrdersMeta>
+          }
+        }).data
         : null
       const loadedMember = payload?.member ?? null
       setMemberDetail(loadedMember)
       const fetchedOrders = Array.isArray(payload?.recent_orders) ? payload.recent_orders : []
-      setMemberRecentOrders((previous) => (append ? [...previous, ...fetchedOrders] : fetchedOrders))
-      const meta = payload?.recent_orders_meta
-      setMemberRecentOrdersMeta({
-        current_page: Number(meta?.current_page ?? page),
-        last_page: Number(meta?.last_page ?? page),
-        per_page: Number(meta?.per_page ?? 5),
-        total: Number(meta?.total ?? fetchedOrders.length),
-      })
+      if (!appendAppointments || append) {
+        setMemberRecentOrders((previous) => (append ? [...previous, ...fetchedOrders] : fetchedOrders))
+        const meta = payload?.recent_orders_meta
+        setMemberRecentOrdersMeta({
+          current_page: Number(meta?.current_page ?? page),
+          last_page: Number(meta?.last_page ?? page),
+          per_page: Number(meta?.per_page ?? 5),
+          total: Number(meta?.total ?? fetchedOrders.length),
+        })
+      }
+      const activePackages = payload?.active_packages
+      setMemberActivePackages(Array.isArray(activePackages?.items) ? activePackages.items : [])
+      setMemberActivePackagesTotal(Number(activePackages?.total_active ?? 0))
+
+      const appointments = Array.isArray(payload?.upcoming_appointments) ? payload.upcoming_appointments : []
+      if (!append || appendAppointments) {
+        setMemberUpcomingAppointments((previous) => (appendAppointments ? [...previous, ...appointments] : appointments))
+        const appointmentsMeta = payload?.upcoming_appointments_meta
+        setMemberUpcomingAppointmentsMeta({
+          current_page: Number(appointmentsMeta?.current_page ?? appointmentsPage),
+          last_page: Number(appointmentsMeta?.last_page ?? appointmentsPage),
+          per_page: Number(appointmentsMeta?.per_page ?? 2),
+          total: Number(appointmentsMeta?.total ?? appointments.length),
+        })
+      }
+
       if (loadedMember) {
         setSelectedMember((previous) => {
           if (previous && previous.id !== loadedMember.id) return previous
@@ -1499,7 +1567,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         })
       }
     } catch {
-      if (!append) {
+      if (!append && !appendAppointments) {
         setMemberDetail(null)
         setMemberRecentOrders([])
         setMemberRecentOrdersMeta({
@@ -1508,10 +1576,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           per_page: 5,
           total: 0,
         })
+        setMemberActivePackages([])
+        setMemberActivePackagesTotal(0)
+        setMemberUpcomingAppointments([])
+        setMemberUpcomingAppointmentsMeta({
+          current_page: 1,
+          last_page: 1,
+          per_page: 2,
+          total: 0,
+        })
       }
     } finally {
       setMemberDetailLoading(false)
       setMemberOrdersLoadingMore(false)
+      setMemberAppointmentsLoadingMore(false)
     }
   }, [])
 
@@ -3210,6 +3288,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setMemberDetail(null)
       setMemberRecentOrders([])
       setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
+      setMemberActivePackages([])
+      setMemberActivePackagesTotal(0)
+      setMemberUpcomingAppointments([])
+      setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
       setMemberOrderViewId(null)
       return
     }
@@ -3225,6 +3307,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setMemberDetail(null)
       setMemberRecentOrders([])
       setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
+      setMemberActivePackages([])
+      setMemberActivePackagesTotal(0)
+      setMemberUpcomingAppointments([])
+      setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
     }
   }
 
@@ -6480,7 +6566,66 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <p><span className="font-semibold text-gray-900">Total Orders:</span> {memberDetail.total_orders ?? 0}</p>
                           <p><span className="font-semibold text-gray-900">Total Spent:</span> RM {Number(memberDetail.total_spent ?? 0).toFixed(2)}</p>
                           <p><span className="font-semibold text-gray-900">Last Order Date:</span> {memberDetail.last_order_date ? new Date(memberDetail.last_order_date).toLocaleString() : '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Member Points Balance:</span> {memberDetail.points_balance ?? 0}</p>
                         </div>
+                      </section>
+
+                      <section>
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-bold text-gray-900">Active Packages (Summary)</h5>
+                          <p className="text-xs text-gray-500">Total: {memberActivePackagesTotal}</p>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {memberActivePackages.length === 0 ? (
+                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">No active packages.</p>
+                          ) : memberActivePackages.map((pkg) => (
+                            <div key={pkg.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                              <p className="text-sm font-semibold text-gray-900">{pkg.package_name || `Package #${pkg.id}`}</p>
+                              <p>Expires: {pkg.expires_at ? new Date(pkg.expires_at).toLocaleString() : 'No expiry'}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section>
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-bold text-gray-900">Upcoming Appointments</h5>
+                          <p className="text-xs text-gray-500">
+                            Showing {memberUpcomingAppointments.length} of {memberUpcomingAppointmentsMeta.total}
+                          </p>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {memberUpcomingAppointments.length === 0 ? (
+                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">No upcoming appointments.</p>
+                          ) : memberUpcomingAppointments.map((appointment) => (
+                            <div key={appointment.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                              <p className="text-sm font-semibold text-gray-900">{appointment.booking_code || `Booking #${appointment.id}`}</p>
+                              <p>Status: {appointment.status || '—'}</p>
+                              <p>Service: {appointment.service_name || '—'}</p>
+                              <p>Staff: {appointment.staff_name || '—'}</p>
+                              <p>Time: {appointment.start_at ? new Date(appointment.start_at).toLocaleString() : '—'}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {memberUpcomingAppointmentsMeta.current_page < memberUpcomingAppointmentsMeta.last_page ? (
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!selectedMember?.id) return
+                                void fetchMemberDetail(selectedMember.id, {
+                                  appointmentsPage: memberUpcomingAppointmentsMeta.current_page + 1,
+                                  appendAppointments: true,
+                                  silent: true,
+                                })
+                              }}
+                              disabled={memberAppointmentsLoadingMore}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {memberAppointmentsLoadingMore ? 'Loading...' : 'Load More Appointments'}
+                            </button>
+                          </div>
+                        ) : null}
                       </section>
 
                       <section>

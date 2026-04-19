@@ -18,6 +18,7 @@ use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
+use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
@@ -37,6 +38,7 @@ use App\Services\SettingService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
+use App\Models\Ecommerce\PointsEarnBatch;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
@@ -104,8 +106,11 @@ class PosController extends Controller
 
     public function memberDetail(Request $request, int $memberId)
     {
+        $now = now();
         $page = max(1, (int) $request->query('recent_orders_page', 1));
         $perPage = max(1, min(10, (int) $request->query('recent_orders_per_page', 5)));
+        $appointmentsPage = max(1, (int) $request->query('appointments_page', 1));
+        $appointmentsPerPage = max(1, min(5, (int) $request->query('appointments_per_page', 2)));
 
         $member = Customer::query()
             ->with(['customerType:id,name'])
@@ -131,6 +136,55 @@ class PosController extends Controller
             ])
             ->values();
 
+        $activePackagesQuery = CustomerServicePackage::query()
+            ->with(['servicePackage:id,name'])
+            ->where('customer_id', $member->id)
+            ->where('status', 'active')
+            ->where(function ($query) use ($now) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>=', $now);
+            });
+
+        $activePackagesTotal = (clone $activePackagesQuery)->count();
+        $activePackagesItems = (clone $activePackagesQuery)
+            ->orderByDesc('id')
+            ->limit(3)
+            ->get(['id', 'service_package_id', 'expires_at'])
+            ->map(fn (CustomerServicePackage $package) => [
+                'id' => (int) $package->id,
+                'package_name' => $package->servicePackage?->name ?? 'Package',
+                'expires_at' => optional($package->expires_at)->toDateTimeString(),
+            ])
+            ->values();
+
+        $upcomingAppointmentsPaginator = Booking::query()
+            ->with(['service:id,name', 'staff:id,name'])
+            ->where('customer_id', $member->id)
+            ->whereNotIn('status', ['CANCELLED'])
+            ->where('start_at', '>=', $now)
+            ->orderBy('start_at')
+            ->paginate($appointmentsPerPage, ['id', 'booking_code', 'status', 'start_at', 'end_at', 'service_id', 'staff_id'], 'appointments_page', $appointmentsPage);
+
+        $upcomingAppointments = collect($upcomingAppointmentsPaginator->items())
+            ->map(fn (Booking $appointment) => [
+                'id' => (int) $appointment->id,
+                'booking_code' => $appointment->booking_code,
+                'status' => $appointment->status,
+                'start_at' => optional($appointment->start_at)->toDateTimeString(),
+                'end_at' => optional($appointment->end_at)->toDateTimeString(),
+                'service_name' => $appointment->service?->name,
+                'staff_name' => $appointment->staff?->name,
+            ])
+            ->values();
+
+        $memberPointsBalance = (int) PointsEarnBatch::query()
+            ->where('customer_id', $member->id)
+            ->where('status', 'active')
+            ->where('points_remaining', '>', 0)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', $now);
+            })
+            ->sum('points_remaining');
+
         return $this->respond([
             'member' => [
                 'id' => (int) $member->id,
@@ -143,6 +197,19 @@ class PosController extends Controller
                 'total_orders' => $totalOrders,
                 'total_spent' => $totalSpent,
                 'last_order_date' => $lastOrderAt ? Carbon::parse($lastOrderAt)->toDateTimeString() : null,
+                'points_balance' => $memberPointsBalance,
+            ],
+            'active_packages' => [
+                'total_active' => (int) $activePackagesTotal,
+                'items' => $activePackagesItems,
+                'has_more' => $activePackagesTotal > $activePackagesItems->count(),
+            ],
+            'upcoming_appointments' => $upcomingAppointments,
+            'upcoming_appointments_meta' => [
+                'current_page' => $upcomingAppointmentsPaginator->currentPage(),
+                'last_page' => $upcomingAppointmentsPaginator->lastPage(),
+                'per_page' => $upcomingAppointmentsPaginator->perPage(),
+                'total' => $upcomingAppointmentsPaginator->total(),
             ],
             'recent_orders' => $recentOrders,
             'recent_orders_meta' => [
