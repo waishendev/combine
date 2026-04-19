@@ -423,22 +423,7 @@ class PosController extends Controller
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $history = $this->resolveAppointmentPaymentHistory((int) $booking->id);
-        $staffSplits = DB::table('booking_service_staff_splits as splits')
-            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
-            ->where('splits.booking_id', (int) $booking->id)
-            ->orderBy('splits.id')
-            ->get([
-                'splits.staff_id',
-                'staffs.name as staff_name',
-                'splits.split_percent',
-                'splits.service_commission_rate_snapshot',
-            ])
-            ->map(fn ($row) => [
-                'staff_id' => (int) ($row->staff_id ?? 0),
-                'staff_name' => (string) ($row->staff_name ?? '-'),
-                'split_percent' => (int) ($row->split_percent ?? 0),
-                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
-            ])->values();
+        $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
@@ -473,7 +458,7 @@ class PosController extends Controller
                 'id' => (int) ($booking->staff?->id ?? 0),
                 'name' => (string) ($booking->staff?->name ?? '-'),
             ],
-            'staff_splits' => $staffSplits,
+            'staff_splits' => $staffSplits->values()->all(),
             'service_total' => (float) $summary['service_total'],
             'settled_service_amount' => $summary['settled_service_amount'],
             'is_range_priced' => (bool) $summary['is_range_priced'],
@@ -753,6 +738,9 @@ class PosController extends Controller
             'settled_service_amount' => [$isRangePriced ? 'required' : 'nullable', 'numeric', 'min:0'],
             'addon_option_ids' => ['nullable', 'array'],
             'addon_option_ids.*' => ['integer'],
+            'staff_splits' => ['nullable', 'array', 'min:1'],
+            'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
         if ($isRangePriced && isset($validated['settled_service_amount'])) {
@@ -805,8 +793,20 @@ class PosController extends Controller
             $booking->addon_duration_min = (int) collect($newAddonItems)->sum('extra_duration_min');
         }
 
-        $booking->save();
+        $normalizedSplits = $this->normalizeBookingStaffSplits(
+            collect($validated['staff_splits'] ?? []),
+            (int) ($booking->staff_id ?? 0),
+        );
+        if ($normalizedSplits['error']) {
+            return $this->respondError((string) $normalizedSplits['error'], 422);
+        }
 
+        DB::transaction(function () use ($booking, $normalizedSplits) {
+            $booking->save();
+            $this->persistBookingStaffSplits($booking, collect($normalizedSplits['splits'] ?? []));
+        });
+
+        $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
         $booking->load(['service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
 
@@ -3561,6 +3561,7 @@ class PosController extends Controller
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
             $guestEmail = trim((string) ($booking->guest_email ?? ''));
+            $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
             return [
                 'id' => (int) $item->id,
@@ -3577,6 +3578,7 @@ class PosController extends Controller
                 'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
                 'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
+                'staff_splits' => $staffSplits->values()->all(),
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
                 'balance_due' => round($balanceDue, 2),
@@ -4038,6 +4040,7 @@ class PosController extends Controller
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $receiptHistory = $this->resolveAppointmentPaymentHistory((int) $booking->id);
         $guestName = trim((string) ($booking->guest_name ?? ''));
+        $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
         return [
             'id' => (int) $booking->id,
@@ -4053,6 +4056,7 @@ class PosController extends Controller
             'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
             'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
             'staff_name' => (string) ($booking->staff?->name ?? '-'),
+            'staff_splits' => $staffSplits->values()->all(),
             'service_total' => (float) $summary['service_total'],
             'settled_service_amount' => $summary['settled_service_amount'],
             'is_range_priced' => (bool) $summary['is_range_priced'],
@@ -4302,6 +4306,112 @@ class PosController extends Controller
                 'consumed_at' => optional($packageUsage->consumed_at)?->toIso8601String(),
             ] : null,
         ];
+    }
+
+    protected function resolveBookingStaffSplits(int $bookingId, int $fallbackStaffId = 0)
+    {
+        $rows = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.booking_id', $bookingId)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'staff_name' => (string) ($row->staff_name ?? '-'),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->values();
+
+        if ($rows->isNotEmpty()) {
+            return $rows;
+        }
+
+        if ($fallbackStaffId <= 0) {
+            return collect();
+        }
+
+        $fallbackStaff = Staff::query()->find($fallbackStaffId, ['id', 'name', 'service_commission_rate']);
+        if (! $fallbackStaff) {
+            return collect();
+        }
+
+        return collect([[
+            'staff_id' => (int) $fallbackStaff->id,
+            'staff_name' => (string) ($fallbackStaff->name ?? '-'),
+            'share_percent' => 100,
+            'service_commission_rate_snapshot' => (float) ($fallbackStaff->service_commission_rate ?? 0),
+        ]]);
+    }
+
+    protected function normalizeBookingStaffSplits($splits, int $fallbackStaffId): array
+    {
+        $rows = collect($splits)->values();
+        if ($rows->isEmpty() && $fallbackStaffId > 0) {
+            $rows = collect([['staff_id' => $fallbackStaffId, 'share_percent' => 100]]);
+        }
+        if ($rows->isEmpty()) {
+            return ['error' => __('At least one staff split is required.'), 'splits' => []];
+        }
+
+        $normalized = $rows->map(fn ($row) => [
+            'staff_id' => (int) ($row['staff_id'] ?? 0),
+            'share_percent' => (int) ($row['share_percent'] ?? 0),
+        ])->values();
+
+        $uniqueStaff = $normalized->pluck('staff_id')->unique();
+        if ($uniqueStaff->count() !== $normalized->count()) {
+            return ['error' => __('Duplicate staff is not allowed in split.'), 'splits' => []];
+        }
+
+        if ($normalized->contains(fn ($row) => $row['staff_id'] <= 0 || $row['share_percent'] <= 0)) {
+            return ['error' => __('Each staff split must have valid staff and percent.'), 'splits' => []];
+        }
+
+        $sum = (int) $normalized->sum('share_percent');
+        if ($sum !== 100) {
+            return ['error' => __('Staff split total must equal 100% (current: :sum%).', ['sum' => $sum]), 'splits' => []];
+        }
+
+        $staffRates = Staff::query()
+            ->whereIn('id', $uniqueStaff->all())
+            ->pluck('service_commission_rate', 'id');
+
+        $withRate = $normalized->map(fn ($row) => [
+            'staff_id' => (int) $row['staff_id'],
+            'share_percent' => (int) $row['share_percent'],
+            'service_commission_rate_snapshot' => (float) ($staffRates[(int) $row['staff_id']] ?? 0),
+        ])->values();
+
+        return ['error' => null, 'splits' => $withRate->all()];
+    }
+
+    protected function persistBookingStaffSplits(Booking $booking, $normalizedSplits): void
+    {
+        DB::table('booking_service_staff_splits')
+            ->where('booking_id', (int) $booking->id)
+            ->delete();
+
+        $rows = collect($normalizedSplits)->map(fn ($split) => [
+            'booking_id' => (int) $booking->id,
+            'staff_id' => (int) ($split['staff_id'] ?? 0),
+            'split_percent' => (int) ($split['share_percent'] ?? 0),
+            'service_commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ])->filter(fn ($row) => $row['staff_id'] > 0 && $row['split_percent'] > 0)->values()->all();
+
+        if (! empty($rows)) {
+            DB::table('booking_service_staff_splits')->insert($rows);
+            $booking->staff_id = (int) ($rows[0]['staff_id'] ?? $booking->staff_id);
+            $booking->save();
+        }
     }
 
     /**

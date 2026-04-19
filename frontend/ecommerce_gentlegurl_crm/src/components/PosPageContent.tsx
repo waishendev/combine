@@ -87,6 +87,7 @@ type AppointmentSettlementCartItem = {
   is_range_priced?: boolean
   requires_settled_amount?: boolean
   staff_name?: string | null
+  staff_splits?: Array<{ staff_id: number; staff_name?: string | null; share_percent: number }>
   appointment_start_at?: string | null
   appointment_end_at?: string | null
   balance_due: number
@@ -614,6 +615,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
+  const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
 
@@ -2296,6 +2298,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     )
     setCartEditSelectedAddonIds(currentAddonIds)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
+    const initialSplits = (settlement.staff_splits ?? [])
+      .map((split) => ({
+        staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+        share_percent: String(split.share_percent ?? ''),
+      }))
+      .filter((split) => split.staff_id != null)
+    if (initialSplits.length > 0) {
+      setCartEditStaffSplits(initialSplits)
+    } else {
+      setCartEditStaffSplits([{ staff_id: settlement.staff_splits?.[0]?.staff_id ?? null, share_percent: '100' }])
+    }
 
     setCartEditAddonOptionsLoading(true)
     setCartEditSettlementOpen(true)
@@ -2347,6 +2360,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         }
         payload.settled_service_amount = amt
       }
+      const normalizedSplits = cartEditStaffSplits.map((row) => ({
+        staff_id: Number(row.staff_id ?? 0),
+        share_percent: Number.parseInt(row.share_percent || '0', 10),
+      }))
+      if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+        setCartEditSettlementError('Please select at least one staff and enter valid split percentages.')
+        return
+      }
+      const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
+      if (uniqueIds.size !== normalizedSplits.length) {
+        setCartEditSettlementError('Duplicate staff is not allowed in split.')
+        return
+      }
+      const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
+      if (splitSum !== 100) {
+        setCartEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
+        return
+      }
+      payload.staff_splits = normalizedSplits
 
       const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
         method: 'POST',
@@ -5162,6 +5194,61 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Staff Split</p>
+                  <button
+                    type="button"
+                    onClick={() => setCartEditStaffSplits((prev) => [...prev, { staff_id: null, share_percent: '' }])}
+                    className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                  >
+                    + Add Staff
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {cartEditStaffSplits.map((split, idx) => (
+                    <div key={`cart-split-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                      <select
+                        value={split.staff_id ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value ? Number(e.target.value) : null
+                          setCartEditSettlementError(null)
+                          setCartEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
+                        }}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select staff</option>
+                        {activeStaffs.map((staff) => (
+                          <option key={staff.id} value={staff.id}>{staff.name}</option>
+                        ))}
+                      </select>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={split.share_percent}
+                          onChange={(e) => {
+                            setCartEditSettlementError(null)
+                            setCartEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, share_percent: e.target.value } : row)))
+                          }}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={cartEditStaffSplits.length <= 1}
+                        onClick={() => setCartEditStaffSplits((prev) => prev.filter((_, rowIdx) => rowIdx !== idx))}
+                        className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {(() => {

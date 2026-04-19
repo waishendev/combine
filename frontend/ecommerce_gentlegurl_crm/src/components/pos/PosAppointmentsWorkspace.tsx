@@ -218,6 +218,7 @@ export default function PosAppointmentsWorkspace({
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
   const [editSelectedAddonIds, setEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [editSettledAmount, setEditSettledAmount] = useState('')
+  const [editStaffSplits, setEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
   const [editAddonOptionsLoading, setEditAddonOptionsLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
@@ -884,6 +885,17 @@ export default function PosAppointmentsWorkspace({
 
     const settled = appointmentDetail.settled_service_amount
     setEditSettledAmount(settled != null ? String(settled) : '')
+    const initialSplits = (appointmentDetail.staff_splits ?? [])
+      .map((split) => ({
+        staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+        share_percent: String(split.share_percent ?? ''),
+      }))
+      .filter((split) => split.staff_id != null)
+    if (initialSplits.length > 0) {
+      setEditStaffSplits(initialSplits)
+    } else {
+      setEditStaffSplits(appointmentDetail.staff?.id ? [{ staff_id: appointmentDetail.staff.id, share_percent: '100' }] : [])
+    }
 
     setEditAddonOptionsLoading(true)
     setEditSettlementOpen(true)
@@ -933,6 +945,25 @@ export default function PosAppointmentsWorkspace({
         }
         payload.settled_service_amount = amt
       }
+      const normalizedSplits = editStaffSplits.map((row) => ({
+        staff_id: Number(row.staff_id ?? 0),
+        share_percent: Number.parseInt(row.share_percent || '0', 10),
+      }))
+      if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+        setEditSettlementError('Please select at least one staff and enter valid split percentages.')
+        return
+      }
+      const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
+      if (uniqueIds.size !== normalizedSplits.length) {
+        setEditSettlementError('Duplicate staff is not allowed in split.')
+        return
+      }
+      const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
+      if (splitSum !== 100) {
+        setEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
+        return
+      }
+      payload.staff_splits = normalizedSplits
 
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
         method: 'POST',
@@ -951,7 +982,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, editSelectedAddonIds, editSettledAmount, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -2666,6 +2697,61 @@ export default function PosAppointmentsWorkspace({
                     ))}
                   </div>
                 )}
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Staff Split</p>
+                  <button
+                    type="button"
+                    onClick={() => setEditStaffSplits((prev) => [...prev, { staff_id: null, share_percent: '' }])}
+                    className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                  >
+                    + Add Staff
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {editStaffSplits.map((split, idx) => (
+                    <div key={`split-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                      <select
+                        value={split.staff_id ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value ? Number(e.target.value) : null
+                          setEditSettlementError(null)
+                          setEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
+                        }}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select staff</option>
+                        {activeStaffs.map((staff) => (
+                          <option key={staff.id} value={staff.id}>{staff.name}</option>
+                        ))}
+                      </select>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={split.share_percent}
+                          onChange={(e) => {
+                            setEditSettlementError(null)
+                            setEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, share_percent: e.target.value } : row)))
+                          }}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={editStaffSplits.length <= 1}
+                        onClick={() => setEditStaffSplits((prev) => prev.filter((_, rowIdx) => rowIdx !== idx))}
+                        className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {(() => {

@@ -54,7 +54,7 @@ export type PosAppointmentDetail = {
   guest_email?: string | null
   service?: { id: number; name: string; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }
   staff?: { id: number; name: string }
-  staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
+  staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
   settled_service_amount?: number | null
   is_range_priced?: boolean
