@@ -168,6 +168,16 @@ const paymentMethodDisplayLabel = (raw: string) => {
   return PAYMENT_METHOD_TABLE_LABELS[key] ?? labelize(raw)
 }
 
+const normalizeBookingType = (value?: string | null) => String(value ?? '').trim().toLowerCase()
+const isBookingDepositType = (value?: string | null) => {
+  const t = normalizeBookingType(value)
+  return t === 'booking_deposit' || t === 'deposit'
+}
+const isBookingWorkerType = (value?: string | null) => {
+  const t = normalizeBookingType(value)
+  return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
+}
+
 /** Table header: only the first character is uppercase (no full-string caps). */
 const reportTableColumnHeader = (label: string) =>
   label ? `${label.charAt(0).toUpperCase()}${label.slice(1).toLowerCase()}` : label
@@ -567,6 +577,8 @@ export default function SalesChannelReportPage({
                       orderId={row.order_id}
                       channel={row.channel}
                       currentPaymentMethod={row.payment_method}
+                      staffActionLabel={isBookingWorkerType(row.type) ? 'worker' : 'sales_person'}
+                      hideStaffAction={isBookingDepositType(row.type)}
                       onDone={() => setRefreshKey((prev) => prev + 1)}
                     />
                   </td>
