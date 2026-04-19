@@ -244,6 +244,17 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentReceiptCooldownActive = appointmentReceiptCooldownUntil > Date.now()
 
+  const formatAppointmentStaffLabel = useCallback((detail: PosAppointmentDetail): string => {
+    const splits = (detail.staff_splits ?? []).filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (splits.length > 0) {
+      return splits
+        .map((split) => `${split.staff_name || `Staff #${split.staff_id}`} (${Number(split.share_percent)}%)`)
+        .join(', ')
+    }
+    const fallback = detail.staff?.name?.trim() ?? ''
+    return fallback ? `${fallback} (100%)` : '—'
+  }, [])
+
   useEffect(() => {
     if (!appointmentReceiptQrImageUrl && !appointmentReceiptQrFullscreenImageUrl) {
       setAppointmentReceiptQrLoaded(false)
@@ -1746,7 +1757,7 @@ export default function PosAppointmentsWorkspace({
                     <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff</span>
-                        <span className="min-w-0 font-semibold text-slate-900">{appointmentDetail.staff?.name ?? '—'}</span>
+                        <span className="min-w-0 font-semibold text-slate-900">{formatAppointmentStaffLabel(appointmentDetail)}</span>
                       </div>
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</span>
@@ -2524,7 +2535,7 @@ export default function PosAppointmentsWorkspace({
                 <span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}
               </p>
               <p>
-                <span className="font-semibold">Current Staff:</span> {appointmentDetail.staff?.name ?? '-'}
+                <span className="font-semibold">Current Staff:</span> {formatAppointmentStaffLabel(appointmentDetail)}
               </p>
               <p>
                 <span className="font-semibold">Current Date/Time:</span>{' '}

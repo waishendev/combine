@@ -701,6 +701,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   }, [])
 
+  const formatSettlementStaffLabel = useCallback((settlement: AppointmentSettlementCartItem): string => {
+    const splits = (settlement.staff_splits ?? [])
+      .filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (splits.length > 0) {
+      return splits
+        .map((split) => {
+          const fallbackName = activeStaffs.find((staff) => staff.id === split.staff_id)?.name ?? `Staff #${split.staff_id}`
+          const staffName = (split.staff_name ?? '').trim() || fallbackName
+          return `${staffName} (${Number(split.share_percent)}%)`
+        })
+        .join(', ')
+    }
+
+    const fallbackName = (settlement.staff_name ?? '').trim()
+    return fallbackName ? `${fallbackName} (100%)` : '—'
+  }, [activeStaffs])
+
   const formatDateTimeRange = useCallback((startAt?: string | null, endAt?: string | null) => {
     if (!startAt) return '-'
     const start = new Date(startAt)
@@ -4616,7 +4633,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       <div className="mt-2 space-y-1 text-xs text-gray-600">
                         <p>Name: {settlement.customer_name || '—'}</p>
-                        <p>Staff: {settlement.staff_name || '—'}</p>
+                        <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                         {settlement.appointment_start_at ? (
                           <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}</p>
                         ) : null}
@@ -5631,7 +5648,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                               <div className="mt-2 space-y-0.5 text-xs text-gray-600">
                                 <p>Name: {settlement.customer_name || '—'}</p>
-                                <p>Staff: {settlement.staff_name || '—'}</p>
+                                <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                                 {settlement.appointment_start_at ? (
                                   <p>
                                     Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}
@@ -5641,7 +5658,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
                               <p className="text-xs leading-relaxed text-gray-700">
-                                {settlement.staff_name ? `Staff: ${settlement.staff_name}` : 'Completed appointment settlement'}
+                                {`Staff: ${formatSettlementStaffLabel(settlement)}`}
                               </p>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
