@@ -366,6 +366,10 @@ $protectedRoutes = function () {
 
     Route::get('/service-packages', [ServicePackageController::class, 'index'])
         ->middleware('permission:service-packages.view|pos.checkout');
+    Route::get('/service-packages/export', [ServicePackageController::class, 'exportCsv'])
+        ->middleware('permission:service-packages.view');
+    Route::post('/service-packages/import', [ServicePackageController::class, 'importCsv'])
+        ->middleware('permission:service-packages.create|service-packages.update');
     Route::post('/service-packages', [ServicePackageController::class, 'store'])
         ->middleware('permission:service-packages.create');
     Route::get('/service-packages/{id}', [ServicePackageController::class, 'show'])
@@ -389,6 +393,10 @@ $protectedRoutes = function () {
     // Staffs
     Route::get('/staffs', [StaffController::class, 'index'])
         ->middleware('permission:staff.view|pos.checkout');
+    Route::get('/staffs/export', [StaffController::class, 'exportCsv'])
+        ->middleware('permission:staff.view');
+    Route::post('/staffs/import', [StaffController::class, 'importCsv'])
+        ->middleware('permission:staff.create|staff.update');
 
     Route::post('/staffs', [StaffController::class, 'store'])
         ->middleware('permission:staff.create');
@@ -1122,11 +1130,23 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::get('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'show']);
     Route::put('/settings/notified-cancellation-voucher', [\App\Http\Controllers\Admin\Booking\SettingController::class, 'update']);
 
+    Route::get('/services/export', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'exportCsv'])
+        ->middleware('permission:booking.services.view');
+    Route::post('/services/import', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'importCsv'])
+        ->middleware('permission:booking.services.create|booking.services.update');
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
+    Route::get('/categories/export', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'exportCsv'])
+        ->middleware('permission:booking.services.view');
+    Route::post('/categories/import', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'importCsv'])
+        ->middleware('permission:booking.services.create|booking.services.update');
     Route::apiResource('/categories', \App\Http\Controllers\Admin\Booking\CategoryController::class);
     Route::post('/categories/{id}/move-up', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveUp']);
     Route::post('/categories/{id}/move-down', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveDown']);
     Route::put('/staff-schedules/bulk', [\App\Http\Controllers\Admin\Booking\StaffScheduleController::class, 'bulkUpdate']);
+    Route::get('/staff-schedules/export', [\App\Http\Controllers\Admin\Booking\StaffScheduleController::class, 'exportCsv'])
+        ->middleware('permission:booking.schedules.view');
+    Route::post('/staff-schedules/import', [\App\Http\Controllers\Admin\Booking\StaffScheduleController::class, 'importCsv'])
+        ->middleware('permission:booking.schedules.create|booking.schedules.update');
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
     Route::get('/leave-requests', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'index'])
         ->middleware('permission:booking.schedules.view');

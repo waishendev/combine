@@ -43,6 +43,253 @@ class StaffController extends Controller
         return $this->respond($staffs);
     }
 
+    public function exportCsv(Request $request)
+    {
+        $rows = Staff::query()
+            ->with('admin:id,staff_id,username,email')
+            ->orderBy('id')
+            ->get();
+
+        $stream = fopen('php://temp', 'r+');
+        if (! $stream) {
+            return response()->json(['message' => 'Unable to build staffs CSV export.'], 500);
+        }
+
+        $headers = [
+            'id', 'code', 'name', 'phone', 'email', 'username', 'position', 'description',
+            'commission_rate', 'service_commission_rate', 'is_active',
+        ];
+        fputcsv($stream, $headers);
+
+        foreach ($rows as $staff) {
+            fputcsv($stream, [
+                $staff->id,
+                $staff->code,
+                $staff->name,
+                $staff->phone,
+                $staff->email,
+                optional($staff->admin)->username,
+                $staff->position,
+                $staff->description,
+                $staff->commission_rate,
+                $staff->service_commission_rate,
+                $staff->is_active ? 'true' : 'false',
+            ]);
+        }
+
+        rewind($stream);
+        $csv = stream_get_contents($stream) ?: '';
+        fclose($stream);
+
+        return response("\xEF\xBB\xBF" . $csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="staffs-export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt'],
+        ]);
+
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        if (! $handle) {
+            return response()->json(['message' => 'Unable to open CSV file.'], 422);
+        }
+
+        $headers = fgetcsv($handle);
+        if (! is_array($headers)) {
+            fclose($handle);
+            return response()->json(['message' => 'Invalid CSV header row.'], 422);
+        }
+
+        $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
+        $allowedHeaders = [
+            'id', 'code', 'name', 'phone', 'email', 'username', 'position', 'description',
+            'commission_rate', 'service_commission_rate', 'is_active', 'password',
+        ];
+        $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
+        if (! empty($unknownHeaders)) {
+            fclose($handle);
+            return response()->json(['message' => 'Unexpected CSV headers: ' . implode(', ', $unknownHeaders)], 422);
+        }
+
+        $summary = ['totalRows' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'failedRows' => []];
+        $role = $this->ensureStaffRole();
+        $rowNumber = 1;
+
+        while (($cells = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (! is_array($cells)) {
+                continue;
+            }
+
+            $raw = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+                $raw[$header] = isset($cells[$index]) ? trim((string) $cells[$index]) : '';
+            }
+
+            if (count(array_filter($raw, fn ($value) => $value !== '')) === 0) {
+                continue;
+            }
+            $summary['totalRows']++;
+
+            $payload = [
+                'id' => isset($raw['id']) && $raw['id'] !== '' ? (int) $raw['id'] : null,
+                'code' => ($raw['code'] ?? '') !== '' ? $raw['code'] : null,
+                'name' => $raw['name'] ?? null,
+                'phone' => ($raw['phone'] ?? '') !== '' ? $raw['phone'] : null,
+                'email' => $raw['email'] ?? null,
+                'username' => ($raw['username'] ?? '') !== '' ? $raw['username'] : null,
+                'position' => ($raw['position'] ?? '') !== '' ? $raw['position'] : null,
+                'description' => ($raw['description'] ?? '') !== '' ? $raw['description'] : null,
+                'commission_rate' => ($raw['commission_rate'] ?? '') !== '' ? $raw['commission_rate'] : 0,
+                'service_commission_rate' => ($raw['service_commission_rate'] ?? '') !== '' ? $raw['service_commission_rate'] : 0,
+                'is_active' => ($raw['is_active'] ?? '') !== '' ? filter_var($raw['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) : true,
+                'password' => ($raw['password'] ?? '') !== '' ? $raw['password'] : null,
+            ];
+
+            $staff = $payload['id'] ? Staff::query()->with('admin')->find($payload['id']) : null;
+            if (! $staff && ! empty($payload['email'])) {
+                $staff = Staff::query()->with('admin')->where('email', $payload['email'])->first();
+            }
+
+            $emailRule = ['required', 'email', 'max:255'];
+            $codeRule = ['nullable', 'string', 'max:255'];
+            $usernameRule = ['nullable', 'string', 'max:100'];
+            if ($staff) {
+                $codeRule[] = Rule::unique('staffs', 'code')->ignore($staff->id);
+                $usernameRule[] = Rule::unique('users', 'username')->ignore(optional($staff->admin)->id);
+                $emailRule[] = Rule::unique('users', 'email')->ignore(optional($staff->admin)->id);
+            } else {
+                $codeRule[] = 'unique:staffs,code';
+                $usernameRule[] = 'unique:users,username';
+                $emailRule[] = 'unique:users,email';
+            }
+
+            $validator = validator($payload, [
+                'code' => $codeRule,
+                'name' => ['required', 'string', 'min:2', 'max:255'],
+                'phone' => ['nullable', 'string', 'max:255'],
+                'email' => $emailRule,
+                'username' => $usernameRule,
+                'position' => ['nullable', 'string', 'max:255'],
+                'description' => ['nullable', 'string'],
+                'commission_rate' => ['nullable', 'numeric', 'between:0,1'],
+                'service_commission_rate' => ['nullable', 'numeric', 'between:0,1'],
+                'is_active' => ['required', 'boolean'],
+                'password' => ['nullable', 'string', 'min:6'],
+            ]);
+            if ($validator->fails()) {
+                $summary['failed']++;
+                $summary['failedRows'][] = ['row' => $rowNumber, 'reason' => $validator->errors()->first()];
+                continue;
+            }
+            $validated = $validator->validated();
+
+            try {
+                DB::transaction(function () use ($staff, $validated, $role, &$summary) {
+                    if (! $staff) {
+                        $newStaff = Staff::query()->create([
+                            'code' => $validated['code'] ?? null,
+                            'name' => $validated['name'],
+                            'phone' => $validated['phone'] ?? null,
+                            'email' => $validated['email'],
+                            'position' => $validated['position'] ?? null,
+                            'description' => $validated['description'] ?? null,
+                            'commission_rate' => $validated['commission_rate'] ?? 0,
+                            'service_commission_rate' => $validated['service_commission_rate'] ?? 0,
+                            'is_active' => $validated['is_active'],
+                        ]);
+
+                        $user = User::query()->create([
+                            'name' => $validated['name'],
+                            'email' => $validated['email'],
+                            'username' => $validated['username'] ?? null,
+                            'password' => Hash::make($validated['password'] ?? Str::random(12)),
+                            'is_active' => $validated['is_active'],
+                            'staff_id' => $newStaff->id,
+                        ]);
+                        $user->roles()->syncWithoutDetaching([$role->id]);
+                        $summary['created']++;
+                        return;
+                    }
+
+                    $admin = $staff->admin;
+                    $isUnchanged =
+                        (($staff->code ?? null) === ($validated['code'] ?? null)) &&
+                        ($staff->name === $validated['name']) &&
+                        (($staff->phone ?? null) === ($validated['phone'] ?? null)) &&
+                        ($staff->email === $validated['email']) &&
+                        (($staff->position ?? null) === ($validated['position'] ?? null)) &&
+                        (($staff->description ?? null) === ($validated['description'] ?? null)) &&
+                        ((float) $staff->commission_rate === (float) ($validated['commission_rate'] ?? 0)) &&
+                        ((float) $staff->service_commission_rate === (float) ($validated['service_commission_rate'] ?? 0)) &&
+                        ((bool) $staff->is_active === (bool) $validated['is_active']) &&
+                        ((optional($admin)->email ?? null) === $validated['email']) &&
+                        ((optional($admin)->username ?? null) === ($validated['username'] ?? null)) &&
+                        ((bool) (optional($admin)->is_active ?? false) === (bool) $validated['is_active']) &&
+                        empty($validated['password']);
+
+                    if ($isUnchanged) {
+                        $summary['skipped']++;
+                        return;
+                    }
+
+                    $staff->update([
+                        'code' => $validated['code'] ?? null,
+                        'name' => $validated['name'],
+                        'phone' => $validated['phone'] ?? null,
+                        'email' => $validated['email'],
+                        'position' => $validated['position'] ?? null,
+                        'description' => $validated['description'] ?? null,
+                        'commission_rate' => $validated['commission_rate'] ?? 0,
+                        'service_commission_rate' => $validated['service_commission_rate'] ?? 0,
+                        'is_active' => $validated['is_active'],
+                    ]);
+
+                    if ($admin) {
+                        $admin->fill([
+                            'name' => $validated['name'],
+                            'email' => $validated['email'],
+                            'username' => $validated['username'] ?? null,
+                            'is_active' => $validated['is_active'],
+                        ]);
+                        if (! empty($validated['password'])) {
+                            $admin->password = Hash::make($validated['password']);
+                        }
+                        $admin->save();
+                        $admin->roles()->syncWithoutDetaching([$role->id]);
+                    } else {
+                        $user = User::query()->create([
+                            'name' => $validated['name'],
+                            'email' => $validated['email'],
+                            'username' => $validated['username'] ?? null,
+                            'password' => Hash::make($validated['password'] ?? Str::random(12)),
+                            'is_active' => $validated['is_active'],
+                            'staff_id' => $staff->id,
+                        ]);
+                        $user->roles()->syncWithoutDetaching([$role->id]);
+                    }
+
+                    $summary['updated']++;
+                });
+            } catch (\Throwable $throwable) {
+                $summary['failed']++;
+                $summary['failedRows'][] = ['row' => $rowNumber, 'reason' => $throwable->getMessage()];
+            }
+        }
+
+        fclose($handle);
+
+        return $this->respond($summary, 'CSV import processed.');
+    }
+
     public function store(Request $request)
     {
         $validated = $request->validate([
