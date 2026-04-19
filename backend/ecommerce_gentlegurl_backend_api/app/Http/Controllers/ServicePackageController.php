@@ -199,6 +199,34 @@ class ServicePackageController extends Controller
                         $package = ServicePackage::query()->create(collect($validated)->except('items')->all());
                         $summary['created']++;
                     } else {
+                        $currentItems = $package->items()
+                            ->get(['booking_service_id', 'quantity'])
+                            ->map(fn ($item) => [
+                                'booking_service_id' => (int) $item->booking_service_id,
+                                'quantity' => (int) $item->quantity,
+                            ])
+                            ->sortBy(fn ($item) => sprintf('%010d-%010d', $item['booking_service_id'], $item['quantity']))
+                            ->values()
+                            ->all();
+                        $incomingItems = collect($validated['items'])
+                            ->map(fn ($item) => [
+                                'booking_service_id' => (int) $item['booking_service_id'],
+                                'quantity' => (int) $item['quantity'],
+                            ])
+                            ->sortBy(fn ($item) => sprintf('%010d-%010d', $item['booking_service_id'], $item['quantity']))
+                            ->values()
+                            ->all();
+                        $isUnchanged =
+                            ($package->name === $validated['name']) &&
+                            (($package->description ?? null) === ($validated['description'] ?? null)) &&
+                            ((float) $package->selling_price === (float) $validated['selling_price']) &&
+                            ((int) ($package->valid_days ?? 0) === (int) ($validated['valid_days'] ?? 0)) &&
+                            ((bool) $package->is_active === (bool) $validated['is_active']) &&
+                            ($currentItems === $incomingItems);
+                        if ($isUnchanged) {
+                            $summary['skipped']++;
+                            return;
+                        }
                         $package->update(collect($validated)->except('items')->all());
                         $package->items()->delete();
                         $summary['updated']++;

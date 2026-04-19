@@ -26,6 +26,20 @@ interface StaffSchedulesTableProps {
   permissions: string[]
 }
 
+type ImportFailedRow = {
+  row: number
+  reason: string
+}
+
+type ImportSummary = {
+  totalRows: number
+  created: number
+  updated?: number
+  skipped: number
+  failed: number
+  failedRows?: ImportFailedRow[]
+}
+
 type Meta = {
   current_page: number
   last_page: number
@@ -69,6 +83,8 @@ export default function StaffSchedulesTable({
   const [deleteTarget, setDeleteTarget] = useState<StaffScheduleRowData | null>(null)
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
+  const [importFailedRows, setImportFailedRows] = useState<ImportFailedRow[]>([])
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const canCreate = permissions.includes('booking.schedules.create')
@@ -473,6 +489,8 @@ export default function StaffSchedulesTable({
 
   const handleImportCsvFile = async (file: File) => {
     setIsImporting(true)
+    setImportSummary(null)
+    setImportFailedRows([])
     try {
       const formData = new FormData()
       formData.append('file', file)
@@ -491,8 +509,17 @@ export default function StaffSchedulesTable({
         throw new Error(message)
       }
 
+      const summaryPayload =
+        json && typeof json === 'object' && 'data' in json && json.data && typeof json.data === 'object'
+          ? (json.data as ImportSummary)
+          : null
+      if (!summaryPayload) {
+        throw new Error('Import summary is missing from API response.')
+      }
+
+      setImportSummary(summaryPayload)
+      setImportFailedRows(Array.isArray(summaryPayload.failedRows) ? summaryPayload.failedRows : [])
       await fetchSchedules()
-      window.alert('CSV import completed successfully.')
     } catch (error) {
       console.error(error)
       window.alert(error instanceof Error ? error.message : 'Import CSV failed. Please retry.')
@@ -622,6 +649,28 @@ export default function StaffSchedulesTable({
           </select>
         </div>
       </div>
+
+      {(isImporting || importSummary) && (
+        <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
+          <div>Import status: processing file on server...</div>
+          {importSummary && (
+            <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
+              <div>Total rows: {importSummary.totalRows}</div>
+              <div>Created: {importSummary.created}</div>
+              <div>Updated: {importSummary.updated ?? 0}</div>
+              <div>Skipped: {importSummary.skipped}</div>
+              <div>Failed: {importSummary.failed}</div>
+            </div>
+          )}
+          {importFailedRows.length > 0 && (
+            <div className="mt-3 max-h-40 overflow-auto rounded border border-red-200 bg-red-50 p-2 text-xs text-red-800">
+              {importFailedRows.map((item, index) => (
+                <div key={`${item.row}-${index}`}>Row {item.row}: {item.reason}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeFilters.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-4">

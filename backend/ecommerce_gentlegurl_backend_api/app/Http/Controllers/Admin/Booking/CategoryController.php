@@ -301,6 +301,20 @@ class CategoryController extends Controller
                 $category = BookingServiceCategory::query()->create(collect($validated)->except('service_ids')->all());
                 $summary['created']++;
             } else {
+                $incoming = collect($validated)->except('service_ids')->all();
+                $currentServices = $category->services()->pluck('booking_services.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+                $nextServices = collect($validated['service_ids'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all();
+                $isUnchanged =
+                    ($category->name === ($incoming['name'] ?? $category->name)) &&
+                    ($category->slug === ($incoming['slug'] ?? $category->slug)) &&
+                    (($category->description ?? null) === ($incoming['description'] ?? null)) &&
+                    ((bool) $category->is_active === (bool) ($incoming['is_active'] ?? $category->is_active)) &&
+                    ((int) $category->sort_order === (int) ($incoming['sort_order'] ?? $category->sort_order)) &&
+                    ($currentServices === $nextServices);
+                if ($isUnchanged) {
+                    $summary['skipped']++;
+                    continue;
+                }
                 if ($validated['sort_order'] === null) {
                     unset($validated['sort_order']);
                 }

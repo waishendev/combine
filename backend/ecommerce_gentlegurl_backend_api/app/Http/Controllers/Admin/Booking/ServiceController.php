@@ -390,6 +390,29 @@ class ServiceController extends Controller
                         ]);
                         $summary['created']++;
                     } else {
+                        $incomingAllowed = collect($validated['allowed_staff_ids'])->map(fn ($id) => (int) $id)->sort()->values()->all();
+                        $currentAllowed = $service->allowedStaffs()->pluck('staffs.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+                        $incomingSlots = collect($validated['primary_slots'] ?? [])->map(fn ($time) => substr((string) $time, 0, 5))->sort()->values()->all();
+                        $currentSlots = $service->primarySlots()->pluck('start_time')->map(fn ($time) => substr((string) $time, 0, 5))->sort()->values()->all();
+                        $isUnchanged =
+                            ($service->name === $validated['name']) &&
+                            ($service->service_type === $validated['service_type']) &&
+                            (($service->description ?? null) === ($validated['description'] ?? null)) &&
+                            ((int) $service->duration_min === (int) $validated['duration_min']) &&
+                            ((float) $service->service_price === (float) $validated['service_price']) &&
+                            ((float) $service->deposit_amount === (float) $validated['deposit_amount']) &&
+                            ((int) $service->buffer_min === (int) ($validated['buffer_min'] ?? 0)) &&
+                            ((bool) $service->is_active === (bool) $validated['is_active']) &&
+                            ((bool) $service->is_package_eligible === (bool) $validated['is_package_eligible']) &&
+                            ($service->price_mode === $validated['price_mode']) &&
+                            ((float) ($service->price_range_min ?? 0) === (float) ($validated['price_range_min'] ?? 0)) &&
+                            ((float) ($service->price_range_max ?? 0) === (float) ($validated['price_range_max'] ?? 0)) &&
+                            ($incomingAllowed === $currentAllowed) &&
+                            ($incomingSlots === $currentSlots);
+                        if ($isUnchanged) {
+                            $summary['skipped']++;
+                            return;
+                        }
                         $service->update([
                             'name' => $validated['name'],
                             'service_type' => $validated['service_type'],

@@ -266,6 +266,17 @@ class StaffScheduleController extends Controller
                     BookingStaffSchedule::query()->create($validated);
                     $summary['created']++;
                 } else {
+                    $isUnchanged =
+                        ((int) $record->staff_id === (int) $validated['staff_id']) &&
+                        ((int) $record->day_of_week === (int) $validated['day_of_week']) &&
+                        (substr((string) $record->start_time, 0, 5) === $validated['start_time']) &&
+                        (substr((string) $record->end_time, 0, 5) === $validated['end_time']) &&
+                        (($record->break_start ? substr((string) $record->break_start, 0, 5) : null) === ($validated['break_start'] ?? null)) &&
+                        (($record->break_end ? substr((string) $record->break_end, 0, 5) : null) === ($validated['break_end'] ?? null));
+                    if ($isUnchanged) {
+                        $summary['skipped']++;
+                        continue;
+                    }
                     $record->update($validated);
                     $summary['updated']++;
                 }
