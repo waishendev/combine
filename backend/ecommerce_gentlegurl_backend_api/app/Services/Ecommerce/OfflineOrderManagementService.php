@@ -96,6 +96,93 @@ class OfflineOrderManagementService
         })->values()->all();
     }
 
+    public function getBookingWorkerDraft(Order $order): array
+    {
+        $this->ensureOfflineOrder($order);
+
+        $items = DB::table('order_items as oi')
+            ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
+            ->where('oi.order_id', (int) $order->id)
+            ->where('oi.line_type', 'booking_settlement')
+            ->orderBy('oi.id')
+            ->get([
+                'oi.id',
+                'oi.booking_id',
+                'oi.line_type',
+                'oi.product_name_snapshot',
+                'oi.display_name_snapshot',
+                'oi.quantity',
+                'oi.effective_unit_price',
+                'oi.unit_price_snapshot',
+                'oi.price_snapshot',
+                'oi.effective_line_total',
+                'oi.line_total_after_discount',
+                'oi.line_total',
+                'b.booking_code',
+                'b.staff_id as booking_staff_id',
+            ]);
+
+        if ($items->isEmpty()) {
+            return [];
+        }
+
+        $bookingIds = $items->pluck('booking_id')->filter()->map(fn ($v) => (int) $v)->unique()->values()->all();
+        $splitsByBooking = DB::table('booking_service_staff_splits as split')
+            ->leftJoin('staffs', 'staffs.id', '=', 'split.staff_id')
+            ->whereIn('split.booking_id', $bookingIds)
+            ->orderBy('split.id')
+            ->get([
+                'split.booking_id',
+                'split.staff_id',
+                'split.split_percent',
+                'staffs.name as staff_name',
+            ])
+            ->groupBy('booking_id');
+
+        $fallbackStaffIds = $items
+            ->pluck('booking_staff_id')
+            ->filter(fn ($id) => (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+        $fallbackStaffMap = empty($fallbackStaffIds)
+            ? collect()
+            : DB::table('staffs')->whereIn('id', $fallbackStaffIds)->pluck('name', 'id');
+
+        return $items->map(function ($item) use ($splitsByBooking, $fallbackStaffMap) {
+            $splitRows = ($splitsByBooking->get((int) ($item->booking_id ?? 0)) ?? collect())
+                ->map(fn ($split) => [
+                    'staff_id' => (int) ($split->staff_id ?? 0),
+                    'staff_name' => (string) ($split->staff_name ?? ''),
+                    'share_percent' => (int) ($split->split_percent ?? 0),
+                ])
+                ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                ->values();
+
+            if ($splitRows->isEmpty() && (int) ($item->booking_staff_id ?? 0) > 0) {
+                $fallbackId = (int) $item->booking_staff_id;
+                $splitRows = collect([[
+                    'staff_id' => $fallbackId,
+                    'staff_name' => (string) ($fallbackStaffMap->get($fallbackId) ?? ''),
+                    'share_percent' => 100,
+                ]]);
+            }
+
+            return [
+                'order_item_id' => (int) $item->id,
+                'item_type' => 'booking_settlement',
+                'booking_id' => $item->booking_id ? (int) $item->booking_id : null,
+                'booking_code' => $item->booking_code ? (string) $item->booking_code : null,
+                'name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Final Settlement'),
+                'qty' => (int) ($item->quantity ?? 0),
+                'unit_amount' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
+                'line_total' => (float) ($item->effective_line_total ?? $item->line_total_after_discount ?? $item->line_total ?? 0),
+                'splits' => $splitRows->all(),
+            ];
+        })->values()->all();
+    }
+
     public function updateSalesPerson(Order $order, array $itemSplits, ?string $remark, ?int $actorId): Order
     {
         $this->ensureOfflineOrder($order);
@@ -230,6 +317,144 @@ class OfflineOrderManagementService
         $this->recalculateEcommerceCommissionForOrderMonth($order, 'edit_sales_person', $remark, $actorId);
 
         return $order;
+    }
+
+    public function updateBookingWorker(Order $order, array $itemSplits, ?string $remark, ?int $actorId): Order
+    {
+        $this->ensureOfflineOrder($order);
+        if (empty($itemSplits)) {
+            throw new RuntimeException('At least one item split is required.');
+        }
+
+        $targets = [];
+
+        DB::transaction(function () use ($order, $itemSplits, $remark, $actorId, &$targets) {
+            $orderItems = DB::table('order_items')
+                ->where('order_id', (int) $order->id)
+                ->where('line_type', 'booking_settlement')
+                ->get(['id', 'booking_id', 'line_type'])
+                ->keyBy('id');
+
+            $bookingIds = $orderItems
+                ->pluck('booking_id')
+                ->filter(fn ($id) => (int) $id > 0)
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+            $bookings = Booking::query()
+                ->whereIn('id', $bookingIds)
+                ->get(['id', 'staff_id', 'completed_at'])
+                ->keyBy('id');
+            $staffs = Staff::query()->whereIn('id', collect($itemSplits)->flatMap(fn ($item) => collect($item['splits'] ?? [])->pluck('staff_id'))->map(fn ($id) => (int) $id)->unique()->values())->get(['id', 'service_commission_rate'])->keyBy('id');
+
+            foreach ($itemSplits as $itemSplit) {
+                $orderItemId = (int) ($itemSplit['order_item_id'] ?? 0);
+                $orderItem = $orderItems->get($orderItemId);
+                if (! $orderItem || (string) $orderItem->line_type !== 'booking_settlement') {
+                    throw new RuntimeException("Booking settlement item {$orderItemId} not found.");
+                }
+
+                $bookingId = (int) ($orderItem->booking_id ?? 0);
+                if ($bookingId <= 0) {
+                    throw new RuntimeException("Booking reference missing for order item {$orderItemId}.");
+                }
+
+                $splits = collect($itemSplit['splits'] ?? []);
+                $sum = (int) $splits->sum(fn (array $row) => (int) ($row['share_percent'] ?? 0));
+                $normalizedStaffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->values();
+                $unique = $normalizedStaffIds->unique()->count();
+                if ($splits->isEmpty() || $sum !== 100 || $unique !== $splits->count() || $normalizedStaffIds->contains(fn ($id) => $id <= 0)) {
+                    throw new RuntimeException('Invalid worker split. Total must be 100% and staffs must be unique.');
+                }
+
+                $booking = $bookings->get($bookingId);
+                if (! $booking) {
+                    throw new RuntimeException("Booking {$bookingId} not found.");
+                }
+
+                $before = DB::table('booking_service_staff_splits')
+                    ->where('booking_id', $bookingId)
+                    ->get(['staff_id', 'split_percent', 'service_commission_rate_snapshot'])
+                    ->map(fn ($row) => (array) $row)
+                    ->values()
+                    ->all();
+
+                DB::table('booking_service_staff_splits')
+                    ->where('booking_id', $bookingId)
+                    ->delete();
+
+                $rows = $splits->map(function (array $row) use ($bookingId, $staffs) {
+                    $staffId = (int) ($row['staff_id'] ?? 0);
+                    $share = (int) ($row['share_percent'] ?? 0);
+                    $rate = (float) ($staffs->get($staffId)?->service_commission_rate ?? 0);
+
+                    return [
+                        'booking_id' => $bookingId,
+                        'staff_id' => $staffId,
+                        'split_percent' => $share,
+                        'service_commission_rate_snapshot' => $rate,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+                })->values()->all();
+
+                if (! empty($rows)) {
+                    DB::table('booking_service_staff_splits')->insert($rows);
+                }
+
+                $firstStaffId = (int) ($rows[0]['staff_id'] ?? 0);
+                if ($firstStaffId > 0 && (int) ($booking->staff_id ?? 0) !== $firstStaffId) {
+                    DB::table('bookings')
+                        ->where('id', $bookingId)
+                        ->update([
+                            'staff_id' => $firstStaffId,
+                            'updated_at' => now(),
+                        ]);
+                }
+
+                $after = DB::table('booking_service_staff_splits')
+                    ->where('booking_id', $bookingId)
+                    ->get(['staff_id', 'split_percent', 'service_commission_rate_snapshot'])
+                    ->map(fn ($row) => (array) $row)
+                    ->values()
+                    ->all();
+
+                $this->log(
+                    'order_item',
+                    $orderItemId,
+                    'edit_worker',
+                    ['booking_id' => $bookingId, 'splits' => $before],
+                    ['booking_id' => $bookingId, 'splits' => $after],
+                    $remark,
+                    $actorId,
+                );
+
+                if ($booking->completed_at) {
+                    $completedAt = $booking->completed_at instanceof Carbon
+                        ? $booking->completed_at
+                        : Carbon::parse((string) $booking->completed_at);
+                    foreach ($before as $row) {
+                        $targets[] = [
+                            'staff_id' => (int) ($row['staff_id'] ?? 0),
+                            'year' => (int) $completedAt->format('Y'),
+                            'month' => (int) $completedAt->format('m'),
+                        ];
+                    }
+                    foreach ($after as $row) {
+                        $targets[] = [
+                            'staff_id' => (int) ($row['staff_id'] ?? 0),
+                            'year' => (int) $completedAt->format('Y'),
+                            'month' => (int) $completedAt->format('m'),
+                        ];
+                    }
+                }
+            }
+        });
+
+        $this->recalculateBookingCommissionsForTargets($targets, $order, 'edit_worker', $remark, $actorId);
+
+        return $order->fresh();
     }
 
     public function updatePaymentMethod(Order $order, string $paymentMethod, ?string $remark, ?int $actorId): Order

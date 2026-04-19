@@ -87,6 +87,7 @@ type AppointmentSettlementCartItem = {
   is_range_priced?: boolean
   requires_settled_amount?: boolean
   staff_name?: string | null
+  staff_splits?: Array<{ staff_id: number; staff_name?: string | null; share_percent: number }>
   appointment_start_at?: string | null
   appointment_end_at?: string | null
   balance_due: number
@@ -614,6 +615,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
+  const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
 
@@ -657,7 +660,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
-  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package'; id: number } | null>(null)
+  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement'; id: number } | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [itemSplitError, setItemSplitError] = useState<string | null>(null)
@@ -698,6 +701,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const end = new Date(endAt)
     return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   }, [])
+
+  const formatSettlementStaffLabel = useCallback((settlement: AppointmentSettlementCartItem): string => {
+    const splits = (settlement.staff_splits ?? [])
+      .filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (splits.length > 0) {
+      return splits
+        .map((split) => {
+          const fallbackName = activeStaffs.find((staff) => staff.id === split.staff_id)?.name ?? `Staff #${split.staff_id}`
+          const staffName = (split.staff_name ?? '').trim() || fallbackName
+          return `${staffName} (${Number(split.share_percent)}%)`
+        })
+        .join(', ')
+    }
+
+    const fallbackName = (settlement.staff_name ?? '').trim()
+    return fallbackName ? `${fallbackName} (100%)` : '—'
+  }, [activeStaffs])
 
   const formatDateTimeRange = useCallback((startAt?: string | null, endAt?: string | null) => {
     if (!startAt) return '-'
@@ -2282,6 +2302,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void fetchUnpaidCompletedAppointments(settlementQuery)
   }
 
+  const rebalanceSettlementPrimaryShare = (rows: Array<{ staff_id: number | null; share_percent: string }>) => {
+    if (rows.length === 0) return rows
+    const otherTotal = rows.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10) || 0), 0)
+    const primaryShare = Math.max(0, 100 - otherTotal)
+    return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
+  }
+
+  const updateCartEditSplitShare = (index: number, value: string) => {
+    setCartEditSettlementError(null)
+    setCartEditStaffSplits((prev) => {
+      const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
+      if (!cartEditStaffSplitAutoBalance || index === 0) return next
+      return rebalanceSettlementPrimaryShare(next)
+    })
+  }
+
+  const removeCartEditSplitRow = (index: number) => {
+    setCartEditSettlementError(null)
+    setCartEditStaffSplits((prev) => {
+      const next = prev.filter((_, rowIdx) => rowIdx !== index)
+      if (!cartEditStaffSplitAutoBalance) return next
+      return rebalanceSettlementPrimaryShare(next)
+    })
+  }
+
   const openCartEditSettlement = async (settlement: AppointmentSettlementCartItem) => {
     setCartEditSettlementError(null)
     setCartEditSettlementLoading(false)
@@ -2296,6 +2341,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     )
     setCartEditSelectedAddonIds(currentAddonIds)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
+    setCartEditStaffSplitAutoBalance(true)
+    const initialSplits = (settlement.staff_splits ?? [])
+      .map((split) => ({
+        staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+        share_percent: String(split.share_percent ?? ''),
+      }))
+      .filter((split) => split.staff_id != null)
+    if (initialSplits.length > 0) {
+      setCartEditStaffSplits(rebalanceSettlementPrimaryShare(initialSplits))
+    } else {
+      setCartEditStaffSplits([{ staff_id: settlement.staff_splits?.[0]?.staff_id ?? null, share_percent: '100' }])
+    }
 
     setCartEditAddonOptionsLoading(true)
     setCartEditSettlementOpen(true)
@@ -2347,6 +2404,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         }
         payload.settled_service_amount = amt
       }
+      const normalizedSplits = cartEditStaffSplits.map((row) => ({
+        staff_id: Number(row.staff_id ?? 0),
+        share_percent: Number.parseInt(row.share_percent || '0', 10),
+      }))
+      if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+        setCartEditSettlementError('Please select at least one staff and enter valid split percentages.')
+        return
+      }
+      const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
+      if (uniqueIds.size !== normalizedSplits.length) {
+        setCartEditSettlementError('Duplicate staff is not allowed in split.')
+        return
+      }
+      const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
+      if (splitSum !== 100) {
+        setCartEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
+        return
+      }
+      payload.staff_splits = normalizedSplits
 
       const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
         method: 'POST',
@@ -2677,10 +2753,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       if (!target || !buffer) return
 
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        const start = target.selectionStart ?? target.value.length
-        const end = target.selectionEnd ?? target.value.length
-        target.setRangeText(buffer, start, end, 'end')
-        target.dispatchEvent(new Event('input', { bubbles: true }))
+        const isUnsupportedSelectionInput =
+          target instanceof HTMLInputElement &&
+          ['number', 'date', 'time', 'datetime-local', 'month', 'week', 'color', 'range'].includes(
+            String(target.type ?? '').toLowerCase(),
+          )
+
+        if (isUnsupportedSelectionInput) {
+          target.value = `${target.value ?? ''}${buffer}`
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+          return
+        }
+
+        try {
+          const start = target.selectionStart ?? target.value.length
+          const end = target.selectionEnd ?? target.value.length
+          target.setRangeText(buffer, start, end, 'end')
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+        } catch {
+          target.value = `${target.value ?? ''}${buffer}`
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+        }
         return
       }
 
@@ -3484,6 +3577,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return `${assignment.splits.length} staff (${total}%)`
   }
 
+  const getSettlementWorkerSummary = useCallback((settlement: AppointmentSettlementCartItem) => {
+    const splitSummary = formatSettlementStaffLabel(settlement)
+    return splitSummary === '—' ? 'Staff: —' : `Staff: ${splitSummary}`
+  }, [formatSettlementStaffLabel])
+
   const createDraftRow = (seed?: Partial<CheckoutItemSplitDraft>): CheckoutItemSplitDraft => ({
     id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
     staff_id: seed?.staff_id ?? null,
@@ -3589,6 +3687,35 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitEditorOpen(true)
   }
 
+  const openSettlementSplitEditor = async (settlement: AppointmentSettlementCartItem) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+
+    const rows = (settlement.staff_splits ?? [])
+      .map((split) => {
+        const staffId = Number(split.staff_id)
+        const sharePercent = Number(split.share_percent)
+        if (staffId <= 0 || sharePercent <= 0) return null
+        const selected = nextStaffs.find((staff) => staff.id === staffId)
+        return createDraftRow({
+          staff_id: staffId,
+          share_percent: sharePercent,
+          search: selected ? getStaffInputLabel(selected) : (split.staff_name ?? ''),
+          options: nextStaffs,
+        })
+      })
+      .filter((row): row is CheckoutItemSplitDraft => row != null)
+
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitEditorTarget({ type: 'settlement', id: settlement.id })
+    setItemSplitAutoBalance(true)
+    setItemSplitError(null)
+    setItemSplitEditorOpen(true)
+  }
+
   const setDraftRowSearch = (rowId: string, value: string) => {
     setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, search: value, loading: true, open: true } : row))
     if (staffSearchTimerRef.current[rowId]) clearTimeout(staffSearchTimerRef.current[rowId])
@@ -3622,11 +3749,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           splits: mappedSplits,
         }
       }))
-    } else {
+    } else if (itemSplitEditorTarget.type === 'package') {
       setPackageCheckoutSplits((prev) => ({
         ...prev,
         [itemSplitEditorTarget.id]: mappedSplits,
       }))
+    } else {
+      setCart((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          appointment_settlement_items: (prev.appointment_settlement_items ?? []).map((settlement) => {
+            if (settlement.id !== itemSplitEditorTarget.id) return settlement
+            return {
+              ...settlement,
+              staff_splits: mappedSplits.map((split) => ({
+                staff_id: split.staff_id,
+                share_percent: split.share_percent,
+                staff_name: activeStaffs.find((staff) => staff.id === split.staff_id)?.name ?? null,
+              })),
+            }
+          }),
+        }
+      })
     }
 
     setItemSplitEditorOpen(false)
@@ -4584,7 +4729,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       <div className="mt-2 space-y-1 text-xs text-gray-600">
                         <p>Name: {settlement.customer_name || '—'}</p>
-                        <p>Staff: {settlement.staff_name || '—'}</p>
+                        <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                         {settlement.appointment_start_at ? (
                           <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}</p>
                         ) : null}
@@ -5164,6 +5309,78 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 )}
               </div>
 
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Staff Split</p>
+                  <button
+                    type="button"
+                    onClick={() => setCartEditStaffSplits((prev) => {
+                      const next = [...prev, { staff_id: null, share_percent: '' }]
+                      if (!cartEditStaffSplitAutoBalance) return next
+                      return rebalanceSettlementPrimaryShare(next)
+                    })}
+                    className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                  >
+                    + Add Staff
+                  </button>
+                </div>
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={cartEditStaffSplitAutoBalance}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setCartEditStaffSplitAutoBalance(checked)
+                      if (checked) {
+                        setCartEditStaffSplits((prev) => rebalanceSettlementPrimaryShare(prev))
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Auto Balance (lock first row, auto adjust to 100%)
+                </label>
+                <div className="space-y-2">
+                  {cartEditStaffSplits.map((split, idx) => (
+                    <div key={`cart-split-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                      <select
+                        value={split.staff_id ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value ? Number(e.target.value) : null
+                          setCartEditSettlementError(null)
+                          setCartEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
+                        }}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select staff</option>
+                        {activeStaffs.map((staff) => (
+                          <option key={staff.id} value={staff.id}>{staff.name}</option>
+                        ))}
+                      </select>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={split.share_percent}
+                          disabled={cartEditStaffSplitAutoBalance && idx === 0}
+                          onChange={(e) => updateCartEditSplitShare(idx, e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={cartEditStaffSplits.length <= 1}
+                        onClick={() => removeCartEditSplitRow(idx)}
+                        className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
@@ -5544,7 +5761,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                               <div className="mt-2 space-y-0.5 text-xs text-gray-600">
                                 <p>Name: {settlement.customer_name || '—'}</p>
-                                <p>Staff: {settlement.staff_name || '—'}</p>
+                                <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                                 {settlement.appointment_start_at ? (
                                   <p>
                                     Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}
@@ -5553,9 +5770,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
-                              <p className="text-xs leading-relaxed text-gray-700">
-                                {settlement.staff_name ? `Staff: ${settlement.staff_name}` : 'Completed appointment settlement'}
-                              </p>
+                              <div className="space-y-2">
+                                <p className="text-xs leading-relaxed text-gray-700">{getSettlementWorkerSummary(settlement)}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => void openSettlementSplitEditor(settlement)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-500 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-cyan-600 hover:to-cyan-700"
+                                >
+                                  Edit Worker
+                                </button>
+                              </div>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
                             <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
@@ -5977,7 +6201,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
           <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
-              <h5 className="text-lg font-bold text-gray-900">Item Staff Split</h5>
+              <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : 'Item Staff Split'}</h5>
               <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="text-2xl leading-none text-gray-500">×</button>
             </div>
 
