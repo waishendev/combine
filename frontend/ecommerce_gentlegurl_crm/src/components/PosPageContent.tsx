@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import OrderViewPanel from './OrderViewPanel'
 type CartItem = {
   id: number
   qty: number
@@ -359,6 +360,13 @@ type MemberDetail = {
   last_order_date?: string | null
 }
 
+type MemberRecentOrdersMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
 type PosVoucherOption = {
   id: number
   customer_voucher_id?: number
@@ -591,6 +599,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [memberDetailLoading, setMemberDetailLoading] = useState(false)
   const [memberDetail, setMemberDetail] = useState<MemberDetail | null>(null)
   const [memberRecentOrders, setMemberRecentOrders] = useState<MemberRecentOrder[]>([])
+  const [memberRecentOrdersMeta, setMemberRecentOrdersMeta] = useState<MemberRecentOrdersMeta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 5,
+    total: 0,
+  })
+  const [memberOrdersLoadingMore, setMemberOrdersLoadingMore] = useState(false)
+  const [memberOrderViewId, setMemberOrderViewId] = useState<number | null>(null)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
   const [voucherLoading, setVoucherLoading] = useState(false)
@@ -1436,20 +1452,39 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberLoading(false)
   }, [])
 
-  const fetchMemberDetail = useCallback(async (memberId: number) => {
-    setMemberDetailLoading(true)
+  const fetchMemberDetail = useCallback(async (memberId: number, options?: { page?: number; append?: boolean; silent?: boolean }) => {
+    const page = Math.max(1, options?.page ?? 1)
+    const append = Boolean(options?.append)
+    const silent = Boolean(options?.silent)
+    if (append) {
+      setMemberOrdersLoadingMore(true)
+    } else if (!silent) {
+      setMemberDetailLoading(true)
+    }
     try {
-      const res = await fetch(`/api/proxy/pos/members/${memberId}`, { cache: 'no-store' })
+      const params = new URLSearchParams({
+        recent_orders_page: String(page),
+        recent_orders_per_page: '5',
+      })
+      const res = await fetch(`/api/proxy/pos/members/${memberId}?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         throw new Error(String(json?.message ?? 'Unable to load member profile.'))
       }
       const payload = (json && typeof json === 'object' && 'data' in json)
-        ? (json as { data?: { member?: MemberDetail; recent_orders?: MemberRecentOrder[] } }).data
+        ? (json as { data?: { member?: MemberDetail; recent_orders?: MemberRecentOrder[]; recent_orders_meta?: Partial<MemberRecentOrdersMeta> } }).data
         : null
       const loadedMember = payload?.member ?? null
       setMemberDetail(loadedMember)
-      setMemberRecentOrders(Array.isArray(payload?.recent_orders) ? payload.recent_orders : [])
+      const fetchedOrders = Array.isArray(payload?.recent_orders) ? payload.recent_orders : []
+      setMemberRecentOrders((previous) => (append ? [...previous, ...fetchedOrders] : fetchedOrders))
+      const meta = payload?.recent_orders_meta
+      setMemberRecentOrdersMeta({
+        current_page: Number(meta?.current_page ?? page),
+        last_page: Number(meta?.last_page ?? page),
+        per_page: Number(meta?.per_page ?? 5),
+        total: Number(meta?.total ?? fetchedOrders.length),
+      })
       if (loadedMember) {
         setSelectedMember((previous) => {
           if (previous && previous.id !== loadedMember.id) return previous
@@ -1463,10 +1498,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         })
       }
     } catch {
-      setMemberDetail(null)
-      setMemberRecentOrders([])
+      if (!append) {
+        setMemberDetail(null)
+        setMemberRecentOrders([])
+        setMemberRecentOrdersMeta({
+          current_page: 1,
+          last_page: 1,
+          per_page: 5,
+          total: 0,
+        })
+      }
     } finally {
       setMemberDetailLoading(false)
+      setMemberOrdersLoadingMore(false)
     }
   }, [])
 
@@ -3164,6 +3208,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setMembers([])
       setMemberDetail(null)
       setMemberRecentOrders([])
+      setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
+      setMemberOrderViewId(null)
       return
     }
 
@@ -3173,10 +3219,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberLastPage(1)
     setMemberQuery('')
     if (selectedMember?.id) {
-      await fetchMemberDetail(selectedMember.id)
+      await fetchMemberDetail(selectedMember.id, { page: 1 })
     } else {
       setMemberDetail(null)
       setMemberRecentOrders([])
+      setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
     }
   }
 
@@ -3193,7 +3240,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setSelectedVoucherKey('')
     showMsg('Member assigned.', 'success')
     await syncPosCartCustomerContext({ mode: 'member', memberId: member.id })
-    await fetchMemberDetail(member.id)
+    await fetchMemberDetail(member.id, { page: 1 })
   }
 
   /** Product-only: clear optional member + guest fields (same layout as booking services + Clear) */
@@ -6428,15 +6475,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <section>
                         <div className="flex items-center justify-between">
                           <h5 className="text-sm font-bold text-gray-900">Recent Orders</h5>
-                          <button
-                            type="button"
-                            className="text-xs font-semibold text-blue-700 hover:underline"
-                            onClick={() => {
-                              window.open(`/orders?customer_name=${encodeURIComponent(memberDetail.name)}`, '_blank', 'noopener,noreferrer')
-                            }}
-                          >
-                            View All Orders
-                          </button>
+                          <p className="text-xs text-gray-500">
+                            Showing {memberRecentOrders.length} of {memberRecentOrdersMeta.total}
+                          </p>
                         </div>
                         <div className="mt-2 space-y-2">
                           {memberRecentOrders.length === 0 ? (
@@ -6454,8 +6495,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    if (!order.order_number) return
-                                    window.open(`/orders?order_no=${encodeURIComponent(order.order_number)}`, '_blank', 'noopener,noreferrer')
+                                    setMemberOrderViewId(order.id)
                                   }}
                                   className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
                                 >
@@ -6465,6 +6505,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </div>
                           ))}
                         </div>
+                        {memberRecentOrdersMeta.current_page < memberRecentOrdersMeta.last_page ? (
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!selectedMember?.id) return
+                                void fetchMemberDetail(selectedMember.id, {
+                                  page: memberRecentOrdersMeta.current_page + 1,
+                                  append: true,
+                                  silent: true,
+                                })
+                              }}
+                              disabled={memberOrdersLoadingMore}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {memberOrdersLoadingMore ? 'Loading...' : 'Load More Orders'}
+                            </button>
+                          </div>
+                        ) : null}
                       </section>
                     </div>
                   ) : selectedMember ? (
@@ -6476,6 +6535,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </div>
         </div>
       )}
+
+      {memberOrderViewId ? (
+        <OrderViewPanel
+          orderId={memberOrderViewId}
+          onClose={() => setMemberOrderViewId(null)}
+          zIndexClassName="z-[170]"
+        />
+      ) : null}
 
       {voucherModalOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>

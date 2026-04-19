@@ -102,8 +102,11 @@ class PosController extends Controller
         ]);
     }
 
-    public function memberDetail(int $memberId)
+    public function memberDetail(Request $request, int $memberId)
     {
+        $page = max(1, (int) $request->query('recent_orders_page', 1));
+        $perPage = max(1, min(10, (int) $request->query('recent_orders_per_page', 5)));
+
         $member = Customer::query()
             ->with(['customerType:id,name'])
             ->findOrFail($memberId);
@@ -113,10 +116,11 @@ class PosController extends Controller
         $totalSpent = (float) (clone $ordersQuery)->sum('grand_total');
         $lastOrderAt = (clone $ordersQuery)->max('created_at');
 
-        $recentOrders = $ordersQuery
+        $recentOrdersPaginator = (clone $ordersQuery)
             ->orderByDesc('created_at')
-            ->limit(10)
-            ->get(['id', 'order_number', 'created_at', 'status', 'grand_total', 'pickup_or_shipping'])
+            ->paginate($perPage, ['id', 'order_number', 'created_at', 'status', 'grand_total', 'pickup_or_shipping'], 'recent_orders_page', $page);
+
+        $recentOrders = collect($recentOrdersPaginator->items())
             ->map(fn (Order $order) => [
                 'id' => (int) $order->id,
                 'order_number' => $order->order_number,
@@ -141,6 +145,12 @@ class PosController extends Controller
                 'last_order_date' => $lastOrderAt ? Carbon::parse($lastOrderAt)->toDateTimeString() : null,
             ],
             'recent_orders' => $recentOrders,
+            'recent_orders_meta' => [
+                'current_page' => $recentOrdersPaginator->currentPage(),
+                'last_page' => $recentOrdersPaginator->lastPage(),
+                'per_page' => $recentOrdersPaginator->perPage(),
+                'total' => $recentOrdersPaginator->total(),
+            ],
         ]);
     }
 
