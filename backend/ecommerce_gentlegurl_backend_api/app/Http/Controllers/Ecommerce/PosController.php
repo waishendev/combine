@@ -18,6 +18,7 @@ use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
+use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
@@ -33,10 +34,12 @@ use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
+use App\Models\Ecommerce\PointsEarnBatch;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
@@ -59,42 +62,177 @@ class PosController extends Controller
         protected InvoiceService $invoiceService,
         protected CustomerServicePackageService $customerServicePackageService,
         protected BookingAvailabilityService $availabilityService,
+        protected StaffCommissionService $staffCommissionService,
     ) {}
 
     public function memberSearch(Request $request)
     {
         $query = trim((string) $request->query('q', ''));
         $page = max(1, (int) $request->query('page', 1));
-        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+        $perPage = max(1, min(20, (int) $request->query('per_page', 10)));
+
+        if (mb_strlen($query) < 3) {
+            return $this->respond([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0,
+            ]);
+        }
 
         $builder = Customer::query();
 
-        if ($query !== '') {
-            $builder->where(function ($queryBuilder) use ($query) {
-                $queryBuilder->where('name', 'like', "%{$query}%")
-                    ->orWhere('phone', 'like', "%{$query}%")
-                    ->orWhere('email', 'like', "%{$query}%")
-                    ->orWhereRaw('CAST(id AS TEXT) = ?', [$query]);
-            });
-        }
+        $builder->where(function ($queryBuilder) use ($query) {
+            $queryBuilder->where('name', 'like', "%{$query}%")
+                ->orWhere('phone', 'like', "%{$query}%");
+        });
 
         $paginator = $builder
             ->orderBy('id', 'desc')
-            ->paginate($perPage, ['id', 'name', 'phone', 'email'], 'page', $page);
+            ->paginate($perPage, ['id', 'name', 'phone'], 'page', $page);
 
         return $this->respond([
             'data' => collect($paginator->items())->map(fn (Customer $member) => [
                 'id' => $member->id,
                 'name' => $member->name,
-                'phone' => $member->phone,
+                'phone_masked' => $this->maskPhone($member->phone),
                 'member_code' => (string) $member->id,
-                'email' => $member->email,
             ])->values(),
             'current_page' => $paginator->currentPage(),
             'last_page' => $paginator->lastPage(),
             'per_page' => $paginator->perPage(),
             'total' => $paginator->total(),
         ]);
+    }
+
+    public function memberDetail(Request $request, int $memberId)
+    {
+        $now = now();
+        $page = max(1, (int) $request->query('recent_orders_page', 1));
+        $perPage = max(1, min(10, (int) $request->query('recent_orders_per_page', 5)));
+        $appointmentsPage = max(1, (int) $request->query('appointments_page', 1));
+        $appointmentsPerPage = max(1, min(5, (int) $request->query('appointments_per_page', 2)));
+
+        $member = Customer::query()
+            ->with(['customerType:id,name'])
+            ->findOrFail($memberId);
+
+        $ordersQuery = Order::query()->where('customer_id', $member->id);
+        $totalOrders = (int) (clone $ordersQuery)->count();
+        $totalSpent = (float) (clone $ordersQuery)->sum('grand_total');
+        $lastOrderAt = (clone $ordersQuery)->max('created_at');
+
+        $recentOrdersPaginator = (clone $ordersQuery)
+            ->orderByDesc('created_at')
+            ->paginate($perPage, ['id', 'order_number', 'created_at', 'status', 'grand_total', 'pickup_or_shipping'], 'recent_orders_page', $page);
+
+        $recentOrders = collect($recentOrdersPaginator->items())
+            ->map(fn (Order $order) => [
+                'id' => (int) $order->id,
+                'order_number' => $order->order_number,
+                'order_date' => optional($order->created_at)->toDateTimeString(),
+                'status' => $order->status,
+                'total_amount' => (float) $order->grand_total,
+                'channel' => $order->pickup_or_shipping,
+            ])
+            ->values();
+
+        $activePackagesQuery = CustomerServicePackage::query()
+            ->with(['servicePackage:id,name'])
+            ->where('customer_id', $member->id)
+            ->where('status', 'active')
+            ->where(function ($query) use ($now) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>=', $now);
+            });
+
+        $activePackagesTotal = (clone $activePackagesQuery)->count();
+        $activePackagesItems = (clone $activePackagesQuery)
+            ->orderByDesc('id')
+            ->limit(3)
+            ->get(['id', 'service_package_id', 'expires_at'])
+            ->map(fn (CustomerServicePackage $package) => [
+                'id' => (int) $package->id,
+                'package_name' => $package->servicePackage?->name ?? 'Package',
+                'expires_at' => optional($package->expires_at)->toDateTimeString(),
+            ])
+            ->values();
+
+        $upcomingAppointmentsPaginator = Booking::query()
+            ->with(['service:id,name', 'staff:id,name'])
+            ->where('customer_id', $member->id)
+            ->whereNotIn('status', ['CANCELLED'])
+            ->where('start_at', '>=', $now)
+            ->orderBy('start_at')
+            ->paginate($appointmentsPerPage, ['id', 'booking_code', 'status', 'start_at', 'end_at', 'service_id', 'staff_id'], 'appointments_page', $appointmentsPage);
+
+        $upcomingAppointments = collect($upcomingAppointmentsPaginator->items())
+            ->map(fn (Booking $appointment) => [
+                'id' => (int) $appointment->id,
+                'booking_code' => $appointment->booking_code,
+                'status' => $appointment->status,
+                'start_at' => optional($appointment->start_at)->toDateTimeString(),
+                'end_at' => optional($appointment->end_at)->toDateTimeString(),
+                'service_name' => $appointment->service?->name,
+                'staff_name' => $appointment->staff?->name,
+            ])
+            ->values();
+
+        $memberPointsBalance = (int) PointsEarnBatch::query()
+            ->where('customer_id', $member->id)
+            ->where('status', 'active')
+            ->where('points_remaining', '>', 0)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', $now);
+            })
+            ->sum('points_remaining');
+
+        return $this->respond([
+            'member' => [
+                'id' => (int) $member->id,
+                'name' => $member->name,
+                'phone' => $member->phone,
+                'email' => $member->email,
+                'member_code' => (string) $member->id,
+                'join_date' => optional($member->created_at)->toDateTimeString(),
+                'customer_type' => $member->customerType?->name,
+                'total_orders' => $totalOrders,
+                'total_spent' => $totalSpent,
+                'last_order_date' => $lastOrderAt ? Carbon::parse($lastOrderAt)->toDateTimeString() : null,
+                'points_balance' => $memberPointsBalance,
+            ],
+            'active_packages' => [
+                'total_active' => (int) $activePackagesTotal,
+                'items' => $activePackagesItems,
+                'has_more' => $activePackagesTotal > $activePackagesItems->count(),
+            ],
+            'upcoming_appointments' => $upcomingAppointments,
+            'upcoming_appointments_meta' => [
+                'current_page' => $upcomingAppointmentsPaginator->currentPage(),
+                'last_page' => $upcomingAppointmentsPaginator->lastPage(),
+                'per_page' => $upcomingAppointmentsPaginator->perPage(),
+                'total' => $upcomingAppointmentsPaginator->total(),
+            ],
+            'recent_orders' => $recentOrders,
+            'recent_orders_meta' => [
+                'current_page' => $recentOrdersPaginator->currentPage(),
+                'last_page' => $recentOrdersPaginator->lastPage(),
+                'per_page' => $recentOrdersPaginator->perPage(),
+                'total' => $recentOrdersPaginator->total(),
+            ],
+        ]);
+    }
+
+    private function maskPhone(?string $phone): ?string
+    {
+        $phone = trim((string) $phone);
+        if ($phone === '') {
+            return null;
+        }
+
+        $suffix = mb_substr($phone, -4);
+
+        return '***' . $suffix;
     }
 
 
@@ -160,7 +298,10 @@ class PosController extends Controller
             $builder->where(function ($q) use ($query) {
                 $q->where('booking_code', 'like', "%{$query}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$query}%"))
-                    ->orWhereHas('service', fn ($sq) => $sq->where('name', 'like', "%{$query}%"));
+                    ->orWhereHas('service', fn ($sq) => $sq->where('name', 'like', "%{$query}%"))
+                    ->orWhere('guest_name', 'like', "%{$query}%")
+                    ->orWhere('guest_phone', 'like', "%{$query}%")
+                    ->orWhere('guest_email', 'like', "%{$query}%");
             });
         }
 
@@ -184,6 +325,7 @@ class PosController extends Controller
             // POS appointments (no status filter / "ALL"): show staff-facing bookings only.
             // Omit HOLD and EXPIRED (and other internal states) from the calendar list.
             $builder->whereIn('status', [
+                'HOLD',
                 'CONFIRMED',
                 'COMPLETED',
                 'CANCELLED',
@@ -203,7 +345,7 @@ class PosController extends Controller
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName : '-')),
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -222,6 +364,7 @@ class PosController extends Controller
                 'package_offset' => (float) $summary['package_offset'],
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
+                'settlement_paid' => (float) ($summary['settlement_paid'] ?? 0),
                 'service_total' => (float) $summary['service_total'],
                 'settled_service_amount' => $summary['settled_service_amount'] ?? null,
                 'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
@@ -280,22 +423,11 @@ class PosController extends Controller
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $history = $this->resolveAppointmentPaymentHistory((int) $booking->id);
-        $staffSplits = DB::table('booking_service_staff_splits as splits')
-            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
-            ->where('splits.booking_id', (int) $booking->id)
-            ->orderBy('splits.id')
-            ->get([
-                'splits.staff_id',
-                'staffs.name as staff_name',
-                'splits.split_percent',
-                'splits.service_commission_rate_snapshot',
-            ])
-            ->map(fn ($row) => [
-                'staff_id' => (int) ($row->staff_id ?? 0),
-                'staff_name' => (string) ($row->staff_name ?? '-'),
-                'split_percent' => (int) ($row->split_percent ?? 0),
-                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
-            ])->values();
+        $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
+
+        $guestName = trim((string) ($booking->guest_name ?? ''));
+        $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+        $guestEmail = trim((string) ($booking->guest_email ?? ''));
 
         return $this->respond([
             'id' => (int) $booking->id,
@@ -303,12 +435,17 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
-            'customer' => [
-                'id' => (int) ($booking->customer?->id ?? 0),
-                'name' => (string) ($booking->customer?->name ?? '-'),
-                'phone' => $booking->customer?->phone,
-                'email' => $booking->customer?->email,
-            ],
+            'customer' => $booking->customer_id
+                ? [
+                    'id' => (int) $booking->customer_id,
+                    'name' => (string) ($booking->customer?->name ?? ''),
+                    'phone' => $booking->customer?->phone,
+                    'email' => $booking->customer?->email,
+                ]
+                : null,
+            'guest_name' => $guestName !== '' ? $guestName : null,
+            'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
+            'guest_email' => $guestEmail !== '' ? $guestEmail : null,
             'service' => [
                 'id' => (int) ($booking->service?->id ?? 0),
                 'name' => (string) ($booking->service?->name ?? '-'),
@@ -321,7 +458,7 @@ class PosController extends Controller
                 'id' => (int) ($booking->staff?->id ?? 0),
                 'name' => (string) ($booking->staff?->name ?? '-'),
             ],
-            'staff_splits' => $staffSplits,
+            'staff_splits' => $staffSplits->values()->all(),
             'service_total' => (float) $summary['service_total'],
             'settled_service_amount' => $summary['settled_service_amount'],
             'is_range_priced' => (bool) $summary['is_range_priced'],
@@ -398,8 +535,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
-        if (! $booking->customer_id || ! $booking->service_id) {
-            return $this->respondError(__('Appointment must have customer and service before settlement.'), 422);
+        if (! $this->bookingEligibleForPosSettlement($booking)) {
+            return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
         }
 
         if (($booking->service?->price_mode ?? 'fixed') === 'range' && $booking->settled_service_amount === null) {
@@ -423,7 +560,7 @@ class PosController extends Controller
 
             $order = Order::query()->create([
                 'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-                'customer_id' => (int) $booking->customer_id,
+                'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                 'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
@@ -485,7 +622,17 @@ class PosController extends Controller
             return [$order, $receipt];
         });
 
-        $freshSummary = $this->resolveAppointmentFinancialSummary($booking->fresh(['service', 'customer']));
+        // Match POS cart settlement checkout: once nothing is owed, the booking must not stay UNPAID or it
+        // keeps appearing under GET /pos/appointments?unpaid_only=1 (balance can show RM 0.00 from orders).
+        $booking = $booking->fresh(['service', 'customer']);
+        $freshSummary = $this->resolveAppointmentFinancialSummary($booking);
+
+        if ((float) ($freshSummary['balance_due'] ?? 0) <= 0.0001) {
+            $booking->payment_status = 'PAID';
+            $booking->save();
+        }
+
+        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
 
         return $this->respond([
             'order_id' => (int) $order->id,
@@ -496,6 +643,87 @@ class PosController extends Controller
             'amount_due_now' => (float) $freshSummary['amount_due_now'],
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Appointment payment collected.'));
+    }
+
+    public function finalizeAppointmentZeroSettlement(Request $request, int $id, OrderPaymentService $orderPaymentService)
+    {
+        $validated = $request->validate([
+            'payment_method' => ['required', 'in:cash,qrpay'],
+        ]);
+
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        if (! $this->bookingEligibleForPosSettlement($booking)) {
+            return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
+        }
+
+        if ((string) $booking->status !== 'COMPLETED') {
+            return $this->respondError(__('Only completed appointments can be finalised this way.'), 422);
+        }
+
+        if (($booking->service?->price_mode ?? 'fixed') === 'range' && $booking->settled_service_amount === null) {
+            return $this->respondError(__('Please set the service amount before finalising. This service uses range pricing.'), 422);
+        }
+
+        if (OrderServiceItem::query()->where('booking_id', (int) $booking->id)->exists()) {
+            return $this->respondError(__('This appointment is already finalised.'), 422);
+        }
+
+        if (OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_settlement')
+            ->exists()) {
+            return $this->respondError(__('This appointment is already finalised.'), 422);
+        }
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        if (max(0.0, (float) ($summary['balance_due'] ?? 0)) > 0.0001) {
+            return $this->respondError(__('A balance is still due; use standard collection.'), 422);
+        }
+
+        try {
+            [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $validated, $orderPaymentService) {
+                $order = Order::query()->create([
+                    'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                    'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
+                    'created_by_user_id' => $request->user()->id,
+                    'status' => 'completed',
+                    'payment_status' => 'paid',
+                    'payment_method' => $validated['payment_method'],
+                    'payment_provider' => 'manual',
+                    'subtotal' => 0,
+                    'discount_total' => 0,
+                    'shipping_fee' => 0,
+                    'grand_total' => 0,
+                    'pickup_or_shipping' => 'in_store',
+                    'pickup_store_id' => null,
+                    'placed_at' => now(),
+                    'paid_at' => now(),
+                    'completed_at' => now(),
+                    'notes' => 'POS appointment zero settlement by staff #' . $request->user()->id . ' | booking_id=' . $booking->id,
+                ]);
+
+                $this->recordPackageCoveredAppointmentOnOrder($order, $booking);
+
+                $orderPaymentService->handlePaid($order->fresh(['items']));
+
+                return [$order, $this->buildReceiptUrl($order->fresh(['items']), $request)];
+            });
+        } catch (\Throwable $e) {
+            return $this->respondError($e->getMessage() ?: __('Unable to finalise appointment.'), 422);
+        }
+
+        $booking = $booking->fresh(['service', 'customer']);
+        $freshSummary = $this->resolveAppointmentFinancialSummary($booking);
+
+        return $this->respond([
+            'order_id' => (int) $order->id,
+            'order_number' => (string) $order->order_number,
+            'receipt_public_url' => $receiptUrl,
+            'paid_amount' => 0.0,
+            'balance_due' => (float) ($freshSummary['balance_due'] ?? 0),
+            'amount_due_now' => (float) ($freshSummary['amount_due_now'] ?? 0),
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Appointment finalised.'));
     }
 
     public function editAppointmentSettlement(Request $request, int $id)
@@ -510,6 +738,9 @@ class PosController extends Controller
             'settled_service_amount' => [$isRangePriced ? 'required' : 'nullable', 'numeric', 'min:0'],
             'addon_option_ids' => ['nullable', 'array'],
             'addon_option_ids.*' => ['integer'],
+            'staff_splits' => ['nullable', 'array', 'min:1'],
+            'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
         if ($isRangePriced && isset($validated['settled_service_amount'])) {
@@ -562,8 +793,20 @@ class PosController extends Controller
             $booking->addon_duration_min = (int) collect($newAddonItems)->sum('extra_duration_min');
         }
 
-        $booking->save();
+        $normalizedSplits = $this->normalizeBookingStaffSplits(
+            collect($validated['staff_splits'] ?? []),
+            (int) ($booking->staff_id ?? 0),
+        );
+        if ($normalizedSplits['error']) {
+            return $this->respondError((string) $normalizedSplits['error'], 422);
+        }
 
+        DB::transaction(function () use ($booking, $normalizedSplits) {
+            $booking->save();
+            $this->persistBookingStaffSplits($booking, collect($normalizedSplits['splits'] ?? []));
+        });
+
+        $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
         $booking->load(['service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
 
@@ -628,6 +871,8 @@ class PosController extends Controller
                 $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
             }
         });
+
+        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
@@ -2245,8 +2490,19 @@ class PosController extends Controller
             'package_items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
-        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
+        $cart = $this->resolveCart((int) $request->user()->id)->load([
+            'items.variant.product',
+            'items.product',
+            'serviceItems.bookingService',
+            'serviceItems.assignedStaff',
+            'serviceItems.customer:id,name',
+            'packageItems.servicePackage',
+            'packageItems.customer:id,name',
+            'appointmentSettlementItems.booking.customer:id,name',
+            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+            'appointmentSettlementItems.booking.staff:id,name',
+        ]);
+        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty() && $cart->appointmentSettlementItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
         }
 
@@ -2869,6 +3125,8 @@ class PosController extends Controller
                 $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
                 $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
                 if ($balanceDue <= 0.0001) {
+                    $this->recordPackageCoveredAppointmentOnOrder($order, $booking);
+
                     continue;
                 }
 
@@ -2919,6 +3177,8 @@ class PosController extends Controller
 
                 $booking->payment_status = 'PAID';
                 $booking->save();
+
+                $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
             }
 
             $order->load(['items', 'customer']);
@@ -3301,6 +3561,7 @@ class PosController extends Controller
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
             $guestEmail = trim((string) ($booking->guest_email ?? ''));
+            $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
             return [
                 'id' => (int) $item->id,
@@ -3308,7 +3569,7 @@ class PosController extends Controller
                 'booking_service_id' => (int) ($booking->service_id ?? 0),
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName : '-')),
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -3317,6 +3578,7 @@ class PosController extends Controller
                 'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
                 'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
+                'staff_splits' => $staffSplits->values()->all(),
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
                 'balance_due' => round($balanceDue, 2),
@@ -3754,10 +4016,31 @@ class PosController extends Controller
         $cart->save();
     }
 
+    /**
+     * Member-linked booking, or guest with name plus phone or email; service required. Used for POS settlement orders.
+     */
+    protected function bookingEligibleForPosSettlement(Booking $booking): bool
+    {
+        if (! $booking->service_id) {
+            return false;
+        }
+        if ((int) $booking->customer_id > 0) {
+            return true;
+        }
+
+        $name = trim((string) ($booking->guest_name ?? ''));
+        $phone = trim((string) ($booking->guest_phone ?? ''));
+        $email = trim((string) ($booking->guest_email ?? ''));
+
+        return $name !== '' && ($phone !== '' || $email !== '');
+    }
+
     protected function resolveAppointmentSnapshot(Booking $booking): array
     {
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $receiptHistory = $this->resolveAppointmentPaymentHistory((int) $booking->id);
+        $guestName = trim((string) ($booking->guest_name ?? ''));
+        $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
         return [
             'id' => (int) $booking->id,
@@ -3765,12 +4048,15 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
-            'customer_name' => (string) ($booking->customer?->name ?? '-'),
+            'customer_name' => (string) (($booking->customer?->name ?? '') !== ''
+                ? $booking->customer?->name
+                : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
             'service_name' => (string) ($booking->service?->name ?? '-'),
             'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
             'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
             'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
             'staff_name' => (string) ($booking->staff?->name ?? '-'),
+            'staff_splits' => $staffSplits->values()->all(),
             'service_total' => (float) $summary['service_total'],
             'settled_service_amount' => $summary['settled_service_amount'],
             'is_range_priced' => (bool) $summary['is_range_priced'],
@@ -4020,6 +4306,175 @@ class PosController extends Controller
                 'consumed_at' => optional($packageUsage->consumed_at)?->toIso8601String(),
             ] : null,
         ];
+    }
+
+    protected function resolveBookingStaffSplits(int $bookingId, int $fallbackStaffId = 0)
+    {
+        $rows = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.booking_id', $bookingId)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'staff_name' => (string) ($row->staff_name ?? '-'),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->values();
+
+        if ($rows->isNotEmpty()) {
+            return $rows;
+        }
+
+        if ($fallbackStaffId <= 0) {
+            return collect();
+        }
+
+        $fallbackStaff = Staff::query()->find($fallbackStaffId, ['id', 'name', 'service_commission_rate']);
+        if (! $fallbackStaff) {
+            return collect();
+        }
+
+        return collect([[
+            'staff_id' => (int) $fallbackStaff->id,
+            'staff_name' => (string) ($fallbackStaff->name ?? '-'),
+            'share_percent' => 100,
+            'service_commission_rate_snapshot' => (float) ($fallbackStaff->service_commission_rate ?? 0),
+        ]]);
+    }
+
+    protected function normalizeBookingStaffSplits($splits, int $fallbackStaffId): array
+    {
+        $rows = collect($splits)->values();
+        if ($rows->isEmpty() && $fallbackStaffId > 0) {
+            $rows = collect([['staff_id' => $fallbackStaffId, 'share_percent' => 100]]);
+        }
+        if ($rows->isEmpty()) {
+            return ['error' => __('At least one staff split is required.'), 'splits' => []];
+        }
+
+        $normalized = $rows->map(fn ($row) => [
+            'staff_id' => (int) ($row['staff_id'] ?? 0),
+            'share_percent' => (int) ($row['share_percent'] ?? 0),
+        ])->values();
+
+        $uniqueStaff = $normalized->pluck('staff_id')->unique();
+        if ($uniqueStaff->count() !== $normalized->count()) {
+            return ['error' => __('Duplicate staff is not allowed in split.'), 'splits' => []];
+        }
+
+        if ($normalized->contains(fn ($row) => $row['staff_id'] <= 0 || $row['share_percent'] <= 0)) {
+            return ['error' => __('Each staff split must have valid staff and percent.'), 'splits' => []];
+        }
+
+        $sum = (int) $normalized->sum('share_percent');
+        if ($sum !== 100) {
+            return ['error' => __('Staff split total must equal 100% (current: :sum%).', ['sum' => $sum]), 'splits' => []];
+        }
+
+        $staffRates = Staff::query()
+            ->whereIn('id', $uniqueStaff->all())
+            ->pluck('service_commission_rate', 'id');
+
+        $withRate = $normalized->map(fn ($row) => [
+            'staff_id' => (int) $row['staff_id'],
+            'share_percent' => (int) $row['share_percent'],
+            'service_commission_rate_snapshot' => (float) ($staffRates[(int) $row['staff_id']] ?? 0),
+        ])->values();
+
+        return ['error' => null, 'splits' => $withRate->all()];
+    }
+
+    protected function persistBookingStaffSplits(Booking $booking, $normalizedSplits): void
+    {
+        DB::table('booking_service_staff_splits')
+            ->where('booking_id', (int) $booking->id)
+            ->delete();
+
+        $rows = collect($normalizedSplits)->map(fn ($split) => [
+            'booking_id' => (int) $booking->id,
+            'staff_id' => (int) ($split['staff_id'] ?? 0),
+            'split_percent' => (int) ($split['share_percent'] ?? 0),
+            'service_commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ])->filter(fn ($row) => $row['staff_id'] > 0 && $row['split_percent'] > 0)->values()->all();
+
+        if (! empty($rows)) {
+            DB::table('booking_service_staff_splits')->insert($rows);
+            $booking->staff_id = (int) ($rows[0]['staff_id'] ?? $booking->staff_id);
+            $booking->save();
+        }
+    }
+
+    /**
+     * When an appointment’s balance is fully covered (e.g. package), attach list-price OrderServiceItem lines,
+     * mark booking paid, and consume reserved package claims — mirrors POS cart checkout behaviour.
+     */
+    protected function recordPackageCoveredAppointmentOnOrder(Order $order, Booking $booking): void
+    {
+        $booking->loadMissing(['service', 'customer']);
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+
+        $listTotal = max(0.0, (float) ($summary['service_total'] ?? 0));
+        if ($listTotal <= 0.0001 && $booking->service) {
+            $listTotal = (float) ($booking->service->service_price ?? $booking->service->price ?? 0);
+        }
+
+        $splitRows = DB::table('booking_service_staff_splits as splits')
+            ->where('splits.booking_id', (int) $booking->id)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ]);
+
+        $splitsPayload = $splitRows
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])
+            ->filter(fn (array $r) => $r['staff_id'] > 0)
+            ->values()
+            ->all();
+
+        $primaryRate = (float) ($splitsPayload[0]['service_commission_rate_snapshot'] ?? 0);
+        $commissionAmount = round($listTotal * $primaryRate, 2);
+
+        OrderServiceItem::create([
+            'order_id' => (int) $order->id,
+            'booking_id' => (int) $booking->id,
+            'booking_service_id' => (int) ($booking->service_id ?? 0),
+            'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
+            'service_name_snapshot' => (string) ($booking->service?->name ?? 'Service'),
+            'price_snapshot' => $listTotal,
+            'qty' => 1,
+            'line_total' => $listTotal,
+            'assigned_staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
+            'start_at' => $booking->start_at,
+            'end_at' => $booking->end_at,
+            'notes' => null,
+            'staff_splits' => $splitsPayload,
+            'commission_rate_used' => $primaryRate,
+            'commission_amount' => $commissionAmount,
+            'item_type' => 'service',
+        ]);
+
+        $booking->payment_status = 'PAID';
+        $booking->save();
+
+        $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
+
+        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
     }
 
 

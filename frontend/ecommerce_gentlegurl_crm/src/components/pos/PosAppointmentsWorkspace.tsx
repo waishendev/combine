@@ -1,12 +1,13 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
-
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
+  formatAppointmentCustomerDisplayName,
+  formatAppointmentReceiptDefaultEmail,
   formatBookingAddonSummary,
   formatDateTimeRange,
   formatDurationFromRange,
@@ -217,6 +218,8 @@ export default function PosAppointmentsWorkspace({
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
   const [editSelectedAddonIds, setEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [editSettledAmount, setEditSettledAmount] = useState('')
+  const [editStaffSplits, setEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [editStaffSplitAutoBalance, setEditStaffSplitAutoBalance] = useState(true)
   const [editAddonOptionsLoading, setEditAddonOptionsLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
@@ -241,6 +244,17 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentSettlementResult?.receipt_public_url])
 
   const appointmentReceiptCooldownActive = appointmentReceiptCooldownUntil > Date.now()
+
+  const formatAppointmentStaffLabel = useCallback((detail: PosAppointmentDetail): string => {
+    const splits = (detail.staff_splits ?? []).filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (splits.length > 0) {
+      return splits
+        .map((split) => `${split.staff_name || `Staff #${split.staff_id}`} (${Number(split.share_percent)}%)`)
+        .join(', ')
+    }
+    const fallback = detail.staff?.name?.trim() ?? ''
+    return fallback ? `${fallback} (100%)` : '—'
+  }, [])
 
   useEffect(() => {
     if (!appointmentReceiptQrImageUrl && !appointmentReceiptQrFullscreenImageUrl) {
@@ -784,21 +798,23 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     const dueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
     const cashReceivedAmount = Number(appointmentCashReceived || 0)
-    if (dueAmount <= 0) {
+    const settlementPaidSnapshot = Number(appointmentDetail?.settlement_paid ?? 0)
+    const packageStatusSnapshot = String(appointmentDetail?.package_status?.status ?? '').toLowerCase()
+    const isZeroPackageFinalize =
+      packageStatusSnapshot === 'reserved' && settlementPaidSnapshot <= 0.0001 && dueAmount <= 0.0001
+
+    if (!isZeroPackageFinalize && dueAmount <= 0) {
       setAppointmentCheckoutError('No balance due for this appointment.')
       return
     }
 
-    if (appointmentPaymentMethod === 'cash') {
-      if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < dueAmount) {
-        setAppointmentCheckoutError('Cash received must be equal to or greater than the settlement amount.')
-        return
+    if (!isZeroPackageFinalize) {
+      if (appointmentPaymentMethod === 'cash') {
+        if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < dueAmount) {
+          setAppointmentCheckoutError('Cash received must be equal to or greater than the settlement amount.')
+          return
+        }
       }
-    }
-
-    if (appointmentPaymentMethod === 'qrpay' && !appointmentQrProofFileName) {
-      setAppointmentCheckoutError('Please upload QR payment proof before confirming checkout.')
-      return
     }
 
     setAppointmentCheckoutError(null)
@@ -808,7 +824,11 @@ export default function PosAppointmentsWorkspace({
         payment_method: appointmentPaymentMethod,
       }
 
-      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/collect-payment`, {
+      const endpoint = isZeroPackageFinalize
+        ? `/api/proxy/pos/appointments/${appointmentDetail.id}/finalize-zero-settlement`
+        : `/api/proxy/pos/appointments/${appointmentDetail.id}/collect-payment`
+
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -819,7 +839,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
 
-      showMsg('Appointment payment collected.', 'success')
+      showMsg(isZeroPackageFinalize ? 'Appointment finalised.' : 'Appointment payment collected.', 'success')
       setAppointmentCheckoutError(null)
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentSettlementResult({
@@ -827,11 +847,16 @@ export default function PosAppointmentsWorkspace({
         order_number: String(json?.data?.order_number ?? '-'),
         receipt_public_url: json?.data?.receipt_public_url ?? null,
         payment_method: appointmentPaymentMethod,
-        paid_amount: dueAmount,
-        cash_received: appointmentPaymentMethod === 'cash' ? cashReceivedAmount : dueAmount,
-        change_amount: appointmentPaymentMethod === 'cash' ? Math.max(0, cashReceivedAmount - dueAmount) : 0,
+        paid_amount: isZeroPackageFinalize ? 0 : dueAmount,
+        cash_received: isZeroPackageFinalize
+          ? 0
+          : appointmentPaymentMethod === 'cash'
+            ? cashReceivedAmount
+            : dueAmount,
+        change_amount:
+          isZeroPackageFinalize ? 0 : appointmentPaymentMethod === 'cash' ? Math.max(0, cashReceivedAmount - dueAmount) : 0,
       })
-      setAppointmentReceiptEmail(appointmentDetail?.customer?.email?.trim() ?? '')
+      setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)
       setAppointmentReceiptCooldownUntil(0)
       setAppointmentQrCodeFullscreen(false)
@@ -858,6 +883,13 @@ export default function PosAppointmentsWorkspace({
     showMsg,
   ])
 
+  const rebalanceEditSettlementPrimaryShare = useCallback((rows: Array<{ staff_id: number | null; share_percent: string }>) => {
+    if (rows.length === 0) return rows
+    const otherTotal = rows.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10) || 0), 0)
+    const primaryShare = Math.max(0, 100 - otherTotal)
+    return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
+  }, [])
+
   const openEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.service?.id) return
     setEditSettlementError(null)
@@ -872,6 +904,18 @@ export default function PosAppointmentsWorkspace({
 
     const settled = appointmentDetail.settled_service_amount
     setEditSettledAmount(settled != null ? String(settled) : '')
+    setEditStaffSplitAutoBalance(true)
+    const initialSplits = (appointmentDetail.staff_splits ?? [])
+      .map((split) => ({
+        staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+        share_percent: String(split.share_percent ?? ''),
+      }))
+      .filter((split) => split.staff_id != null)
+    if (initialSplits.length > 0) {
+      setEditStaffSplits(rebalanceEditSettlementPrimaryShare(initialSplits))
+    } else {
+      setEditStaffSplits(appointmentDetail.staff?.id ? [{ staff_id: appointmentDetail.staff.id, share_percent: '100' }] : [])
+    }
 
     setEditAddonOptionsLoading(true)
     setEditSettlementOpen(true)
@@ -884,7 +928,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditAddonOptionsLoading(false)
     }
-  }, [appointmentDetail])
+  }, [appointmentDetail, rebalanceEditSettlementPrimaryShare])
 
   const toggleEditAddon = useCallback((optionId: number) => {
     setEditSelectedAddonIds((prev) => {
@@ -897,6 +941,24 @@ export default function PosAppointmentsWorkspace({
       return next
     })
   }, [])
+
+  const updateEditSettlementSplitShare = useCallback((index: number, value: string) => {
+    setEditSettlementError(null)
+    setEditStaffSplits((prev) => {
+      const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
+      if (!editStaffSplitAutoBalance || index === 0) return next
+      return rebalanceEditSettlementPrimaryShare(next)
+    })
+  }, [editStaffSplitAutoBalance, rebalanceEditSettlementPrimaryShare])
+
+  const removeEditSettlementSplitRow = useCallback((index: number) => {
+    setEditSettlementError(null)
+    setEditStaffSplits((prev) => {
+      const next = prev.filter((_, rowIdx) => rowIdx !== index)
+      if (!editStaffSplitAutoBalance) return next
+      return rebalanceEditSettlementPrimaryShare(next)
+    })
+  }, [editStaffSplitAutoBalance, rebalanceEditSettlementPrimaryShare])
 
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -921,6 +983,25 @@ export default function PosAppointmentsWorkspace({
         }
         payload.settled_service_amount = amt
       }
+      const normalizedSplits = editStaffSplits.map((row) => ({
+        staff_id: Number(row.staff_id ?? 0),
+        share_percent: Number.parseInt(row.share_percent || '0', 10),
+      }))
+      if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+        setEditSettlementError('Please select at least one staff and enter valid split percentages.')
+        return
+      }
+      const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
+      if (uniqueIds.size !== normalizedSplits.length) {
+        setEditSettlementError('Duplicate staff is not allowed in split.')
+        return
+      }
+      const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
+      if (splitSum !== 100) {
+        setEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
+        return
+      }
+      payload.staff_splits = normalizedSplits
 
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
         method: 'POST',
@@ -939,7 +1020,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, editSelectedAddonIds, editSettledAmount, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -952,6 +1033,24 @@ export default function PosAppointmentsWorkspace({
         return
       }
       showMsg('Package reserved for appointment.', 'success')
+      await fetchAppointments()
+      await refreshOpenedAppointmentDetail()
+    } finally {
+      setAppointmentActionLoading(false)
+    }
+  }, [appointmentDetail?.id, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+
+  const releaseAppointmentPackage = useCallback(async () => {
+    if (!appointmentDetail?.id) return
+    setAppointmentActionLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/release-package`, { method: 'POST' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to release package claim.', 'error')
+        return
+      }
+      showMsg('Package claim released.', 'success')
       await fetchAppointments()
       await refreshOpenedAppointmentDetail()
     } finally {
@@ -1335,6 +1434,13 @@ export default function PosAppointmentsWorkspace({
     String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
   )
   const appointmentCheckoutCompleted = appointmentSettlementPaid > 0
+  /** Package reserved on booking but settlement not recorded yet — treat as unpaid until POS/main checkout finalises. */
+  const packageReservedPendingRegister = useMemo(
+    () =>
+      String(appointmentDetail?.package_status?.status ?? '').toLowerCase() === 'reserved' &&
+      appointmentSettlementPaid <= 0.0001,
+    [appointmentDetail?.package_status?.status, appointmentSettlementPaid],
+  )
   const appointmentShowApplyPackageButton = useMemo(
     () =>
       !appointmentPackageApplied &&
@@ -1348,15 +1454,24 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentShowPaymentBadge =
     !appointmentIsTerminalCancelled && ['CONFIRMED', 'COMPLETED'].includes(appointmentStatusUpper)
-  const appointmentPaymentBadgeIsPaid = appointmentDueAmountNow <= 0.0001
+  /** Reserved package + no settlement order yet ⇒ still “unpaid” at register (same as completed-but-unpaid). */
+  const appointmentPaymentBadgeIsPaid =
+    !packageReservedPendingRegister && appointmentDueAmountNow <= 0.0001
 
   const canMarkAppointmentCompleted =
     !appointmentActionLoading &&
     !appointmentIsTerminalCancelled &&
     appointmentStatusUpper !== 'COMPLETED'
 
+  /** Reserved package, amount to collect is RM 0 — finalise in place (receipt) without sending the user to Main POS. */
+  const checkoutZeroPackageSettlement =
+    packageReservedPendingRegister && appointmentDueAmountNow <= 0.0001
+
   const showAppointmentCollectPayment =
-    appointmentDueAmountNow > 0 && !appointmentIsTerminalCancelled && appointmentStatusUpper === 'COMPLETED'
+    !appointmentIsTerminalCancelled &&
+    appointmentStatusUpper === 'COMPLETED' &&
+    !appointmentCheckoutCompleted &&
+    (appointmentDueAmountNow > 0.0001 || packageReservedPendingRegister)
 
   const showAppointmentMarkCompletedBlock =
     !appointmentIsTerminalCancelled && appointmentStatusUpper === 'CONFIRMED'
@@ -1546,6 +1661,7 @@ export default function PosAppointmentsWorkspace({
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                   >
                     <option value="">ALL</option>
+                    <option value="HOLD">HOLD</option>
                     <option value="CONFIRMED">CONFIRMED</option>
                     <option value="COMPLETED">COMPLETED</option>
                     <option value="CANCELLED">CANCELLED</option>
@@ -1592,7 +1708,17 @@ export default function PosAppointmentsWorkspace({
                         {appointmentDetail.booking_code}
                       </span>
                       <div className="flex flex-wrap items-center justify-end gap-2">
-                        <BookingStatusBadge status={appointmentDetail.status} label={appointmentDetail.status} showDot={false} />
+                        <BookingStatusBadge
+                          status={
+                            appointmentStatusUpper === 'COMPLETED'
+                              ? appointmentPaymentBadgeIsPaid
+                                ? 'completed_paid'
+                                : 'completed_unpaid'
+                              : appointmentDetail.status
+                          }
+                          label={appointmentDetail.status}
+                          showDot={false}
+                        />
                         {appointmentShowPaymentBadge ? (
                           appointmentPaymentBadgeIsPaid ? (
                             <span className="inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wide text-emerald-900 ring-1 ring-emerald-200">
@@ -1606,7 +1732,9 @@ export default function PosAppointmentsWorkspace({
                         ) : null}
                       </div>
                     </div>
-                    <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">{appointmentDetail.customer?.name ?? '—'}</p>
+                    <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">
+                      {formatAppointmentCustomerDisplayName(appointmentDetail)}
+                    </p>
 
                     <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-900">Services</p>
@@ -1632,7 +1760,8 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     ) : null}
 
-                    {!appointmentIsTerminalCancelled ? (
+                    {!appointmentIsTerminalCancelled &&
+                    !(appointmentStatusUpper === 'COMPLETED' && appointmentPaymentBadgeIsPaid) ? (
                       <div className="mt-3">
                         {appointmentDetail.requires_settled_amount ? (
                           <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
@@ -1655,7 +1784,7 @@ export default function PosAppointmentsWorkspace({
                     <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff</span>
-                        <span className="min-w-0 font-semibold text-slate-900">{appointmentDetail.staff?.name ?? '—'}</span>
+                        <span className="min-w-0 font-semibold text-slate-900">{formatAppointmentStaffLabel(appointmentDetail)}</span>
                       </div>
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</span>
@@ -1771,11 +1900,23 @@ export default function PosAppointmentsWorkspace({
                     {showAppointmentCollectPayment ? (
                       <div className="space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Collect payment</p>
-                        <p className="text-xs text-slate-500">Settle this completed appointment via cash or QRPay.</p>
-                        <div className={`grid gap-2 ${appointmentShowApplyPackageButton ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                        <p className="text-xs text-slate-500">
+                          {checkoutZeroPackageSettlement
+                            ? 'Package covers this visit—tap Checkout to confirm and issue the receipt (same flow as when collecting payment).'
+                            : 'Settle this completed appointment via cash or QRPay.'}
+                        </p>
+                        <div
+                          className={`grid gap-2 ${
+                            appointmentShowApplyPackageButton || packageReservedPendingRegister ? 'grid-cols-2' : 'grid-cols-1'
+                          }`}
+                        >
                           <button
                             type="button"
-                            disabled={appointmentActionLoading || appointmentDueAmountNow <= 0 || !!appointmentDetail?.requires_settled_amount}
+                            disabled={
+                              appointmentActionLoading ||
+                              !!appointmentDetail?.requires_settled_amount ||
+                              (appointmentDueAmountNow <= 0.0001 && !checkoutZeroPackageSettlement)
+                            }
                             onClick={() => {
                               const due = appointmentDueAmountNow
                               setAppointmentPaymentMethod('cash')
@@ -1784,7 +1925,13 @@ export default function PosAppointmentsWorkspace({
                               setAppointmentCheckoutConfirmationOpen(true)
                             }}
                             className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
-                            title={appointmentDetail?.requires_settled_amount ? 'Set the service amount via Edit Settlement first' : undefined}
+                            title={
+                              appointmentDetail?.requires_settled_amount
+                                ? 'Set the service amount via Edit Settlement first'
+                                : checkoutZeroPackageSettlement
+                                  ? 'Confirm checkout and receipt'
+                                  : undefined
+                            }
                           >
                             Checkout
                           </button>
@@ -1796,6 +1943,15 @@ export default function PosAppointmentsWorkspace({
                               className="min-h-[44px] rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:pointer-events-none disabled:opacity-50"
                             >
                               Apply package
+                            </button>
+                          ) : packageReservedPendingRegister ? (
+                            <button
+                              type="button"
+                              disabled={appointmentActionLoading}
+                              onClick={() => void releaseAppointmentPackage()}
+                              className="min-h-[44px] rounded-lg border-2 border-amber-600 bg-white py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-amber-50 disabled:pointer-events-none disabled:opacity-50"
+                            >
+                              Unclaim package
                             </button>
                           ) : null}
                         </div>
@@ -2400,13 +2556,13 @@ export default function PosAppointmentsWorkspace({
                 <span className="font-semibold">Booking:</span> {appointmentDetail.booking_code}
               </p>
               <p>
-                <span className="font-semibold">Customer:</span> {appointmentDetail.customer?.name ?? '-'}
+                <span className="font-semibold">Customer:</span> {formatAppointmentCustomerDisplayName(appointmentDetail)}
               </p>
               <p>
                 <span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}
               </p>
               <p>
-                <span className="font-semibold">Current Staff:</span> {appointmentDetail.staff?.name ?? '-'}
+                <span className="font-semibold">Current Staff:</span> {formatAppointmentStaffLabel(appointmentDetail)}
               </p>
               <p>
                 <span className="font-semibold">Current Date/Time:</span>{' '}
@@ -2581,6 +2737,78 @@ export default function PosAppointmentsWorkspace({
                 )}
               </div>
 
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Staff Split</p>
+                  <button
+                    type="button"
+                    onClick={() => setEditStaffSplits((prev) => {
+                      const next = [...prev, { staff_id: null, share_percent: '' }]
+                      if (!editStaffSplitAutoBalance) return next
+                      return rebalanceEditSettlementPrimaryShare(next)
+                    })}
+                    className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                  >
+                    + Add Staff
+                  </button>
+                </div>
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={editStaffSplitAutoBalance}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setEditStaffSplitAutoBalance(checked)
+                      if (checked) {
+                        setEditStaffSplits((prev) => rebalanceEditSettlementPrimaryShare(prev))
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Auto Balance (lock first row, auto adjust to 100%)
+                </label>
+                <div className="space-y-2">
+                  {editStaffSplits.map((split, idx) => (
+                    <div key={`split-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                      <select
+                        value={split.staff_id ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value ? Number(e.target.value) : null
+                          setEditSettlementError(null)
+                          setEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
+                        }}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select staff</option>
+                        {activeStaffs.map((staff) => (
+                          <option key={staff.id} value={staff.id}>{staff.name}</option>
+                        ))}
+                      </select>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={split.share_percent}
+                          disabled={editStaffSplitAutoBalance && idx === 0}
+                          onChange={(e) => updateEditSettlementSplitShare(idx, e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={editStaffSplits.length <= 1}
+                        onClick={() => removeEditSettlementSplitRow(idx)}
+                        className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {(() => {
                 const allOptions = editAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => editSelectedAddonIds.has(o.id))
@@ -2652,7 +2880,11 @@ export default function PosAppointmentsWorkspace({
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Checkout Confirmation</h4>
-                <p className="text-xs text-gray-500">Select payment method before collecting settlement.</p>
+                <p className="text-xs text-gray-500">
+                  {checkoutZeroPackageSettlement
+                    ? 'Confirm payment method (cash or QRPay). QR proof is optional. Package covers the amount due — this step records the receipt.'
+                    : 'Select payment method before collecting settlement. QR proof is optional.'}
+                </p>
               </div>
               <button
                 type="button"
@@ -2678,10 +2910,15 @@ export default function PosAppointmentsWorkspace({
               ) : null}
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                 <p className="font-semibold text-gray-900">{appointmentDetail.booking_code}</p>
-                <p className="text-xs text-gray-600">{appointmentDetail.customer?.name ?? '-'}</p>
+                <p className="text-xs text-gray-600">{formatAppointmentCustomerDisplayName(appointmentDetail)}</p>
                 <p className="text-xs text-gray-600">
                   Amount Due:{' '}
                   <span className="font-semibold text-emerald-700">RM {appointmentDueAmount.toFixed(2)}</span>
+                  {checkoutZeroPackageSettlement ? (
+                    <span className="block pt-1 text-[11px] font-normal text-slate-500">
+                      Covered by package — RM 0 to collect at checkout.
+                    </span>
+                  ) : null}
                 </p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -2747,9 +2984,9 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   ) : null}
                 </div>
-              ) : (
+              ) : appointmentPaymentMethod === 'qrpay' ? (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof</label>
+                  <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button
                       type="button"
@@ -2805,7 +3042,7 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   ) : null}
                 </div>
-              )}
+              ) : null}
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
@@ -2819,7 +3056,10 @@ export default function PosAppointmentsWorkspace({
                 </button>
                 <button
                   type="button"
-                  disabled={appointmentActionLoading || appointmentDueAmount <= 0}
+                  disabled={
+                    appointmentActionLoading ||
+                    (!checkoutZeroPackageSettlement && appointmentDueAmount <= 0)
+                  }
                   onClick={() => void settleAppointmentPayment()}
                   className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                 >

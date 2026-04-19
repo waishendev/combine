@@ -149,7 +149,14 @@ class CustomerServicePackageService
     {
         return DB::transaction(function () use ($bookingId) {
             $claims = CustomerServicePackageUsage::query()
-                ->where('booking_id', $bookingId)
+                ->where(function ($q) use ($bookingId) {
+                    $q->where('booking_id', $bookingId)
+                        ->orWhere(function ($q2) use ($bookingId) {
+                            $q2->where('used_from', 'POS')
+                                ->where('used_ref_id', $bookingId)
+                                ->whereNull('booking_id');
+                        });
+                })
                 ->where('status', 'reserved')
                 ->lockForUpdate()
                 ->get();

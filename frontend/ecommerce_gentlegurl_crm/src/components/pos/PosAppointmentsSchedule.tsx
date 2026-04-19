@@ -2,7 +2,7 @@
 
 import { useMemo, type ReactNode } from 'react'
 
-import { posAppointmentMonthPreviewChipClass, posAppointmentVisualTone } from './posAppointmentHelpers'
+import { posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow } from './posAppointmentHelpers'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 import PosAppointmentsDayGrid from './PosAppointmentsDayGrid'
 
@@ -112,7 +112,7 @@ export default function PosAppointmentsSchedule({
       const who = truncate(row.customer_name.trim() || '—', 10)
       return {
         text: `${t} · ${who}`,
-        tone: posAppointmentVisualTone(row.status),
+        tone: posAppointmentVisualToneFromRow(row),
       }
     })
     const more = list.length > 3 ? list.length - 3 : 0
@@ -201,12 +201,20 @@ export default function PosAppointmentsSchedule({
       >
         <span className="font-semibold text-slate-700">Colour key :</span>
         <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-6 shrink-0 rounded border-2 border-violet-900 bg-violet-600" aria-hidden />
+          Hold
+        </span>
+        <span className="inline-flex items-center gap-1.5">
           <span className="h-3 w-6 shrink-0 rounded border-2 border-indigo-900 bg-indigo-600" aria-hidden />
           Confirmed, pending
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-3 w-6 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
-          Completed
+          Completed · paid
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-6 shrink-0 rounded border-2 border-amber-900 bg-amber-600" aria-hidden />
+          Completed · unpaid
         </span>
         <span className="inline-flex items-center gap-1.5">
           <span className="h-3 w-6 shrink-0 rounded border-2 border-rose-900 bg-rose-600" aria-hidden />

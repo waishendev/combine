@@ -5,6 +5,7 @@ import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import OfflineOrderActions from './reports/OfflineOrderActions'
 
 type Summary = {
   orders_count: number
@@ -34,6 +35,8 @@ type StaffSplit = {
   staff_commission_amount: number
 }
 
+type ReportItemType = 'product' | 'service_package' | 'booking_settlement' | 'booking_deposit'
+
 type DetailRow = {
   order_no: string | null
   order_id: number
@@ -43,7 +46,7 @@ type DetailRow = {
   created_by_phone: string | null
   created_by_email: string | null
   order_item_id: number
-  item_type?: 'product' | 'service_package'
+  item_type?: ReportItemType
   product_name: string | null
   qty: number
   item_total_price: number
@@ -53,8 +56,16 @@ type DetailRow = {
   staff_splits: StaffSplit[]
 }
 
-const getItemTypeLabel = (itemType?: 'product' | 'service_package') =>
-  itemType === 'service_package' ? 'Service Package' : 'Product'
+const getItemTypeLabel = (itemType?: ReportItemType) => {
+  if (itemType === 'service_package') return 'Service Package'
+  if (itemType === 'booking_settlement') return 'Final Settlement'
+  if (itemType === 'booking_deposit') return 'Booking Deposit'
+  return 'Product'
+}
+
+const isBookingSettlementItem = (itemType?: ReportItemType) => itemType === 'booking_settlement'
+const isBookingDepositItem = (itemType?: ReportItemType) => itemType === 'booking_deposit'
+const isBookingWorkerSplitItem = (itemType?: ReportItemType) => isBookingSettlementItem(itemType) || isBookingDepositItem(itemType)
 
 const money = (value: number) =>
   value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -614,17 +625,28 @@ export default function MyPosSummaryPage({
                       {row.has_staff_assignment ? 'Yes' : 'No'}
                     </td>
                     <td className="px-4 py-2 border border-gray-200 text-center">
-                      <button
-                        type="button"
-                        className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
-                        onClick={() => {
-                          setSelectedRow(row)
-                          setDetailOpen(true)
-                        }}
-                        aria-label={`View details for ${row.order_no ?? row.order_id}`}
-                      >
-                        <i className="fa-solid fa-eye" />
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          type="button"
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
+                          onClick={() => {
+                            setSelectedRow(row)
+                            setDetailOpen(true)
+                          }}
+                          aria-label={`View details for ${row.order_no ?? row.order_id}`}
+                        >
+                          <i className="fa-solid fa-eye" />
+                        </button>
+                        <OfflineOrderActions
+                          orderId={row.order_id}
+                          channel="offline"
+                          staffActionLabel={isBookingSettlementItem(row.item_type) ? 'worker' : 'sales_person'}
+                          hideStaffAction={isBookingDepositItem(row.item_type)}
+                          onDone={() => {
+                            void loadData(currentPage)
+                          }}
+                        />
+                      </div>
                     </td>
                   </tr>
                 </Fragment>
@@ -745,7 +767,7 @@ export default function MyPosSummaryPage({
 
                 {/* Staff Splits Section - Outside border */}
                 <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-gray-700">Staff Splits</h4>
+                  <h4 className="text-sm font-semibold text-gray-700">{isBookingWorkerSplitItem(selectedRow.item_type) ? 'Assigned Staff' : 'Staff Splits'}</h4>
                   {selectedRow.staff_splits.length === 0 ? (
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-500">
                       No staff splits.
@@ -761,12 +783,16 @@ export default function MyPosSummaryPage({
                             <th className="px-4 py-2 font-semibold text-right text-gray-700">
                               Share %
                             </th>
-                            <th className="px-4 py-2 font-semibold text-right text-gray-700">
-                              Rate Snapshot
-                            </th>
-                            <th className="px-4 py-2 font-semibold text-right text-gray-700">
-                              Commission
-                            </th>
+                            {!isBookingWorkerSplitItem(selectedRow.item_type) ? (
+                              <>
+                                <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                                  Rate Snapshot
+                                </th>
+                                <th className="px-4 py-2 font-semibold text-right text-gray-700">
+                                  Commission
+                                </th>
+                              </>
+                            ) : null}
                           </tr>
                         </thead>
                         <tbody>
@@ -778,12 +804,16 @@ export default function MyPosSummaryPage({
                               <td className="px-4 py-2 text-right">
                                 {split.share_percent}%
                               </td>
-                              <td className="px-4 py-2 text-right">
-                                {(Number(split.commission_rate_snapshot) * 100).toFixed(2)}%
-                              </td>
-                              <td className="px-4 py-2 text-right">
-                                RM {money(Number(split.staff_commission_amount))}
-                              </td>
+                              {!isBookingWorkerSplitItem(selectedRow.item_type) ? (
+                                <>
+                                  <td className="px-4 py-2 text-right">
+                                    {(Number(split.commission_rate_snapshot) * 100).toFixed(2)}%
+                                  </td>
+                                  <td className="px-4 py-2 text-right">
+                                    RM {money(Number(split.staff_commission_amount))}
+                                  </td>
+                                </>
+                              ) : null}
                             </tr>
                           ))}
                         </tbody>

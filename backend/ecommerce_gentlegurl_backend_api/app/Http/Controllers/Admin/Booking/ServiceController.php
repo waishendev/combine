@@ -11,7 +11,9 @@ use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
 class ServiceController extends Controller
@@ -204,6 +206,243 @@ class ServiceController extends Controller
         $service = BookingService::findOrFail($id);
         $service->delete();
         return $this->respond(null);
+    }
+
+    public function exportCsv(Request $request)
+    {
+        $services = BookingService::query()
+            ->with(['allowedStaffs:id', 'primarySlots'])
+            ->orderBy('id')
+            ->get();
+
+        $stream = fopen('php://temp', 'r+');
+        if (! $stream) {
+            return response()->json(['message' => 'Unable to build booking services CSV export.'], 500);
+        }
+
+        $headers = [
+            'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
+            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots',
+        ];
+        fputcsv($stream, $headers);
+
+        foreach ($services as $service) {
+            fputcsv($stream, [
+                $service->id,
+                $service->name,
+                $service->service_type,
+                $service->description,
+                $service->duration_min,
+                $service->service_price,
+                $service->deposit_amount,
+                $service->buffer_min,
+                $service->price_mode,
+                $service->price_range_min,
+                $service->price_range_max,
+                $service->is_package_eligible ? 'true' : 'false',
+                $service->is_active ? 'true' : 'false',
+                $service->allowedStaffs->pluck('id')->join('|'),
+                $service->primarySlots->pluck('start_time')->map(fn ($time) => substr((string) $time, 0, 5))->join('|'),
+            ]);
+        }
+
+        rewind($stream);
+        $csv = stream_get_contents($stream) ?: '';
+        fclose($stream);
+
+        return response("\xEF\xBB\xBF" . $csv, 200, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => 'attachment; filename="booking-services-export_' . now()->format('Y-m-d_His') . '.csv"',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
+    public function importCsv(Request $request)
+    {
+        $request->validate([
+            'file' => ['required', 'file', 'mimes:csv,txt'],
+        ]);
+
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        if (! $handle) {
+            return response()->json(['message' => 'Unable to open CSV file.'], 422);
+        }
+
+        $headers = fgetcsv($handle);
+        if (! is_array($headers)) {
+            fclose($handle);
+            return response()->json(['message' => 'Invalid CSV header row.'], 422);
+        }
+
+        $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
+        $allowedHeaders = [
+            'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
+            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots',
+        ];
+        $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
+        if (! empty($unknownHeaders)) {
+            fclose($handle);
+            return response()->json(['message' => 'Unexpected CSV headers: ' . implode(', ', $unknownHeaders)], 422);
+        }
+
+        $summary = ['totalRows' => 0, 'created' => 0, 'updated' => 0, 'skipped' => 0, 'failed' => 0, 'failedRows' => []];
+        $rowNumber = 1;
+
+        while (($cells = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if (! is_array($cells)) {
+                continue;
+            }
+
+            $payload = [];
+            foreach ($headers as $index => $header) {
+                if ($header === '') {
+                    continue;
+                }
+                $payload[$header] = isset($cells[$index]) ? trim((string) $cells[$index]) : '';
+            }
+
+            $isAllEmpty = count(array_filter($payload, fn ($value) => $value !== '')) === 0;
+            if ($isAllEmpty) {
+                continue;
+            }
+
+            $summary['totalRows']++;
+            $allowedStaffIds = collect(explode('|', (string) ($payload['allowed_staff_ids'] ?? '')))
+                ->map(fn ($id) => (int) trim($id))
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+            $primarySlots = collect(explode('|', (string) ($payload['primary_slots'] ?? '')))
+                ->map(fn ($time) => trim($time))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all();
+
+            $raw = [
+                'name' => $payload['name'] ?? null,
+                'service_type' => $payload['service_type'] ?? null,
+                'description' => $payload['description'] ?? null,
+                'duration_min' => $payload['duration_min'] ?? null,
+                'service_price' => $payload['service_price'] ?? null,
+                'deposit_amount' => $payload['deposit_amount'] ?? null,
+                'buffer_min' => $payload['buffer_min'] ?? null,
+                'price_mode' => $payload['price_mode'] ?: 'fixed',
+                'price_range_min' => $payload['price_range_min'] ?: null,
+                'price_range_max' => $payload['price_range_max'] ?: null,
+                'is_package_eligible' => $payload['is_package_eligible'] ?? 'true',
+                'is_active' => $payload['is_active'] ?? 'true',
+                'allowed_staff_ids' => $allowedStaffIds,
+                'primary_slots' => $primarySlots,
+            ];
+
+            $raw['is_active'] = filter_var((string) $raw['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $raw['is_package_eligible'] = filter_var((string) $raw['is_package_eligible'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
+            $validator = Validator::make($raw, [
+                'name' => ['required', 'string', 'max:255'],
+                'service_type' => ['required', 'in:premium,standard'],
+                'description' => ['nullable', 'string'],
+                'duration_min' => ['required', 'integer', 'min:1'],
+                'service_price' => ['required', 'numeric', 'min:0'],
+                'deposit_amount' => ['required', 'numeric', 'min:0'],
+                'buffer_min' => ['nullable', 'integer', 'min:0'],
+                'price_mode' => ['required', 'in:fixed,range'],
+                'price_range_min' => ['nullable', 'numeric', 'min:0'],
+                'price_range_max' => ['nullable', 'numeric', 'min:0'],
+                'is_package_eligible' => ['required', 'boolean'],
+                'is_active' => ['required', 'boolean'],
+                'allowed_staff_ids' => ['required', 'array', 'min:1'],
+                'allowed_staff_ids.*' => ['integer', 'exists:staffs,id'],
+                'primary_slots' => ['nullable', 'array'],
+                'primary_slots.*' => ['date_format:H:i'],
+            ]);
+
+            if ($validator->fails()) {
+                $summary['failed']++;
+                $summary['failedRows'][] = ['row' => $rowNumber, 'reason' => $validator->errors()->first()];
+                continue;
+            }
+
+            $validated = $validator->validated();
+            $serviceId = isset($payload['id']) && is_numeric($payload['id']) ? (int) $payload['id'] : null;
+
+            try {
+                DB::transaction(function () use ($serviceId, $validated, &$summary) {
+                    $service = $serviceId ? BookingService::query()->find($serviceId) : null;
+                    if (! $service) {
+                        $service = BookingService::query()->create([
+                            'name' => $validated['name'],
+                            'service_type' => $validated['service_type'],
+                            'description' => $validated['description'] ?? null,
+                            'service_price' => $validated['service_price'],
+                            'price' => $validated['service_price'],
+                            'price_mode' => $validated['price_mode'],
+                            'price_range_min' => $validated['price_mode'] === 'range' ? ($validated['price_range_min'] ?? 0) : null,
+                            'price_range_max' => $validated['price_mode'] === 'range' ? ($validated['price_range_max'] ?? 0) : null,
+                            'is_package_eligible' => $validated['is_package_eligible'],
+                            'duration_min' => $validated['duration_min'],
+                            'deposit_amount' => $validated['deposit_amount'],
+                            'buffer_min' => $validated['buffer_min'] ?? 0,
+                            'is_active' => $validated['is_active'],
+                        ]);
+                        $summary['created']++;
+                    } else {
+                        $incomingAllowed = collect($validated['allowed_staff_ids'])->map(fn ($id) => (int) $id)->sort()->values()->all();
+                        $currentAllowed = $service->allowedStaffs()->pluck('staffs.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
+                        $incomingSlots = collect($validated['primary_slots'] ?? [])->map(fn ($time) => substr((string) $time, 0, 5))->sort()->values()->all();
+                        $currentSlots = $service->primarySlots()->pluck('start_time')->map(fn ($time) => substr((string) $time, 0, 5))->sort()->values()->all();
+                        $isUnchanged =
+                            ($service->name === $validated['name']) &&
+                            ($service->service_type === $validated['service_type']) &&
+                            (($service->description ?? null) === ($validated['description'] ?? null)) &&
+                            ((int) $service->duration_min === (int) $validated['duration_min']) &&
+                            ((float) $service->service_price === (float) $validated['service_price']) &&
+                            ((float) $service->deposit_amount === (float) $validated['deposit_amount']) &&
+                            ((int) $service->buffer_min === (int) ($validated['buffer_min'] ?? 0)) &&
+                            ((bool) $service->is_active === (bool) $validated['is_active']) &&
+                            ((bool) $service->is_package_eligible === (bool) $validated['is_package_eligible']) &&
+                            ($service->price_mode === $validated['price_mode']) &&
+                            ((float) ($service->price_range_min ?? 0) === (float) ($validated['price_range_min'] ?? 0)) &&
+                            ((float) ($service->price_range_max ?? 0) === (float) ($validated['price_range_max'] ?? 0)) &&
+                            ($incomingAllowed === $currentAllowed) &&
+                            ($incomingSlots === $currentSlots);
+                        if ($isUnchanged) {
+                            $summary['skipped']++;
+                            return;
+                        }
+                        $service->update([
+                            'name' => $validated['name'],
+                            'service_type' => $validated['service_type'],
+                            'description' => $validated['description'] ?? null,
+                            'service_price' => $validated['service_price'],
+                            'price' => $validated['service_price'],
+                            'price_mode' => $validated['price_mode'],
+                            'price_range_min' => $validated['price_mode'] === 'range' ? ($validated['price_range_min'] ?? 0) : null,
+                            'price_range_max' => $validated['price_mode'] === 'range' ? ($validated['price_range_max'] ?? 0) : null,
+                            'is_package_eligible' => $validated['is_package_eligible'],
+                            'duration_min' => $validated['duration_min'],
+                            'deposit_amount' => $validated['deposit_amount'],
+                            'buffer_min' => $validated['buffer_min'] ?? 0,
+                            'is_active' => $validated['is_active'],
+                        ]);
+                        $summary['updated']++;
+                    }
+
+                    $this->syncAllowedStaffs($service, $this->resolveAllowedStaffIds($validated['allowed_staff_ids']));
+                    $this->syncPrimarySlots($service, $validated['primary_slots'] ?? []);
+                });
+            } catch (\Throwable $throwable) {
+                $summary['failed']++;
+                $summary['failedRows'][] = ['row' => $rowNumber, 'reason' => $throwable->getMessage()];
+            }
+        }
+
+        fclose($handle);
+
+        return $this->respond($summary, 'CSV import processed.');
     }
 
     private function resolveAllowedStaffIds(array $staffIds): array

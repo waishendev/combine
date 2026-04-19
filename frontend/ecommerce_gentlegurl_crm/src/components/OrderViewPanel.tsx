@@ -15,6 +15,7 @@ interface OrderViewPanelProps {
   orderId: number
   onClose: () => void
   onOrderUpdated?: (updatedOrder?: OrderDetailData) => void
+  zIndexClassName?: string
 }
 
 type OrderDetailData = {
@@ -138,6 +139,7 @@ export default function OrderViewPanel({
   orderId,
   onClose,
   onOrderUpdated,
+  zIndexClassName = 'z-50',
 }: OrderViewPanelProps) {
   const { t } = useI18n()
   const [loading, setLoading] = useState(true)
@@ -361,7 +363,7 @@ export default function OrderViewPanel({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 flex bg-black/40">
+      <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`}>
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -385,7 +387,7 @@ export default function OrderViewPanel({
 
   if (error || !order) {
     return (
-      <div className="fixed inset-0 z-50 flex bg-black/40">
+      <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`}>
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -428,7 +430,7 @@ export default function OrderViewPanel({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`} role="dialog" aria-modal="true" onClick={onClose}>
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside
           className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl"

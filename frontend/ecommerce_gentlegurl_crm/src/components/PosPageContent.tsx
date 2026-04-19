@@ -1,6 +1,8 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import Link from 'next/link'
+import OrderViewPanel from './OrderViewPanel'
 type CartItem = {
   id: number
   qty: number
@@ -85,6 +87,7 @@ type AppointmentSettlementCartItem = {
   is_range_priced?: boolean
   requires_settled_amount?: boolean
   staff_name?: string | null
+  staff_splits?: Array<{ staff_id: number; staff_name?: string | null; share_percent: number }>
   appointment_start_at?: string | null
   appointment_end_at?: string | null
   balance_due: number
@@ -331,9 +334,63 @@ type Member = {
   id: number
   name: string
   phone?: string | null
+  phone_masked?: string | null
   email?: string | null
   member_code?: string | null
   avatar_url?: string | null
+}
+
+type MemberRecentOrder = {
+  id: number
+  order_number?: string | null
+  order_date?: string | null
+  status?: string | null
+  total_amount?: number | null
+  channel?: string | null
+}
+
+type MemberDetail = {
+  id: number
+  name: string
+  phone?: string | null
+  email?: string | null
+  member_code?: string | null
+  join_date?: string | null
+  customer_type?: string | null
+  total_orders?: number
+  total_spent?: number
+  last_order_date?: string | null
+  points_balance?: number
+}
+
+type MemberRecentOrdersMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+}
+
+type MemberActivePackage = {
+  id: number
+  package_name?: string | null
+  expires_at?: string | null
+}
+
+type MemberUpcomingAppointment = {
+  id: number
+  booking_code?: string | null
+  status?: string | null
+  start_at?: string | null
+  end_at?: string | null
+  service_name?: string | null
+  staff_name?: string | null
+}
+
+type MemberUpcomingAppointmentsMeta = {
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
 }
 
 type PosVoucherOption = {
@@ -519,6 +576,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageMembers, setPackageMembers] = useState<Member[]>([])
   const [packageMembersLoading, setPackageMembersLoading] = useState(false)
   const [packageMemberPickerOpen, setPackageMemberPickerOpen] = useState(false)
+  const [assignMemberContext, setAssignMemberContext] = useState<'checkout' | 'service' | 'package'>('checkout')
+  const [packageInternalNote, setPackageInternalNote] = useState('')
   const [packageModalError, setPackageModalError] = useState<string | null>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
@@ -556,6 +615,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
+  const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
 
@@ -565,7 +626,28 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [memberPage, setMemberPage] = useState(1)
   const [memberLastPage, setMemberLastPage] = useState(1)
   const [memberLoading, setMemberLoading] = useState(false)
-  const [memberInitialLoaded, setMemberInitialLoaded] = useState(false)
+  const [memberDetailLoading, setMemberDetailLoading] = useState(false)
+  const [memberDetail, setMemberDetail] = useState<MemberDetail | null>(null)
+  const [memberRecentOrders, setMemberRecentOrders] = useState<MemberRecentOrder[]>([])
+  const [memberRecentOrdersMeta, setMemberRecentOrdersMeta] = useState<MemberRecentOrdersMeta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 5,
+    total: 0,
+  })
+  const [memberOrdersLoadingMore, setMemberOrdersLoadingMore] = useState(false)
+  const [memberActivePackages, setMemberActivePackages] = useState<MemberActivePackage[]>([])
+  const [memberActivePackagesTotal, setMemberActivePackagesTotal] = useState(0)
+  const [memberUpcomingAppointments, setMemberUpcomingAppointments] = useState<MemberUpcomingAppointment[]>([])
+  const [memberUpcomingAppointmentsMeta, setMemberUpcomingAppointmentsMeta] = useState<MemberUpcomingAppointmentsMeta>({
+    current_page: 1,
+    last_page: 1,
+    per_page: 2,
+    total: 0,
+  })
+  const [memberAppointmentsLoadingMore, setMemberAppointmentsLoadingMore] = useState(false)
+  const [memberOrderViewId, setMemberOrderViewId] = useState<number | null>(null)
+  const [lookupMember, setLookupMember] = useState<Member | null>(null)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
   const [voucherLoading, setVoucherLoading] = useState(false)
@@ -578,7 +660,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
-  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package'; id: number } | null>(null)
+  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement'; id: number } | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [itemSplitError, setItemSplitError] = useState<string | null>(null)
@@ -619,6 +701,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const end = new Date(endAt)
     return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   }, [])
+
+  const formatSettlementStaffLabel = useCallback((settlement: AppointmentSettlementCartItem): string => {
+    const splits = (settlement.staff_splits ?? [])
+      .filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (splits.length > 0) {
+      return splits
+        .map((split) => {
+          const fallbackName = activeStaffs.find((staff) => staff.id === split.staff_id)?.name ?? `Staff #${split.staff_id}`
+          const staffName = (split.staff_name ?? '').trim() || fallbackName
+          return `${staffName} (${Number(split.share_percent)}%)`
+        })
+        .join(', ')
+    }
+
+    const fallbackName = (settlement.staff_name ?? '').trim()
+    return fallbackName ? `${fallbackName} (100%)` : '—'
+  }, [activeStaffs])
 
   const formatDateTimeRange = useCallback((startAt?: string | null, endAt?: string | null) => {
     if (!startAt) return '-'
@@ -1386,13 +1485,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
+    const trimmedKeyword = keyword.trim()
+    if (trimmedKeyword.length < 3) {
+      setMembers([])
+      setMemberPage(1)
+      setMemberLastPage(1)
+      setMemberLoading(false)
+      return
+    }
+
     setMemberLoading(true)
     const params = new URLSearchParams()
     params.set('page', String(page))
-    params.set('per_page', '100')
-    if (keyword.trim()) {
-      params.set('q', keyword.trim())
-    }
+    params.set('per_page', '10')
+    params.set('q', trimmedKeyword)
 
     const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
     const json = await res.json()
@@ -1402,6 +1508,113 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberPage(paged.current_page)
     setMemberLastPage(paged.last_page)
     setMemberLoading(false)
+  }, [])
+
+  const fetchMemberDetail = useCallback(async (memberId: number, options?: { page?: number; append?: boolean; silent?: boolean; appointmentsPage?: number; appendAppointments?: boolean; updateSelectedMember?: boolean }) => {
+    const page = Math.max(1, options?.page ?? 1)
+    const appointmentsPage = Math.max(1, options?.appointmentsPage ?? 1)
+    const append = Boolean(options?.append)
+    const appendAppointments = Boolean(options?.appendAppointments)
+    const updateSelectedMember = options?.updateSelectedMember ?? true
+    const silent = Boolean(options?.silent)
+    if (append) {
+      setMemberOrdersLoadingMore(true)
+    }
+    if (appendAppointments) {
+      setMemberAppointmentsLoadingMore(true)
+    } else if (!silent) {
+      setMemberDetailLoading(true)
+    }
+    try {
+      const params = new URLSearchParams({
+        recent_orders_page: String(page),
+        recent_orders_per_page: '5',
+        appointments_page: String(appointmentsPage),
+        appointments_per_page: '2',
+      })
+      const res = await fetch(`/api/proxy/pos/members/${memberId}?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        throw new Error(String(json?.message ?? 'Unable to load member profile.'))
+      }
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as {
+          data?: {
+            member?: MemberDetail
+            active_packages?: { total_active?: number; items?: MemberActivePackage[] }
+            upcoming_appointments?: MemberUpcomingAppointment[]
+            upcoming_appointments_meta?: Partial<MemberUpcomingAppointmentsMeta>
+            recent_orders?: MemberRecentOrder[]
+            recent_orders_meta?: Partial<MemberRecentOrdersMeta>
+          }
+        }).data
+        : null
+      const loadedMember = payload?.member ?? null
+      setMemberDetail(loadedMember)
+      const fetchedOrders = Array.isArray(payload?.recent_orders) ? payload.recent_orders : []
+      if (!appendAppointments || append) {
+        setMemberRecentOrders((previous) => (append ? [...previous, ...fetchedOrders] : fetchedOrders))
+        const meta = payload?.recent_orders_meta
+        setMemberRecentOrdersMeta({
+          current_page: Number(meta?.current_page ?? page),
+          last_page: Number(meta?.last_page ?? page),
+          per_page: Number(meta?.per_page ?? 5),
+          total: Number(meta?.total ?? fetchedOrders.length),
+        })
+      }
+      const activePackages = payload?.active_packages
+      setMemberActivePackages(Array.isArray(activePackages?.items) ? activePackages.items : [])
+      setMemberActivePackagesTotal(Number(activePackages?.total_active ?? 0))
+
+      const appointments = Array.isArray(payload?.upcoming_appointments) ? payload.upcoming_appointments : []
+      if (!append || appendAppointments) {
+        setMemberUpcomingAppointments((previous) => (appendAppointments ? [...previous, ...appointments] : appointments))
+        const appointmentsMeta = payload?.upcoming_appointments_meta
+        setMemberUpcomingAppointmentsMeta({
+          current_page: Number(appointmentsMeta?.current_page ?? appointmentsPage),
+          last_page: Number(appointmentsMeta?.last_page ?? appointmentsPage),
+          per_page: Number(appointmentsMeta?.per_page ?? 2),
+          total: Number(appointmentsMeta?.total ?? appointments.length),
+        })
+      }
+
+      if (loadedMember && updateSelectedMember) {
+        setSelectedMember((previous) => {
+          if (previous && previous.id !== loadedMember.id) return previous
+          return {
+            id: loadedMember.id,
+            name: loadedMember.name,
+            phone: loadedMember.phone ?? null,
+            email: loadedMember.email ?? null,
+            member_code: loadedMember.member_code ?? null,
+          }
+        })
+      }
+    } catch {
+      if (!append && !appendAppointments) {
+        setMemberDetail(null)
+        setMemberRecentOrders([])
+        setMemberRecentOrdersMeta({
+          current_page: 1,
+          last_page: 1,
+          per_page: 5,
+          total: 0,
+        })
+        setMemberActivePackages([])
+        setMemberActivePackagesTotal(0)
+        setMemberUpcomingAppointments([])
+        setMemberUpcomingAppointmentsMeta({
+          current_page: 1,
+          last_page: 1,
+          per_page: 2,
+          total: 0,
+        })
+      }
+    } finally {
+      setMemberDetailLoading(false)
+      setMemberOrdersLoadingMore(false)
+      setMemberAppointmentsLoadingMore(false)
+    }
   }, [])
 
   const fetchServices = useCallback(async () => {
@@ -1815,6 +2028,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setPackageMembers([])
     setPackageMembersLoading(false)
     setPackageMemberPickerOpen(false)
+    setPackageInternalNote('')
     setPackageModalError(null)
     setPackageModalOpen(true)
   }, [activeStaffs, fetchStaffOptions, hasCartAppointmentSettlements, selectedMember])
@@ -1859,11 +2073,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   useEffect(() => {
     let cancelled = false
     const run = async () => {
-      if (!packageModalOpen) return
+      if (!packageMemberPickerOpen) return
+      if (packageMemberQuery.trim().length < 3) {
+        setPackageMembers([])
+        setPackageMembersLoading(false)
+        return
+      }
       setPackageMembersLoading(true)
       try {
-        const params = new URLSearchParams({ page: '1', per_page: '20' })
-        if (packageMemberQuery.trim()) params.set('q', packageMemberQuery.trim())
+        const params = new URLSearchParams({ page: '1', per_page: '20', q: packageMemberQuery.trim() })
         const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
         const json = await res.json().catch(() => null)
         const paged = extractPaged<Member>(json)
@@ -1877,7 +2095,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return () => {
       cancelled = true
     }
-  }, [packageMemberQuery, packageModalOpen])
+  }, [packageMemberPickerOpen, packageMemberQuery])
 
   const removePackageCartItem = useCallback(async (itemId: number) => {
     const res = await fetch(`/api/proxy/pos/cart/package-items/${itemId}`, { method: 'DELETE' })
@@ -2084,6 +2302,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void fetchUnpaidCompletedAppointments(settlementQuery)
   }
 
+  const rebalanceSettlementPrimaryShare = (rows: Array<{ staff_id: number | null; share_percent: string }>) => {
+    if (rows.length === 0) return rows
+    const otherTotal = rows.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10) || 0), 0)
+    const primaryShare = Math.max(0, 100 - otherTotal)
+    return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
+  }
+
+  const updateCartEditSplitShare = (index: number, value: string) => {
+    setCartEditSettlementError(null)
+    setCartEditStaffSplits((prev) => {
+      const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
+      if (!cartEditStaffSplitAutoBalance || index === 0) return next
+      return rebalanceSettlementPrimaryShare(next)
+    })
+  }
+
+  const removeCartEditSplitRow = (index: number) => {
+    setCartEditSettlementError(null)
+    setCartEditStaffSplits((prev) => {
+      const next = prev.filter((_, rowIdx) => rowIdx !== index)
+      if (!cartEditStaffSplitAutoBalance) return next
+      return rebalanceSettlementPrimaryShare(next)
+    })
+  }
+
   const openCartEditSettlement = async (settlement: AppointmentSettlementCartItem) => {
     setCartEditSettlementError(null)
     setCartEditSettlementLoading(false)
@@ -2098,6 +2341,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     )
     setCartEditSelectedAddonIds(currentAddonIds)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
+    setCartEditStaffSplitAutoBalance(true)
+    const initialSplits = (settlement.staff_splits ?? [])
+      .map((split) => ({
+        staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+        share_percent: String(split.share_percent ?? ''),
+      }))
+      .filter((split) => split.staff_id != null)
+    if (initialSplits.length > 0) {
+      setCartEditStaffSplits(rebalanceSettlementPrimaryShare(initialSplits))
+    } else {
+      setCartEditStaffSplits([{ staff_id: settlement.staff_splits?.[0]?.staff_id ?? null, share_percent: '100' }])
+    }
 
     setCartEditAddonOptionsLoading(true)
     setCartEditSettlementOpen(true)
@@ -2149,6 +2404,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         }
         payload.settled_service_amount = amt
       }
+      const normalizedSplits = cartEditStaffSplits.map((row) => ({
+        staff_id: Number(row.staff_id ?? 0),
+        share_percent: Number.parseInt(row.share_percent || '0', 10),
+      }))
+      if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+        setCartEditSettlementError('Please select at least one staff and enter valid split percentages.')
+        return
+      }
+      const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
+      if (uniqueIds.size !== normalizedSplits.length) {
+        setCartEditSettlementError('Duplicate staff is not allowed in split.')
+        return
+      }
+      const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
+      if (splitSum !== 100) {
+        setCartEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
+        return
+      }
+      payload.staff_splits = normalizedSplits
 
       const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
         method: 'POST',
@@ -2431,6 +2705,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   useEffect(() => {
     if (!memberOpen) return
 
+    if (memberQuery.trim().length < 3) {
+      setMembers([])
+      setMemberPage(1)
+      setMemberLastPage(1)
+      setMemberLoading(false)
+      return
+    }
+
     const handle = setTimeout(() => {
       void fetchMemberPage(1, memberQuery, false)
     }, 300)
@@ -2471,10 +2753,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       if (!target || !buffer) return
 
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        const start = target.selectionStart ?? target.value.length
-        const end = target.selectionEnd ?? target.value.length
-        target.setRangeText(buffer, start, end, 'end')
-        target.dispatchEvent(new Event('input', { bubbles: true }))
+        const isUnsupportedSelectionInput =
+          target instanceof HTMLInputElement &&
+          ['number', 'date', 'time', 'datetime-local', 'month', 'week', 'color', 'range'].includes(
+            String(target.type ?? '').toLowerCase(),
+          )
+
+        if (isUnsupportedSelectionInput) {
+          target.value = `${target.value ?? ''}${buffer}`
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+          return
+        }
+
+        try {
+          const start = target.selectionStart ?? target.value.length
+          const end = target.selectionEnd ?? target.value.length
+          target.setRangeText(buffer, start, end, 'end')
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+        } catch {
+          target.value = `${target.value ?? ''}${buffer}`
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+        }
         return
       }
 
@@ -2909,6 +3208,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return
     }
 
+    const clearedCartId = cart.id
     setCheckoutResult({
       order_id: Number(json.data.order.id),
       order_number: json.data.order.order_number,
@@ -2926,9 +3226,30 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCheckoutIdentityMode('member')
     setMemberQuery('')
     setMembers([])
-    setCart({ id: cart.id, items: [], service_items: [], package_items: [], appointment_settlement_items: [], subtotal: 0, grand_total: 0 })
+    // Backend clears session cart but checkout JSON omits `cart`; sync UI immediately then confirm via GET /pos/cart.
+    setCart({
+      id: clearedCartId,
+      items: [],
+      service_items: [],
+      package_items: [],
+      appointment_settlement_items: [],
+      subtotal: 0,
+      grand_total: 0,
+      voucher: null,
+      promotions: [],
+      booking_deposit_total: 0,
+      booking_addon_total: 0,
+      booking_deposit_breakdown: undefined,
+    })
     setCashReceived('')
     setCheckoutItemAssignments([])
+    setPackageCheckoutSplits({})
+    void fetchUnpaidCompletedAppointments(settlementQuery)
+    try {
+      await loadCart()
+    } catch {
+      /* keep optimistic empty cart above */
+    }
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
@@ -3011,11 +3332,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     if (paymentMethod === 'qrpay') {
-      if (!qrProofFileName) {
-        setCheckoutError('Please upload QR payment proof before checkout.')
-        return
-      }
-
       await finalizeCheckout({ paid_amount: cartTotal, change_amount: 0 })
       return
     }
@@ -3083,18 +3399,42 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     [guestContactCache.email, guestContactCache.name, guestContactCache.phone, showMsg],
   )
 
-  const toggleMemberDropdown = async () => {
-    if (memberOpen) {
-      setMemberOpen(false)
-      setMemberQuery('')
-      return
-    }
+  const closeMemberPanel = () => {
+    setMemberOpen(false)
+    setMemberQuery('')
+    setMembers([])
+    setMemberDetail(null)
+    setLookupMember(null)
+    setMemberRecentOrders([])
+    setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
+    setMemberActivePackages([])
+    setMemberActivePackagesTotal(0)
+    setMemberUpcomingAppointments([])
+    setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
+    setMemberOrderViewId(null)
+  }
 
+  const openMemberQuickLookupPanel = async () => {
     setMemberOpen(true)
-    if (!memberInitialLoaded) {
-      setMemberInitialLoaded(true)
-      await fetchMemberPage(1, '', false)
-    }
+    setMemberQuery('')
+    setMembers([])
+    setMemberPage(1)
+    setMemberLastPage(1)
+    setLookupMember(null)
+    setMemberDetail(null)
+    setMemberRecentOrders([])
+    setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
+    setMemberActivePackages([])
+    setMemberActivePackagesTotal(0)
+    setMemberUpcomingAppointments([])
+    setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
+  }
+
+  const openAssignMemberModal = (context: 'checkout' | 'service' | 'package') => {
+    setAssignMemberContext(context)
+    setPackageMemberPickerOpen(true)
+    setPackageMemberQuery('')
+    setPackageMembers([])
   }
 
   const onAssignMember = async (member: Member) => {
@@ -3110,7 +3450,58 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setSelectedVoucherKey('')
     showMsg('Member assigned.', 'success')
     await syncPosCartCustomerContext({ mode: 'member', memberId: member.id })
+    await fetchMemberDetail(member.id, { page: 1 })
   }
+
+  const hydrateMemberProfile = useCallback(async (member: Member): Promise<Member> => {
+    try {
+      const params = new URLSearchParams({ recent_orders_page: '1', recent_orders_per_page: '1', appointments_page: '1', appointments_per_page: '1' })
+      const res = await fetch(`/api/proxy/pos/members/${member.id}?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) return member
+      const payload = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: { member?: MemberDetail } }).data
+        : null
+      const full = payload?.member
+      if (!full) return member
+      return {
+        id: full.id,
+        name: full.name,
+        phone: full.phone ?? null,
+        email: full.email ?? null,
+        member_code: full.member_code ?? null,
+        phone_masked: member.phone_masked ?? null,
+      }
+    } catch {
+      return member
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedMember?.id) return
+    if (selectedMember.phone && selectedMember.phone.trim()) return
+
+    let cancelled = false
+    const run = async () => {
+      const hydrated = await hydrateMemberProfile(selectedMember)
+      if (cancelled) return
+      setSelectedMember((previous) => {
+        if (!previous || previous.id !== hydrated.id) return previous
+        return {
+          ...previous,
+          name: hydrated.name || previous.name,
+          phone: hydrated.phone ?? previous.phone ?? null,
+          email: hydrated.email ?? previous.email ?? null,
+          member_code: hydrated.member_code ?? previous.member_code ?? null,
+        }
+      })
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [hydrateMemberProfile, selectedMember])
 
   /** Product-only: clear optional member + guest fields (same layout as booking services + Clear) */
   const clearOptionalProductSaleContext = useCallback(async () => {
@@ -3185,6 +3576,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     return `${assignment.splits.length} staff (${total}%)`
   }
+
+  const getSettlementWorkerSummary = useCallback((settlement: AppointmentSettlementCartItem) => {
+    const splitSummary = formatSettlementStaffLabel(settlement)
+    return splitSummary === '—' ? 'Staff: —' : `Staff: ${splitSummary}`
+  }, [formatSettlementStaffLabel])
 
   const createDraftRow = (seed?: Partial<CheckoutItemSplitDraft>): CheckoutItemSplitDraft => ({
     id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
@@ -3291,6 +3687,35 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitEditorOpen(true)
   }
 
+  const openSettlementSplitEditor = async (settlement: AppointmentSettlementCartItem) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+
+    const rows = (settlement.staff_splits ?? [])
+      .map((split) => {
+        const staffId = Number(split.staff_id)
+        const sharePercent = Number(split.share_percent)
+        if (staffId <= 0 || sharePercent <= 0) return null
+        const selected = nextStaffs.find((staff) => staff.id === staffId)
+        return createDraftRow({
+          staff_id: staffId,
+          share_percent: sharePercent,
+          search: selected ? getStaffInputLabel(selected) : (split.staff_name ?? ''),
+          options: nextStaffs,
+        })
+      })
+      .filter((row): row is CheckoutItemSplitDraft => row != null)
+
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitEditorTarget({ type: 'settlement', id: settlement.id })
+    setItemSplitAutoBalance(true)
+    setItemSplitError(null)
+    setItemSplitEditorOpen(true)
+  }
+
   const setDraftRowSearch = (rowId: string, value: string) => {
     setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, search: value, loading: true, open: true } : row))
     if (staffSearchTimerRef.current[rowId]) clearTimeout(staffSearchTimerRef.current[rowId])
@@ -3324,11 +3749,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           splits: mappedSplits,
         }
       }))
-    } else {
+    } else if (itemSplitEditorTarget.type === 'package') {
       setPackageCheckoutSplits((prev) => ({
         ...prev,
         [itemSplitEditorTarget.id]: mappedSplits,
       }))
+    } else {
+      setCart((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          appointment_settlement_items: (prev.appointment_settlement_items ?? []).map((settlement) => {
+            if (settlement.id !== itemSplitEditorTarget.id) return settlement
+            return {
+              ...settlement,
+              staff_splits: mappedSplits.map((split) => ({
+                staff_id: split.staff_id,
+                share_percent: split.share_percent,
+                staff_name: activeStaffs.find((staff) => staff.id === split.staff_id)?.name ?? null,
+              })),
+            }
+          }),
+        }
+      })
     }
 
     setItemSplitEditorOpen(false)
@@ -3422,8 +3865,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
-    if (paymentMethod === 'qrpay' && !qrProofFileName) return false
-    if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) return false
+    if (paymentMethod === 'cash') {
+      if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) return false
+    }
 
     if (checkoutRequiresCustomerValidation) {
       if (checkoutRequiresMemberOnly) {
@@ -3448,13 +3892,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     checkoutRequiresCustomerValidation,
     guestContactIsComplete,
     paymentMethod,
-    qrProofFileName,
     selectedMember?.id,
   ])
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
           <p className="mt-2 text-sm text-gray-600 flex items-center gap-2">
@@ -3463,6 +3906,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </svg>
             <span className="font-medium">Barcode Listener Active</span> - System is listening for barcode scans. Scan items to add them to cart automatically.
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* <Link
+            href="/pos/appointments"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
+          >
+            Appointments
+          </Link> */}
+          <button
+            type="button"
+            onClick={() => void openMemberQuickLookupPanel()}
+            className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
+          >
+            Member Quick Lookup
+          </button>
         </div>
       </div>
 
@@ -4271,7 +4729,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       <div className="mt-2 space-y-1 text-xs text-gray-600">
                         <p>Name: {settlement.customer_name || '—'}</p>
-                        <p>Staff: {settlement.staff_name || '—'}</p>
+                        <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                         {settlement.appointment_start_at ? (
                           <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}</p>
                         ) : null}
@@ -4851,6 +5309,78 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 )}
               </div>
 
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-900">Staff Split</p>
+                  <button
+                    type="button"
+                    onClick={() => setCartEditStaffSplits((prev) => {
+                      const next = [...prev, { staff_id: null, share_percent: '' }]
+                      if (!cartEditStaffSplitAutoBalance) return next
+                      return rebalanceSettlementPrimaryShare(next)
+                    })}
+                    className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                  >
+                    + Add Staff
+                  </button>
+                </div>
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={cartEditStaffSplitAutoBalance}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setCartEditStaffSplitAutoBalance(checked)
+                      if (checked) {
+                        setCartEditStaffSplits((prev) => rebalanceSettlementPrimaryShare(prev))
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Auto Balance (lock first row, auto adjust to 100%)
+                </label>
+                <div className="space-y-2">
+                  {cartEditStaffSplits.map((split, idx) => (
+                    <div key={`cart-split-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                      <select
+                        value={split.staff_id ?? ''}
+                        onChange={(e) => {
+                          const value = e.target.value ? Number(e.target.value) : null
+                          setCartEditSettlementError(null)
+                          setCartEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
+                        }}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                      >
+                        <option value="">Select staff</option>
+                        {activeStaffs.map((staff) => (
+                          <option key={staff.id} value={staff.id}>{staff.name}</option>
+                        ))}
+                      </select>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          min={1}
+                          max={100}
+                          value={split.share_percent}
+                          disabled={cartEditStaffSplitAutoBalance && idx === 0}
+                          onChange={(e) => updateCartEditSplitShare(idx, e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
+                        />
+                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={cartEditStaffSplits.length <= 1}
+                        onClick={() => removeCartEditSplitRow(idx)}
+                        className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
@@ -5231,7 +5761,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                               <div className="mt-2 space-y-0.5 text-xs text-gray-600">
                                 <p>Name: {settlement.customer_name || '—'}</p>
-                                <p>Staff: {settlement.staff_name || '—'}</p>
+                                <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                                 {settlement.appointment_start_at ? (
                                   <p>
                                     Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}
@@ -5240,9 +5770,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
-                              <p className="text-xs leading-relaxed text-gray-700">
-                                {settlement.staff_name ? `Staff: ${settlement.staff_name}` : 'Completed appointment settlement'}
-                              </p>
+                              <div className="space-y-2">
+                                <p className="text-xs leading-relaxed text-gray-700">{getSettlementWorkerSummary(settlement)}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => void openSettlementSplitEditor(settlement)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-500 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-cyan-600 hover:to-cyan-700"
+                                >
+                                  Edit Worker
+                                </button>
+                              </div>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
                             <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
@@ -5485,7 +6022,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <button
                           type="button"
                           disabled={hasCartAppointmentSettlements}
-                          onClick={() => void toggleMemberDropdown()}
+                          onClick={() => openAssignMemberModal('checkout')}
                           className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                         >
                           {selectedMember ? 'Change Member' : 'Assign Member'}
@@ -5493,7 +6030,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </div>
                       <div className="mt-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800">
                         {selectedMember
-                          ? `${selectedMember.name}${selectedMember.phone ? ` · ${selectedMember.phone}` : ''}${selectedMember.email ? ` · ${selectedMember.email}` : ''}`
+                          ? `${selectedMember.name}${selectedMember.phone ? ` (${selectedMember.phone})` : ''}`
                           : 'No member selected yet'}
                       </div>
                     </div>
@@ -5585,7 +6122,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
               {paymentMethod === 'qrpay' && (
                 <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
-                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
+                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrUploadInputRef.current?.click()}>
                       <span className="flex items-center justify-center gap-2">
@@ -5664,7 +6201,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
           <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
-              <h5 className="text-lg font-bold text-gray-900">Item Staff Split</h5>
+              <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : 'Item Staff Split'}</h5>
               <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="text-2xl leading-none text-gray-500">×</button>
             </div>
 
@@ -5823,7 +6360,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <button
                     type="button"
                     disabled={hasCartAppointmentSettlements}
-                    onClick={() => setPackageMemberPickerOpen(true)}
+                    onClick={() => openAssignMemberModal('package')}
                     className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
                     {packageSelectedMember ? 'Change Member' : 'Assign Member'}
@@ -5836,6 +6373,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     : 'No member selected'}
                 </div>
 
+                <div className="mt-3">
+                  <label className="text-xs font-semibold text-gray-600">Remark / Note (optional)</label>
+                  <textarea
+                    value={packageInternalNote}
+                    onChange={(e) => setPackageInternalNote(e.target.value)}
+                    rows={2}
+                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    placeholder="Internal note for staff (optional)"
+                  />
+                </div>
+
                 {hasCartAppointmentSettlements ? (
                   <p className="mt-2 text-[11px] text-amber-700">
                     Settlement is in the cart — member is locked.
@@ -5843,87 +6391,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 ) : null}
               </div>
             </div>
-
-            {packageMemberPickerOpen ? (
-              <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-                  <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-                    <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
-                    <button
-                      type="button"
-                      onClick={() => setPackageMemberPickerOpen(false)}
-                      className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
-                    >
-                      <span className="text-2xl leading-none">×</span>
-                    </button>
-                  </div>
-
-                  <div className="border-b-2 border-gray-200 bg-white p-5">
-                    <div className="relative">
-                      <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <input
-                        value={packageMemberQuery}
-                        onChange={(e) => setPackageMemberQuery(e.target.value)}
-                        className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Search by phone, email, member code, name..."
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-
-                  <div className="max-h-[65vh] overflow-auto">
-                    {packageMembersLoading ? (
-                      <div className="p-6 text-sm text-gray-500">Loading members...</div>
-                    ) : (
-                      packageMembers.map((member) => (
-                        <button
-                          key={`package-member-modal-${member.id}`}
-                          className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
-                          onClick={() => {
-                            setPackageSelectedMember(member)
-                            setPackageMemberQuery('')
-                            setPackageMemberPickerOpen(false)
-                          }}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={member.avatar_url || '/images/default_user_image.jpg'} alt={member.name} className="h-full w-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 text-base leading-tight">
-                                {member.name}
-                                {member.phone && <span className="ml-2 text-sm font-normal text-gray-500">({member.phone})</span>}
-                              </p>
-                              {member.email && (
-                                <p className="mt-1.5 text-sm text-gray-600 flex items-center gap-1.5">
-                                  <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                  </svg>
-                                  {member.email}
-                                </p>
-                              )}
-                            </div>
-                            <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </button>
-                      ))
-                    )}
-
-                    {!packageMembersLoading && packageMembers.length === 0 && (
-                      <div className="p-12 text-center">
-                        <p className="text-sm font-medium text-gray-600">No members found</p>
-                        <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : null}
 
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               Staff split and commission preview will be configured in Checkout Confirmation.
@@ -5951,6 +6418,87 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </div>
         </div>
       )}
+
+      {packageMemberPickerOpen ? (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
+              <button
+                type="button"
+                onClick={() => setPackageMemberPickerOpen(false)}
+                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+              >
+                <span className="text-2xl leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="border-b-2 border-gray-200 bg-white p-5">
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={packageMemberQuery}
+                  onChange={(e) => setPackageMemberQuery(e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  placeholder="Search by name or phone"
+                  autoFocus
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">Search member by name or phone. Type at least 3 characters to search.</p>
+            </div>
+
+            <div className="max-h-[65vh] overflow-auto">
+              {packageMemberQuery.trim().length < 3 ? (
+                <div className="p-8 text-center text-sm text-gray-500">
+                  Type at least 3 characters to search.
+                </div>
+              ) : packageMembersLoading ? (
+                <div className="p-6 text-sm text-gray-500">Loading members...</div>
+              ) : (
+                packageMembers.map((member) => (
+                  <button
+                    key={`package-member-modal-${member.id}`}
+                    className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
+                    onClick={async () => {
+                      if (assignMemberContext === 'package') {
+                        const fullMember = await hydrateMemberProfile(member)
+                        setPackageSelectedMember(fullMember)
+                      } else {
+                        await onAssignMember(member)
+                      }
+                      setPackageMemberQuery('')
+                      setPackageMemberPickerOpen(false)
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={member.avatar_url || '/images/default_user_image.jpg'} alt={member.name} className="h-full w-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-base leading-tight">{member.name}</p>
+                        <p className="mt-1 text-xs text-gray-600">{member.phone_masked ?? '***'}</p>
+                      </div>
+                      <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))
+              )}
+
+              {!packageMembersLoading && packageMemberQuery.trim().length >= 3 && packageMembers.length === 0 && (
+                <div className="p-12 text-center">
+                  <p className="text-sm font-medium text-gray-600">No members found</p>
+                  <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
@@ -6086,7 +6634,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <button
                         type="button"
                         disabled={hasCartAppointmentSettlements}
-                        onClick={() => void toggleMemberDropdown()}
+                        onClick={() => openAssignMemberModal('service')}
                         className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
                         {selectedMember ? 'Change Member' : 'Assign Member'}
@@ -6238,128 +6786,242 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {memberOpen && (
-        <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
-              <button
-                type="button"
-                onClick={() => void toggleMemberDropdown()}
-                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
-              >
-                <span className="text-2xl leading-none">×</span>
-              </button>
-            </div>
-            {hasCartAppointmentSettlements ? (
-              <div className="border-b border-amber-200 bg-amber-50 px-6 py-3 text-xs text-amber-800">
-                Settlement is in the cart — member is locked. Remove settlement to change member.
+        <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>
+          <button type="button" className="absolute inset-0 h-full w-full cursor-default" onClick={closeMemberPanel} aria-label="Close member panel" />
+          <div className="absolute right-0 top-0 h-full w-full max-w-3xl border-l border-gray-200 bg-white shadow-2xl">
+            <div className="flex h-full flex-col">
+              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+                <div>
+                  <h4 className="text-lg font-bold text-gray-900">Member Quick Lookup</h4>
+                  <p className="text-xs text-gray-500">Search member by name or phone</p>
+                </div>
+                <button type="button" onClick={closeMemberPanel} className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+                  <span className="text-xl leading-none">×</span>
+                </button>
               </div>
-            ) : null}
 
-            <div className="border-b-2 border-gray-200 bg-white p-5">
-              <div className="relative">
-                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <input
-                  value={memberQuery}
-                  onChange={(e) => setMemberQuery(e.target.value)}
-                  className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  placeholder="Search by phone, email, member code, name..."
-                  autoFocus
-                />
-              </div>
-            </div>
+              {hasCartAppointmentSettlements ? (
+                <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">
+                  Settlement is in the cart — member is locked. Remove settlement to change member.
+                </div>
+              ) : null}
 
-            <div className="max-h-[65vh] overflow-auto">
-              {members.map((member) => (
-                <button
-                  key={member.id}
-                  className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
-                  onClick={() => {
-                    void onAssignMember(member)
-                    setMemberOpen(false)
-                    setMemberQuery('')
-                    focusScanner()
-                  }}
-                >
-                  <div className="flex items-start gap-3">
-                    {member.avatar_url ? (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={member.avatar_url} alt={member.name} className="h-full w-full object-cover" />
+              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+                <div className="border-b border-gray-200 p-5 md:border-b-0 md:border-r">
+                  <div className="relative">
+                    <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      value={memberQuery}
+                      onChange={(e) => setMemberQuery(e.target.value)}
+                      className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      placeholder="Type name or phone"
+                      autoFocus
+                    />
+                  </div>
+                  <p className="mt-2 text-xs text-gray-500">Type at least 3 characters to search.</p>
+
+                  <div className="mt-4 max-h-[52vh] overflow-auto rounded-lg border border-gray-100">
+                    {memberQuery.trim().length < 3 ? (
+                      <div className="px-4 py-8 text-center text-sm text-gray-500">
+                        <p>Search member by name or phone.</p>
+                        <p className="mt-1 text-xs">Type at least 3 characters to search.</p>
                       </div>
                     ) : (
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src="/images/default_user_image.jpg" alt={member.name} className="h-full w-full object-cover" />
-                      </div>
+                      <>
+                        {members.map((member) => (
+                          <button
+                            key={member.id}
+                            className="block w-full border-b border-gray-100 px-4 py-3 text-left transition hover:bg-blue-50 last:border-b-0"
+                            onClick={() => {
+                              setLookupMember(member)
+                              void fetchMemberDetail(member.id, { page: 1, appointmentsPage: 1, updateSelectedMember: false })
+                            }}
+                          >
+                            <p className="text-sm font-semibold text-gray-900">{member.name}</p>
+                            <p className="mt-0.5 text-xs text-gray-500">{member.phone_masked ?? '***'}</p>
+                          </button>
+                        ))}
+
+                        {!memberLoading && members.length === 0 ? (
+                          <div className="px-4 py-8 text-center text-sm text-gray-500">No members found.</div>
+                        ) : null}
+                      </>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-base leading-tight">
-                        {member.name}
-                        {member.phone && <span className="ml-2 text-sm font-normal text-gray-500">({member.phone})</span>}
-                      </p>
-                      {member.email && (
-                        <p className="mt-1.5 text-sm text-gray-600 flex items-center gap-1.5">
-                          <svg className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                          </svg>
-                          {member.email}
-                        </p>
-                      )}
+                  </div>
+
+                  {memberQuery.trim().length >= 3 && members.length > 0 ? (
+                    <div className="mt-3 flex items-center justify-between">
+                      <span className="text-xs text-gray-500">Page {memberPage} of {memberLastPage}</span>
+                      <button
+                        className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 disabled:opacity-40"
+                        disabled={memberLoading || memberPage >= memberLastPage}
+                        onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
+                      >
+                        {memberLoading ? 'Loading...' : 'Load More'}
+                      </button>
                     </div>
-                    <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </button>
-              ))}
-
-              {!memberLoading && members.length === 0 && (
-                <div className="p-12 text-center">
-                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-100">
-                    <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                    </svg>
-                  </div>
-                  <p className="text-sm font-medium text-gray-600">No members found</p>
-                  <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
+                  ) : null}
                 </div>
-              )}
+
+                <div className="min-h-0 overflow-y-auto p-5">
+                  {lookupMember && memberDetailLoading ? (
+                    <p className="text-sm text-gray-500">Loading member details...</p>
+                  ) : null}
+
+                  {!lookupMember ? (
+                    <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500">
+                      Select a member from the search results to view profile details and recent orders.
+                    </div>
+                  ) : memberDetail ? (
+                    <div className="space-y-5">
+                      <section>
+                        <h5 className="text-sm font-bold text-gray-900">Overview</h5>
+                        <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-gray-700">
+                          <p><span className="font-semibold text-gray-900">Full Name:</span> {memberDetail.name || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Phone:</span> {memberDetail.phone || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Email:</span> {memberDetail.email || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Join Date:</span> {memberDetail.join_date ? new Date(memberDetail.join_date).toLocaleString() : '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Customer Type:</span> {memberDetail.customer_type || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Total Orders:</span> {memberDetail.total_orders ?? 0}</p>
+                          <p><span className="font-semibold text-gray-900">Total Spent:</span> RM {Number(memberDetail.total_spent ?? 0).toFixed(2)}</p>
+                          <p><span className="font-semibold text-gray-900">Last Order Date:</span> {memberDetail.last_order_date ? new Date(memberDetail.last_order_date).toLocaleString() : '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Member Points Balance:</span> {memberDetail.points_balance ?? 0}</p>
+                        </div>
+                      </section>
+
+                      <section>
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-bold text-gray-900">Active Packages (Summary)</h5>
+                          <p className="text-xs text-gray-500">Total: {memberActivePackagesTotal}</p>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {memberActivePackages.length === 0 ? (
+                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">No active packages.</p>
+                          ) : memberActivePackages.map((pkg) => (
+                            <div key={pkg.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                              <p className="text-sm font-semibold text-gray-900">{pkg.package_name || `Package #${pkg.id}`}</p>
+                              <p>Expires: {pkg.expires_at ? new Date(pkg.expires_at).toLocaleString() : 'No expiry'}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </section>
+
+                      <section>
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-bold text-gray-900">Upcoming Appointments</h5>
+                          <p className="text-xs text-gray-500">
+                            Showing {memberUpcomingAppointments.length} of {memberUpcomingAppointmentsMeta.total}
+                          </p>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {memberUpcomingAppointments.length === 0 ? (
+                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">No upcoming appointments.</p>
+                          ) : memberUpcomingAppointments.map((appointment) => (
+                            <div key={appointment.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
+                              <p className="text-sm font-semibold text-gray-900">{appointment.booking_code || `Booking #${appointment.id}`}</p>
+                              <p>Status: {appointment.status || '—'}</p>
+                              <p>Service: {appointment.service_name || '—'}</p>
+                              <p>Staff: {appointment.staff_name || '—'}</p>
+                              <p>Time: {appointment.start_at ? new Date(appointment.start_at).toLocaleString() : '—'}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {memberUpcomingAppointmentsMeta.current_page < memberUpcomingAppointmentsMeta.last_page ? (
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!lookupMember?.id) return
+                                void fetchMemberDetail(lookupMember.id, {
+                                  appointmentsPage: memberUpcomingAppointmentsMeta.current_page + 1,
+                                  appendAppointments: true,
+                                  silent: true,
+                                  updateSelectedMember: false,
+                                })
+                              }}
+                              disabled={memberAppointmentsLoadingMore}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {memberAppointmentsLoadingMore ? 'Loading...' : 'Load More Appointments'}
+                            </button>
+                          </div>
+                        ) : null}
+                      </section>
+
+                      <section>
+                        <div className="flex items-center justify-between">
+                          <h5 className="text-sm font-bold text-gray-900">Recent Orders</h5>
+                          <p className="text-xs text-gray-500">
+                            Showing {memberRecentOrders.length} of {memberRecentOrdersMeta.total}
+                          </p>
+                        </div>
+                        <div className="mt-2 space-y-2">
+                          {memberRecentOrders.length === 0 ? (
+                            <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-500">No recent orders.</p>
+                          ) : memberRecentOrders.map((order) => (
+                            <div key={order.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="space-y-0.5 text-xs text-gray-600">
+                                  <p className="text-sm font-semibold text-gray-900">{order.order_number || `#${order.id}`}</p>
+                                  <p>Date: {order.order_date ? new Date(order.order_date).toLocaleString() : '—'}</p>
+                                  <p>Status: {order.status || '—'}</p>
+                                  <p>Total: RM {Number(order.total_amount ?? 0).toFixed(2)}</p>
+                                  <p>Channel: {order.channel || '—'}</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMemberOrderViewId(order.id)
+                                  }}
+                                  className="rounded-md border border-gray-300 px-2 py-1 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                                >
+                                  View Order
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {memberRecentOrdersMeta.current_page < memberRecentOrdersMeta.last_page ? (
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (!lookupMember?.id) return
+                                void fetchMemberDetail(lookupMember.id, {
+                                  page: memberRecentOrdersMeta.current_page + 1,
+                                  append: true,
+                                  silent: true,
+                                  updateSelectedMember: false,
+                                })
+                              }}
+                              disabled={memberOrdersLoadingMore}
+                              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                            >
+                              {memberOrdersLoadingMore ? 'Loading...' : 'Load More Orders'}
+                            </button>
+                          </div>
+                        ) : null}
+                      </section>
+                    </div>
+                  ) : lookupMember ? (
+                    <p className="text-sm text-gray-500">Unable to load member details.</p>
+                  ) : null}
+                </div>
+              </div>
             </div>
-
-            {members.length > 0 && (
-              <div className="flex items-center justify-between border-t-2 border-gray-200 bg-gray-50 px-6 py-4 rounded-b-2xl">
-                <span className="text-xs font-medium text-gray-600">Page {memberPage} of {memberLastPage}</span>
-                <button
-                  className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-xs font-semibold text-gray-700 transition-all hover:border-black hover:bg-black hover:text-white disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
-                  disabled={memberLoading || memberPage >= memberLastPage}
-                  onClick={() => void fetchMemberPage(memberPage + 1, memberQuery, true)}
-                >
-                  {memberLoading ? 'Loading...' : 'Load More'}
-                </button>
-              </div>
-            )}
-
-            {cart?.promotions?.length ? (
-              <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Applied Promotion Tiers</p>
-                <div className="mt-1.5 space-y-1.5">
-                  {cart.promotions.map((promotion, index) => (
-                    <p key={`promotion-${promotion.promotion_id ?? index}`} className="text-xs text-blue-800">
-                      {promotion.promotion_name ?? 'Promotion'}: {promotion.summary ?? '-'}
-                      {typeof promotion.remaining_qty_charged_normal === 'number' && promotion.remaining_qty_charged_normal > 0
-                        ? ` (remaining ${promotion.remaining_qty_charged_normal} at normal price)`
-                        : ''}
-                    </p>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
         </div>
       )}
+
+      {memberOrderViewId ? (
+        <OrderViewPanel
+          orderId={memberOrderViewId}
+          onClose={() => setMemberOrderViewId(null)}
+          zIndexClassName="z-[170]"
+        />
+      ) : null}
 
       {voucherModalOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>

@@ -67,9 +67,40 @@ class StaffCommissionService
         return $results;
     }
 
+    /**
+     * Booking commission rows count only COMPLETED appointments that are fully paid (payment_status = PAID).
+     */
+    public function isBookingCommissionCountable(Booking $booking): bool
+    {
+        if ($booking->status !== 'COMPLETED') {
+            return false;
+        }
+
+        return strtoupper((string) ($booking->payment_status ?? '')) === 'PAID';
+    }
+
+    /**
+     * Keeps incremental booking commission in sync after status/payment changes:
+     * counts when COMPLETED + PAID, removes when eligibility is lost but commission_counted_at is still set.
+     */
+    public function syncBookingCommissionState(Booking $booking): void
+    {
+        $booking->loadMissing('service');
+
+        if ($this->isBookingCommissionCountable($booking)) {
+            $this->applyCompletedBooking($booking);
+
+            return;
+        }
+
+        if ($booking->commission_counted_at) {
+            $this->reverseCompletedBooking($booking);
+        }
+    }
+
     public function applyCompletedBooking(Booking $booking): void
     {
-        if ($booking->status !== 'COMPLETED' || !$booking->staff_id) {
+        if (! $this->isBookingCommissionCountable($booking)) {
             return;
         }
 
@@ -80,31 +111,30 @@ class StaffCommissionService
         $completedAt = $booking->completed_at ?: now();
         $servicePrice = (float) optional($booking->service)->service_price;
 
-        $monthly = StaffMonthlySale::query()->firstOrCreate(
-            [
-                'type' => self::TYPE_BOOKING,
-                'staff_id' => $booking->staff_id,
-                'year' => (int) $completedAt->format('Y'),
-                'month' => (int) $completedAt->format('m'),
-            ],
-            [
-                'total_sales' => 0,
-                'booking_count' => 0,
-                'tier_percent' => 0,
-                'commission_amount' => 0,
-                'is_overridden' => false,
-                'status' => self::STATUS_OPEN,
-            ]
-        );
-
-        $monthly->total_sales = (float) $monthly->total_sales + $servicePrice;
-        $monthly->booking_count = (int) $monthly->booking_count + 1;
-
-        if ($this->isFrozen($monthly)) {
+        $splits = $this->resolveBookingStaffSplits($booking);
+        if ($splits->isEmpty()) {
+            return;
+        }
+        $year = (int) $completedAt->format('Y');
+        $month = (int) $completedAt->format('m');
+        $monthlyRows = $this->resolveOrCreateBookingMonthlyRows($splits->pluck('staff_id')->unique()->values(), $year, $month);
+        if ($monthlyRows->contains(fn (StaffMonthlySale $row) => $this->isFrozen($row))) {
             return;
         }
 
-        $this->recalculateMonthly($monthly);
+        foreach ($splits as $split) {
+            $staffId = (int) ($split['staff_id'] ?? 0);
+            $share = (float) ($split['share_percent'] ?? 0);
+            $splitSales = round($servicePrice * ($share / 100), 2);
+            $monthly = $monthlyRows->first(fn (StaffMonthlySale $row) => (int) $row->staff_id === $staffId);
+            if (! $monthly) {
+                continue;
+            }
+            $monthly->total_sales = (float) $monthly->total_sales + $splitSales;
+            $monthly->booking_count = (int) $monthly->booking_count + 1;
+            $monthly->save();
+            $this->recalculateMonthly($monthly);
+        }
 
         $booking->forceFill([
             'commission_counted_at' => now(),
@@ -114,35 +144,54 @@ class StaffCommissionService
 
     public function reverseCompletedBooking(Booking $booking): void
     {
-        if (!$booking->commission_counted_at || !$booking->staff_id) {
+        if (! $booking->commission_counted_at) {
             return;
         }
 
         $completedAt = $booking->completed_at ?: Carbon::parse($booking->commission_counted_at);
         $servicePrice = (float) optional($booking->service)->service_price;
-
-        $monthly = StaffMonthlySale::query()
-            ->where('type', self::TYPE_BOOKING)
-            ->where('staff_id', $booking->staff_id)
-            ->where('year', (int) $completedAt->format('Y'))
-            ->where('month', (int) $completedAt->format('m'))
-            ->first();
-
-        if (!$monthly) {
+        $splits = $this->resolveBookingStaffSplits($booking);
+        if ($splits->isEmpty()) {
             $booking->forceFill(['commission_counted_at' => null])->save();
             return;
         }
+        $year = (int) $completedAt->format('Y');
+        $month = (int) $completedAt->format('m');
+        $monthlyRows = StaffMonthlySale::query()
+            ->where('type', self::TYPE_BOOKING)
+            ->whereIn('staff_id', $splits->pluck('staff_id')->unique()->values()->all())
+            ->where('year', $year)
+            ->where('month', $month)
+            ->get();
 
-        $monthly->total_sales = max(0, (float) $monthly->total_sales - $servicePrice);
-        $monthly->booking_count = max(0, (int) $monthly->booking_count - 1);
-
-        if ($this->isFrozen($monthly)) {
+        if ($monthlyRows->isEmpty() || $monthlyRows->contains(fn (StaffMonthlySale $row) => $this->isFrozen($row))) {
             return;
         }
 
-        $this->recalculateMonthly($monthly);
+        foreach ($splits as $split) {
+            $staffId = (int) ($split['staff_id'] ?? 0);
+            $share = (float) ($split['share_percent'] ?? 0);
+            $splitSales = round($servicePrice * ($share / 100), 2);
+            $monthly = $monthlyRows->first(fn (StaffMonthlySale $row) => (int) $row->staff_id === $staffId);
+            if (! $monthly) {
+                continue;
+            }
+            $monthly->total_sales = max(0, (float) $monthly->total_sales - $splitSales);
+            $monthly->booking_count = max(0, (int) $monthly->booking_count - 1);
+            $monthly->save();
+            $this->recalculateMonthly($monthly);
+        }
 
         $booking->forceFill(['commission_counted_at' => null])->save();
+    }
+
+    public function resyncBookingCommission(Booking $booking): void
+    {
+        $booking->loadMissing('service');
+        if ($booking->commission_counted_at) {
+            $this->reverseCompletedBooking($booking->fresh(['service']));
+        }
+        $this->syncBookingCommissionState($booking->fresh(['service']));
     }
 
     public function recalculateMonthly(StaffMonthlySale $monthly, bool $force = false): StaffMonthlySale
@@ -185,14 +234,36 @@ class StaffCommissionService
 
         $bookings = Booking::query()
             ->with('service:id,service_price')
-            ->where('staff_id', $staffId)
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<', $nextMonthStart)
             ->get();
+        $bookingIds = $bookings->pluck('id')->all();
+        $splitRows = empty($bookingIds) ? collect() : DB::table('booking_service_staff_splits')
+            ->whereIn('booking_id', $bookingIds)
+            ->get(['booking_id', 'staff_id', 'split_percent'])
+            ->groupBy('booking_id');
 
-        $totalSales = round((float) $bookings->sum(fn (Booking $booking) => (float) optional($booking->service)->service_price), 2);
-        $bookingCount = $bookings->count();
+        $totalSales = 0.0;
+        $bookingCount = 0;
+        foreach ($bookings as $booking) {
+            $servicePrice = (float) optional($booking->service)->service_price;
+            $splits = collect($splitRows->get($booking->id, []))
+                ->map(fn ($row) => ['staff_id' => (int) ($row->staff_id ?? 0), 'share_percent' => (int) ($row->split_percent ?? 0)])
+                ->filter(fn ($row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                ->values();
+            if ($splits->isEmpty() && $booking->staff_id) {
+                $splits = collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100]]);
+            }
+            $matched = $splits->first(fn ($row) => (int) $row['staff_id'] === $staffId);
+            if (! $matched) {
+                continue;
+            }
+            $totalSales += round($servicePrice * (((float) $matched['share_percent']) / 100), 2);
+            $bookingCount++;
+        }
+        $totalSales = round($totalSales, 2);
 
         $monthly = StaffMonthlySale::query()->firstOrCreate(
             [
@@ -229,9 +300,26 @@ class StaffCommissionService
 
         $staffIds = Booking::query()
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<', $nextMonthStart)
             ->pluck('staff_id')
+            ->concat(
+                DB::table('bookings')
+                    ->join('booking_service_staff_splits', 'booking_service_staff_splits.booking_id', '=', 'bookings.id')
+                    ->where('bookings.status', 'COMPLETED')
+                    ->where('bookings.payment_status', 'PAID')
+                    ->where('bookings.completed_at', '>=', $start)
+                    ->where('bookings.completed_at', '<', $nextMonthStart)
+                    ->pluck('booking_service_staff_splits.staff_id')
+            )
+            ->concat(
+                StaffMonthlySale::query()
+                    ->where('type', self::TYPE_BOOKING)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->pluck('staff_id')
+            )
             ->filter()
             ->unique()
             ->values();
@@ -306,6 +394,13 @@ class StaffCommissionService
 
         $staffIds = collect($productStaffIds)
             ->concat($packageStaffIds)
+            ->concat(
+                StaffMonthlySale::query()
+                    ->where('type', self::TYPE_ECOMMERCE)
+                    ->where('year', $year)
+                    ->where('month', $month)
+                    ->pluck('staff_id')
+            )
             ->filter()
             ->unique()
             ->values();
@@ -329,7 +424,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');
@@ -351,7 +446,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');
@@ -385,7 +480,18 @@ class StaffCommissionService
     {
         return Booking::query()
             ->where('status', 'COMPLETED')
-            ->when($staffId, fn ($query) => $query->where('staff_id', $staffId))
+            ->where('payment_status', 'PAID')
+            ->when($staffId, function ($query) use ($staffId) {
+                $query->where(function ($sub) use ($staffId) {
+                    $sub->where('staff_id', $staffId)
+                        ->orWhereExists(function ($exists) use ($staffId) {
+                            $exists->selectRaw('1')
+                                ->from('booking_service_staff_splits')
+                                ->whereColumn('booking_service_staff_splits.booking_id', 'bookings.id')
+                                ->where('booking_service_staff_splits.staff_id', $staffId);
+                        });
+                });
+            })
             ->whereNotNull('completed_at')
             ->selectRaw('EXTRACT(YEAR FROM completed_at)::int AS year')
             ->selectRaw('EXTRACT(MONTH FROM completed_at)::int AS month')
@@ -399,6 +505,52 @@ class StaffCommissionService
             ]);
     }
 
+    private function resolveBookingStaffSplits(Booking $booking): Collection
+    {
+        $rows = DB::table('booking_service_staff_splits')
+            ->where('booking_id', (int) $booking->id)
+            ->orderBy('id')
+            ->get(['staff_id', 'split_percent'])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->values();
+
+        if ($rows->isNotEmpty()) {
+            return $rows;
+        }
+
+        if ($booking->staff_id) {
+            return collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100]]);
+        }
+
+        return collect();
+    }
+
+    private function resolveOrCreateBookingMonthlyRows(Collection $staffIds, int $year, int $month): Collection
+    {
+        return $staffIds->map(function (int $staffId) use ($year, $month) {
+            return StaffMonthlySale::query()->firstOrCreate(
+                [
+                    'type' => self::TYPE_BOOKING,
+                    'staff_id' => $staffId,
+                    'year' => $year,
+                    'month' => $month,
+                ],
+                [
+                    'total_sales' => 0,
+                    'booking_count' => 0,
+                    'tier_percent' => 0,
+                    'commission_amount' => 0,
+                    'is_overridden' => false,
+                    'status' => self::STATUS_OPEN,
+                ]
+            );
+        })->values();
+    }
+
     private function resolveEcommerceMonths(?int $staffId = null): Collection
     {
         $productMonths = DB::table('orders')
@@ -409,7 +561,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');
@@ -431,7 +583,7 @@ class StaffCommissionService
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
             })
-            ->whereNotIn('orders.status', ['cancelled', 'draft'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
                     ->orWhereNull('orders.payment_status');

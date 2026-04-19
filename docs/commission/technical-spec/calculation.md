@@ -8,8 +8,12 @@ For a target `staff_id + year + month`:
 
 ```text
 month_window = [start_of_month, start_of_next_month)
-bookings = COMPLETED bookings of that staff within month_window
+bookings = COMPLETED and PAID (payment_status = PAID) bookings of that staff within month_window
+```
 
+`COMPLETED` with **`UNPAID`** (or any non-`PAID` payment state) is **excluded** from booking sales and from the manual recalculate command for `type=BOOKING`.
+
+```text
 total_sales   = sum(service.service_price)
 booking_count = count(bookings)
 ```

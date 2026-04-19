@@ -5,7 +5,7 @@ import { useMemo } from 'react'
 import {
   posAppointmentDayBlockClass,
   posAppointmentDayBlockSubtextClass,
-  posAppointmentVisualTone,
+  posAppointmentVisualToneFromRow,
 } from './posAppointmentHelpers'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 
@@ -283,7 +283,7 @@ export default function PosAppointmentsDayGrid({
                 const leftPct = lane * widthPct
                 const svc = (row.service_names ?? [])[0] ?? ''
                 const title = `${row.customer_name} · ${svc}`
-                const tone = posAppointmentVisualTone(row.status)
+                const tone = posAppointmentVisualToneFromRow(row)
 
                 return (
                   <button

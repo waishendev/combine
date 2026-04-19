@@ -29,6 +29,9 @@ export type PosAppointmentListItem = {
   package_offset?: number
   balance_due: number
   amount_due_now?: number
+  /** From `resolveAppointmentFinancialSummary` — used with `package_status` for completed paid vs unpaid colours. */
+  settlement_paid?: number
+  package_status?: { status?: string; used_qty?: number } | null
   service_total?: number
   settled_service_amount?: number | null
   is_range_priced?: boolean
@@ -44,10 +47,14 @@ export type PosAppointmentDetail = {
   status: string
   appointment_start_at?: string | null
   appointment_end_at?: string | null
-  customer?: { id: number; name: string; phone?: string | null; email?: string | null }
+  /** Present when booked under a member; guest walk-ins use `guest_*` instead. */
+  customer?: { id: number; name: string; phone?: string | null; email?: string | null } | null
+  guest_name?: string | null
+  guest_phone?: string | null
+  guest_email?: string | null
   service?: { id: number; name: string; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }
   staff?: { id: number; name: string }
-  staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>
+  staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
   settled_service_amount?: number | null
   is_range_priced?: boolean
@@ -65,6 +72,8 @@ export type PosAppointmentDetail = {
   deposit_previously_collected?: boolean
   deposit_previously_collected_amount?: number
   package_offset?: number
+  /** Latest POS order that registered this booking via an order_service_items row (checkout closure). */
+  visit_register_order_id?: number
   settlement_paid: number
   service_balance_due?: number
   balance_due: number

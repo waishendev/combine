@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import OfflineOrderActions from './reports/OfflineOrderActions'
 
 type Mode = 'ecommerce' | 'booking'
 
@@ -17,6 +18,7 @@ type Pagination = {
 }
 
 type EcommerceRow = {
+  order_id: number
   order_no: string
   order_datetime: string
   customer: string
@@ -30,6 +32,7 @@ type EcommerceRow = {
 }
 
 type BookingRow = {
+  order_id: number
   order_no: string
   order_datetime: string
   customer: string
@@ -165,6 +168,16 @@ const paymentMethodDisplayLabel = (raw: string) => {
   return PAYMENT_METHOD_TABLE_LABELS[key] ?? labelize(raw)
 }
 
+const normalizeBookingType = (value?: string | null) => String(value ?? '').trim().toLowerCase()
+const isBookingDepositType = (value?: string | null) => {
+  const t = normalizeBookingType(value)
+  return t === 'booking_deposit' || t === 'deposit'
+}
+const isBookingWorkerType = (value?: string | null) => {
+  const t = normalizeBookingType(value)
+  return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
+}
+
 /** Table header: only the first character is uppercase (no full-string caps). */
 const reportTableColumnHeader = (label: string) =>
   label ? `${label.charAt(0).toUpperCase()}${label.slice(1).toLowerCase()}` : label
@@ -219,6 +232,7 @@ export default function SalesChannelReportPage({
   const [pagination, setPagination] = useState<Pagination>({ total: 0, per_page: DEFAULT_PAGE_SIZE, current_page: 1, last_page: 1 })
   const [loading, setLoading] = useState(true)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
   useEffect(() => {
     setInputs(resolved)
@@ -273,7 +287,7 @@ export default function SalesChannelReportPage({
 
     void fetchData()
     return () => controller.abort()
-  }, [mode, resolved])
+  }, [mode, resolved, refreshKey])
 
   const updateQuery = (patch: Record<string, string>) => {
     const next = new URLSearchParams(searchParams.toString())
@@ -346,8 +360,8 @@ export default function SalesChannelReportPage({
     return `/api/proxy/ecommerce/reports/sales/export/${mode}?${qs.toString()}`
   }, [mode, resolved])
 
-  const ecColSpan = 10
-  const bkColSpan = 12
+  const ecColSpan = 11
+  const bkColSpan = 13
 
   return (
     <div className="space-y-6">
@@ -497,13 +511,13 @@ export default function SalesChannelReportPage({
           <thead className="bg-slate-300/70">
             <tr>
               {mode === 'ecommerce' ? (
-                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
+                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                     {reportTableColumnHeader(h)}
                   </th>
                 ))
               ) : (
-                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status'].map((h) => (
+                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                     {reportTableColumnHeader(h)}
                   </th>
@@ -530,6 +544,14 @@ export default function SalesChannelReportPage({
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
                     <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
+                    <td className="px-4 py-2 border border-gray-200 text-center">
+                      <OfflineOrderActions
+                        orderId={row.order_id}
+                        channel={row.channel}
+                        currentPaymentMethod={row.payment_method}
+                        onDone={() => setRefreshKey((prev) => prev + 1)}
+                      />
+                    </td>
                   </tr>
                 ))
               )
@@ -550,6 +572,16 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
+                  <td className="px-4 py-2 border border-gray-200 text-center">
+                    <OfflineOrderActions
+                      orderId={row.order_id}
+                      channel={row.channel}
+                      currentPaymentMethod={row.payment_method}
+                      staffActionLabel={isBookingWorkerType(row.type) ? 'worker' : 'sales_person'}
+                      hideStaffAction={isBookingDepositType(row.type)}
+                      onDone={() => setRefreshKey((prev) => prev + 1)}
+                    />
+                  </td>
                 </tr>
               ))
             )}
@@ -568,6 +600,7 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.discount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.net_amount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
                 </tr>
                 <tr className="bg-gray-100 font-bold">
                   <td className="border border-gray-300 px-4 py-2 text-left">Grand Totals</td>
@@ -579,6 +612,7 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.product_amount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.discount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.net_amount ?? 0)}</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                 </tr>
               </>
@@ -598,6 +632,7 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(totalsPage.booking_settlement_amount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount((totalsPage.addon_revenue ?? 0) + (totalsPage.package_purchase_amount ?? 0))}</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
                 </tr>
                 <tr className="bg-gray-100 font-bold">
                   <td colSpan={5} className="border border-gray-300 px-4 py-2 text-left">
@@ -612,6 +647,7 @@ export default function SalesChannelReportPage({
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.booking_deposit_amount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount(grandTotals.booking_settlement_amount ?? 0)}</td>
                   <td className="border border-gray-300 px-4 py-2">RM {formatAmount((grandTotals.addon_revenue ?? 0) + (grandTotals.package_purchase_amount ?? 0))}</td>
+                  <td className="border border-gray-300 px-4 py-2">—</td>
                   <td className="border border-gray-300 px-4 py-2">—</td>
                 </tr>
               </>

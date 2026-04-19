@@ -36,9 +36,7 @@ So booking and ecommerce are logically separate ledgers but share the same stora
 
 ### Realtime / event-driven update
 
-- **Booking**: when appointment status changes to/from `COMPLETED`, `AppointmentController` calls:
-  - `applyCompletedBooking()`
-  - `reverseCompletedBooking()`
+- **Booking**: eligibility is **`COMPLETED` + `payment_status = PAID`** (plus `staff_id`). When status or payment moves in/out of that state, code calls `StaffCommissionService::syncBookingCommissionState()` or `reverseCompletedBooking()` (e.g. `AppointmentController` on status transitions; `PosController` when settlement marks the booking paid). Incremental apply uses `applyCompletedBooking()` only when eligible.
 - **Ecommerce**: model observers trigger recalculation when order/split/package changes:
   - `EcommerceOrderObserver`
   - `EcommerceOrderItemStaffSplitObserver`
