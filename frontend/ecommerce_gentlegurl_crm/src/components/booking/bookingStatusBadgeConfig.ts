@@ -15,6 +15,18 @@ export const BOOKING_STATUS_BADGE_MAP: Record<string, BookingStatusTone> = {
     bgColor: 'bg-green-100',
     dotColor: 'bg-green-500',
   },
+  /** POS appointments: COMPLETED + register paid (same idea as “Paid” badge). */
+  completed_paid: {
+    textColor: 'text-emerald-800',
+    bgColor: 'bg-emerald-100',
+    dotColor: 'bg-emerald-600',
+  },
+  /** POS appointments: COMPLETED but still owes / package reserved, not finalised. */
+  completed_unpaid: {
+    textColor: 'text-amber-900',
+    bgColor: 'bg-amber-100',
+    dotColor: 'bg-amber-500',
+  },
   cancelled: {
     textColor: 'text-red-700',
     bgColor: 'bg-red-100',
@@ -36,9 +48,9 @@ export const BOOKING_STATUS_BADGE_MAP: Record<string, BookingStatusTone> = {
     dotColor: 'bg-indigo-500',
   },
   hold: {
-    textColor: 'text-amber-700',
-    bgColor: 'bg-amber-100',
-    dotColor: 'bg-amber-500',
+    textColor: 'text-violet-800',
+    bgColor: 'bg-violet-100',
+    dotColor: 'bg-violet-500',
   },
   expired: {
     textColor: 'text-rose-700',

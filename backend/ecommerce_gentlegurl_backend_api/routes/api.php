@@ -428,6 +428,7 @@ $protectedRoutes = function () {
         Route::get('/appointments/{id}', [PosController::class, 'appointmentDetail']);
         Route::post('/appointments/{id}/status', [PosController::class, 'updateAppointmentStatus']);
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
+        Route::post('/appointments/{id}/finalize-zero-settlement', [PosController::class, 'finalizeAppointmentZeroSettlement']);
         Route::post('/appointments/{id}/edit-settlement', [PosController::class, 'editAppointmentSettlement']);
         Route::get('/services/{serviceId}/addon-options', [PosController::class, 'getServiceAddonOptions']);
         Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment']);

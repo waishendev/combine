@@ -23,6 +23,8 @@ type BookingRow = {
   start_at: string
   end_at?: string | null
   status: string
+  /** e.g. PAID, UNPAID from `bookings.payment_status` */
+  payment_status?: string | null
   deposit_amount: string | number
   created_at: string
 }
@@ -78,6 +80,22 @@ const formatDateTime = (value?: string | null) => {
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return value
   return date.toLocaleString()
+}
+
+/** Matches e.g. `04/02/2026, 10:00:00` (compact, fixed order). */
+const formatAppointmentInstant = (value?: string | null) => {
+  if (!value) return '—'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return String(value)
+  return date.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  })
 }
 
 const extractData = <T,>(payload: unknown, fallback: T): T => {
@@ -406,6 +424,7 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Staff</th>
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Time</th>
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Status</th>
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Payment</th>
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Deposit</th>
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">Created</th>
                 <th className="px-4 py-2 font-semibold text-left text-gray-600 tracking-wider">{t('common.actions')}</th>
@@ -413,7 +432,7 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
             </thead>
             <tbody>
               {loading ? (
-                <TableLoadingRow colSpan={9} />
+                <TableLoadingRow colSpan={10} />
               ) : rows.length > 0 ? (
                 rows.map((row) => (
                   <tr key={row.id} className="text-sm">
@@ -424,11 +443,27 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
                     </td>
                     <td className="px-4 py-2 border border-gray-200">{row.service?.name || '-'}</td>
                     <td className="px-4 py-2 border border-gray-200">{row.staff?.name || '-'}</td>
-                    <td className="px-4 py-2 border border-gray-200">
-                      {formatDateTime(row.start_at)} - {formatDateTime(row.end_at)}
+                    <td className="px-4 py-2 border border-gray-200 align-top">
+                      <div className="tabular-nums text-xs leading-snug text-slate-800">
+                        <div>
+                          {formatAppointmentInstant(row.start_at)} -
+                        </div>
+                        <div className="mt-0.5 text-slate-600">{formatAppointmentInstant(row.end_at)}</div>
+                      </div>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       <BookingStatusBadge status={row.status} label={row.status} />
+                    </td>
+                    <td className="px-4 py-2 border border-gray-200">
+                      {String(row.payment_status ?? '').toUpperCase() === 'PAID' ? (
+                        <span className="inline-flex rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-900 ring-1 ring-emerald-200">
+                          Paid
+                        </span>
+                      ) : (
+                        <span className="inline-flex rounded-full bg-amber-100 px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-amber-900 ring-1 ring-amber-200">
+                          Unpaid
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">{row.deposit_amount}</td>
                     <td className="px-4 py-2 border border-gray-200">{formatDateTime(row.created_at)}</td>
@@ -462,7 +497,7 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
                   </tr>
                 ))
               ) : (
-                <TableEmptyState colSpan={9} />
+                <TableEmptyState colSpan={10} />
               )}
             </tbody>
           </table>

@@ -1,3 +1,5 @@
+import type { PosAppointmentListItem } from './posAppointmentTypes'
+
 export type { PosAppointmentListItem as PosAppointmentRow } from './posAppointmentTypes'
 
 /** Display payment history `line_type` without underscores (e.g. booking_deposit → booking deposit). */
@@ -84,12 +86,37 @@ export function formatDateTimeRange(startAt?: string | null, endAt?: string | nu
 }
 
 /** Visual grouping for schedule blocks (month preview + day grid). */
-export type PosAppointmentVisualTone = 'active' | 'completed' | 'inactive'
+export type PosAppointmentVisualTone = 'active' | 'hold' | 'completedPaid' | 'completedUnpaid' | 'inactive'
 
-/** Map booking status to a tone: completed = green, cancelled/no-show/late = red, else indigo/active. */
+/**
+ * Same “register paid” idea as the appointment detail Paid badge: not “package reserved, not finalised”
+ * and no amount due.
+ */
+export function posAppointmentRegisterPaid(
+  row: Pick<PosAppointmentListItem, 'amount_due_now' | 'balance_due' | 'package_status' | 'settlement_paid'>,
+): boolean {
+  const settlementPaid = Number(row.settlement_paid ?? 0)
+  const pkg = String(row.package_status?.status ?? '').toLowerCase()
+  const packageReservedPending = pkg === 'reserved' && settlementPaid <= 0.0001
+  const due = Number(row.amount_due_now ?? row.balance_due ?? 0)
+  return !packageReservedPending && due <= 0.0001
+}
+
+export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): PosAppointmentVisualTone {
+  const s = String(row.status ?? '').toUpperCase()
+  if (s === 'CANCELLED' || s === 'NO_SHOW' || s === 'LATE_CANCELLATION') return 'inactive'
+  if (s === 'HOLD') return 'hold'
+  if (s === 'COMPLETED') {
+    return posAppointmentRegisterPaid(row) ? 'completedPaid' : 'completedUnpaid'
+  }
+  return 'active'
+}
+
+/** When only `status` is known (no payment fields); completed is shown as unpaid until row data loads. */
 export function posAppointmentVisualTone(status: string | null | undefined): PosAppointmentVisualTone {
   const s = String(status ?? '').toUpperCase()
-  if (s === 'COMPLETED') return 'completed'
+  if (s === 'COMPLETED') return 'completedUnpaid'
+  if (s === 'HOLD') return 'hold'
   if (s === 'CANCELLED' || s === 'NO_SHOW' || s === 'LATE_CANCELLATION') return 'inactive'
   return 'active'
 }
@@ -99,8 +126,12 @@ export function posAppointmentDayBlockClass(tone: PosAppointmentVisualTone): str
   const base =
     'absolute overflow-hidden rounded-md border-2 px-1 py-0.5 text-left text-[10px] font-semibold leading-tight shadow-md transition hover:z-10 focus:outline-none focus-visible:ring-2'
   switch (tone) {
-    case 'completed':
+    case 'completedPaid':
       return `${base} border-emerald-900 bg-emerald-600 text-white ring-1 ring-emerald-950/30 hover:bg-emerald-500 hover:ring-2 hover:ring-emerald-300 focus-visible:ring-emerald-300`
+    case 'completedUnpaid':
+      return `${base} border-amber-900 bg-amber-600 text-white ring-1 ring-amber-950/30 hover:bg-amber-500 hover:ring-2 hover:ring-amber-300 focus-visible:ring-amber-300`
+    case 'hold':
+      return `${base} border-violet-900 bg-violet-600 text-white ring-1 ring-violet-950/30 hover:bg-violet-500 hover:ring-2 hover:ring-violet-300 focus-visible:ring-violet-300`
     case 'inactive':
       return `${base} border-rose-900 bg-rose-600 text-white ring-1 ring-rose-950/30 hover:bg-rose-500 hover:ring-2 hover:ring-rose-300 focus-visible:ring-rose-300`
     default:
@@ -111,8 +142,12 @@ export function posAppointmentDayBlockClass(tone: PosAppointmentVisualTone): str
 /** Muted line under time on day block (customer · service). */
 export function posAppointmentDayBlockSubtextClass(tone: PosAppointmentVisualTone): string {
   switch (tone) {
-    case 'completed':
+    case 'completedPaid':
       return 'block truncate text-[9px] font-medium text-emerald-50'
+    case 'completedUnpaid':
+      return 'block truncate text-[9px] font-medium text-amber-50'
+    case 'hold':
+      return 'block truncate text-[9px] font-medium text-violet-50'
     case 'inactive':
       return 'block truncate text-[9px] font-medium text-rose-50'
     default:
@@ -124,8 +159,12 @@ export function posAppointmentDayBlockSubtextClass(tone: PosAppointmentVisualTon
 export function posAppointmentMonthPreviewChipClass(tone: PosAppointmentVisualTone): string {
   const base = 'line-clamp-2 rounded border px-1 py-0.5 text-[9px] font-semibold leading-tight shadow-sm'
   switch (tone) {
-    case 'completed':
+    case 'completedPaid':
       return `${base} border-emerald-500/90 bg-emerald-100 text-emerald-950`
+    case 'completedUnpaid':
+      return `${base} border-amber-500/90 bg-amber-100 text-amber-950`
+    case 'hold':
+      return `${base} border-violet-500/90 bg-violet-100 text-violet-950`
     case 'inactive':
       return `${base} border-rose-500/90 bg-rose-100 text-rose-950`
     default:

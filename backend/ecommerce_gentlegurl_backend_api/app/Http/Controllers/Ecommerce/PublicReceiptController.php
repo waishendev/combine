@@ -34,17 +34,35 @@ class PublicReceiptController extends Controller
         $order = $receiptToken->order;
 
         $mixedItems = $order->items->values();
-        $packageNameByBooking = CustomerServicePackageUsage::query()
-            ->with('customerServicePackage.servicePackage:id,name')
-            ->whereIn('booking_id', $order->serviceItems->pluck('booking_id')->filter()->map(fn ($id) => (int) $id)->values()->all())
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('booking_id')
-            ->map(function ($rows) {
-                $usage = $rows->first();
-                return (string) ($usage?->customerServicePackage?->servicePackage?->name ?? '');
-            });
+        $bookingIdsForPackage = $order->serviceItems
+            ->pluck('booking_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $packageNameByBooking = collect();
+        if ($bookingIdsForPackage !== []) {
+            $packageNameByBooking = CustomerServicePackageUsage::query()
+                ->with('customerServicePackage.servicePackage:id,name')
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->where(function ($q) use ($bookingIdsForPackage) {
+                    $q->whereIn('booking_id', $bookingIdsForPackage)
+                        ->orWhere(function ($q2) use ($bookingIdsForPackage) {
+                            $q2->where('used_from', 'POS')
+                                ->whereIn('used_ref_id', $bookingIdsForPackage);
+                        });
+                })
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy(fn ($usage) => (int) ($usage->booking_id ?: $usage->used_ref_id ?: 0))
+                ->map(function ($rows) {
+                    $usage = $rows->first();
+
+                    return (string) ($usage?->customerServicePackage?->servicePackage?->name ?? '');
+                });
+        }
         $serviceItems = $order->serviceItems->where('item_type', 'service')->values();
         $hasDepositLine = $mixedItems->contains(fn ($item) => (string) $item->line_type === 'booking_deposit');
         $hasSettlementLine = $mixedItems->contains(fn ($item) => (string) $item->line_type === 'booking_settlement');
@@ -90,7 +108,11 @@ class PublicReceiptController extends Controller
             $displayItems = $mixedItems->where('line_type', 'booking_settlement')->values();
         }
 
-        $serviceCoverageLines = ($canRenderServiceCoverageLines ? $packageCoveredServiceItems : collect())->map(function ($item) use ($packageNameByBooking) {
+        $serviceSourceForLines = $canRenderServiceCoverageLines && $packageCoveredServiceItems->isNotEmpty()
+            ? $packageCoveredServiceItems
+            : ($mixedItems->isEmpty() && $serviceItems->isNotEmpty() ? $serviceItems : collect());
+
+        $serviceCoverageLines = $serviceSourceForLines->map(function ($item) use ($packageNameByBooking) {
             $bookingId = (int) ($item->booking_id ?? 0);
             $packageName = (string) ($packageNameByBooking->get($bookingId) ?? '');
             return [
@@ -129,7 +151,7 @@ class PublicReceiptController extends Controller
         })->values()->concat($serviceCoverageLines)->values();
 
         $summarySubtotal = (float) $order->subtotal;
-        if ($canRenderServiceCoverageLines) {
+        if ($canRenderServiceCoverageLines || ($mixedItems->isEmpty() && $serviceCoverageLines->isNotEmpty())) {
             $summarySubtotal = round((float) $displayItemsForResponse->sum(fn (array $item) => (float) ($item['line_total'] ?? 0)), 2);
         }
 
@@ -153,10 +175,19 @@ class PublicReceiptController extends Controller
             },
             'items' => $displayItemsForResponse,
             'service_items' => $serviceCoverageLines,
-            'package_coverage' => $canRenderServiceCoverageLines ? [
+            'package_coverage' => ($canRenderServiceCoverageLines || $serviceCoverageLines->isNotEmpty()) ? [
                 'covered' => true,
-                'package_offset' => round($packageOffset, 2),
-                'package_names' => $packageNames,
+                'package_offset' => round(
+                    $canRenderServiceCoverageLines ? $packageOffset : (float) $serviceCoverageLines->sum(fn (array $row) => (float) ($row['line_total'] ?? 0)),
+                    2,
+                ),
+                'package_names' => $canRenderServiceCoverageLines ? $packageNames : $serviceCoverageLines
+                    ->pluck('package_applied_name')
+                    ->filter()
+                    ->map(fn ($n) => (string) $n)
+                    ->unique()
+                    ->values()
+                    ->all(),
                 'note' => 'Covered by Package',
             ] : [
                 'covered' => false,
@@ -185,7 +216,13 @@ class PublicReceiptController extends Controller
         }
 
         return CustomerServicePackageUsage::query()
-            ->where('booking_id', $bookingId)
+            ->where(function ($q) use ($bookingId) {
+                $q->where('booking_id', $bookingId)
+                    ->orWhere(function ($q2) use ($bookingId) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', $bookingId);
+                    });
+            })
             ->whereIn('status', ['reserved', 'consumed'])
             ->exists();
     }

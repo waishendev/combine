@@ -29,6 +29,9 @@ export type PosAppointmentListItem = {
   package_offset?: number
   balance_due: number
   amount_due_now?: number
+  /** From `resolveAppointmentFinancialSummary` — used with `package_status` for completed paid vs unpaid colours. */
+  settlement_paid?: number
+  package_status?: { status?: string; used_qty?: number } | null
   service_total?: number
   settled_service_amount?: number | null
   is_range_priced?: boolean
@@ -65,6 +68,8 @@ export type PosAppointmentDetail = {
   deposit_previously_collected?: boolean
   deposit_previously_collected_amount?: number
   package_offset?: number
+  /** Latest POS order that registered this booking via an order_service_items row (checkout closure). */
+  visit_register_order_id?: number
   settlement_paid: number
   service_balance_due?: number
   balance_due: number

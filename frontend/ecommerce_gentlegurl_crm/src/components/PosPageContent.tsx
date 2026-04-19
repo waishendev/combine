@@ -3115,6 +3115,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return
     }
 
+    const clearedCartId = cart.id
     setCheckoutResult({
       order_id: Number(json.data.order.id),
       order_number: json.data.order.order_number,
@@ -3132,9 +3133,30 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCheckoutIdentityMode('member')
     setMemberQuery('')
     setMembers([])
-    setCart({ id: cart.id, items: [], service_items: [], package_items: [], appointment_settlement_items: [], subtotal: 0, grand_total: 0 })
+    // Backend clears session cart but checkout JSON omits `cart`; sync UI immediately then confirm via GET /pos/cart.
+    setCart({
+      id: clearedCartId,
+      items: [],
+      service_items: [],
+      package_items: [],
+      appointment_settlement_items: [],
+      subtotal: 0,
+      grand_total: 0,
+      voucher: null,
+      promotions: [],
+      booking_deposit_total: 0,
+      booking_addon_total: 0,
+      booking_deposit_breakdown: undefined,
+    })
     setCashReceived('')
     setCheckoutItemAssignments([])
+    setPackageCheckoutSplits({})
+    void fetchUnpaidCompletedAppointments(settlementQuery)
+    try {
+      await loadCart()
+    } catch {
+      /* keep optimistic empty cart above */
+    }
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
@@ -3217,11 +3239,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     if (paymentMethod === 'qrpay') {
-      if (!qrProofFileName) {
-        setCheckoutError('Please upload QR payment proof before checkout.')
-        return
-      }
-
       await finalizeCheckout({ paid_amount: cartTotal, change_amount: 0 })
       return
     }
@@ -3703,8 +3720,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
-    if (paymentMethod === 'qrpay' && !qrProofFileName) return false
-    if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) return false
+    if (paymentMethod === 'cash') {
+      if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) return false
+    }
 
     if (checkoutRequiresCustomerValidation) {
       if (checkoutRequiresMemberOnly) {
@@ -3729,7 +3747,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     checkoutRequiresCustomerValidation,
     guestContactIsComplete,
     paymentMethod,
-    qrProofFileName,
     selectedMember?.id,
   ])
 
@@ -3746,12 +3763,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link
+          {/* <Link
             href="/pos/appointments"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
           >
             Appointments
-          </Link>
+          </Link> */}
           <button
             type="button"
             onClick={() => void openMemberQuickLookupPanel()}
@@ -5881,7 +5898,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
               {paymentMethod === 'qrpay' && (
                 <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
-                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof</label>
+                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrUploadInputRef.current?.click()}>
                       <span className="flex items-center justify-center gap-2">

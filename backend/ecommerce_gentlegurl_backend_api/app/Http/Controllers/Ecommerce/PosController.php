@@ -320,6 +320,7 @@ class PosController extends Controller
             // POS appointments (no status filter / "ALL"): show staff-facing bookings only.
             // Omit HOLD and EXPIRED (and other internal states) from the calendar list.
             $builder->whereIn('status', [
+                'HOLD',
                 'CONFIRMED',
                 'COMPLETED',
                 'CANCELLED',
@@ -358,6 +359,7 @@ class PosController extends Controller
                 'package_offset' => (float) $summary['package_offset'],
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
+                'settlement_paid' => (float) ($summary['settlement_paid'] ?? 0),
                 'service_total' => (float) $summary['service_total'],
                 'settled_service_amount' => $summary['settled_service_amount'] ?? null,
                 'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
@@ -621,7 +623,15 @@ class PosController extends Controller
             return [$order, $receipt];
         });
 
-        $freshSummary = $this->resolveAppointmentFinancialSummary($booking->fresh(['service', 'customer']));
+        // Match POS cart settlement checkout: once nothing is owed, the booking must not stay UNPAID or it
+        // keeps appearing under GET /pos/appointments?unpaid_only=1 (balance can show RM 0.00 from orders).
+        $booking = $booking->fresh(['service', 'customer']);
+        $freshSummary = $this->resolveAppointmentFinancialSummary($booking);
+
+        if ((float) ($freshSummary['balance_due'] ?? 0) <= 0.0001) {
+            $booking->payment_status = 'PAID';
+            $booking->save();
+        }
 
         return $this->respond([
             'order_id' => (int) $order->id,
@@ -632,6 +642,87 @@ class PosController extends Controller
             'amount_due_now' => (float) $freshSummary['amount_due_now'],
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Appointment payment collected.'));
+    }
+
+    public function finalizeAppointmentZeroSettlement(Request $request, int $id, OrderPaymentService $orderPaymentService)
+    {
+        $validated = $request->validate([
+            'payment_method' => ['required', 'in:cash,qrpay'],
+        ]);
+
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        if (! $booking->customer_id || ! $booking->service_id) {
+            return $this->respondError(__('Appointment must have customer and service before settlement.'), 422);
+        }
+
+        if ((string) $booking->status !== 'COMPLETED') {
+            return $this->respondError(__('Only completed appointments can be finalised this way.'), 422);
+        }
+
+        if (($booking->service?->price_mode ?? 'fixed') === 'range' && $booking->settled_service_amount === null) {
+            return $this->respondError(__('Please set the service amount before finalising. This service uses range pricing.'), 422);
+        }
+
+        if (OrderServiceItem::query()->where('booking_id', (int) $booking->id)->exists()) {
+            return $this->respondError(__('This appointment is already finalised.'), 422);
+        }
+
+        if (OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_settlement')
+            ->exists()) {
+            return $this->respondError(__('This appointment is already finalised.'), 422);
+        }
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        if (max(0.0, (float) ($summary['balance_due'] ?? 0)) > 0.0001) {
+            return $this->respondError(__('A balance is still due; use standard collection.'), 422);
+        }
+
+        try {
+            [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $validated, $orderPaymentService) {
+                $order = Order::query()->create([
+                    'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                    'customer_id' => (int) $booking->customer_id,
+                    'created_by_user_id' => $request->user()->id,
+                    'status' => 'completed',
+                    'payment_status' => 'paid',
+                    'payment_method' => $validated['payment_method'],
+                    'payment_provider' => 'manual',
+                    'subtotal' => 0,
+                    'discount_total' => 0,
+                    'shipping_fee' => 0,
+                    'grand_total' => 0,
+                    'pickup_or_shipping' => 'in_store',
+                    'pickup_store_id' => null,
+                    'placed_at' => now(),
+                    'paid_at' => now(),
+                    'completed_at' => now(),
+                    'notes' => 'POS appointment zero settlement by staff #' . $request->user()->id . ' | booking_id=' . $booking->id,
+                ]);
+
+                $this->recordPackageCoveredAppointmentOnOrder($order, $booking);
+
+                $orderPaymentService->handlePaid($order->fresh(['items']));
+
+                return [$order, $this->buildReceiptUrl($order->fresh(['items']), $request)];
+            });
+        } catch (\Throwable $e) {
+            return $this->respondError($e->getMessage() ?: __('Unable to finalise appointment.'), 422);
+        }
+
+        $booking = $booking->fresh(['service', 'customer']);
+        $freshSummary = $this->resolveAppointmentFinancialSummary($booking);
+
+        return $this->respond([
+            'order_id' => (int) $order->id,
+            'order_number' => (string) $order->order_number,
+            'receipt_public_url' => $receiptUrl,
+            'paid_amount' => 0.0,
+            'balance_due' => (float) ($freshSummary['balance_due'] ?? 0),
+            'amount_due_now' => (float) ($freshSummary['amount_due_now'] ?? 0),
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Appointment finalised.'));
     }
 
     public function editAppointmentSettlement(Request $request, int $id)
@@ -2381,8 +2472,19 @@ class PosController extends Controller
             'package_items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
-        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
+        $cart = $this->resolveCart((int) $request->user()->id)->load([
+            'items.variant.product',
+            'items.product',
+            'serviceItems.bookingService',
+            'serviceItems.assignedStaff',
+            'serviceItems.customer:id,name',
+            'packageItems.servicePackage',
+            'packageItems.customer:id,name',
+            'appointmentSettlementItems.booking.customer:id,name',
+            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+            'appointmentSettlementItems.booking.staff:id,name',
+        ]);
+        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty() && $cart->appointmentSettlementItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
         }
 
@@ -3005,6 +3107,8 @@ class PosController extends Controller
                 $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
                 $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
                 if ($balanceDue <= 0.0001) {
+                    $this->recordPackageCoveredAppointmentOnOrder($order, $booking);
+
                     continue;
                 }
 
@@ -4156,6 +4260,67 @@ class PosController extends Controller
                 'consumed_at' => optional($packageUsage->consumed_at)?->toIso8601String(),
             ] : null,
         ];
+    }
+
+    /**
+     * When an appointment’s balance is fully covered (e.g. package), attach list-price OrderServiceItem lines,
+     * mark booking paid, and consume reserved package claims — mirrors POS cart checkout behaviour.
+     */
+    protected function recordPackageCoveredAppointmentOnOrder(Order $order, Booking $booking): void
+    {
+        $booking->loadMissing(['service', 'customer']);
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+
+        $listTotal = max(0.0, (float) ($summary['service_total'] ?? 0));
+        if ($listTotal <= 0.0001 && $booking->service) {
+            $listTotal = (float) ($booking->service->service_price ?? $booking->service->price ?? 0);
+        }
+
+        $splitRows = DB::table('booking_service_staff_splits as splits')
+            ->where('splits.booking_id', (int) $booking->id)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ]);
+
+        $splitsPayload = $splitRows
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])
+            ->filter(fn (array $r) => $r['staff_id'] > 0)
+            ->values()
+            ->all();
+
+        $primaryRate = (float) ($splitsPayload[0]['service_commission_rate_snapshot'] ?? 0);
+        $commissionAmount = round($listTotal * $primaryRate, 2);
+
+        OrderServiceItem::create([
+            'order_id' => (int) $order->id,
+            'booking_id' => (int) $booking->id,
+            'booking_service_id' => (int) ($booking->service_id ?? 0),
+            'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
+            'service_name_snapshot' => (string) ($booking->service?->name ?? 'Service'),
+            'price_snapshot' => $listTotal,
+            'qty' => 1,
+            'line_total' => $listTotal,
+            'assigned_staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
+            'start_at' => $booking->start_at,
+            'end_at' => $booking->end_at,
+            'notes' => null,
+            'staff_splits' => $splitsPayload,
+            'commission_rate_used' => $primaryRate,
+            'commission_amount' => $commissionAmount,
+            'item_type' => 'service',
+        ]);
+
+        $booking->payment_status = 'PAID';
+        $booking->save();
+
+        $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
     }
 
 
