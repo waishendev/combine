@@ -616,6 +616,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
 
   const [memberOpen, setMemberOpen] = useState(false)
+  const [memberPanelMode, setMemberPanelMode] = useState<'assign' | 'lookup'>('assign')
   const [memberQuery, setMemberQuery] = useState('')
   const [members, setMembers] = useState<Member[]>([])
   const [memberPage, setMemberPage] = useState(1)
@@ -642,6 +643,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   })
   const [memberAppointmentsLoadingMore, setMemberAppointmentsLoadingMore] = useState(false)
   const [memberOrderViewId, setMemberOrderViewId] = useState<number | null>(null)
+  const [lookupMember, setLookupMember] = useState<Member | null>(null)
   const [selectedMember, setSelectedMember] = useState<Member | null>(null)
   const [voucherModalOpen, setVoucherModalOpen] = useState(false)
   const [voucherLoading, setVoucherLoading] = useState(false)
@@ -1487,11 +1489,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberLoading(false)
   }, [])
 
-  const fetchMemberDetail = useCallback(async (memberId: number, options?: { page?: number; append?: boolean; silent?: boolean; appointmentsPage?: number; appendAppointments?: boolean }) => {
+  const fetchMemberDetail = useCallback(async (memberId: number, options?: { page?: number; append?: boolean; silent?: boolean; appointmentsPage?: number; appendAppointments?: boolean; updateSelectedMember?: boolean }) => {
     const page = Math.max(1, options?.page ?? 1)
     const appointmentsPage = Math.max(1, options?.appointmentsPage ?? 1)
     const append = Boolean(options?.append)
     const appendAppointments = Boolean(options?.appendAppointments)
+    const updateSelectedMember = options?.updateSelectedMember ?? true
     const silent = Boolean(options?.silent)
     if (append) {
       setMemberOrdersLoadingMore(true)
@@ -1554,7 +1557,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         })
       }
 
-      if (loadedMember) {
+      if (loadedMember && updateSelectedMember) {
         setSelectedMember((previous) => {
           if (previous && previous.id !== loadedMember.id) return previous
           return {
@@ -3280,38 +3283,45 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     [guestContactCache.email, guestContactCache.name, guestContactCache.phone, showMsg],
   )
 
-  const toggleMemberDropdown = async () => {
-    if (memberOpen) {
-      setMemberOpen(false)
-      setMemberQuery('')
-      setMembers([])
-      setMemberDetail(null)
-      setMemberRecentOrders([])
-      setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
-      setMemberActivePackages([])
-      setMemberActivePackagesTotal(0)
-      setMemberUpcomingAppointments([])
-      setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
-      setMemberOrderViewId(null)
-      return
-    }
+  const closeMemberPanel = () => {
+    setMemberOpen(false)
+    setMemberQuery('')
+    setMembers([])
+    setMemberDetail(null)
+    setLookupMember(null)
+    setMemberRecentOrders([])
+    setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
+    setMemberActivePackages([])
+    setMemberActivePackagesTotal(0)
+    setMemberUpcomingAppointments([])
+    setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
+    setMemberOrderViewId(null)
+  }
 
+  const openMemberAssignPanel = () => {
+    setMemberPanelMode('assign')
     setMemberOpen(true)
+    setMemberQuery('')
     setMembers([])
     setMemberPage(1)
     setMemberLastPage(1)
+  }
+
+  const openMemberQuickLookupPanel = async () => {
+    setMemberPanelMode('lookup')
+    setMemberOpen(true)
     setMemberQuery('')
-    if (selectedMember?.id) {
-      await fetchMemberDetail(selectedMember.id, { page: 1 })
-    } else {
-      setMemberDetail(null)
-      setMemberRecentOrders([])
-      setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
-      setMemberActivePackages([])
-      setMemberActivePackagesTotal(0)
-      setMemberUpcomingAppointments([])
-      setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
-    }
+    setMembers([])
+    setMemberPage(1)
+    setMemberLastPage(1)
+    setLookupMember(null)
+    setMemberDetail(null)
+    setMemberRecentOrders([])
+    setMemberRecentOrdersMeta({ current_page: 1, last_page: 1, per_page: 5, total: 0 })
+    setMemberActivePackages([])
+    setMemberActivePackagesTotal(0)
+    setMemberUpcomingAppointments([])
+    setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
   }
 
   const onAssignMember = async (member: Member) => {
@@ -3691,7 +3701,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </Link>
           <button
             type="button"
-            onClick={() => void toggleMemberDropdown()}
+            onClick={() => void openMemberQuickLookupPanel()}
             className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
           >
             Member Quick Lookup
@@ -5713,17 +5723,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                   {(checkoutRequiresMemberOnly || checkoutIdentityMode === 'member') && (
                     <div className="mt-4">
-                      <label className="text-xs font-semibold text-gray-600">Member</label>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-gray-600">Member</label>
+                        <button
+                          type="button"
+                          disabled={hasCartAppointmentSettlements}
+                          onClick={() => openMemberAssignPanel()}
+                          className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
+                        >
+                          {selectedMember ? 'Change Member' : 'Assign Member'}
+                        </button>
+                      </div>
                       <div className="mt-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800">
                         {selectedMember
                           ? `${selectedMember.name}${selectedMember.phone ? ` · ${selectedMember.phone}` : ''}${selectedMember.email ? ` · ${selectedMember.email}` : ''}`
                           : 'No member selected yet'}
                       </div>
-                      {!selectedMember ? (
-                        <p className="mt-2 text-[11px] text-gray-500">
-                          Please select member from the top header &quot;Member Quick Lookup&quot; button.
-                        </p>
-                      ) : null}
                     </div>
                   )}
 
@@ -6314,10 +6329,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <button
                         type="button"
                         disabled={hasCartAppointmentSettlements}
-                        onClick={() => void toggleMemberDropdown()}
+                        onClick={() => openMemberAssignPanel()}
                         className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
-                        Member
+                        {selectedMember ? 'Change Member' : 'Assign Member'}
                       </button>
                     </div>
                     <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -6467,15 +6482,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {memberOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>
-          <button type="button" className="absolute inset-0 h-full w-full cursor-default" onClick={() => void toggleMemberDropdown()} aria-label="Close member panel" />
+          <button type="button" className="absolute inset-0 h-full w-full cursor-default" onClick={closeMemberPanel} aria-label="Close member panel" />
           <div className="absolute right-0 top-0 h-full w-full max-w-3xl border-l border-gray-200 bg-white shadow-2xl">
             <div className="flex h-full flex-col">
               <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
                 <div>
-                  <h4 className="text-lg font-bold text-gray-900">Member Quick Lookup</h4>
-                  <p className="text-xs text-gray-500">Search member by name or phone</p>
+                  <h4 className="text-lg font-bold text-gray-900">{memberPanelMode === 'lookup' ? 'Member Quick Lookup' : 'Assign Member'}</h4>
+                  <p className="text-xs text-gray-500">
+                    {memberPanelMode === 'lookup' ? 'Search member by name or phone' : 'Search and assign member to current flow'}
+                  </p>
                 </div>
-                <button type="button" onClick={() => void toggleMemberDropdown()} className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
+                <button type="button" onClick={closeMemberPanel} className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
                   <span className="text-xl leading-none">×</span>
                 </button>
               </div>
@@ -6486,7 +6503,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               ) : null}
 
-              <div className="grid min-h-0 flex-1 grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+              <div className={`grid min-h-0 flex-1 grid-cols-1 ${memberPanelMode === 'lookup' ? 'md:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]' : ''}`}>
                 <div className="border-b border-gray-200 p-5 md:border-b-0 md:border-r">
                   <div className="relative">
                     <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -6515,7 +6532,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             key={member.id}
                             className="block w-full border-b border-gray-100 px-4 py-3 text-left transition hover:bg-blue-50 last:border-b-0"
                             onClick={() => {
-                              void onAssignMember(member)
+                              if (memberPanelMode === 'assign') {
+                                void onAssignMember(member)
+                                closeMemberPanel()
+                                focusScanner()
+                                return
+                              }
+                              setLookupMember(member)
+                              void fetchMemberDetail(member.id, { page: 1, appointmentsPage: 1, updateSelectedMember: false })
                             }}
                           >
                             <p className="text-sm font-semibold text-gray-900">{member.name}</p>
@@ -6544,12 +6568,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ) : null}
                 </div>
 
+                {memberPanelMode === 'lookup' ? (
                 <div className="min-h-0 overflow-y-auto p-5">
-                  {selectedMember && memberDetailLoading ? (
+                  {lookupMember && memberDetailLoading ? (
                     <p className="text-sm text-gray-500">Loading member details...</p>
                   ) : null}
 
-                  {!selectedMember ? (
+                  {!lookupMember ? (
                     <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-gray-500">
                       Select a member from the search results to view profile details and recent orders.
                     </div>
@@ -6612,11 +6637,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <button
                               type="button"
                               onClick={() => {
-                                if (!selectedMember?.id) return
-                                void fetchMemberDetail(selectedMember.id, {
+                                if (!lookupMember?.id) return
+                                void fetchMemberDetail(lookupMember.id, {
                                   appointmentsPage: memberUpcomingAppointmentsMeta.current_page + 1,
                                   appendAppointments: true,
                                   silent: true,
+                                  updateSelectedMember: false,
                                 })
                               }}
                               disabled={memberAppointmentsLoadingMore}
@@ -6666,11 +6692,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <button
                               type="button"
                               onClick={() => {
-                                if (!selectedMember?.id) return
-                                void fetchMemberDetail(selectedMember.id, {
+                                if (!lookupMember?.id) return
+                                void fetchMemberDetail(lookupMember.id, {
                                   page: memberRecentOrdersMeta.current_page + 1,
                                   append: true,
                                   silent: true,
+                                  updateSelectedMember: false,
                                 })
                               }}
                               disabled={memberOrdersLoadingMore}
@@ -6682,10 +6709,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         ) : null}
                       </section>
                     </div>
-                  ) : selectedMember ? (
+                  ) : lookupMember ? (
                     <p className="text-sm text-gray-500">Unable to load member details.</p>
                   ) : null}
                 </div>
+                ) : null}
               </div>
             </div>
           </div>
