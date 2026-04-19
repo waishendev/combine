@@ -883,6 +883,13 @@ export default function PosAppointmentsWorkspace({
     showMsg,
   ])
 
+  const rebalanceEditSettlementPrimaryShare = useCallback((rows: Array<{ staff_id: number | null; share_percent: string }>) => {
+    if (rows.length === 0) return rows
+    const otherTotal = rows.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10) || 0), 0)
+    const primaryShare = Math.max(0, 100 - otherTotal)
+    return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
+  }, [])
+
   const openEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.service?.id) return
     setEditSettlementError(null)
@@ -933,13 +940,6 @@ export default function PosAppointmentsWorkspace({
       }
       return next
     })
-  }, [])
-
-  const rebalanceEditSettlementPrimaryShare = useCallback((rows: Array<{ staff_id: number | null; share_percent: string }>) => {
-    if (rows.length === 0) return rows
-    const otherTotal = rows.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10) || 0), 0)
-    const primaryShare = Math.max(0, 100 - otherTotal)
-    return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
   }, [])
 
   const updateEditSettlementSplitShare = useCallback((index: number, value: string) => {
