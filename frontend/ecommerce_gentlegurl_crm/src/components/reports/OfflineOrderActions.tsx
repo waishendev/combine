@@ -85,12 +85,15 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
     if (modal !== 'sales_person') return
     void loadSalesDraft()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, orderId])
+  }, [modal, orderId, staffActionLabel])
 
   const loadSalesDraft = async () => {
+    const staffEndpoint = staffActionLabel === 'worker'
+      ? `/api/proxy/ecommerce/orders/${orderId}/offline-actions/booking-worker`
+      : `/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`
     const [staffRes, draftRes] = await Promise.all([
       fetch('/api/proxy/staffs?page=1&per_page=200', { cache: 'no-store' }),
-      fetch(`/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`, { cache: 'no-store' }),
+      fetch(staffEndpoint, { cache: 'no-store' }),
     ])
 
     if (staffRes.ok) {
@@ -196,7 +199,9 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
           }
         }
 
-        endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`
+        endpoint = staffActionLabel === 'worker'
+          ? `/api/proxy/ecommerce/orders/${orderId}/offline-actions/booking-worker`
+          : `/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`
         payload = {
           item_splits: draftItems.map((item) => ({
             order_item_id: item.order_item_id,
