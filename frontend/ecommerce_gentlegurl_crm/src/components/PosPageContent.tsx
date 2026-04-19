@@ -6125,89 +6125,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
             </div>
 
-            {packageMemberPickerOpen ? (
-              <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-                <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-                  <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-                    <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
-                    <button
-                      type="button"
-                      onClick={() => setPackageMemberPickerOpen(false)}
-                      className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
-                    >
-                      <span className="text-2xl leading-none">×</span>
-                    </button>
-                  </div>
-
-                  <div className="border-b-2 border-gray-200 bg-white p-5">
-                    <div className="relative">
-                      <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <input
-                        value={packageMemberQuery}
-                        onChange={(e) => setPackageMemberQuery(e.target.value)}
-                        className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                        placeholder="Search by name or phone"
-                        autoFocus
-                      />
-                    </div>
-                    <p className="mt-2 text-xs text-gray-500">Search member by name or phone. Type at least 3 characters to search.</p>
-                  </div>
-
-                  <div className="max-h-[65vh] overflow-auto">
-                    {packageMemberQuery.trim().length < 3 ? (
-                      <div className="p-8 text-center text-sm text-gray-500">
-                        Type at least 3 characters to search.
-                      </div>
-                    ) : packageMembersLoading ? (
-                      <div className="p-6 text-sm text-gray-500">Loading members...</div>
-                    ) : (
-                      packageMembers.map((member) => (
-                        <button
-                          key={`package-member-modal-${member.id}`}
-                          className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
-                          onClick={async () => {
-                            if (assignMemberContext === 'package') {
-                              const fullMember = await hydrateMemberProfile(member)
-                              setPackageSelectedMember(fullMember)
-                            } else {
-                              await onAssignMember(member)
-                            }
-                            setPackageMemberQuery('')
-                            setPackageMemberPickerOpen(false)
-                          }}
-                        >
-                          <div className="flex items-start gap-3">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
-                              {/* eslint-disable-next-line @next/next/no-img-element */}
-                              <img src={member.avatar_url || '/images/default_user_image.jpg'} alt={member.name} className="h-full w-full object-cover" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="font-semibold text-gray-900 text-base leading-tight">
-                                {member.name}
-                              </p>
-                              <p className="mt-1 text-xs text-gray-600">{member.phone_masked ?? '***'}</p>
-                            </div>
-                            <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                            </svg>
-                          </div>
-                        </button>
-                      ))
-                    )}
-
-                    {!packageMembersLoading && packageMemberQuery.trim().length >= 3 && packageMembers.length === 0 && (
-                      <div className="p-12 text-center">
-                        <p className="text-sm font-medium text-gray-600">No members found</p>
-                        <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               Staff split and commission preview will be configured in Checkout Confirmation.
             </div>
@@ -6234,6 +6151,87 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </div>
         </div>
       )}
+
+      {packageMemberPickerOpen ? (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
+              <button
+                type="button"
+                onClick={() => setPackageMemberPickerOpen(false)}
+                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+              >
+                <span className="text-2xl leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="border-b-2 border-gray-200 bg-white p-5">
+              <div className="relative">
+                <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={packageMemberQuery}
+                  onChange={(e) => setPackageMemberQuery(e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                  placeholder="Search by name or phone"
+                  autoFocus
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">Search member by name or phone. Type at least 3 characters to search.</p>
+            </div>
+
+            <div className="max-h-[65vh] overflow-auto">
+              {packageMemberQuery.trim().length < 3 ? (
+                <div className="p-8 text-center text-sm text-gray-500">
+                  Type at least 3 characters to search.
+                </div>
+              ) : packageMembersLoading ? (
+                <div className="p-6 text-sm text-gray-500">Loading members...</div>
+              ) : (
+                packageMembers.map((member) => (
+                  <button
+                    key={`package-member-modal-${member.id}`}
+                    className="block w-full border-b border-gray-100 p-4 text-left transition-all hover:bg-gradient-to-r hover:from-blue-50 hover:to-white last:border-b-0 active:bg-blue-100"
+                    onClick={async () => {
+                      if (assignMemberContext === 'package') {
+                        const fullMember = await hydrateMemberProfile(member)
+                        setPackageSelectedMember(fullMember)
+                      } else {
+                        await onAssignMember(member)
+                      }
+                      setPackageMemberQuery('')
+                      setPackageMemberPickerOpen(false)
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full overflow-hidden border-2 border-blue-300">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={member.avatar_url || '/images/default_user_image.jpg'} alt={member.name} className="h-full w-full object-cover" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-base leading-tight">{member.name}</p>
+                        <p className="mt-1 text-xs text-gray-600">{member.phone_masked ?? '***'}</p>
+                      </div>
+                      <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))
+              )}
+
+              {!packageMembersLoading && packageMemberQuery.trim().length >= 3 && packageMembers.length === 0 && (
+                <div className="p-12 text-center">
+                  <p className="text-sm font-medium text-gray-600">No members found</p>
+                  <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
