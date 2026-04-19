@@ -2753,10 +2753,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       if (!target || !buffer) return
 
       if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-        const start = target.selectionStart ?? target.value.length
-        const end = target.selectionEnd ?? target.value.length
-        target.setRangeText(buffer, start, end, 'end')
-        target.dispatchEvent(new Event('input', { bubbles: true }))
+        const isUnsupportedSelectionInput =
+          target instanceof HTMLInputElement &&
+          ['number', 'date', 'time', 'datetime-local', 'month', 'week', 'color', 'range'].includes(
+            String(target.type ?? '').toLowerCase(),
+          )
+
+        if (isUnsupportedSelectionInput) {
+          target.value = `${target.value ?? ''}${buffer}`
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+          return
+        }
+
+        try {
+          const start = target.selectionStart ?? target.value.length
+          const end = target.selectionEnd ?? target.value.length
+          target.setRangeText(buffer, start, end, 'end')
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+        } catch {
+          target.value = `${target.value ?? ''}${buffer}`
+          target.dispatchEvent(new Event('input', { bubbles: true }))
+        }
         return
       }
 
