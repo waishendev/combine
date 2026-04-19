@@ -18,6 +18,7 @@ use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
+use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
@@ -37,6 +38,7 @@ use App\Services\SettingService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
+use App\Models\Ecommerce\PointsEarnBatch;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
@@ -65,36 +67,170 @@ class PosController extends Controller
     {
         $query = trim((string) $request->query('q', ''));
         $page = max(1, (int) $request->query('page', 1));
-        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+        $perPage = max(1, min(20, (int) $request->query('per_page', 10)));
+
+        if (mb_strlen($query) < 3) {
+            return $this->respond([
+                'data' => [],
+                'current_page' => 1,
+                'last_page' => 1,
+                'per_page' => $perPage,
+                'total' => 0,
+            ]);
+        }
 
         $builder = Customer::query();
 
-        if ($query !== '') {
-            $builder->where(function ($queryBuilder) use ($query) {
-                $queryBuilder->where('name', 'like', "%{$query}%")
-                    ->orWhere('phone', 'like', "%{$query}%")
-                    ->orWhere('email', 'like', "%{$query}%")
-                    ->orWhereRaw('CAST(id AS TEXT) = ?', [$query]);
-            });
-        }
+        $builder->where(function ($queryBuilder) use ($query) {
+            $queryBuilder->where('name', 'like', "%{$query}%")
+                ->orWhere('phone', 'like', "%{$query}%");
+        });
 
         $paginator = $builder
             ->orderBy('id', 'desc')
-            ->paginate($perPage, ['id', 'name', 'phone', 'email'], 'page', $page);
+            ->paginate($perPage, ['id', 'name', 'phone'], 'page', $page);
 
         return $this->respond([
             'data' => collect($paginator->items())->map(fn (Customer $member) => [
                 'id' => $member->id,
                 'name' => $member->name,
-                'phone' => $member->phone,
+                'phone_masked' => $this->maskPhone($member->phone),
                 'member_code' => (string) $member->id,
-                'email' => $member->email,
             ])->values(),
             'current_page' => $paginator->currentPage(),
             'last_page' => $paginator->lastPage(),
             'per_page' => $paginator->perPage(),
             'total' => $paginator->total(),
         ]);
+    }
+
+    public function memberDetail(Request $request, int $memberId)
+    {
+        $now = now();
+        $page = max(1, (int) $request->query('recent_orders_page', 1));
+        $perPage = max(1, min(10, (int) $request->query('recent_orders_per_page', 5)));
+        $appointmentsPage = max(1, (int) $request->query('appointments_page', 1));
+        $appointmentsPerPage = max(1, min(5, (int) $request->query('appointments_per_page', 2)));
+
+        $member = Customer::query()
+            ->with(['customerType:id,name'])
+            ->findOrFail($memberId);
+
+        $ordersQuery = Order::query()->where('customer_id', $member->id);
+        $totalOrders = (int) (clone $ordersQuery)->count();
+        $totalSpent = (float) (clone $ordersQuery)->sum('grand_total');
+        $lastOrderAt = (clone $ordersQuery)->max('created_at');
+
+        $recentOrdersPaginator = (clone $ordersQuery)
+            ->orderByDesc('created_at')
+            ->paginate($perPage, ['id', 'order_number', 'created_at', 'status', 'grand_total', 'pickup_or_shipping'], 'recent_orders_page', $page);
+
+        $recentOrders = collect($recentOrdersPaginator->items())
+            ->map(fn (Order $order) => [
+                'id' => (int) $order->id,
+                'order_number' => $order->order_number,
+                'order_date' => optional($order->created_at)->toDateTimeString(),
+                'status' => $order->status,
+                'total_amount' => (float) $order->grand_total,
+                'channel' => $order->pickup_or_shipping,
+            ])
+            ->values();
+
+        $activePackagesQuery = CustomerServicePackage::query()
+            ->with(['servicePackage:id,name'])
+            ->where('customer_id', $member->id)
+            ->where('status', 'active')
+            ->where(function ($query) use ($now) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>=', $now);
+            });
+
+        $activePackagesTotal = (clone $activePackagesQuery)->count();
+        $activePackagesItems = (clone $activePackagesQuery)
+            ->orderByDesc('id')
+            ->limit(3)
+            ->get(['id', 'service_package_id', 'expires_at'])
+            ->map(fn (CustomerServicePackage $package) => [
+                'id' => (int) $package->id,
+                'package_name' => $package->servicePackage?->name ?? 'Package',
+                'expires_at' => optional($package->expires_at)->toDateTimeString(),
+            ])
+            ->values();
+
+        $upcomingAppointmentsPaginator = Booking::query()
+            ->with(['service:id,name', 'staff:id,name'])
+            ->where('customer_id', $member->id)
+            ->whereNotIn('status', ['CANCELLED'])
+            ->where('start_at', '>=', $now)
+            ->orderBy('start_at')
+            ->paginate($appointmentsPerPage, ['id', 'booking_code', 'status', 'start_at', 'end_at', 'service_id', 'staff_id'], 'appointments_page', $appointmentsPage);
+
+        $upcomingAppointments = collect($upcomingAppointmentsPaginator->items())
+            ->map(fn (Booking $appointment) => [
+                'id' => (int) $appointment->id,
+                'booking_code' => $appointment->booking_code,
+                'status' => $appointment->status,
+                'start_at' => optional($appointment->start_at)->toDateTimeString(),
+                'end_at' => optional($appointment->end_at)->toDateTimeString(),
+                'service_name' => $appointment->service?->name,
+                'staff_name' => $appointment->staff?->name,
+            ])
+            ->values();
+
+        $memberPointsBalance = (int) PointsEarnBatch::query()
+            ->where('customer_id', $member->id)
+            ->where('status', 'active')
+            ->where('points_remaining', '>', 0)
+            ->where(function ($query) use ($now) {
+                $query->whereNull('expires_at')->orWhere('expires_at', '>', $now);
+            })
+            ->sum('points_remaining');
+
+        return $this->respond([
+            'member' => [
+                'id' => (int) $member->id,
+                'name' => $member->name,
+                'phone' => $member->phone,
+                'email' => $member->email,
+                'member_code' => (string) $member->id,
+                'join_date' => optional($member->created_at)->toDateTimeString(),
+                'customer_type' => $member->customerType?->name,
+                'total_orders' => $totalOrders,
+                'total_spent' => $totalSpent,
+                'last_order_date' => $lastOrderAt ? Carbon::parse($lastOrderAt)->toDateTimeString() : null,
+                'points_balance' => $memberPointsBalance,
+            ],
+            'active_packages' => [
+                'total_active' => (int) $activePackagesTotal,
+                'items' => $activePackagesItems,
+                'has_more' => $activePackagesTotal > $activePackagesItems->count(),
+            ],
+            'upcoming_appointments' => $upcomingAppointments,
+            'upcoming_appointments_meta' => [
+                'current_page' => $upcomingAppointmentsPaginator->currentPage(),
+                'last_page' => $upcomingAppointmentsPaginator->lastPage(),
+                'per_page' => $upcomingAppointmentsPaginator->perPage(),
+                'total' => $upcomingAppointmentsPaginator->total(),
+            ],
+            'recent_orders' => $recentOrders,
+            'recent_orders_meta' => [
+                'current_page' => $recentOrdersPaginator->currentPage(),
+                'last_page' => $recentOrdersPaginator->lastPage(),
+                'per_page' => $recentOrdersPaginator->perPage(),
+                'total' => $recentOrdersPaginator->total(),
+            ],
+        ]);
+    }
+
+    private function maskPhone(?string $phone): ?string
+    {
+        $phone = trim((string) $phone);
+        if ($phone === '') {
+            return null;
+        }
+
+        $suffix = mb_substr($phone, -4);
+
+        return '***' . $suffix;
     }
 
 
