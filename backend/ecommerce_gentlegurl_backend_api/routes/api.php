@@ -412,6 +412,7 @@ $protectedRoutes = function () {
 
     Route::prefix('pos')->middleware('permission:pos.checkout')->group(function () {
         Route::get('/members/search', [PosController::class, 'memberSearch']);
+        Route::get('/members/{memberId}', [PosController::class, 'memberDetail']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);
         Route::get('/services/search', [PosController::class, 'serviceSearch']);
