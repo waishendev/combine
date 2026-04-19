@@ -150,13 +150,13 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw('creator_staff.phone AS created_by_phone')
             ->selectRaw('COALESCE(creator_staff.email, creator_user.email) AS created_by_email')
             ->selectRaw('order_items.id AS order_item_id')
-            ->selectRaw("'product' AS item_type")
+            ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN 'booking_settlement' WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' ELSE 'product' END AS item_type")
             ->selectRaw('order_items.product_name_snapshot AS product_name')
             ->selectRaw('order_items.quantity AS qty')
             ->selectRaw("($effectiveLineTotalExpr) AS item_total_price")
             ->selectRaw("($snapshotLineTotalExpr) AS item_snapshot_total")
             ->selectRaw('COALESCE(order_items.is_staff_free_applied, false) AS is_staff_free_applied')
-            ->selectRaw('EXISTS (SELECT 1 FROM order_item_staff_splits oiss WHERE oiss.order_item_id = order_items.id) AS has_staff_assignment');
+            ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN EXISTS (SELECT 1 FROM booking_service_staff_splits bss WHERE bss.booking_id = order_items.booking_id) ELSE EXISTS (SELECT 1 FROM order_item_staff_splits oiss WHERE oiss.order_item_id = order_items.id) END AS has_staff_assignment");
 
         $packageDetailQuery = (clone $basePackageQuery())
             ->selectRaw('orders.id AS order_id')
@@ -183,7 +183,12 @@ class MyPosSummaryReportController extends Controller
             ->paginate($perPage);
 
         $productItemIds = collect($paginator->items())
-            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'product')
+            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'product' || ($row->item_type ?? 'product') === 'booking_deposit')
+            ->pluck('order_item_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+        $bookingSettlementItemIds = collect($paginator->items())
+            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'booking_settlement')
             ->pluck('order_item_id')
             ->map(fn ($v) => (int) $v)
             ->all();
@@ -218,6 +223,32 @@ class MyPosSummaryReportController extends Controller
                 ->groupBy('split_key');
 
             $splitsGrouped = $splitsGrouped->merge($productSplitsGrouped);
+        }
+
+        if (! empty($bookingSettlementItemIds)) {
+            $bookingSplitsGrouped = DB::table('order_items')
+                ->join('booking_service_staff_splits', 'booking_service_staff_splits.booking_id', '=', 'order_items.booking_id')
+                ->leftJoin('staffs', 'staffs.id', '=', 'booking_service_staff_splits.staff_id')
+                ->whereIn('order_items.id', $bookingSettlementItemIds)
+                ->selectRaw('order_items.id AS order_item_id')
+                ->selectRaw('booking_service_staff_splits.staff_id')
+                ->selectRaw('staffs.name AS staff_name')
+                ->selectRaw('booking_service_staff_splits.split_percent AS share_percent')
+                ->selectRaw('0 AS commission_rate_snapshot')
+                ->selectRaw('0 AS staff_commission_amount')
+                ->orderBy('booking_service_staff_splits.id')
+                ->get()
+                ->map(fn ($row) => [
+                    'split_key' => sprintf('booking_settlement:%d', (int) $row->order_item_id),
+                    'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
+                    'staff_name' => $row->staff_name,
+                    'share_percent' => (int) $row->share_percent,
+                    'commission_rate_snapshot' => 0.0,
+                    'staff_commission_amount' => 0.0,
+                ])
+                ->groupBy('split_key');
+
+            $splitsGrouped = $splitsGrouped->merge($bookingSplitsGrouped);
         }
 
         if (! empty($packageItemIds)) {
