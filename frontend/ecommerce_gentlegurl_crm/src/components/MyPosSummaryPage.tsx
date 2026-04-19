@@ -65,6 +65,7 @@ const getItemTypeLabel = (itemType?: ReportItemType) => {
 
 const isBookingSettlementItem = (itemType?: ReportItemType) => itemType === 'booking_settlement'
 const isBookingDepositItem = (itemType?: ReportItemType) => itemType === 'booking_deposit'
+const isBookingWorkerSplitItem = (itemType?: ReportItemType) => isBookingSettlementItem(itemType) || isBookingDepositItem(itemType)
 
 const money = (value: number) =>
   value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -766,7 +767,7 @@ export default function MyPosSummaryPage({
 
                 {/* Staff Splits Section - Outside border */}
                 <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-gray-700">{isBookingSettlementItem(selectedRow.item_type) ? 'Assigned Staff' : 'Staff Splits'}</h4>
+                  <h4 className="text-sm font-semibold text-gray-700">{isBookingWorkerSplitItem(selectedRow.item_type) ? 'Assigned Staff' : 'Staff Splits'}</h4>
                   {selectedRow.staff_splits.length === 0 ? (
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-500">
                       No staff splits.
@@ -782,7 +783,7 @@ export default function MyPosSummaryPage({
                             <th className="px-4 py-2 font-semibold text-right text-gray-700">
                               Share %
                             </th>
-                            {!isBookingSettlementItem(selectedRow.item_type) ? (
+                            {!isBookingWorkerSplitItem(selectedRow.item_type) ? (
                               <>
                                 <th className="px-4 py-2 font-semibold text-right text-gray-700">
                                   Rate Snapshot
@@ -803,7 +804,7 @@ export default function MyPosSummaryPage({
                               <td className="px-4 py-2 text-right">
                                 {split.share_percent}%
                               </td>
-                              {!isBookingSettlementItem(selectedRow.item_type) ? (
+                              {!isBookingWorkerSplitItem(selectedRow.item_type) ? (
                                 <>
                                   <td className="px-4 py-2 text-right">
                                     {(Number(split.commission_rate_snapshot) * 100).toFixed(2)}%

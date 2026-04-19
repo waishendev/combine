@@ -183,12 +183,12 @@ class MyPosSummaryReportController extends Controller
             ->paginate($perPage);
 
         $productItemIds = collect($paginator->items())
-            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'product' || ($row->item_type ?? 'product') === 'booking_deposit')
+            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'product')
             ->pluck('order_item_id')
             ->map(fn ($v) => (int) $v)
             ->all();
-        $bookingSettlementItemIds = collect($paginator->items())
-            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'booking_settlement')
+        $bookingWorkerItemIds = collect($paginator->items())
+            ->filter(fn ($row) => in_array(($row->item_type ?? 'product'), ['booking_settlement', 'booking_deposit'], true))
             ->pluck('order_item_id')
             ->map(fn ($v) => (int) $v)
             ->all();
@@ -225,12 +225,13 @@ class MyPosSummaryReportController extends Controller
             $splitsGrouped = $splitsGrouped->merge($productSplitsGrouped);
         }
 
-        if (! empty($bookingSettlementItemIds)) {
+        if (! empty($bookingWorkerItemIds)) {
             $bookingSplitsGrouped = DB::table('order_items')
                 ->join('booking_service_staff_splits', 'booking_service_staff_splits.booking_id', '=', 'order_items.booking_id')
                 ->leftJoin('staffs', 'staffs.id', '=', 'booking_service_staff_splits.staff_id')
-                ->whereIn('order_items.id', $bookingSettlementItemIds)
+                ->whereIn('order_items.id', $bookingWorkerItemIds)
                 ->selectRaw('order_items.id AS order_item_id')
+                ->selectRaw("CASE WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' ELSE 'booking_settlement' END AS item_type")
                 ->selectRaw('booking_service_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('booking_service_staff_splits.split_percent AS share_percent')
@@ -239,7 +240,7 @@ class MyPosSummaryReportController extends Controller
                 ->orderBy('booking_service_staff_splits.id')
                 ->get()
                 ->map(fn ($row) => [
-                    'split_key' => sprintf('booking_settlement:%d', (int) $row->order_item_id),
+                    'split_key' => sprintf('%s:%d', (string) ($row->item_type ?? 'booking_settlement'), (int) $row->order_item_id),
                     'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
                     'staff_name' => $row->staff_name,
                     'share_percent' => (int) $row->share_percent,
