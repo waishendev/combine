@@ -1741,7 +1741,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const json = await res.json().catch(() => null)
       const paged = extractPaged<any>(json)
       const rows = Array.isArray(paged.data) ? paged.data : []
-      setSettlementAppointments(rows)
+      const unpaidRows = rows.filter((row) => {
+        if (!row || typeof row !== 'object') return false
+        const amountDueNow = Number((row as Record<string, unknown>).amount_due_now ?? (row as Record<string, unknown>).balance_due ?? 0)
+        const requiresSettledAmount = Boolean((row as Record<string, unknown>).requires_settled_amount)
+        return requiresSettledAmount || amountDueNow > 0.0001
+      })
+      setSettlementAppointments(unpaidRows)
     } catch {
       setSettlementAppointments([])
     } finally {
