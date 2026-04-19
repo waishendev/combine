@@ -1,6 +1,7 @@
 'use client'
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import Link from 'next/link'
 import OrderViewPanel from './OrderViewPanel'
 type CartItem = {
   id: number
@@ -3585,7 +3586,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
           <p className="mt-2 text-sm text-gray-600 flex items-center gap-2">
@@ -3594,6 +3595,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </svg>
             <span className="font-medium">Barcode Listener Active</span> - System is listening for barcode scans. Scan items to add them to cart automatically.
           </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/pos/appointments"
+            className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
+          >
+            Appointments
+          </Link>
+          <button
+            type="button"
+            onClick={() => void toggleMemberDropdown()}
+            className="rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-50"
+          >
+            Member Quick Lookup
+          </button>
         </div>
       </div>
 
@@ -5611,22 +5627,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                   {(checkoutRequiresMemberOnly || checkoutIdentityMode === 'member') && (
                     <div className="mt-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <label className="text-xs font-semibold text-gray-600">Member</label>
-                        <button
-                          type="button"
-                          disabled={hasCartAppointmentSettlements}
-                          onClick={() => void toggleMemberDropdown()}
-                          className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
-                        >
-                          Member
-                        </button>
-                      </div>
+                      <label className="text-xs font-semibold text-gray-600">Member</label>
                       <div className="mt-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800">
                         {selectedMember
                           ? `${selectedMember.name}${selectedMember.phone ? ` · ${selectedMember.phone}` : ''}${selectedMember.email ? ` · ${selectedMember.email}` : ''}`
                           : 'No member selected yet'}
                       </div>
+                      {!selectedMember ? (
+                        <p className="mt-2 text-[11px] text-gray-500">
+                          Please select member from the top header &quot;Member Quick Lookup&quot; button.
+                        </p>
+                      ) : null}
                     </div>
                   )}
 
