@@ -393,6 +393,10 @@ $protectedRoutes = function () {
     // Staffs
     Route::get('/staffs', [StaffController::class, 'index'])
         ->middleware('permission:staff.view|pos.checkout');
+    Route::get('/staffs/export', [StaffController::class, 'exportCsv'])
+        ->middleware('permission:staff.view');
+    Route::post('/staffs/import', [StaffController::class, 'importCsv'])
+        ->middleware('permission:staff.create|staff.update');
 
     Route::post('/staffs', [StaffController::class, 'store'])
         ->middleware('permission:staff.create');
