@@ -44,7 +44,7 @@ type DetailRow = {
   created_by_phone: string | null
   created_by_email: string | null
   order_item_id: number
-  item_type?: 'product' | 'service_package' | 'booking_deposit' | 'final_settlement' | 'booking_settlement' | 'settlement_services'
+  item_type?: 'product' | 'service_package'
   product_name: string | null
   qty: number
   item_total_price: number
@@ -54,23 +54,8 @@ type DetailRow = {
   staff_splits: StaffSplit[]
 }
 
-const normalizeItemType = (itemType?: string | null) => String(itemType ?? '').trim().toLowerCase()
-const isBookingDepositType = (itemType?: string | null) => {
-  const type = normalizeItemType(itemType)
-  return type === 'booking_deposit' || type === 'deposit'
-}
-const isFinalSettlementType = (itemType?: string | null) => {
-  const type = normalizeItemType(itemType)
-  return type === 'final_settlement' || type === 'booking_settlement' || type === 'settlement_services' || type === 'settlement_service'
-}
-const isBookingRelatedType = (itemType?: string | null) => isBookingDepositType(itemType) || isFinalSettlementType(itemType)
-const getItemTypeLabel = (itemType?: string | null) => {
-  const type = normalizeItemType(itemType)
-  if (type === 'service_package') return 'Service Package'
-  if (isBookingDepositType(type)) return 'Booking Deposit'
-  if (isFinalSettlementType(type)) return 'Final Settlement'
-  return 'Product'
-}
+const getItemTypeLabel = (itemType?: 'product' | 'service_package') =>
+  itemType === 'service_package' ? 'Service Package' : 'Product'
 
 const money = (value: number) =>
   value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
@@ -645,8 +630,6 @@ export default function MyPosSummaryPage({
                         <OfflineOrderActions
                           orderId={row.order_id}
                           channel="offline"
-                          staffActionLabel={isFinalSettlementType(row.item_type) ? 'worker' : 'sales_person'}
-                          hideStaffAction={isBookingDepositType(row.item_type)}
                           onDone={() => {
                             void loadData(currentPage)
                           }}
@@ -772,10 +755,10 @@ export default function MyPosSummaryPage({
 
                 {/* Staff Splits Section - Outside border */}
                 <div className="space-y-3">
-                  <h4 className="text-sm font-semibold text-gray-700">{isBookingRelatedType(selectedRow.item_type) ? 'Assigned Staff' : 'Staff Splits'}</h4>
+                  <h4 className="text-sm font-semibold text-gray-700">Staff Splits</h4>
                   {selectedRow.staff_splits.length === 0 ? (
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 text-center text-gray-500">
-                      {isBookingRelatedType(selectedRow.item_type) ? 'No worker assignment.' : 'No staff splits.'}
+                      No staff splits.
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white shadow-sm">
@@ -783,7 +766,7 @@ export default function MyPosSummaryPage({
                         <thead className="bg-gray-100">
                           <tr>
                             <th className="px-4 py-2 font-semibold text-left text-gray-700">
-                              {isBookingRelatedType(selectedRow.item_type) ? 'Worker' : 'Staff'}
+                              Staff
                             </th>
                             <th className="px-4 py-2 font-semibold text-right text-gray-700">
                               Share %
