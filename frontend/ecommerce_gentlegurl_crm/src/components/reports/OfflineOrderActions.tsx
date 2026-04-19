@@ -14,7 +14,7 @@ type SplitRow = {
 
 type ItemSplitDraft = {
   order_item_id: number
-  item_type: 'product' | 'service_package'
+  item_type: string
   name: string
   qty: number
   unit_amount: number
@@ -26,6 +26,8 @@ type OfflineOrderActionsProps = {
   orderId: number
   channel: string
   currentPaymentMethod?: string | null
+  staffActionLabel?: 'sales_person' | 'worker'
+  hideStaffAction?: boolean
   onDone: () => void
 }
 
@@ -53,7 +55,13 @@ const createSplitRow = (seed?: Partial<SplitRow>): SplitRow => ({
   open: seed?.open ?? false,
 })
 
-export default function OfflineOrderActions({ orderId, channel, currentPaymentMethod, onDone }: OfflineOrderActionsProps) {
+const normalizeType = (value?: string | null) => String(value ?? '').trim().toLowerCase()
+const isFinalSettlementType = (value?: string | null) => {
+  const t = normalizeType(value)
+  return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
+}
+
+export default function OfflineOrderActions({ orderId, channel, currentPaymentMethod, staffActionLabel = 'sales_person', hideStaffAction = false, onDone }: OfflineOrderActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [modal, setModal] = useState<'sales_person' | 'payment_method' | 'void' | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -104,7 +112,8 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
       const items: unknown[] = Array.isArray(draftJson?.data?.items) ? draftJson.data.items : []
       type DraftApiItem = {
         order_item_id?: number
-        item_type?: 'product' | 'service_package'
+        item_type?: string
+        type?: string
         name?: string
         qty?: number
         unit_amount?: number
@@ -124,7 +133,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
 
         return {
           order_item_id: Number(row.order_item_id),
-          item_type: row.item_type === 'service_package' ? 'service_package' : 'product',
+          item_type: row.item_type ?? row.type ?? 'product',
           name: row.name ?? 'Item',
           qty: Number(row.qty ?? 0),
           unit_amount: Number(row.unit_amount ?? 0),
@@ -145,6 +154,9 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
 
   const isOffline = useMemo(() => channel.trim().toLowerCase() === 'offline', [channel])
   if (!isOffline) return null
+  const canShowStaffAction = !hideStaffAction
+  const staffActionButtonLabel = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Sales Person'
+  const staffActionModalTitle = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Item Staff Split'
 
   const closeModal = () => {
     setModal(null)
@@ -278,7 +290,9 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
         </button>
         {menuOpen ? (
           <div className="absolute right-0 z-20 mt-1 w-48 rounded border border-slate-200 bg-white shadow-lg">
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('sales_person'); setMenuOpen(false) }}>Edit Sales Person</button>
+            {canShowStaffAction ? (
+              <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('sales_person'); setMenuOpen(false) }}>{staffActionButtonLabel}</button>
+            ) : null}
             <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('payment_method'); setMenuOpen(false) }}>Edit Payment Method</button>
             <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={() => { setModal('void'); setMenuOpen(false) }}>Void Order</button>
           </div>
@@ -290,7 +304,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
           <div className="absolute inset-0 bg-black/50" onClick={closeModal} />
           <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-lg bg-white shadow-lg" onClick={(e) => e.stopPropagation()}>
             <div className="border-b px-5 py-3">
-              <h3 className="text-base font-semibold">{modal === 'sales_person' ? 'Edit Item Staff Split' : modal === 'payment_method' ? 'Edit Payment Method' : 'Void Offline Order'}</h3>
+              <h3 className="text-base font-semibold">{modal === 'sales_person' ? staffActionModalTitle : modal === 'payment_method' ? 'Edit Payment Method' : 'Void Offline Order'}</h3>
             </div>
 
             <div className="space-y-3 px-5 py-4 text-sm">
@@ -307,6 +321,9 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
                     const detail = item.rows.length > 0
                       ? `${item.rows.length} staff (${total}%)`
                       : 'No staff assigned'
+                    const rowActionLabel = isFinalSettlementType(item.item_type)
+                      ? item.rows.length > 0 ? 'Edit Worker' : 'Assign Worker'
+                      : item.rows.length > 0 ? 'Edit Staff' : 'Assign Staff'
                     return (
                       <div key={item.order_item_id} className="grid grid-cols-4 gap-4 border-t border-slate-200 px-4 py-4">
                         <div>
@@ -316,7 +333,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
                         <div>
                           <p className="text-sm text-slate-700">{detail}</p>
                           <button type="button" className="mt-2 inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white" onClick={() => setEditingItemId(item.order_item_id)}>
-                            <i className="fa-solid fa-plus" /> {item.rows.length > 0 ? 'Edit Staff' : 'Assign Staff'}
+                            <i className="fa-solid fa-plus" /> {rowActionLabel}
                           </button>
                         </div>
                         <div className="text-slate-700">RM {money(item.unit_amount)}</div>
