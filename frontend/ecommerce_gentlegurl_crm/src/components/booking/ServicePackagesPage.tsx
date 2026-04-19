@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import PaginationControls from '../PaginationControls'
 import TableEmptyState from '../TableEmptyState'
@@ -53,6 +53,9 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
   const [createOpen, setCreateOpen] = useState(false)
   const [editingPackageId, setEditingPackageId] = useState<number | null>(null)
   const [deletingPackage, setDeletingPackage] = useState<ServicePackage | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const [isImporting, setIsImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const canCreate = permissions.includes('service-packages.create')
   const canUpdate = permissions.includes('service-packages.update')
@@ -157,6 +160,67 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
   const totalPages = meta.last_page || 1
   const colCount = showActions ? 6 : 5
 
+  const handleExportCsv = async () => {
+    setIsExporting(true)
+    try {
+      const res = await fetch('/api/proxy/service-packages/export', { cache: 'no-store' })
+      if (!res.ok) {
+        throw new Error('Export CSV failed.')
+      }
+
+      const blob = await res.blob()
+      const disposition = res.headers.get('content-disposition')
+      const fileNameMatch = disposition?.match(/filename="?([^";]+)"?/) ?? null
+      const fileName = fileNameMatch?.[1] ?? `booking-service-packages-export_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error(error)
+      window.alert('Export CSV failed. Please retry.')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleImportCsvFile = async (file: File) => {
+    setIsImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+
+      const res = await fetch('/api/proxy/service-packages/import', {
+        method: 'POST',
+        body: formData,
+      })
+
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        const message =
+          json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
+            ? json.message
+            : 'Import CSV failed. Please retry.'
+        throw new Error(message)
+      }
+
+      await fetchPackages()
+      window.alert('CSV import completed successfully.')
+    } catch (error) {
+      console.error(error)
+      window.alert(error instanceof Error ? error.message : 'Import CSV failed. Please retry.')
+    } finally {
+      setIsImporting(false)
+      if (fileInputRef.current) {
+        fileInputRef.current.value = ''
+      }
+    }
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
@@ -174,6 +238,34 @@ export default function ServicePackagesPage({ permissions = [] }: ServicePackage
         </div>
 
         <div className="flex items-center gap-3">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            className="hidden"
+            onChange={(event) => {
+              const file = event.target.files?.[0]
+              if (file) {
+                void handleImportCsvFile(file)
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="bg-violet-500 hover:bg-violet-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+            onClick={handleExportCsv}
+            disabled={loading || isExporting || isImporting}
+          >
+            {isExporting ? 'Exporting...' : 'Export CSV'}
+          </button>
+          <button
+            type="button"
+            className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded text-sm disabled:opacity-50"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading || isExporting || isImporting}
+          >
+            {isImporting ? 'Importing...' : 'Import CSV'}
+          </button>
           <label htmlFor="pageSize" className="text-sm text-gray-700">
             {t('common.show')}
           </label>
