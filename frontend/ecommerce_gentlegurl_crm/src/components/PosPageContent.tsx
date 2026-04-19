@@ -660,7 +660,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
-  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package'; id: number } | null>(null)
+  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement'; id: number } | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [itemSplitError, setItemSplitError] = useState<string | null>(null)
@@ -3577,6 +3577,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return `${assignment.splits.length} staff (${total}%)`
   }
 
+  const getSettlementWorkerSummary = useCallback((settlement: AppointmentSettlementCartItem) => {
+    const splitSummary = formatSettlementStaffLabel(settlement)
+    return splitSummary === '—' ? 'Staff: —' : `Staff: ${splitSummary}`
+  }, [formatSettlementStaffLabel])
+
   const createDraftRow = (seed?: Partial<CheckoutItemSplitDraft>): CheckoutItemSplitDraft => ({
     id: `${Date.now()}_${Math.random().toString(16).slice(2)}`,
     staff_id: seed?.staff_id ?? null,
@@ -3682,6 +3687,35 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitEditorOpen(true)
   }
 
+  const openSettlementSplitEditor = async (settlement: AppointmentSettlementCartItem) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+
+    const rows = (settlement.staff_splits ?? [])
+      .map((split) => {
+        const staffId = Number(split.staff_id)
+        const sharePercent = Number(split.share_percent)
+        if (staffId <= 0 || sharePercent <= 0) return null
+        const selected = nextStaffs.find((staff) => staff.id === staffId)
+        return createDraftRow({
+          staff_id: staffId,
+          share_percent: sharePercent,
+          search: selected ? getStaffInputLabel(selected) : (split.staff_name ?? ''),
+          options: nextStaffs,
+        })
+      })
+      .filter((row): row is CheckoutItemSplitDraft => row != null)
+
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitEditorTarget({ type: 'settlement', id: settlement.id })
+    setItemSplitAutoBalance(true)
+    setItemSplitError(null)
+    setItemSplitEditorOpen(true)
+  }
+
   const setDraftRowSearch = (rowId: string, value: string) => {
     setItemSplitDraftRows((prev) => prev.map((row) => row.id === rowId ? { ...row, search: value, loading: true, open: true } : row))
     if (staffSearchTimerRef.current[rowId]) clearTimeout(staffSearchTimerRef.current[rowId])
@@ -3715,11 +3749,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           splits: mappedSplits,
         }
       }))
-    } else {
+    } else if (itemSplitEditorTarget.type === 'package') {
       setPackageCheckoutSplits((prev) => ({
         ...prev,
         [itemSplitEditorTarget.id]: mappedSplits,
       }))
+    } else {
+      setCart((prev) => {
+        if (!prev) return prev
+        return {
+          ...prev,
+          appointment_settlement_items: (prev.appointment_settlement_items ?? []).map((settlement) => {
+            if (settlement.id !== itemSplitEditorTarget.id) return settlement
+            return {
+              ...settlement,
+              staff_splits: mappedSplits.map((split) => ({
+                staff_id: split.staff_id,
+                share_percent: split.share_percent,
+                staff_name: activeStaffs.find((staff) => staff.id === split.staff_id)?.name ?? null,
+              })),
+            }
+          }),
+        }
+      })
     }
 
     setItemSplitEditorOpen(false)
@@ -5718,9 +5770,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
-                              <p className="text-xs leading-relaxed text-gray-700">
-                                {`Staff: ${formatSettlementStaffLabel(settlement)}`}
-                              </p>
+                              <div className="space-y-2">
+                                <p className="text-xs leading-relaxed text-gray-700">{getSettlementWorkerSummary(settlement)}</p>
+                                <button
+                                  type="button"
+                                  onClick={() => void openSettlementSplitEditor(settlement)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-500 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-cyan-600 hover:to-cyan-700"
+                                >
+                                  Edit Worker
+                                </button>
+                              </div>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
                             <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
@@ -6142,7 +6201,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
           <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
-              <h5 className="text-lg font-bold text-gray-900">Item Staff Split</h5>
+              <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : 'Item Staff Split'}</h5>
               <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="text-2xl leading-none text-gray-500">×</button>
             </div>
 
