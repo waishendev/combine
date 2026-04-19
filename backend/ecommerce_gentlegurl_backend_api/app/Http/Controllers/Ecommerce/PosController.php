@@ -2381,8 +2381,19 @@ class PosController extends Controller
             'package_items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $cart = $this->resolveCart((int) $request->user()->id)->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']);
-        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty()) {
+        $cart = $this->resolveCart((int) $request->user()->id)->load([
+            'items.variant.product',
+            'items.product',
+            'serviceItems.bookingService',
+            'serviceItems.assignedStaff',
+            'serviceItems.customer:id,name',
+            'packageItems.servicePackage',
+            'packageItems.customer:id,name',
+            'appointmentSettlementItems.booking.customer:id,name',
+            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+            'appointmentSettlementItems.booking.staff:id,name',
+        ]);
+        if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty() && $cart->appointmentSettlementItems->isEmpty()) {
             return $this->respondError(__('POS cart is empty.'), 422);
         }
 
