@@ -4,12 +4,13 @@ This file documents the actual runtime flow in the current code.
 
 ## A. Booking commission flow
 
-### A1) Booking moves into COMPLETED
+### A1) Booking becomes commission-eligible (COMPLETED + PAID)
 
 1. `AppointmentController` updates booking status.
-2. If status becomes `COMPLETED`, controller calls `StaffCommissionService::applyCompletedBooking()`.
+2. When booking reaches `COMPLETED + PAID`, controller/service calls `StaffCommissionService::syncBookingCommission()` (which internally applies booking commission).
 3. Service checks:
    - booking status is `COMPLETED`
+   - booking payment status is `PAID`
    - has `staff_id`
    - not already counted (`commission_counted_at` must be null)
 4. Service resolves month from `completed_at` (or `now()` fallback).
@@ -19,9 +20,9 @@ This file documents the actual runtime flow in the current code.
 8. If row is open: run `recalculateMonthly()`.
 9. Mark booking `commission_counted_at`.
 
-### A2) Booking leaves COMPLETED
+### A2) Booking leaves commission-eligible state
 
-1. In status transition from `COMPLETED` to non-completed, controller calls `reverseCompletedBooking()`.
+1. If booking is no longer `COMPLETED + PAID` (status changed away from completed, or payment is no longer paid), controller/service calls `syncBookingCommission()` which internally reverses counted commission when needed.
 2. Service finds the same month row by booking completed date.
 3. Subtracts service price, decrements count (floor at 0).
 4. If row is `FROZEN`: stop.

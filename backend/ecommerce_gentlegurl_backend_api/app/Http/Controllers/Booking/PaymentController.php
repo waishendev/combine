@@ -9,6 +9,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\PaymentGateway;
+use App\Services\Booking\StaffCommissionService;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\BillplzBaseUrl;
 use App\Support\WorkspaceType;
@@ -21,6 +22,7 @@ class PaymentController extends Controller
 {
     public function __construct(
         protected BillplzConfigResolver $configResolver,
+        protected StaffCommissionService $staffCommissionService,
     ) {
     }
 
@@ -390,6 +392,7 @@ class PaymentController extends Controller
                 'status' => 'CONFIRMED',
                 'hold_expires_at' => null,
             ]);
+            $this->staffCommissionService->syncBookingCommission($booking->fresh('service'));
 
             BookingLog::create([
                 'booking_id' => $booking->id,
@@ -407,6 +410,7 @@ class PaymentController extends Controller
             ]);
 
             $booking->update(['payment_status' => 'FAILED']);
+            $this->staffCommissionService->syncBookingCommission($booking->fresh('service'));
         }
 
         return $this->respond([
@@ -463,6 +467,7 @@ class PaymentController extends Controller
                 'status' => 'CONFIRMED',
                 'hold_expires_at' => null,
             ]);
+            $this->staffCommissionService->syncBookingCommission($booking->fresh('service'));
 
             BookingLog::create([
                 'booking_id' => $booking->id,
@@ -485,6 +490,7 @@ class PaymentController extends Controller
             ]);
 
             $booking->update(['payment_status' => 'FAILED']);
+            $this->staffCommissionService->syncBookingCommission($booking->fresh('service'));
 
             Log::info('Booking Billplz callback payment failed', [
                 'booking_id' => $booking->id,

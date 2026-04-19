@@ -8,7 +8,7 @@ For a target `staff_id + year + month`:
 
 ```text
 month_window = [start_of_month, start_of_next_month)
-bookings = COMPLETED bookings of that staff within month_window
+bookings = COMPLETED + PAID bookings of that staff within month_window
 
 total_sales   = sum(service.service_price)
 booking_count = count(bookings)
