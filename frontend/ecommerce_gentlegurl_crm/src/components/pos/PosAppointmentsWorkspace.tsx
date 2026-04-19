@@ -6,6 +6,8 @@ import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
+  formatAppointmentCustomerDisplayName,
+  formatAppointmentReceiptDefaultEmail,
   formatBookingAddonSummary,
   formatDateTimeRange,
   formatDurationFromRange,
@@ -841,7 +843,7 @@ export default function PosAppointmentsWorkspace({
         change_amount:
           isZeroPackageFinalize ? 0 : appointmentPaymentMethod === 'cash' ? Math.max(0, cashReceivedAmount - dueAmount) : 0,
       })
-      setAppointmentReceiptEmail(appointmentDetail?.customer?.email?.trim() ?? '')
+      setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)
       setAppointmentReceiptCooldownUntil(0)
       setAppointmentQrCodeFullscreen(false)
@@ -1661,7 +1663,9 @@ export default function PosAppointmentsWorkspace({
                         ) : null}
                       </div>
                     </div>
-                    <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">{appointmentDetail.customer?.name ?? '—'}</p>
+                    <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">
+                      {formatAppointmentCustomerDisplayName(appointmentDetail)}
+                    </p>
 
                     <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-900">Services</p>
@@ -2483,7 +2487,7 @@ export default function PosAppointmentsWorkspace({
                 <span className="font-semibold">Booking:</span> {appointmentDetail.booking_code}
               </p>
               <p>
-                <span className="font-semibold">Customer:</span> {appointmentDetail.customer?.name ?? '-'}
+                <span className="font-semibold">Customer:</span> {formatAppointmentCustomerDisplayName(appointmentDetail)}
               </p>
               <p>
                 <span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}
@@ -2765,7 +2769,7 @@ export default function PosAppointmentsWorkspace({
               ) : null}
               <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                 <p className="font-semibold text-gray-900">{appointmentDetail.booking_code}</p>
-                <p className="text-xs text-gray-600">{appointmentDetail.customer?.name ?? '-'}</p>
+                <p className="text-xs text-gray-600">{formatAppointmentCustomerDisplayName(appointmentDetail)}</p>
                 <p className="text-xs text-gray-600">
                   Amount Due:{' '}
                   <span className="font-semibold text-emerald-700">RM {appointmentDueAmount.toFixed(2)}</span>

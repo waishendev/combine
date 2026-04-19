@@ -126,7 +126,7 @@ class AppointmentController extends Controller
 
             if ($status === 'COMPLETED') {
                 $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
-                $this->staffCommissionService->applyCompletedBooking($booking->loadMissing('service'));
+                $this->staffCommissionService->syncBookingCommissionState($booking->loadMissing('service'));
             }
 
             if (in_array($status, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW', 'NOTIFIED_CANCELLATION'], true)) {

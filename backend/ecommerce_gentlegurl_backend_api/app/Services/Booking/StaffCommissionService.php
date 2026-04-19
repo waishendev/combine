@@ -67,9 +67,40 @@ class StaffCommissionService
         return $results;
     }
 
+    /**
+     * Booking commission rows count only COMPLETED appointments that are fully paid (payment_status = PAID).
+     */
+    public function isBookingCommissionCountable(Booking $booking): bool
+    {
+        if ($booking->status !== 'COMPLETED' || ! $booking->staff_id) {
+            return false;
+        }
+
+        return strtoupper((string) ($booking->payment_status ?? '')) === 'PAID';
+    }
+
+    /**
+     * Keeps incremental booking commission in sync after status/payment changes:
+     * counts when COMPLETED + PAID, removes when eligibility is lost but commission_counted_at is still set.
+     */
+    public function syncBookingCommissionState(Booking $booking): void
+    {
+        $booking->loadMissing('service');
+
+        if ($this->isBookingCommissionCountable($booking)) {
+            $this->applyCompletedBooking($booking);
+
+            return;
+        }
+
+        if ($booking->commission_counted_at) {
+            $this->reverseCompletedBooking($booking);
+        }
+    }
+
     public function applyCompletedBooking(Booking $booking): void
     {
-        if ($booking->status !== 'COMPLETED' || !$booking->staff_id) {
+        if (! $this->isBookingCommissionCountable($booking)) {
             return;
         }
 
@@ -187,6 +218,7 @@ class StaffCommissionService
             ->with('service:id,service_price')
             ->where('staff_id', $staffId)
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<', $nextMonthStart)
             ->get();
@@ -229,6 +261,7 @@ class StaffCommissionService
 
         $staffIds = Booking::query()
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->where('completed_at', '>=', $start)
             ->where('completed_at', '<', $nextMonthStart)
             ->pluck('staff_id')
@@ -399,6 +432,7 @@ class StaffCommissionService
     {
         return Booking::query()
             ->where('status', 'COMPLETED')
+            ->where('payment_status', 'PAID')
             ->when($staffId, fn ($query) => $query->where('staff_id', $staffId))
             ->whereNotNull('completed_at')
             ->selectRaw('EXTRACT(YEAR FROM completed_at)::int AS year')

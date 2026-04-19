@@ -4,12 +4,15 @@ This file documents the actual runtime flow in the current code.
 
 ## A. Booking commission flow
 
-### A1) Booking moves into COMPLETED
+### A1) Booking is eligible to count toward monthly booking sales (realtime “apply” path)
 
-1. `AppointmentController` updates booking status.
-2. If status becomes `COMPLETED`, controller calls `StaffCommissionService::applyCompletedBooking()`.
-3. Service checks:
+A booking is only counted when it is **settled for commission purposes**: status **`COMPLETED`**, payment **`PAID`**, and `staff_id` present. `COMPLETED` + **`UNPAID`** does **not** count.
+
+1. `AppointmentController` updates booking status. If status becomes `COMPLETED`, it calls `StaffCommissionService::syncBookingCommissionState()`.
+2. `PosController` and related flows call `syncBookingCommissionState()` when a completed appointment’s **payment** becomes `PAID` (e.g. collect payment, package-covered finalisation) or when eligibility is lost (e.g. void); `sync` either applies or reverses the incremental count.
+3. `applyCompletedBooking()` (invoked from `sync` when eligible) checks:
    - booking status is `COMPLETED`
+   - `payment_status` is `PAID`
    - has `staff_id`
    - not already counted (`commission_counted_at` must be null)
 4. Service resolves month from `completed_at` (or `now()` fallback).

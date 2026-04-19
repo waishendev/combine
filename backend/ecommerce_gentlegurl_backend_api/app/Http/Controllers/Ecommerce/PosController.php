@@ -34,6 +34,7 @@ use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
 use App\Models\Promotion;
 use App\Models\Ecommerce\OrderVoucher;
@@ -61,6 +62,7 @@ class PosController extends Controller
         protected InvoiceService $invoiceService,
         protected CustomerServicePackageService $customerServicePackageService,
         protected BookingAvailabilityService $availabilityService,
+        protected StaffCommissionService $staffCommissionService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -296,7 +298,10 @@ class PosController extends Controller
             $builder->where(function ($q) use ($query) {
                 $q->where('booking_code', 'like', "%{$query}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$query}%"))
-                    ->orWhereHas('service', fn ($sq) => $sq->where('name', 'like', "%{$query}%"));
+                    ->orWhereHas('service', fn ($sq) => $sq->where('name', 'like', "%{$query}%"))
+                    ->orWhere('guest_name', 'like', "%{$query}%")
+                    ->orWhere('guest_phone', 'like', "%{$query}%")
+                    ->orWhere('guest_email', 'like', "%{$query}%");
             });
         }
 
@@ -340,7 +345,7 @@ class PosController extends Controller
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName : '-')),
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -435,18 +440,27 @@ class PosController extends Controller
                 'service_commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
             ])->values();
 
+        $guestName = trim((string) ($booking->guest_name ?? ''));
+        $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+        $guestEmail = trim((string) ($booking->guest_email ?? ''));
+
         return $this->respond([
             'id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
-            'customer' => [
-                'id' => (int) ($booking->customer?->id ?? 0),
-                'name' => (string) ($booking->customer?->name ?? '-'),
-                'phone' => $booking->customer?->phone,
-                'email' => $booking->customer?->email,
-            ],
+            'customer' => $booking->customer_id
+                ? [
+                    'id' => (int) $booking->customer_id,
+                    'name' => (string) ($booking->customer?->name ?? ''),
+                    'phone' => $booking->customer?->phone,
+                    'email' => $booking->customer?->email,
+                ]
+                : null,
+            'guest_name' => $guestName !== '' ? $guestName : null,
+            'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
+            'guest_email' => $guestEmail !== '' ? $guestEmail : null,
             'service' => [
                 'id' => (int) ($booking->service?->id ?? 0),
                 'name' => (string) ($booking->service?->name ?? '-'),
@@ -536,8 +550,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
-        if (! $booking->customer_id || ! $booking->service_id) {
-            return $this->respondError(__('Appointment must have customer and service before settlement.'), 422);
+        if (! $this->bookingEligibleForPosSettlement($booking)) {
+            return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
         }
 
         if (($booking->service?->price_mode ?? 'fixed') === 'range' && $booking->settled_service_amount === null) {
@@ -561,7 +575,7 @@ class PosController extends Controller
 
             $order = Order::query()->create([
                 'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-                'customer_id' => (int) $booking->customer_id,
+                'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                 'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
@@ -633,6 +647,8 @@ class PosController extends Controller
             $booking->save();
         }
 
+        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
+
         return $this->respond([
             'order_id' => (int) $order->id,
             'order_number' => (string) $order->order_number,
@@ -651,8 +667,8 @@ class PosController extends Controller
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
-        if (! $booking->customer_id || ! $booking->service_id) {
-            return $this->respondError(__('Appointment must have customer and service before settlement.'), 422);
+        if (! $this->bookingEligibleForPosSettlement($booking)) {
+            return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
         }
 
         if ((string) $booking->status !== 'COMPLETED') {
@@ -683,7 +699,7 @@ class PosController extends Controller
             [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $validated, $orderPaymentService) {
                 $order = Order::query()->create([
                     'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
-                    'customer_id' => (int) $booking->customer_id,
+                    'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
                     'created_by_user_id' => $request->user()->id,
                     'status' => 'completed',
                     'payment_status' => 'paid',
@@ -855,6 +871,8 @@ class PosController extends Controller
                 $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
             }
         });
+
+        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
@@ -3159,6 +3177,8 @@ class PosController extends Controller
 
                 $booking->payment_status = 'PAID';
                 $booking->save();
+
+                $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
             }
 
             $order->load(['items', 'customer']);
@@ -3548,7 +3568,7 @@ class PosController extends Controller
                 'booking_service_id' => (int) ($booking->service_id ?? 0),
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName : '-')),
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -3994,10 +4014,30 @@ class PosController extends Controller
         $cart->save();
     }
 
+    /**
+     * Member-linked booking, or guest with name plus phone or email; service required. Used for POS settlement orders.
+     */
+    protected function bookingEligibleForPosSettlement(Booking $booking): bool
+    {
+        if (! $booking->service_id) {
+            return false;
+        }
+        if ((int) $booking->customer_id > 0) {
+            return true;
+        }
+
+        $name = trim((string) ($booking->guest_name ?? ''));
+        $phone = trim((string) ($booking->guest_phone ?? ''));
+        $email = trim((string) ($booking->guest_email ?? ''));
+
+        return $name !== '' && ($phone !== '' || $email !== '');
+    }
+
     protected function resolveAppointmentSnapshot(Booking $booking): array
     {
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $receiptHistory = $this->resolveAppointmentPaymentHistory((int) $booking->id);
+        $guestName = trim((string) ($booking->guest_name ?? ''));
 
         return [
             'id' => (int) $booking->id,
@@ -4005,7 +4045,9 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
-            'customer_name' => (string) ($booking->customer?->name ?? '-'),
+            'customer_name' => (string) (($booking->customer?->name ?? '') !== ''
+                ? $booking->customer?->name
+                : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
             'service_name' => (string) ($booking->service?->name ?? '-'),
             'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
             'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
@@ -4321,6 +4363,8 @@ class PosController extends Controller
         $booking->save();
 
         $this->customerServicePackageService->consumeReservedClaimsForBooking((int) $booking->id);
+
+        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
     }
 
 

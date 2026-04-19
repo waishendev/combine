@@ -47,7 +47,11 @@ export type PosAppointmentDetail = {
   status: string
   appointment_start_at?: string | null
   appointment_end_at?: string | null
-  customer?: { id: number; name: string; phone?: string | null; email?: string | null }
+  /** Present when booked under a member; guest walk-ins use `guest_*` instead. */
+  customer?: { id: number; name: string; phone?: string | null; email?: string | null } | null
+  guest_name?: string | null
+  guest_phone?: string | null
+  guest_email?: string | null
   service?: { id: number; name: string; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; split_percent: number }>

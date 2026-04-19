@@ -337,6 +337,8 @@ class OfflineOrderManagementService
                     $booking->notes = trim((string) $booking->notes . "\n[VOID REMARK] {$remark}");
                     $booking->save();
 
+                    $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
+
                     $this->log('appointment', (int) $booking->id, 'void_order', $beforeBooking, [
                         'status' => $booking->status,
                         'payment_status' => $booking->payment_status,

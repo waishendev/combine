@@ -1,4 +1,4 @@
-import type { PosAppointmentListItem } from './posAppointmentTypes'
+import type { PosAppointmentDetail, PosAppointmentListItem } from './posAppointmentTypes'
 
 export type { PosAppointmentListItem as PosAppointmentRow } from './posAppointmentTypes'
 
@@ -195,4 +195,17 @@ export function formatDurationFromRange(startAt?: string | null, endAt?: string 
   const h = Math.floor(totalMin / 60)
   const m = totalMin % 60
   return m > 0 ? `${h}h ${m}m` : `${h}h`
+}
+
+/** Member name, or `Name (GUEST)` when the booking has no linked customer row. */
+export function formatAppointmentCustomerDisplayName(detail: PosAppointmentDetail | null | undefined): string {
+  const memberName = detail?.customer?.name?.trim()
+  if (memberName && memberName !== '-') return memberName
+  const guest = detail?.guest_name?.trim()
+  if (guest) return `${guest} (GUEST)`
+  return '—'
+}
+
+export function formatAppointmentReceiptDefaultEmail(detail: PosAppointmentDetail | null | undefined): string {
+  return detail?.customer?.email?.trim() || detail?.guest_email?.trim() || ''
 }
