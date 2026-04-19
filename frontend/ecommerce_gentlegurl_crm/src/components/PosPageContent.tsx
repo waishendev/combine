@@ -2436,6 +2436,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void fetchUnpaidCompletedAppointments('')
   }, [fetchActiveStaffs, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
 
+  useEffect(() => {
+    const refreshSettlementList = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      void fetchUnpaidCompletedAppointments(settlementQuery)
+    }
+
+    window.addEventListener('focus', refreshSettlementList)
+    document.addEventListener('visibilitychange', refreshSettlementList)
+
+    return () => {
+      window.removeEventListener('focus', refreshSettlementList)
+      document.removeEventListener('visibilitychange', refreshSettlementList)
+    }
+  }, [fetchUnpaidCompletedAppointments, settlementQuery])
+
   const filteredServices = useMemo(() => {
     const keyword = serviceQuery.trim().toLowerCase()
     if (!keyword) return services
@@ -3142,6 +3157,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setQrProofFileName(null)
     setCheckoutConfirmationOpen(false)
     setCheckingOut(false)
+    void fetchUnpaidCompletedAppointments(settlementQuery)
     // Don't show toast, will show success modal instead
     focusScanner()
   }
