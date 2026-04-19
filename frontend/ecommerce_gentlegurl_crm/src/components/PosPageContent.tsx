@@ -3367,6 +3367,32 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!selectedMember?.id) return
+    if (selectedMember.phone && selectedMember.phone.trim()) return
+
+    let cancelled = false
+    const run = async () => {
+      const hydrated = await hydrateMemberProfile(selectedMember)
+      if (cancelled) return
+      setSelectedMember((previous) => {
+        if (!previous || previous.id !== hydrated.id) return previous
+        return {
+          ...previous,
+          name: hydrated.name || previous.name,
+          phone: hydrated.phone ?? previous.phone ?? null,
+          email: hydrated.email ?? previous.email ?? null,
+          member_code: hydrated.member_code ?? previous.member_code ?? null,
+        }
+      })
+    }
+
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [hydrateMemberProfile, selectedMember])
+
   /** Product-only: clear optional member + guest fields (same layout as booking services + Clear) */
   const clearOptionalProductSaleContext = useCallback(async () => {
     const shouldRemoveCurrentVoucher = Boolean(appliedVoucher && !appliedVoucher.customer_voucher_id)
