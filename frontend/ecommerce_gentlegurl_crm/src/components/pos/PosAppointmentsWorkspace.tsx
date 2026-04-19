@@ -219,6 +219,7 @@ export default function PosAppointmentsWorkspace({
   const [editSelectedAddonIds, setEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [editSettledAmount, setEditSettledAmount] = useState('')
   const [editStaffSplits, setEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
+  const [editStaffSplitAutoBalance, setEditStaffSplitAutoBalance] = useState(true)
   const [editAddonOptionsLoading, setEditAddonOptionsLoading] = useState(false)
   const [appointmentRescheduleOpen, setAppointmentRescheduleOpen] = useState(false)
   const [appointmentRescheduleStaffId, setAppointmentRescheduleStaffId] = useState<number | null>(null)
@@ -896,6 +897,7 @@ export default function PosAppointmentsWorkspace({
 
     const settled = appointmentDetail.settled_service_amount
     setEditSettledAmount(settled != null ? String(settled) : '')
+    setEditStaffSplitAutoBalance(true)
     const initialSplits = (appointmentDetail.staff_splits ?? [])
       .map((split) => ({
         staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
@@ -903,7 +905,7 @@ export default function PosAppointmentsWorkspace({
       }))
       .filter((split) => split.staff_id != null)
     if (initialSplits.length > 0) {
-      setEditStaffSplits(initialSplits)
+      setEditStaffSplits(rebalanceEditSettlementPrimaryShare(initialSplits))
     } else {
       setEditStaffSplits(appointmentDetail.staff?.id ? [{ staff_id: appointmentDetail.staff.id, share_percent: '100' }] : [])
     }
@@ -919,7 +921,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditAddonOptionsLoading(false)
     }
-  }, [appointmentDetail])
+  }, [appointmentDetail, rebalanceEditSettlementPrimaryShare])
 
   const toggleEditAddon = useCallback((optionId: number) => {
     setEditSelectedAddonIds((prev) => {
@@ -932,6 +934,31 @@ export default function PosAppointmentsWorkspace({
       return next
     })
   }, [])
+
+  const rebalanceEditSettlementPrimaryShare = useCallback((rows: Array<{ staff_id: number | null; share_percent: string }>) => {
+    if (rows.length === 0) return rows
+    const otherTotal = rows.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10) || 0), 0)
+    const primaryShare = Math.max(0, 100 - otherTotal)
+    return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
+  }, [])
+
+  const updateEditSettlementSplitShare = useCallback((index: number, value: string) => {
+    setEditSettlementError(null)
+    setEditStaffSplits((prev) => {
+      const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
+      if (!editStaffSplitAutoBalance || index === 0) return next
+      return rebalanceEditSettlementPrimaryShare(next)
+    })
+  }, [editStaffSplitAutoBalance, rebalanceEditSettlementPrimaryShare])
+
+  const removeEditSettlementSplitRow = useCallback((index: number) => {
+    setEditSettlementError(null)
+    setEditStaffSplits((prev) => {
+      const next = prev.filter((_, rowIdx) => rowIdx !== index)
+      if (!editStaffSplitAutoBalance) return next
+      return rebalanceEditSettlementPrimaryShare(next)
+    })
+  }, [editStaffSplitAutoBalance, rebalanceEditSettlementPrimaryShare])
 
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -2715,12 +2742,31 @@ export default function PosAppointmentsWorkspace({
                   <p className="text-sm font-bold text-gray-900">Staff Split</p>
                   <button
                     type="button"
-                    onClick={() => setEditStaffSplits((prev) => [...prev, { staff_id: null, share_percent: '' }])}
+                    onClick={() => setEditStaffSplits((prev) => {
+                      const next = [...prev, { staff_id: null, share_percent: '' }]
+                      if (!editStaffSplitAutoBalance) return next
+                      return rebalanceEditSettlementPrimaryShare(next)
+                    })}
                     className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
                   >
                     + Add Staff
                   </button>
                 </div>
+                <label className="mb-2 flex items-center gap-2 text-xs font-semibold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={editStaffSplitAutoBalance}
+                    onChange={(e) => {
+                      const checked = e.target.checked
+                      setEditStaffSplitAutoBalance(checked)
+                      if (checked) {
+                        setEditStaffSplits((prev) => rebalanceEditSettlementPrimaryShare(prev))
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                  />
+                  Auto Balance (lock first row, auto adjust to 100%)
+                </label>
                 <div className="space-y-2">
                   {editStaffSplits.map((split, idx) => (
                     <div key={`split-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
@@ -2744,10 +2790,8 @@ export default function PosAppointmentsWorkspace({
                           min={1}
                           max={100}
                           value={split.share_percent}
-                          onChange={(e) => {
-                            setEditSettlementError(null)
-                            setEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, share_percent: e.target.value } : row)))
-                          }}
+                          disabled={editStaffSplitAutoBalance && idx === 0}
+                          onChange={(e) => updateEditSettlementSplitShare(idx, e.target.value)}
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 pr-7 text-sm"
                         />
                         <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
@@ -2755,7 +2799,7 @@ export default function PosAppointmentsWorkspace({
                       <button
                         type="button"
                         disabled={editStaffSplits.length <= 1}
-                        onClick={() => setEditStaffSplits((prev) => prev.filter((_, rowIdx) => rowIdx !== idx))}
+                        onClick={() => removeEditSettlementSplitRow(idx)}
                         className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40"
                       >
                         Remove
