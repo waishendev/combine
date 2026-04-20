@@ -109,7 +109,7 @@ class StaffCommissionService
         }
 
         $completedAt = $booking->completed_at ?: now();
-        $servicePrice = (float) optional($booking->service)->service_price;
+        $servicePrice = $this->resolveBookingCommissionableNetAmount((int) $booking->id, (float) optional($booking->service)->service_price);
 
         $splits = $this->resolveBookingStaffSplits($booking);
         if ($splits->isEmpty()) {
@@ -149,7 +149,7 @@ class StaffCommissionService
         }
 
         $completedAt = $booking->completed_at ?: Carbon::parse($booking->commission_counted_at);
-        $servicePrice = (float) optional($booking->service)->service_price;
+        $servicePrice = $this->resolveBookingCommissionableNetAmount((int) $booking->id, (float) optional($booking->service)->service_price);
         $splits = $this->resolveBookingStaffSplits($booking);
         if ($splits->isEmpty()) {
             $booking->forceFill(['commission_counted_at' => null])->save();
@@ -245,10 +245,11 @@ class StaffCommissionService
             ->get(['booking_id', 'staff_id', 'split_percent'])
             ->groupBy('booking_id');
 
+        $bookingNetTotals = $this->resolveBookingNetTotalsByIds($bookings->pluck('id')->map(fn ($id) => (int) $id)->all());
         $totalSales = 0.0;
         $bookingCount = 0;
         foreach ($bookings as $booking) {
-            $servicePrice = (float) optional($booking->service)->service_price;
+            $servicePrice = (float) ($bookingNetTotals[(int) $booking->id] ?? (float) optional($booking->service)->service_price);
             $splits = collect($splitRows->get($booking->id, []))
                 ->map(fn ($row) => ['staff_id' => (int) ($row->staff_id ?? 0), 'share_percent' => (int) ($row->split_percent ?? 0)])
                 ->filter(fn ($row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
@@ -456,7 +457,58 @@ class StaffCommissionService
 
     private function effectiveLineTotalExpr(): string
     {
-        return 'COALESCE(order_items.effective_line_total, order_items.line_total)::numeric';
+        return 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+    }
+
+    private function resolveBookingCommissionableNetAmount(int $bookingId, float $fallback): float
+    {
+        if ($bookingId <= 0) {
+            return round(max(0, $fallback), 2);
+        }
+
+        $net = (float) DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('order_items.booking_id', $bookingId)
+            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at')
+            ->selectRaw('COALESCE(SUM(COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)), 0) as total')
+            ->value('total');
+
+        if ($net > 0.0001) {
+            return round($net, 2);
+        }
+
+        return round(max(0, $fallback), 2);
+    }
+
+    private function resolveBookingNetTotalsByIds(array $bookingIds): array
+    {
+        $ids = collect($bookingIds)->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
+        if (empty($ids)) {
+            return [];
+        }
+
+        return DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->whereIn('order_items.booking_id', $ids)
+            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at')
+            ->groupBy('order_items.booking_id')
+            ->selectRaw('order_items.booking_id as booking_id')
+            ->selectRaw('COALESCE(SUM(COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)), 0) as total')
+            ->pluck('total', 'booking_id')
+            ->map(fn ($total) => round((float) $total, 2))
+            ->all();
     }
 
     private function productCommissionRateExpr(): string
