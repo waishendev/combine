@@ -579,6 +579,23 @@
                 @if(!empty($item['promotion_summary']))
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
                 @endif
+                @if(((float) ($item['discount_amount'] ?? 0)) > 0)
+                  <div class="sku" style="color:#92400e;margin-top:2px;">
+                    Original: {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
+                  </div>
+                  <div class="sku" style="color:#92400e;">
+                    Discount
+                    @if(($item['discount_type'] ?? '') === 'percentage')
+                      ({{ number_format((float) ($item['discount_value'] ?? 0), 2) }}%)
+                    @elseif(($item['discount_type'] ?? '') === 'fixed')
+                      ({{ $currency }} {{ number_format((float) ($item['discount_value'] ?? 0), 2) }})
+                    @endif
+                    : - {{ $currency }} {{ number_format((float) ($item['discount_amount'] ?? 0), 2) }}
+                  </div>
+                  @if(!empty($item['discount_remark']))
+                    <div class="sku" style="color:#92400e;">Remark: {{ $item['discount_remark'] }}</div>
+                  @endif
+                @endif
                 @if(!empty($item['is_staff_free_applied']))
                   <div class="sku" style="color:#047857;margin-top:2px;font-weight:600;">
                     Staff free
@@ -606,7 +623,14 @@
 
               <td class="numeric">{{ (int) $item['quantity'] }}</td>
               <td class="numeric">{{ $currency }} {{ number_format((float) $item['unit_price'], 2) }}</td>
-              <td class="numeric">{{ $currency }} {{ number_format((float) $item['line_total'], 2) }}</td>
+              <td class="numeric">
+                @if(((float) ($item['discount_amount'] ?? 0)) > 0)
+                  <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
+                    {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
+                  </div>
+                @endif
+                <div>{{ $currency }} {{ number_format((float) $item['line_total'], 2) }}</div>
+              </td>
             </tr>
           @endforeach
         </tbody>
