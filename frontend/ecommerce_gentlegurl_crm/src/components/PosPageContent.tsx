@@ -4479,6 +4479,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 </p>
                                 <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
+                            ) : (item.discount_amount ?? 0) > 0 ? (
+                              <div className="space-y-0.5">
+                                <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              </div>
                             ) : (
                               <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                             )}
@@ -4854,7 +4859,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
                                 Total to pay
                               </span>
-                              <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
+                              <div className="text-right">
+                                {(settlement.discount_amount ?? 0) > 0 && !isRangeUnsettled ? (
+                                  <p className="text-[10px] text-gray-500 line-through">
+                                    RM {Number(settlement.balance_due_snapshot ?? settlement.balance_due ?? 0).toFixed(2)}
+                                  </p>
+                                ) : null}
+                                <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -4904,7 +4916,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </div>
                       <div className="flex items-center justify-between gap-3 sm:justify-end">
                         <div className="min-w-[120px] text-left sm:text-right">
-                          <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                          {(packageItem.discount_amount ?? 0) > 0 ? (
+                            <div className="space-y-0.5">
+                              <p className="text-[11px] text-gray-500 line-through">RM {Number(packageItem.line_total_snapshot ?? packageItem.line_total).toFixed(2)}</p>
+                              <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                            </div>
+                          ) : (
+                            <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                          )}
                         </div>
                         <button
                           type="button"
