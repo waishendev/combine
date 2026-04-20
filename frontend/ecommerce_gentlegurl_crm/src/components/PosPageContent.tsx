@@ -1761,7 +1761,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const json = await res.json().catch(() => null)
       const paged = extractPaged<any>(json)
       const rows = Array.isArray(paged.data) ? paged.data : []
-      setSettlementAppointments(rows)
+      const unpaidRows = rows.filter((row) => {
+        if (!row || typeof row !== 'object') return false
+        const amountDueNow = Number((row as Record<string, unknown>).amount_due_now ?? (row as Record<string, unknown>).balance_due ?? 0)
+        const requiresSettledAmount = Boolean((row as Record<string, unknown>).requires_settled_amount)
+        return requiresSettledAmount || amountDueNow > 0.0001
+      })
+      setSettlementAppointments(unpaidRows)
     } catch {
       setSettlementAppointments([])
     } finally {
@@ -2512,6 +2518,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void fetchUnpaidCompletedAppointments('')
   }, [fetchActiveStaffs, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
 
+  useEffect(() => {
+    const refreshSettlementList = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return
+      void fetchUnpaidCompletedAppointments(settlementQuery)
+    }
+
+    window.addEventListener('focus', refreshSettlementList)
+    document.addEventListener('visibilitychange', refreshSettlementList)
+
+    return () => {
+      window.removeEventListener('focus', refreshSettlementList)
+      document.removeEventListener('visibilitychange', refreshSettlementList)
+    }
+  }, [fetchUnpaidCompletedAppointments, settlementQuery])
+
   const filteredServices = useMemo(() => {
     const keyword = serviceQuery.trim().toLowerCase()
     if (!keyword) return services
@@ -3257,6 +3278,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setQrProofFileName(null)
     setCheckoutConfirmationOpen(false)
     setCheckingOut(false)
+    void fetchUnpaidCompletedAppointments(settlementQuery)
     // Don't show toast, will show success modal instead
     focusScanner()
   }
