@@ -592,9 +592,6 @@
                     @endif
                     : - {{ $currency }} {{ number_format((float) ($item['discount_amount'] ?? 0), 2) }}
                   </div>
-                  @if(!empty($item['discount_remark']))
-                    <div class="sku" style="color:#92400e;">Remark: {{ $item['discount_remark'] }}</div>
-                  @endif
                 @endif
                 @if(!empty($item['is_staff_free_applied']))
                   <div class="sku" style="color:#047857;margin-top:2px;font-weight:600;">
@@ -646,7 +643,7 @@
           <td>{{ $currency }} {{ number_format($subtotalDisplay, 2) }}</td>
         </tr>
         <tr>
-          <td>Discount</td>
+          <td>Voucher Discount</td>
           <td>{{ $currency }} {{ number_format($discountDisplay, 2) }}</td>
         </tr>
         <tr>

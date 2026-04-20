@@ -49,7 +49,11 @@ export default function CustomerCreateModal({
       try {
         const res = await fetch('/api/proxy/customer-types?per_page=200', { cache: 'no-store' })
         const data = await res.json().catch(() => null)
-        const rows = Array.isArray(data?.data?.data) ? data.data.data : Array.isArray(data?.data) ? data.data : []
+        const rows: unknown[] = Array.isArray(data?.data?.data)
+          ? data.data.data
+          : Array.isArray(data?.data)
+            ? data.data
+            : []
         const mapped = rows
           .map((item: unknown) => {
             if (!item || typeof item !== 'object') return null

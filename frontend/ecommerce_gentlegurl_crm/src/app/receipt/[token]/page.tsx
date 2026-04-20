@@ -152,9 +152,21 @@ export default async function PublicReceiptPage({ params }: Props) {
           </thead>
           <tbody>
             {packageCoveredItems.map((item, idx) => {
-              const gross = Number(item.line_total_snapshot ?? item.line_total ?? item.qty * item.unit_price)
-              const discountAmount = Number(item.discount_amount ?? 0)
-              const net = Number(item.line_total_after_discount ?? item.line_total ?? (gross - discountAmount))
+              const gross = Number(
+                ('line_total_snapshot' in item ? (item as { line_total_snapshot?: number | string | null }).line_total_snapshot : undefined) ??
+                  item.line_total ??
+                  item.qty * item.unit_price,
+              )
+              const discountAmount = Number(
+                ('discount_amount' in item ? (item as { discount_amount?: number | string | null }).discount_amount : undefined) ?? 0,
+              )
+              const net = Number(
+                ('line_total_after_discount' in item
+                  ? (item as { line_total_after_discount?: number | string | null }).line_total_after_discount
+                  : undefined) ??
+                  item.line_total ??
+                  gross - discountAmount,
+              )
               return (
               <tr key={`${item.sku}-${idx}`} className="border-t border-gray-200 text-sm">
                 <td className="px-4 py-3">
@@ -170,12 +182,16 @@ export default async function PublicReceiptPage({ params }: Props) {
                       <p>Original: {money(gross)}</p>
                       <p>
                         Discount:{' '}
-                        {item.discount_type === 'percentage'
-                          ? `${Number(item.discount_value ?? 0)}%`
-                          : money(item.discount_value ?? 0)}{' '}
+                        {'discount_type' in item && item.discount_type === 'percentage'
+                          ? `${Number(('discount_value' in item ? (item as { discount_value?: number | string | null }).discount_value : 0) ?? 0)}%`
+                          : money(
+                              Number(
+                                ('discount_value' in item ? (item as { discount_value?: number | string | null }).discount_value : 0) ?? 0,
+                              ),
+                            )}{' '}
                         ({money(discountAmount)})
                       </p>
-                      {item.discount_remark ? <p>Remark: {item.discount_remark}</p> : null}
+                      {/* {'discount_remark' in item && item.discount_remark ? <p>Remark: {item.discount_remark}</p> : null} */}
                     </div>
                   ) : null}
                 </td>
@@ -204,7 +220,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               <td className="px-4 py-2 text-right font-semibold">{money(receipt.subtotal)}</td>
             </tr>
             <tr className="border-b border-gray-100">
-              <td className="px-4 py-2 text-gray-500">Discount</td>
+              <td className="px-4 py-2 text-gray-500">Voucher Discount</td>
               <td className="px-4 py-2 text-right font-semibold">- {money(receipt.discount_total)}</td>
             </tr>
             <tr className="border-b border-gray-100">

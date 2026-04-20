@@ -228,6 +228,7 @@ export default function AccountPage() {
         current_password: changePasswordForm.currentPassword,
         password: changePasswordForm.newPassword,
         password_confirmation: changePasswordForm.confirmPassword,
+        type: "customer",
       });
 
       setFeedback("Password updated successfully.");

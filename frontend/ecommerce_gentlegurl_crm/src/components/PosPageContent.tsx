@@ -4416,7 +4416,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ) : (
                     settlementAppointments.map((appt) => {
                       const due = Number(appt.amount_due_now ?? appt.balance_due ?? 0)
-                      const isRangeAppt = appt.requires_settled_amount === true
+                      const isRangeAppt =
+                        'requires_settled_amount' in (appt as Record<string, unknown>) &&
+                        (appt as { requires_settled_amount?: boolean | null }).requires_settled_amount === true
                       const serviceLabel = Array.isArray(appt.service_names) && appt.service_names.length
                         ? appt.service_names.join(', ')
                         : ''
@@ -4471,7 +4473,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <div className="flex flex-col items-end gap-2">
                             <span className="text-sm font-bold text-gray-900">
                               {isRangeAppt
-                                ? `RM ${Number(appt.service_price_range_min ?? 0).toFixed(2)} - ${Number(appt.service_price_range_max ?? 0).toFixed(2)}`
+                                ? `RM ${Number(
+                                    ('service_price_range_min' in (appt as Record<string, unknown>)
+                                      ? (appt as { service_price_range_min?: number | string | null }).service_price_range_min
+                                      : 0) ?? 0,
+                                  ).toFixed(2)} - ${Number(
+                                    ('service_price_range_max' in (appt as Record<string, unknown>)
+                                      ? (appt as { service_price_range_max?: number | string | null }).service_price_range_max
+                                      : 0) ?? 0,
+                                  ).toFixed(2)}`
                                 : `RM ${Number.isFinite(due) ? due.toFixed(2) : '0.00'}`}
                             </span>
                             <button
@@ -6731,7 +6741,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={() => setDiscountModalOpen(false)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
-              <button type="button" onClick={() => { setDiscountValueDraft(''); setDiscountRemarkDraft('') }} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Clear</button>
+              {/* <button type="button" onClick={() => { setDiscountValueDraft(''); setDiscountRemarkDraft('') }} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Clear</button> */}
               <button type="button" onClick={() => void submitDiscountModal()} disabled={discountSaving} className="flex-1 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{discountSaving ? 'Saving…' : 'Apply'}</button>
             </div>
           </div>

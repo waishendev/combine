@@ -129,7 +129,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
   const [refreshKey, setRefreshKey] = useState(0)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  const showToast = useCallback((message: string, tone: ToastState['tone'] = 'info') => {
+  const showToast = useCallback((message: string, tone: NonNullable<ToastState>['tone'] = 'info') => {
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current)
     }

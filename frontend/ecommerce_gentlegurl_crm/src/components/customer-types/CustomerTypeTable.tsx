@@ -335,7 +335,10 @@ export default function CustomerTypeTable({ permissions }: CustomerTypeTableProp
             {loading ? (
               <TableLoadingRow colSpan={colCount} />
             ) : sortedRows.length === 0 ? (
-              <TableEmptyState colSpan={colCount} title="No customer types found" subtitle="Create your first customer type." />
+              <TableEmptyState
+                colSpan={colCount}
+                message="No customer types found. Create your first customer type."
+              />
             ) : (
               sortedRows.map((row) => (
                 <CustomerTypeRow
@@ -356,9 +359,7 @@ export default function CustomerTypeTable({ permissions }: CustomerTypeTableProp
         currentPage={meta.current_page || currentPage}
         totalPages={meta.last_page || 1}
         pageSize={meta.per_page || pageSize}
-        totalItems={meta.total || 0}
         onPageChange={handlePageChange}
-        onPageSizeChange={handlePageSizeChange}
       />
 
       {isCreateModalOpen && (
