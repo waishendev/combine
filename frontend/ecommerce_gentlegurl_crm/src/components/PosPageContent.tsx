@@ -621,9 +621,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [bookingIdentityMode, setBookingIdentityMode] = useState<'member' | 'guest'>('member')
-  const [bookingGuestName, setBookingGuestName] = useState('')
-  const [bookingGuestPhone, setBookingGuestPhone] = useState('')
-  const [bookingGuestEmail, setBookingGuestEmail] = useState('')
+  const bookingGuestNameRef = useRef<HTMLInputElement>(null)
+  const bookingGuestPhoneRef = useRef<HTMLInputElement>(null)
+  const bookingGuestEmailRef = useRef<HTMLInputElement>(null)
   /** Last guest contact used for Book Services — reused for the next service add & checkout guest mode */
   const [guestContactCache, setGuestContactCache] = useState({ name: '', phone: '', email: '' })
   /** Checkout confirmation: member vs guest when book services exist without packages */
@@ -1867,19 +1867,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingModalError(null)
     if (selectedMember?.id) {
       setBookingIdentityMode('member')
-      setBookingGuestName('')
-      setBookingGuestPhone('')
-      setBookingGuestEmail('')
     } else if (guestContactCache.name.trim() && guestContactCache.email.trim()) {
       setBookingIdentityMode('guest')
-      setBookingGuestName(guestContactCache.name)
-      setBookingGuestPhone(guestContactCache.phone)
-      setBookingGuestEmail(guestContactCache.email)
     } else {
       setBookingIdentityMode('member')
-      setBookingGuestName('')
-      setBookingGuestPhone('')
-      setBookingGuestEmail('')
     }
     setBookingModalOpen(true)
 
@@ -1944,23 +1935,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         return
       }
     } else {
-      if (!bookingGuestName.trim()) {
+      const guestName = bookingGuestNameRef.current?.value ?? ''
+      const guestPhone = bookingGuestPhoneRef.current?.value ?? ''
+      const guestEmail = bookingGuestEmailRef.current?.value ?? ''
+      if (!guestName.trim()) {
         setBookingModalError('Guest name is required.')
         return
       }
-      if (!bookingGuestPhone.trim()) {
+      if (!guestPhone.trim()) {
         setBookingModalError('Guest phone is required.')
         return
       }
-      if (!phonePattern.test(bookingGuestPhone.trim())) {
+      if (!phonePattern.test(guestPhone.trim())) {
         setBookingModalError('Please enter a valid phone number (8-15 digits, optional + prefix).')
         return
       }
-      if (!bookingGuestEmail.trim()) {
+      if (!guestEmail.trim()) {
         setBookingModalError('Guest email is required.')
         return
       }
-      if (!emailPattern.test(bookingGuestEmail.trim())) {
+      if (!emailPattern.test(guestEmail.trim())) {
         setBookingModalError('Please enter a valid email address.')
         return
       }
@@ -1999,9 +1993,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (bookingIdentityMode === 'member' && selectedMember?.id) {
       payload.customer_id = selectedMember.id
     } else {
-      payload.guest_name = bookingGuestName.trim()
-      payload.guest_phone = bookingGuestPhone.trim()
-      payload.guest_email = bookingGuestEmail.trim()
+      payload.guest_name = (bookingGuestNameRef.current?.value ?? '').trim()
+      payload.guest_phone = (bookingGuestPhoneRef.current?.value ?? '').trim()
+      payload.guest_email = (bookingGuestEmailRef.current?.value ?? '').trim()
     }
     const res = await fetch('/api/proxy/pos/cart/add-service', {
       method: 'POST',
@@ -2019,9 +2013,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCart((json?.data?.cart ?? null) as Cart | null)
     if (bookingIdentityMode === 'guest') {
       setGuestContactCache({
-        name: bookingGuestName.trim(),
-        phone: bookingGuestPhone.trim(),
-        email: bookingGuestEmail.trim(),
+        name: (bookingGuestNameRef.current?.value ?? '').trim(),
+        phone: (bookingGuestPhoneRef.current?.value ?? '').trim(),
+        email: (bookingGuestEmailRef.current?.value ?? '').trim(),
       })
     }
     showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
@@ -2031,9 +2025,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [
     bookingAssignedStaffId,
     bookingDate,
-    bookingGuestEmail,
-    bookingGuestName,
-    bookingGuestPhone,
     bookingIdentityMode,
     bookingNotes,
     bookingQuestions,
@@ -7082,8 +7073,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div>
                       <label className="text-[11px] font-semibold text-gray-600">Name *</label>
                       <input
-                        value={bookingGuestName}
-                        onChange={(e) => setBookingGuestName(e.target.value)}
+                        ref={bookingGuestNameRef}
+                        defaultValue={guestContactCache.name}
                         className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                         placeholder="Name *"
                         autoComplete="name"
@@ -7092,8 +7083,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div>
                       <label className="text-[11px] font-semibold text-gray-600">Phone *</label>
                       <input
-                        value={bookingGuestPhone}
-                        onChange={(e) => setBookingGuestPhone(e.target.value)}
+                        ref={bookingGuestPhoneRef}
+                        defaultValue={guestContactCache.phone}
                         className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                         placeholder="Phone *"
                         autoComplete="tel"
@@ -7103,8 +7094,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <label className="text-[11px] font-semibold text-gray-600">Email *</label>
                       <input
                         type="email"
-                        value={bookingGuestEmail}
-                        onChange={(e) => setBookingGuestEmail(e.target.value)}
+                        ref={bookingGuestEmailRef}
+                        defaultValue={guestContactCache.email}
                         className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                         placeholder="Email *"
                         autoComplete="email"
