@@ -533,6 +533,9 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'payment_method' => ['required', 'in:cash,qrpay'],
+            'discount_type' => ['nullable', 'in:percentage,fixed'],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'discount_remark' => ['nullable', 'string', 'max:255'],
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
@@ -550,14 +553,60 @@ class PosController extends Controller
             return $this->respondError(__('No balance due for this appointment.'), 422);
         }
 
-        $amount = (float) $balanceDue;
+        $discountType = $validated['discount_type'] ?? null;
+        $discountValue = (float) ($validated['discount_value'] ?? 0);
+        if (! $discountType || $discountValue <= 0) {
+            $discountType = null;
+            $discountValue = 0.0;
+        }
+
+        if ($discountType === 'percentage' && $discountValue > 100) {
+            return $this->respondError(__('Percentage discount must be between 0 and 100.'), 422);
+        }
+
+        if ($discountType === 'fixed' && $discountValue > $balanceDue + 0.0001) {
+            return $this->respondError(__('Fixed discount must not exceed settlement amount due.'), 422);
+        }
+
+        $discountRemark = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
+        $totalDiscount = $this->resolveManualDiscountAmount((string) $discountType, $discountValue, $balanceDue);
+        $amount = max(0, round($balanceDue - $totalDiscount, 2));
         if ($amount <= 0) {
             return $this->respondError(__('Payment amount must be greater than 0.'), 422);
         }
 
-        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary) {
+        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $discountType, $discountValue, $discountRemark, $totalDiscount, $balanceDue) {
             $serviceBalanceDue = max(0, (float) ($summary['service_balance_due'] ?? 0));
             $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
+            $lineGrossAmounts = collect();
+
+            if ($serviceBalanceDue > 0) {
+                $lineGrossAmounts->push($serviceBalanceDue);
+            }
+            foreach ($addonSettlementItems as $addon) {
+                $lineGrossAmounts->push(max(0, (float) ($addon['balance_due'] ?? 0)));
+            }
+
+            $lineDiscounts = [];
+            $remaining = $totalDiscount;
+            $lineCount = $lineGrossAmounts->count();
+            foreach ($lineGrossAmounts as $index => $lineGross) {
+                $lineGross = max(0, round((float) $lineGross, 2));
+                if ($lineCount <= 1 || $index === $lineCount - 1) {
+                    $lineDiscount = min($lineGross, max(0, round($remaining, 2)));
+                } else {
+                    $lineDiscount = min($lineGross, round($totalDiscount * ($lineGross / max($balanceDue, 0.0001)), 2));
+                }
+                $lineDiscounts[$index] = $lineDiscount;
+                $remaining = max(0, round($remaining - $lineDiscount, 2));
+            }
+            if ($remaining > 0.0001 && $lineCount > 0) {
+                $lastIndex = $lineCount - 1;
+                $lineDiscounts[$lastIndex] = min(
+                    (float) ($lineGrossAmounts[$lastIndex] ?? 0),
+                    round(($lineDiscounts[$lastIndex] ?? 0) + $remaining, 2)
+                );
+            }
 
             $order = Order::query()->create([
                 'order_number' => 'POS-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -567,8 +616,8 @@ class PosController extends Controller
                 'payment_status' => 'paid',
                 'payment_method' => $validated['payment_method'],
                 'payment_provider' => 'manual',
-                'subtotal' => $amount,
-                'discount_total' => 0,
+                'subtotal' => $balanceDue,
+                'discount_total' => $totalDiscount,
                 'shipping_fee' => 0,
                 'grand_total' => $amount,
                 'pickup_or_shipping' => 'in_store',
@@ -580,6 +629,8 @@ class PosController extends Controller
             ]);
 
             if ($serviceBalanceDue > 0) {
+                $serviceDiscount = (float) ($lineDiscounts[0] ?? 0);
+                $serviceLineNet = max(0, round($serviceBalanceDue - $serviceDiscount, 2));
                 OrderItem::query()->create([
                     'order_id' => (int) $order->id,
                     'line_type' => 'booking_settlement',
@@ -590,16 +641,24 @@ class PosController extends Controller
                     'unit_price_snapshot' => $serviceBalanceDue,
                     'line_total' => $serviceBalanceDue,
                     'line_total_snapshot' => $serviceBalanceDue,
-                    'effective_unit_price' => $serviceBalanceDue,
-                    'effective_line_total' => $serviceBalanceDue,
+                    'effective_unit_price' => $serviceLineNet,
+                    'effective_line_total' => $serviceLineNet,
+                    'discount_type' => $serviceDiscount > 0 ? $discountType : null,
+                    'discount_value' => $serviceDiscount > 0 ? $discountValue : 0,
+                    'discount_amount' => $serviceDiscount,
+                    'line_total_after_discount' => $serviceLineNet,
+                    'discount_remark' => $serviceDiscount > 0 ? $discountRemark : null,
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
                     'booking_service_id' => (int) $booking->service_id,
                 ]);
             }
 
-            foreach ($addonSettlementItems as $addon) {
+            foreach ($addonSettlementItems as $addonIdx => $addon) {
                 $addonAmount = max(0, (float) ($addon['balance_due'] ?? 0));
+                $discountIndex = ($serviceBalanceDue > 0 ? 1 : 0) + $addonIdx;
+                $addonDiscount = (float) ($lineDiscounts[$discountIndex] ?? 0);
+                $addonLineNet = max(0, round($addonAmount - $addonDiscount, 2));
                 OrderItem::query()->create([
                     'order_id' => (int) $order->id,
                     'line_type' => 'booking_addon',
@@ -611,8 +670,13 @@ class PosController extends Controller
                     'unit_price_snapshot' => $addonAmount,
                     'line_total' => $addonAmount,
                     'line_total_snapshot' => $addonAmount,
-                    'effective_unit_price' => $addonAmount,
-                    'effective_line_total' => $addonAmount,
+                    'effective_unit_price' => $addonLineNet,
+                    'effective_line_total' => $addonLineNet,
+                    'discount_type' => $addonDiscount > 0 ? $discountType : null,
+                    'discount_value' => $addonDiscount > 0 ? $discountValue : 0,
+                    'discount_amount' => $addonDiscount,
+                    'line_total_after_discount' => $addonLineNet,
+                    'discount_remark' => $addonDiscount > 0 ? $discountRemark : null,
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
                     'booking_service_id' => (int) $booking->service_id,

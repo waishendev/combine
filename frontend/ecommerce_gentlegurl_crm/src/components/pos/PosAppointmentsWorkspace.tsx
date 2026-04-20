@@ -193,6 +193,9 @@ export default function PosAppointmentsWorkspace({
   const [appointmentCheckoutConfirmationOpen, setAppointmentCheckoutConfirmationOpen] = useState(false)
   const [appointmentCheckoutError, setAppointmentCheckoutError] = useState<string | null>(null)
   const [appointmentCashReceived, setAppointmentCashReceived] = useState('')
+  const [appointmentDiscountTypeDraft, setAppointmentDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
+  const [appointmentDiscountValueDraft, setAppointmentDiscountValueDraft] = useState('')
+  const [appointmentDiscountRemarkDraft, setAppointmentDiscountRemarkDraft] = useState('')
   const [appointmentQrProofFileName, setAppointmentQrProofFileName] = useState<string | null>(null)
   const [appointmentQrProofPreviewUrl, setAppointmentQrProofPreviewUrl] = useState<string | null>(null)
   const [appointmentSettlementResult, setAppointmentSettlementResult] = useState<null | {
@@ -796,7 +799,25 @@ export default function PosAppointmentsWorkspace({
 
   const settleAppointmentPayment = useCallback(async () => {
     if (!appointmentDetail?.id) return
-    const dueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
+    const grossDueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
+    const discountDraftValue = Number(appointmentDiscountValueDraft || 0)
+    if (!Number.isFinite(discountDraftValue) || discountDraftValue < 0) {
+      setAppointmentCheckoutError('Discount value must be 0 or higher.')
+      return
+    }
+    if (appointmentDiscountTypeDraft === 'percentage' && discountDraftValue > 100) {
+      setAppointmentCheckoutError('Percentage discount must be between 0 and 100.')
+      return
+    }
+    if (appointmentDiscountTypeDraft === 'fixed' && discountDraftValue > grossDueAmount) {
+      setAppointmentCheckoutError('Fixed discount must not exceed settlement amount due.')
+      return
+    }
+    const discountAmount =
+      appointmentDiscountTypeDraft === 'percentage'
+        ? Math.min(grossDueAmount, (grossDueAmount * discountDraftValue) / 100)
+        : Math.min(grossDueAmount, discountDraftValue)
+    const dueAmount = Math.max(0, grossDueAmount - discountAmount)
     const cashReceivedAmount = Number(appointmentCashReceived || 0)
     const settlementPaidSnapshot = Number(appointmentDetail?.settlement_paid ?? 0)
     const packageStatusSnapshot = String(appointmentDetail?.package_status?.status ?? '').toLowerCase()
@@ -822,6 +843,9 @@ export default function PosAppointmentsWorkspace({
     try {
       const payload = {
         payment_method: appointmentPaymentMethod,
+        discount_type: discountDraftValue > 0 ? appointmentDiscountTypeDraft : null,
+        discount_value: discountDraftValue > 0 ? discountDraftValue : 0,
+        discount_remark: discountDraftValue > 0 ? appointmentDiscountRemarkDraft.trim() || null : null,
       }
 
       const endpoint = isZeroPackageFinalize
@@ -875,6 +899,9 @@ export default function PosAppointmentsWorkspace({
   }, [
     appointmentCashReceived,
     appointmentDetail,
+    appointmentDiscountRemarkDraft,
+    appointmentDiscountTypeDraft,
+    appointmentDiscountValueDraft,
     appointmentPaymentMethod,
     appointmentQrProofFileName,
     appointmentQrProofPreviewUrl,
@@ -1482,8 +1509,16 @@ export default function PosAppointmentsWorkspace({
     showAppointmentMarkCompletedBlock
 
   const appointmentDueAmount = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
+  const appointmentDiscountValueNumber = Number(appointmentDiscountValueDraft || 0)
+  const appointmentDiscountAmount =
+    !Number.isFinite(appointmentDiscountValueNumber) || appointmentDiscountValueNumber <= 0
+      ? 0
+      : appointmentDiscountTypeDraft === 'percentage'
+        ? Math.min(appointmentDueAmount, (appointmentDueAmount * appointmentDiscountValueNumber) / 100)
+        : Math.min(appointmentDueAmount, appointmentDiscountValueNumber)
+  const appointmentDueAfterDiscount = Math.max(0, appointmentDueAmount - appointmentDiscountAmount)
   const appointmentCashReceivedAmount = Number(appointmentCashReceived || 0)
-  const appointmentCashChange = Math.max(0, appointmentCashReceivedAmount - appointmentDueAmount)
+  const appointmentCashChange = Math.max(0, appointmentCashReceivedAmount - appointmentDueAfterDiscount)
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -1921,6 +1956,9 @@ export default function PosAppointmentsWorkspace({
                               const due = appointmentDueAmountNow
                               setAppointmentPaymentMethod('cash')
                               setAppointmentCashReceived(due > 0 ? due.toFixed(2) : '')
+                              setAppointmentDiscountTypeDraft('fixed')
+                              setAppointmentDiscountValueDraft('')
+                              setAppointmentDiscountRemarkDraft('')
                               setAppointmentCheckoutError(null)
                               setAppointmentCheckoutConfirmationOpen(true)
                             }}
@@ -2920,7 +2958,66 @@ export default function PosAppointmentsWorkspace({
                     </span>
                   ) : null}
                 </p>
+                {appointmentDiscountAmount > 0 ? (
+                  <p className="text-xs text-amber-700">
+                    Discount:{' '}
+                    <span className="font-semibold">
+                      − RM {appointmentDiscountAmount.toFixed(2)}
+                    </span>{' '}
+                    → Payable <span className="font-semibold text-emerald-700">RM {appointmentDueAfterDiscount.toFixed(2)}</span>
+                  </p>
+                ) : null}
               </div>
+              {!checkoutZeroPackageSettlement ? (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="mb-3 text-sm font-bold text-gray-900">Settlement Discount</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      Discount Type
+                      <select
+                        value={appointmentDiscountTypeDraft}
+                        onChange={(event) => {
+                          setAppointmentCheckoutError(null)
+                          setAppointmentDiscountTypeDraft(event.target.value as 'percentage' | 'fixed')
+                        }}
+                        className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm text-gray-900"
+                      >
+                        <option value="fixed">Fixed amount</option>
+                        <option value="percentage">Percentage</option>
+                      </select>
+                    </label>
+                    <label className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                      Discount Value {appointmentDiscountTypeDraft === 'percentage' ? '(%)' : '(RM)'}
+                      <input
+                        type="number"
+                        min="0"
+                        max={appointmentDiscountTypeDraft === 'percentage' ? '100' : appointmentDueAmount.toFixed(2)}
+                        step="0.01"
+                        value={appointmentDiscountValueDraft}
+                        onChange={(event) => {
+                          setAppointmentCheckoutError(null)
+                          setAppointmentDiscountValueDraft(event.target.value)
+                        }}
+                        className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm text-gray-900"
+                        placeholder="0.00"
+                      />
+                    </label>
+                  </div>
+                  <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                    Remark (optional)
+                    <textarea
+                      value={appointmentDiscountRemarkDraft}
+                      onChange={(event) => {
+                        setAppointmentCheckoutError(null)
+                        setAppointmentDiscountRemarkDraft(event.target.value)
+                      }}
+                      rows={2}
+                      className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                      placeholder="VIP discount / goodwill adjustment"
+                    />
+                  </label>
+                </div>
+              ) : null}
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                 <p className="mb-3 text-sm font-bold text-gray-900">Payment Method</p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -2975,7 +3072,7 @@ export default function PosAppointmentsWorkspace({
                       setAppointmentCashReceived(e.target.value)
                     }}
                     className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
-                    placeholder={appointmentDueAmount.toFixed(2)}
+                    placeholder={appointmentDueAfterDiscount.toFixed(2)}
                   />
                   {appointmentCashChange > 0 ? (
                     <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
@@ -3058,7 +3155,7 @@ export default function PosAppointmentsWorkspace({
                   type="button"
                   disabled={
                     appointmentActionLoading ||
-                    (!checkoutZeroPackageSettlement && appointmentDueAmount <= 0)
+                    (!checkoutZeroPackageSettlement && appointmentDueAfterDiscount <= 0)
                   }
                   onClick={() => void settleAppointmentPayment()}
                   className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
