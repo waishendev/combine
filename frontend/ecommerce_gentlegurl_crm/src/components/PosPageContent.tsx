@@ -3812,12 +3812,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const onAddDraftSplitRow = () => {
-    setItemSplitDraftRows((prev) => [...prev, createDraftRow({ options: activeStaffs, share_percent: 0 })])
+    setItemSplitDraftRows((prev) => {
+      const next = [...prev, createDraftRow({ options: activeStaffs, share_percent: 0 })]
+      if (!itemSplitAutoBalance) return next
+      if (next.length <= 1) return next
+      const othersTotal = next.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
+      return next.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
+    })
     setItemSplitError(null)
   }
 
   const onRemoveDraftSplitRow = (rowId: string) => {
-    setItemSplitDraftRows((prev) => prev.filter((row) => row.id !== rowId))
+    setItemSplitDraftRows((prev) => {
+      const next = prev.filter((row) => row.id !== rowId)
+      if (!itemSplitAutoBalance || next.length <= 1) return next
+      const othersTotal = next.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
+      return next.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
+    })
     setItemSplitError(null)
   }
 
@@ -6322,7 +6333,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             <div className="space-y-3 p-5">
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input type="checkbox" checked={itemSplitAutoBalance} onChange={(event) => setItemSplitAutoBalance(event.target.checked)} className="h-4 w-4" />
+                <input
+                  type="checkbox"
+                  checked={itemSplitAutoBalance}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setItemSplitAutoBalance(checked)
+                    if (checked) {
+                      setItemSplitDraftRows((prev) => {
+                        if (prev.length <= 1) return prev
+                        const othersTotal = prev.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
+                        return prev.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
+                      })
+                    }
+                  }}
+                  className="h-4 w-4"
+                />
                 Auto Balance
               </label>
 
