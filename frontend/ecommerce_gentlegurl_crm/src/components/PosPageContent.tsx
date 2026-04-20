@@ -4479,34 +4479,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 </p>
                                 <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
-                            ) : (item.discount_amount ?? 0) > 0 ? (
-                              <>
-                                <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
-                                <p className="text-[11px] text-amber-700">Discount: {item.discount_type === 'percentage' ? `${Number(item.discount_value ?? 0)}%` : `RM ${Number(item.discount_value ?? 0).toFixed(2)}`}</p>
-                                <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
-                              </>
                             ) : (
                               <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                             )}
                           </div>
-                          <button
-                            type="button"
-                            onClick={() => openDiscountModal({
-                              kind: 'product',
-                              id: item.id,
-                              name: item.product_name ?? 'Product',
-                              lineTotal: Number(item.line_total_snapshot ?? item.line_total ?? 0),
-                              discountType: item.discount_type ?? null,
-                              discountValue: Number(item.discount_value ?? 0),
-                              discountRemark: item.discount_remark ?? null,
-                              promotionApplied: item.promotion_applied,
-                              manualDiscountAllowed: item.manual_discount_allowed,
-                            })}
-                            disabled={item.promotion_applied || item.manual_discount_allowed === false}
-                            className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50"
-                          >
-                            {(item.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
-                          </button>
                           <button 
                             onClick={() => void removeItem(item.id)} 
                             className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
@@ -4754,21 +4730,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             )}
                           <button
                             type="button"
-                            onClick={() => openDiscountModal({
-                              kind: 'settlement',
-                              id: settlement.id,
-                              name: `${settlement.booking_code} ${settlement.service_name ?? ''}`.trim(),
-                              lineTotal: Number(settlement.balance_due_snapshot ?? settlement.balance_due ?? 0),
-                              discountType: settlement.discount_type ?? null,
-                              discountValue: Number(settlement.discount_value ?? 0),
-                              discountRemark: settlement.discount_remark ?? null,
-                            })}
-                            className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-[11px] font-semibold text-amber-800 shadow-sm hover:bg-amber-100"
-                          >
-                            {(settlement.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
-                          </button>
-                          <button
-                            type="button"
                             onClick={() => void openCartEditSettlement(settlement)}
                             className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-800 shadow-sm hover:bg-indigo-100"
                           >
@@ -4817,8 +4778,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const totalDue = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
-                      const lineGross = Number(settlement.balance_due_snapshot ?? settlement.balance_due ?? 0)
-                      const lineDiscount = Number(settlement.discount_amount ?? 0)
                       const isRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
                       const servicePriceLabel = isRangeUnsettled
                         ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
@@ -4895,11 +4854,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
                                 Total to pay
                               </span>
-                              <div className="text-right">
-                                {lineDiscount > 0 ? <p className="text-[10px] text-gray-500 line-through">RM {lineGross.toFixed(2)}</p> : null}
-                                {lineDiscount > 0 ? <p className="text-[10px] text-amber-700">- RM {lineDiscount.toFixed(2)}</p> : null}
-                                <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
-                              </div>
+                              <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
                             </div>
                           </div>
                         </div>
@@ -4949,31 +4904,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </div>
                       <div className="flex items-center justify-between gap-3 sm:justify-end">
                         <div className="min-w-[120px] text-left sm:text-right">
-                          {(packageItem.discount_amount ?? 0) > 0 ? (
-                            <div className="space-y-0.5">
-                              <p className="text-[11px] text-gray-500 line-through">RM {Number(packageItem.line_total_snapshot ?? packageItem.line_total).toFixed(2)}</p>
-                              <p className="text-[11px] text-amber-700">- RM {Number(packageItem.discount_amount ?? 0).toFixed(2)}</p>
-                              <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
-                            </div>
-                          ) : (
                           <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
-                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => openDiscountModal({
-                            kind: 'package',
-                            id: packageItem.id,
-                            name: packageItem.package_name,
-                            lineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0),
-                            discountType: packageItem.discount_type ?? null,
-                            discountValue: Number(packageItem.discount_value ?? 0),
-                            discountRemark: packageItem.discount_remark ?? null,
-                          })}
-                          className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                        >
-                          {(packageItem.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
-                        </button>
                         <button
                           type="button"
                           onClick={() => void removePackageCartItem(packageItem.id)}
