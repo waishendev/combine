@@ -435,6 +435,8 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment']);
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
         Route::post('/appointments/{id}/reschedule', [PosController::class, 'rescheduleAppointment']);
+        Route::post('/appointments/{id}/send-confirmation-email', [PosController::class, 'sendBookingConfirmationEmail'])
+            ->middleware('throttle:6,1');
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/book-service', [PosController::class, 'bookService']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
@@ -451,6 +453,8 @@ $protectedRoutes = function () {
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
         Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
+        Route::patch('/cart/package-items/{itemId}/discount', [PosController::class, 'updatePackageCartItemDiscount']);
+        Route::patch('/cart/appointment-settlements/{itemId}/discount', [PosController::class, 'updateAppointmentSettlementCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
         Route::delete('/cart/service-items/{itemId}', [PosController::class, 'removeServiceCartItem']);
         Route::post('/cart/service-items/{itemId}/release-package-claim', [PosController::class, 'releaseServiceItemPackageClaim']);

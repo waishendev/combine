@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BookingConfirmationMail;
 use App\Models\BillplzPaymentGatewayOption;
 use App\Models\BankAccount;
 use App\Models\Booking\Booking;
@@ -15,6 +16,7 @@ use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 class PaymentController extends Controller
@@ -399,6 +401,8 @@ class PaymentController extends Controller
                 'meta' => ['payment_id' => $payment->id, 'ref' => $payment->ref],
                 'created_at' => now(),
             ]);
+
+            $this->sendBookingConfirmationEmail($booking->fresh(['service', 'staff', 'customer']));
         } else {
             $payment->update([
                 'status' => 'FAILED',
@@ -478,6 +482,8 @@ class PaymentController extends Controller
                 'booking_code' => $booking->booking_code,
                 'bill_id' => $billId,
             ]);
+
+            $this->sendBookingConfirmationEmail($booking->fresh(['service', 'staff', 'customer']));
         } elseif (! $isPaymentConfirmed && $state === 'due') {
             $payment->update([
                 'status' => 'FAILED',
@@ -494,6 +500,64 @@ class PaymentController extends Controller
         }
 
         return response('OK', 200);
+    }
+
+    protected function sendBookingConfirmationEmail(?Booking $booking): void
+    {
+        if (! $booking || (string) $booking->status !== 'CONFIRMED') {
+            return;
+        }
+
+        $recipientEmail = $booking->billing_email
+            ?: $booking->guest_email
+            ?: $booking->customer?->email;
+
+        if (! $recipientEmail || ! filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            Log::info('Booking confirmation email skipped — no valid email.', ['booking_id' => $booking->id]);
+            return;
+        }
+
+        $customerName = $booking->billing_name
+            ?: $booking->guest_name
+            ?: $booking->customer?->name
+            ?: 'Customer';
+
+        try {
+            $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
+                ->map(fn ($item) => is_array($item) ? [
+                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                    'extra_duration_min' => (int) ($item['extra_duration_min'] ?? 0),
+                    'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                ] : null)
+                ->filter()
+                ->values()
+                ->all();
+
+            Mail::to($recipientEmail)->queue(new BookingConfirmationMail(
+                bookingCode: (string) ($booking->booking_code ?? ''),
+                customerName: $customerName,
+                serviceName: (string) ($booking->service?->name ?? 'Service'),
+                staffName: (string) ($booking->staff?->name ?? ''),
+                appointmentDate: $booking->start_at?->format('l, d M Y') ?? '—',
+                appointmentStartTime: $booking->start_at?->format('h:i A') ?? '—',
+                appointmentEndTime: $booking->end_at?->format('h:i A') ?? '—',
+                durationMin: (int) ($booking->service?->duration_min ?? 0),
+                depositAmount: (float) ($booking->deposit_amount ?? 0),
+                source: (string) ($booking->source ?? 'ONLINE'),
+                addonItems: $addonItems,
+            ));
+
+            Log::info('Booking confirmation email queued.', [
+                'booking_id' => $booking->id,
+                'booking_code' => $booking->booking_code,
+                'email' => $recipientEmail,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue booking confirmation email.', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

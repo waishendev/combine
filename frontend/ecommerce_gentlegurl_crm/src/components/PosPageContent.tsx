@@ -18,6 +18,7 @@ type CartItem = {
   variant_sku?: string | null
   discount_type?: 'percentage' | 'fixed' | null
   discount_value?: number
+  discount_remark?: string | null
   discount_amount?: number
   line_total_after_discount?: number
   promotion_applied?: boolean
@@ -96,6 +97,12 @@ type AppointmentSettlementCartItem = {
   deposit_contribution?: number
   package_offset?: number
   amount_due_now?: number
+  balance_due_snapshot?: number
+  discount_type?: 'percentage' | 'fixed' | null
+  discount_value?: number
+  discount_amount?: number
+  line_total_after_discount?: number
+  discount_remark?: string | null
   service_balance_due?: number
   addon_settlement_items?: Array<{
     id?: number | null
@@ -175,6 +182,12 @@ type PackageCartItem = {
   qty: number
   unit_price: number
   line_total: number
+  line_total_snapshot?: number
+  discount_type?: 'percentage' | 'fixed' | null
+  discount_value?: number
+  discount_amount?: number
+  line_total_after_discount?: number
+  discount_remark?: string | null
   customer_id?: number | null
   customer_name?: string | null
   staff_splits?: Array<{
@@ -185,6 +198,11 @@ type PackageCartItem = {
     commission_amount_snapshot?: number
   }>
 }
+
+type DiscountTarget =
+  | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
+  | { kind: 'package'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
+  | { kind: 'settlement'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
 
 function formatPosPackageMemberLabel(
   packageItem: PackageCartItem,
@@ -664,6 +682,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [itemSplitError, setItemSplitError] = useState<string | null>(null)
+  const [discountModalOpen, setDiscountModalOpen] = useState(false)
+  const [discountSaving, setDiscountSaving] = useState(false)
+  const [discountTarget, setDiscountTarget] = useState<DiscountTarget | null>(null)
+  const [discountTypeDraft, setDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
+  const [discountValueDraft, setDiscountValueDraft] = useState('')
+  const [discountRemarkDraft, setDiscountRemarkDraft] = useState('')
   const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
@@ -2207,55 +2231,64 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
 
-  const applyItemDiscount = async (item: CartItem) => {
-    if (item.promotion_applied || item.manual_discount_allowed === false) {
+  const openDiscountModal = (target: DiscountTarget) => {
+    if (target.kind === 'product' && (target.promotionApplied || target.manualDiscountAllowed === false)) {
       showMsg('Manual discount is disabled when promotion is applied.', 'error')
       return
     }
+    setDiscountTarget(target)
+    setDiscountTypeDraft(target.discountType ?? 'fixed')
+    const nextValue = Number(target.discountValue ?? 0)
+    setDiscountValueDraft(nextValue > 0 ? String(nextValue) : '')
+    setDiscountRemarkDraft(target.discountRemark ?? '')
+    setDiscountModalOpen(true)
+  }
 
-    const typeInput = window.prompt('Discount type: percentage or fixed', item.discount_type ?? 'percentage')
-    if (typeInput === null) return
-    const discountType = typeInput.trim().toLowerCase()
-    if (!['percentage', 'fixed', ''].includes(discountType)) {
-      showMsg('Invalid discount type.', 'error')
-      return
-    }
-
-    const valueInput = window.prompt('Discount value (number, use 0 to clear)', String(item.discount_value ?? 0))
-    if (valueInput === null) return
-    const value = Number(valueInput)
+  const submitDiscountModal = async () => {
+    if (!discountTarget || discountSaving) return
+    const value = Number(discountValueDraft)
     if (!Number.isFinite(value) || value < 0) {
-      showMsg('Invalid discount value.', 'error')
+      showMsg('Discount value must be 0 or higher.', 'error')
       return
     }
-
-    if (discountType === 'percentage' && value > 100) {
+    if (discountTypeDraft === 'percentage' && value > 100) {
       showMsg('Percentage discount must be between 0 and 100.', 'error')
       return
     }
-
-    const lineBase = Number(item.line_total_snapshot ?? item.line_total ?? 0)
-    if (discountType === 'fixed' && value > lineBase) {
+    if (discountTypeDraft === 'fixed' && value > Number(discountTarget.lineTotal ?? 0)) {
       showMsg('Fixed discount must not exceed line total.', 'error')
       return
     }
 
-    const payload = !discountType || value <= 0
-      ? { discount_type: null, discount_value: 0 }
-      : { discount_type: discountType, discount_value: value }
+    let endpoint = ''
+    if (discountTarget.kind === 'product') endpoint = `/api/proxy/pos/cart/items/${discountTarget.id}/discount`
+    if (discountTarget.kind === 'package') endpoint = `/api/proxy/pos/cart/package-items/${discountTarget.id}/discount`
+    if (discountTarget.kind === 'settlement') endpoint = `/api/proxy/pos/cart/appointment-settlements/${discountTarget.id}/discount`
+    if (!endpoint) return
 
-    const res = await fetch(`/api/proxy/pos/cart/items/${item.id}/discount`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    })
-    const json = await res.json().catch(() => null)
-    if (!res.ok) {
-      showMsg(json?.message ?? 'Unable to apply item discount.', 'error')
-      return
+    const payload = value <= 0
+      ? { discount_type: null, discount_value: 0, discount_remark: null }
+      : { discount_type: discountTypeDraft, discount_value: value, discount_remark: discountRemarkDraft.trim() || null }
+
+    setDiscountSaving(true)
+    try {
+      const res = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to apply line discount.', 'error')
+        return
+      }
+      setCart((json?.data?.cart ?? null) as Cart | null)
+      setDiscountModalOpen(false)
+      setDiscountTarget(null)
+      showMsg('Item discount updated.', 'success')
+    } finally {
+      setDiscountSaving(false)
     }
-    setCart(json?.data?.cart ?? null)
-    showMsg('Item discount updated.', 'success')
   }
 
   const removeItem = async (itemId: number) => {
@@ -3779,12 +3812,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const onAddDraftSplitRow = () => {
-    setItemSplitDraftRows((prev) => [...prev, createDraftRow({ options: activeStaffs, share_percent: 0 })])
+    setItemSplitDraftRows((prev) => {
+      const next = [...prev, createDraftRow({ options: activeStaffs, share_percent: 0 })]
+      if (!itemSplitAutoBalance) return next
+      if (next.length <= 1) return next
+      const othersTotal = next.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
+      return next.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
+    })
     setItemSplitError(null)
   }
 
   const onRemoveDraftSplitRow = (rowId: string) => {
-    setItemSplitDraftRows((prev) => prev.filter((row) => row.id !== rowId))
+    setItemSplitDraftRows((prev) => {
+      const next = prev.filter((row) => row.id !== rowId)
+      if (!itemSplitAutoBalance || next.length <= 1) return next
+      const othersTotal = next.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
+      return next.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
+    })
     setItemSplitError(null)
   }
 
@@ -4447,16 +4491,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (item.discount_amount ?? 0) > 0 ? (
-                              <>
+                              <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
-                                <p className="text-[11px] text-amber-700">Discount: {item.discount_type === 'percentage' ? `${Number(item.discount_value ?? 0)}%` : `RM ${Number(item.discount_value ?? 0).toFixed(2)}`}</p>
-                                <p className="text-sm font-bold text-gray-900">RM {Number(item.line_total).toFixed(2)}</p>
-                              </>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              </div>
                             ) : (
                               <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                             )}
                           </div>
-                          {/* <button type="button" onClick={() => void applyItemDiscount(item)} disabled={item.promotion_applied || item.manual_discount_allowed === false} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-50">Discount</button> */}
                           <button 
                             onClick={() => void removeItem(item.id)} 
                             className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
@@ -4828,9 +4870,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
                                 Total to pay
                               </span>
-                              <span className="text-sm font-bold tabular-nums text-orange-700">
-                                {totalDueLabel}
-                              </span>
+                              <div className="text-right">
+                                {(settlement.discount_amount ?? 0) > 0 && !isRangeUnsettled ? (
+                                  <p className="text-[10px] text-gray-500 line-through">
+                                    RM {Number(settlement.balance_due_snapshot ?? settlement.balance_due ?? 0).toFixed(2)}
+                                  </p>
+                                ) : null}
+                                <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
+                              </div>
                             </div>
                           </div>
                         </div>
@@ -4880,7 +4927,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </div>
                       <div className="flex items-center justify-between gap-3 sm:justify-end">
                         <div className="min-w-[120px] text-left sm:text-right">
-                          <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                          {(packageItem.discount_amount ?? 0) > 0 ? (
+                            <div className="space-y-0.5">
+                              <p className="text-[11px] text-gray-500 line-through">RM {Number(packageItem.line_total_snapshot ?? packageItem.line_total).toFixed(2)}</p>
+                              <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                            </div>
+                          ) : (
+                            <p className="text-sm font-bold text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -5554,6 +5608,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     Clear
                                   </button>
                                 ) : null}
+                                <button
+                                  type="button"
+                                  onClick={() => openDiscountModal({
+                                    kind: 'product',
+                                    id: item.id,
+                                    name: item.product_name ?? 'Product',
+                                    lineTotal: Number(item.line_total_snapshot ?? item.line_total ?? 0),
+                                    discountType: item.discount_type ?? null,
+                                    discountValue: Number(item.discount_value ?? 0),
+                                    discountRemark: item.discount_remark ?? null,
+                                    promotionApplied: item.promotion_applied,
+                                    manualDiscountAllowed: item.manual_discount_allowed,
+                                  })}
+                                  disabled={item.promotion_applied || item.manual_discount_allowed === false}
+                                  className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50"
+                                >
+                                  {(item.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
+                                </button>
                               </div>
                             </div>
                           </td>
@@ -5583,6 +5655,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p className="text-[11px] font-semibold tabular-nums text-emerald-700">
                                   - RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
                                 </p>
+                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              </div>
+                            ) : (item.discount_amount ?? 0) > 0 ? (
+                              <div className="space-y-0.5">
+                                <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
+                                <p className="text-xs text-amber-700">- RM {Number(item.discount_amount ?? 0).toFixed(2)}</p>
                                 <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
@@ -5779,6 +5857,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 >
                                   Edit Worker
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openDiscountModal({
+                                    kind: 'settlement',
+                                    id: settlement.id,
+                                    name: `${settlement.booking_code} ${settlement.service_name ?? ''}`.trim(),
+                                    lineTotal: Number(settlement.balance_due_snapshot ?? settlement.balance_due ?? 0),
+                                    discountType: settlement.discount_type ?? null,
+                                    discountValue: Number(settlement.discount_value ?? 0),
+                                    discountRemark: settlement.discount_remark ?? null,
+                                  })}
+                                  className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800"
+                                >
+                                  {(settlement.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
+                                </button>
                               </div>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
@@ -5868,6 +5961,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </td>
                             </tr>
                           ) : null}
+                          {(settlement.discount_amount ?? 0) > 0 ? (
+                            <tr className={`${stRowClass} align-top`}>
+                              <td className="px-4 py-2 pl-7 text-xs text-gray-700 sm:px-5 sm:pl-8">Item Discount</td>
+                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                <p className="text-lg font-bold leading-tight text-amber-700">− RM {Number(settlement.discount_amount ?? 0).toFixed(2)}</p>
+                              </td>
+                            </tr>
+                          ) : null}
                         </Fragment>
                       )
                     })}
@@ -5897,13 +6000,36 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               >
                                 Assign Staff Split
                               </button>
+                              <button
+                                type="button"
+                                onClick={() => openDiscountModal({
+                                  kind: 'package',
+                                  id: packageItem.id,
+                                  name: packageItem.package_name,
+                                  lineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0),
+                                  discountType: packageItem.discount_type ?? null,
+                                  discountValue: Number(packageItem.discount_value ?? 0),
+                                  discountRemark: packageItem.discount_remark ?? null,
+                                })}
+                                className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800"
+                              >
+                                {(packageItem.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
+                              </button>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 align-top tabular-nums">
                             <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
                           </td>
                           <td className="px-4 py-3.5 text-right align-top sm:px-5">
-                            <p className="text-lg font-bold tabular-nums text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                            {(packageItem.discount_amount ?? 0) > 0 ? (
+                              <div className="space-y-0.5">
+                                <p className="text-xs text-gray-400 line-through">RM {Number(packageItem.line_total_snapshot ?? packageItem.line_total).toFixed(2)}</p>
+                                <p className="text-xs text-amber-700">- RM {Number(packageItem.discount_amount ?? 0).toFixed(2)}</p>
+                                <p className="text-lg font-bold tabular-nums text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                              </div>
+                            ) : (
+                              <p className="text-lg font-bold tabular-nums text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
+                            )}
                           </td>
                         </tr>
                       )
@@ -6207,7 +6333,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             <div className="space-y-3 p-5">
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
-                <input type="checkbox" checked={itemSplitAutoBalance} onChange={(event) => setItemSplitAutoBalance(event.target.checked)} className="h-4 w-4" />
+                <input
+                  type="checkbox"
+                  checked={itemSplitAutoBalance}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setItemSplitAutoBalance(checked)
+                    if (checked) {
+                      setItemSplitDraftRows((prev) => {
+                        if (prev.length <= 1) return prev
+                        const othersTotal = prev.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
+                        return prev.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
+                      })
+                    }
+                  }}
+                  className="h-4 w-4"
+                />
                 Auto Balance
               </label>
 
@@ -6312,6 +6453,40 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   Save
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {discountModalOpen && discountTarget ? (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/45 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+            <h4 className="text-lg font-bold text-gray-900">Line Item Discount</h4>
+            <p className="mt-1 text-sm text-gray-600">{discountTarget.name}</p>
+            <p className="mt-1 text-xs text-gray-500">Line total: RM {Number(discountTarget.lineTotal ?? 0).toFixed(2)}</p>
+
+            <div className="mt-4 space-y-3">
+              <label className="block text-sm font-semibold text-gray-700">
+                Discount Type
+                <select value={discountTypeDraft} onChange={(event) => setDiscountTypeDraft(event.target.value as 'percentage' | 'fixed')} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm">
+                  <option value="fixed">Fixed amount</option>
+                  <option value="percentage">Percentage</option>
+                </select>
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                Discount Value {discountTypeDraft === 'percentage' ? '(%)' : '(RM)'}
+                <input type="number" min={0} max={discountTypeDraft === 'percentage' ? 100 : Number(discountTarget.lineTotal ?? 0)} step="0.01" value={discountValueDraft} onChange={(event) => setDiscountValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                Remarks (optional)
+                <textarea value={discountRemarkDraft} onChange={(event) => setDiscountRemarkDraft(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="VIP discount / damaged box / promo adjustment" />
+              </label>
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={() => setDiscountModalOpen(false)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
+              <button type="button" onClick={() => { setDiscountValueDraft(''); setDiscountRemarkDraft('') }} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Clear</button>
+              <button type="button" onClick={() => void submitDiscountModal()} disabled={discountSaving} className="flex-1 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{discountSaving ? 'Saving…' : 'Apply'}</button>
             </div>
           </div>
         </div>

@@ -129,6 +129,14 @@ class PublicReceiptController extends Controller
 
         $displayItemsForResponse = $displayItems->map(function (OrderItem $item) {
             $row = $this->invoiceService->mapOrderItemToInvoiceRow($item);
+            $discountAmount = (float) ($item->discount_amount ?? 0);
+            $lineTotalSnapshot = (float) ($item->line_total_snapshot
+                ?? $item->line_total
+                ?? (($item->unit_price_snapshot ?? 0) * max(1, (int) ($item->quantity ?? 1))));
+            $lineTotalNet = (float) ($item->line_total_after_discount
+                ?? $item->effective_line_total
+                ?? $item->line_total
+                ?? max(0, $lineTotalSnapshot - $discountAmount));
 
             return [
             'type' => (string) ($item->line_type ?: 'product'),
@@ -137,7 +145,13 @@ class PublicReceiptController extends Controller
             'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
             'qty' => $row['quantity'],
             'unit_price' => $row['unit_price'],
-            'line_total' => $row['line_total'],
+            'line_total' => $lineTotalNet,
+            'line_total_snapshot' => $lineTotalSnapshot,
+            'discount_type' => $item->discount_type,
+            'discount_value' => (float) ($item->discount_value ?? 0),
+            'discount_amount' => $discountAmount,
+            'discount_remark' => $item->discount_remark,
+            'line_total_after_discount' => $lineTotalNet,
             'booking_id' => $item->booking_id,
             'service_package_id' => $item->service_package_id,
             'customer_service_package_id' => $item->customer_service_package_id,

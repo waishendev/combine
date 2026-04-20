@@ -21,6 +21,11 @@ class InvoiceService
      *     variant_sku: mixed,
      *     quantity: int,
      *     unit_price: float,
+     *     line_total_snapshot: float,
+     *     discount_type: string|null,
+     *     discount_value: float,
+     *     discount_amount: float,
+     *     discount_remark: string|null,
      *     line_total: float,
      *     promotion_summary: mixed,
      *     is_staff_free_applied: bool,
@@ -58,6 +63,9 @@ class InvoiceService
         }
 
         $isStaffFree = (bool) ($item->is_staff_free_applied ?? false);
+        $discountAmount = (float) ($item->discount_amount ?? 0);
+        $lineTotalSnapshot = (float) ($item->line_total_snapshot ?? $item->line_total ?? 0);
+        $lineTotalNet = (float) ($item->effective_line_total ?? $item->line_total_after_discount ?? $item->line_total ?? $lineTotalSnapshot);
 
         return [
             'line_type' => $lineType,
@@ -67,7 +75,12 @@ class InvoiceService
             'variant_sku' => $item->variant_sku_snapshot,
             'quantity' => (int) $item->quantity,
             'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
-            'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
+            'line_total_snapshot' => $lineTotalSnapshot,
+            'discount_type' => $item->discount_type,
+            'discount_value' => (float) ($item->discount_value ?? 0),
+            'discount_amount' => $discountAmount,
+            'discount_remark' => $item->discount_remark,
+            'line_total' => $lineTotalNet,
             'promotion_summary' => data_get($item->promotion_snapshot, 'summary'),
             'is_staff_free_applied' => $isStaffFree,
             'staff_free_list_line_total' => $isStaffFree ? (float) ($item->line_total_snapshot ?? 0) : 0.0,
