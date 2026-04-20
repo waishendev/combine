@@ -605,7 +605,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         <span className="text-sm font-semibold tabular-nums text-[var(--accent-strong)]">RM {lineDeposit.toFixed(2)}</span>
                       </div>
 
-                      {(payLaterLine !== null || itemIsRange) ? (
+                      {/* {(payLaterLine !== null || itemIsRange) ? (
                         <div
                           className="mt-2 space-y-1 rounded-lg border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-2.5 py-2 ring-1 ring-[var(--status-success)]/10"
                           role="note"
@@ -624,7 +624,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                               Pay after your service at the salon
                           </p>
                         </div>
-                      ) : null}
+                      ) : null} */}
                     </div>
                   </div>
 

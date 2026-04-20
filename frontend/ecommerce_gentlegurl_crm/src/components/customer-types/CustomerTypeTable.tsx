@@ -6,6 +6,7 @@ import PaginationControls from '@/components/PaginationControls'
 import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
 import CustomerTypeCreateModal from './CustomerTypeCreateModal'
+import CustomerTypeDeleteModal from './CustomerTypeDeleteModal'
 import CustomerTypeEditModal from './CustomerTypeEditModal'
 import CustomerTypeRow from './CustomerTypeRow'
 import { mapCustomerTypeApiItemToRow, type CustomerTypeApiItem, type CustomerTypeRowData } from './customerTypeUtils'
@@ -38,14 +39,17 @@ type CustomerTypeApiResponse = {
 export default function CustomerTypeTable({ permissions }: CustomerTypeTableProps) {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [rows, setRows] = useState<CustomerTypeRowData[]>([])
-  const [pageSize, setPageSize] = useState(20)
+  const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<keyof CustomerTypeRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [editingCustomerTypeId, setEditingCustomerTypeId] = useState<number | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CustomerTypeRowData | null>(null)
 
   const canCreate = permissions.includes('customers.create')
   const canUpdate = permissions.includes('customers.update')
+  const canDelete = permissions.includes('customers.delete')
+  const showActions = canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -213,6 +217,25 @@ export default function CustomerTypeTable({ permissions }: CustomerTypeTableProp
     setRows((prev) => prev.map((item) => (item.id === row.id ? row : item)))
   }
 
+  const handleDeleted = (customerTypeId: number) => {
+    setRows((prev) => prev.filter((item) => item.id !== customerTypeId))
+    setMeta((prevMeta) => {
+      const perPage = prevMeta.per_page || pageSize || 1
+      const total = Math.max((prevMeta.total || 0) - 1, 0)
+      const last_page = Math.max(1, Math.ceil(total / perPage))
+      const nextMeta: Meta = {
+        ...prevMeta,
+        total,
+        last_page,
+        current_page: Math.min(prevMeta.current_page || 1, last_page),
+      }
+      if ((prevMeta.current_page || 1) > last_page) {
+        setCurrentPage(last_page)
+      }
+      return nextMeta
+    })
+  }
+
   function DualSortIcons({
     active,
     dir,
@@ -248,21 +271,42 @@ export default function CustomerTypeTable({ permissions }: CustomerTypeTableProp
     { key: 'updatedAt', label: 'Updated At' },
   ]
 
+  const colCount = showActions ? 4 : 3
+
   return (
     <>
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <div className="text-sm text-gray-500">
-          Total types: <span className="font-semibold text-gray-700">{meta.total}</span>
+      <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {canCreate && (
+            <button
+              type="button"
+              onClick={() => setIsCreateModalOpen(true)}
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+            >
+              <i className="fa-solid fa-plus" />
+              Create
+            </button>
+          )}
         </div>
-        {canCreate && (
-          <button
-            type="button"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700"
+
+        <div className="flex items-center gap-3">
+          <label htmlFor="customerTypePageSize" className="text-sm text-gray-700">
+            Show
+          </label>
+          <select
+            id="customerTypePageSize"
+            value={pageSize}
+            onChange={(e) => handlePageSizeChange(Number(e.target.value))}
+            className="border border-gray-300 rounded px-2 py-1 text-sm disabled:opacity-50"
+            disabled={loading}
           >
-            Create Customer Type
-          </button>
-        )}
+            {[50, 100, 150, 200].map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </div>
       </div>
 
       <div className="overflow-auto rounded-lg border border-gray-200 bg-white">
@@ -282,21 +326,25 @@ export default function CustomerTypeTable({ permissions }: CustomerTypeTableProp
                   </th>
                 )
               })}
-              <th className="px-4 py-2 border border-gray-200 text-left text-sm font-semibold">Actions</th>
+              {showActions && (
+                <th className="px-4 py-2 border border-gray-200 text-left text-sm font-semibold">Actions</th>
+              )}
             </tr>
           </thead>
           <tbody>
             {loading ? (
-              <TableLoadingRow colSpan={4} />
+              <TableLoadingRow colSpan={colCount} />
             ) : sortedRows.length === 0 ? (
-              <TableEmptyState colSpan={4} title="No customer types found" subtitle="Create your first customer type." />
+              <TableEmptyState colSpan={colCount} title="No customer types found" subtitle="Create your first customer type." />
             ) : (
               sortedRows.map((row) => (
                 <CustomerTypeRow
                   key={row.id}
                   row={row}
                   canUpdate={canUpdate}
+                  canDelete={canDelete}
                   onEdit={(target) => setEditingCustomerTypeId(target.id)}
+                  onDelete={(target) => setDeleteTarget(target)}
                 />
               ))
             )}
@@ -325,6 +373,17 @@ export default function CustomerTypeTable({ permissions }: CustomerTypeTableProp
           customerTypeId={editingCustomerTypeId}
           onClose={() => setEditingCustomerTypeId(null)}
           onSuccess={handleUpdated}
+        />
+      )}
+
+      {deleteTarget && (
+        <CustomerTypeDeleteModal
+          customerType={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onSuccess={(id) => {
+            setDeleteTarget(null)
+            handleDeleted(id)
+          }}
         />
       )}
     </>

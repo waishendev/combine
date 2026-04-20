@@ -27,10 +27,10 @@ export default async function Page() {
         <span className="text-gray-500">Booking</span>
         <span className="mx-1">/</span>
         <Link href="/booking/commissions" className="text-blue-600 hover:underline">
-          Staff Commissions
+          Staff Booking Commissions
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">Staff Commissions</h2>
+      <h2 className="text-3xl font-semibold mb-6">Staff Booking Commissions</h2>
       <StaffCommissionsTable type="BOOKING" routeBasePath="/booking/commissions" countLabel="Booking Count" />
     </div>
   )

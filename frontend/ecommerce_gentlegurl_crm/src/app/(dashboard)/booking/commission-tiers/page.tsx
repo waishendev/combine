@@ -31,11 +31,11 @@ export default async function Page() {
           href="/booking/commission-tiers"
           className="text-blue-600 hover:underline"
         >
-          Commission Tiers
+         Booking  Commission Tiers
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">
-        Commission Tiers
+      Booking Commission Tiers
       </h2>
       <BookingCommissionTiersTable
         permissions={user.permissions}

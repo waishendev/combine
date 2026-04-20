@@ -27,10 +27,10 @@ export default async function Page() {
         <span className="text-gray-500">Ecommerce</span>
         <span className="mx-1">/</span>
         <Link href="/ecommerce/commission-tiers" className="text-blue-600 hover:underline">
-          Commission Tiers
+         Product Commission Tiers
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">Commission Tiers</h2>
+      <h2 className="text-3xl font-semibold mb-6">Product Commission Tiers</h2>
       <BookingCommissionTiersTable permissions={user.permissions} tierType="ECOMMERCE" />
     </div>
   )

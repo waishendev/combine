@@ -5,12 +5,9 @@ import PaginationControls from '../PaginationControls'
 import TableLoadingRow from '../TableLoadingRow'
 import TableEmptyState from '../TableEmptyState'
 import { useI18n } from '@/lib/i18n'
-
-type Tier = {
-  id: number
-  min_sales: string | number
-  commission_percent: string | number
-}
+import BookingCommissionTierCreateModal, { type CommissionTierRow } from './BookingCommissionTierCreateModal'
+import BookingCommissionTierEditModal from './BookingCommissionTierEditModal'
+import BookingCommissionTierDeleteModal from './BookingCommissionTierDeleteModal'
 
 type Meta = {
   current_page: number
@@ -20,9 +17,9 @@ type Meta = {
 }
 
 type CommissionTierApiResponse = {
-  data?: Tier[] | {
+  data?: CommissionTierRow[] | {
     current_page?: number
-    data?: Tier[]
+    data?: CommissionTierRow[]
     last_page?: number
     per_page?: number
     total?: number
@@ -45,13 +42,14 @@ export default function BookingCommissionTiersTable({
   tierType = 'BOOKING',
 }: BookingCommissionTiersTableProps) {
   const { t } = useI18n()
-  const [tiers, setTiers] = useState<Tier[]>([])
+  const [tiers, setTiers] = useState<CommissionTierRow[]>([])
   const [pageSize, setPageSize] = useState(50)
   const [currentPage, setCurrentPage] = useState(1)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [form, setForm] = useState({ min_sales: '0', commission_percent: '0' })
-  const [editingId, setEditingId] = useState<number | null>(null)
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [editingTier, setEditingTier] = useState<CommissionTierRow | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<CommissionTierRow | null>(null)
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
     last_page: 1,
@@ -94,7 +92,7 @@ export default function BookingCommissionTiersTable({
         return
       }
 
-      let tierItems: Tier[] = []
+      let tierItems: CommissionTierRow[] = []
       let paginationData: Partial<Meta> = {}
 
       if (response?.data) {
@@ -102,7 +100,7 @@ export default function BookingCommissionTiersTable({
           tierItems = response.data
         } else if (typeof response.data === 'object' && 'data' in response.data) {
           const nestedData = response.data as {
-            data?: Tier[]
+            data?: CommissionTierRow[]
             current_page?: number
             last_page?: number
             per_page?: number
@@ -146,47 +144,6 @@ export default function BookingCommissionTiersTable({
     return () => controller.abort()
   }, [fetchTiers])
 
-  const save = async () => {
-    setError(null)
-    const minSales = Number(form.min_sales)
-    const percent = Number(form.commission_percent)
-    if (!Number.isFinite(minSales) || minSales < 0 || !Number.isFinite(percent) || percent < 0) {
-      setError('Please enter valid values.')
-      return
-    }
-
-    const url = editingId
-      ? `/api/proxy/admin/booking/commission-tiers/${editingId}`
-      : '/api/proxy/admin/booking/commission-tiers'
-
-    const method = editingId ? 'PUT' : 'POST'
-
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: tierType, min_sales: minSales, commission_percent: percent }),
-    })
-
-    if (!res.ok) {
-      setError('Failed to save tier.')
-      return
-    }
-
-    setForm({ min_sales: '0', commission_percent: '0' })
-    setEditingId(null)
-    await fetchTiers()
-  }
-
-  const remove = async (id: number) => {
-    if (!window.confirm('Delete this tier?')) return
-    const res = await fetch(`/api/proxy/admin/booking/commission-tiers/${id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      setError('Failed to delete tier.')
-      return
-    }
-    await fetchTiers()
-  }
-
   const handlePageChange = (page: number) => {
     if (page < 1 || page > (meta.last_page || 1)) return
     setCurrentPage(page)
@@ -202,48 +159,29 @@ export default function BookingCommissionTiersTable({
 
   return (
     <div>
-      {canCreate && (
-        <div className="rounded border bg-white p-4 mb-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <input
-              className="border rounded px-3 py-2"
-              placeholder="Min Sales"
-              value={form.min_sales}
-              onChange={(e) => setForm((p) => ({ ...p, min_sales: e.target.value }))}
-            />
-            <input
-              className="border rounded px-3 py-2"
-              placeholder="Commission %"
-              value={form.commission_percent}
-              onChange={(e) => setForm((p) => ({ ...p, commission_percent: e.target.value }))}
-            />
-            <button
-              className="bg-blue-500 hover:bg-blue-600 text-white rounded px-4 py-2"
-              onClick={() => void save()}
-              disabled={loading}
-            >
-              {editingId ? 'Update Tier' : 'Create Tier'}
-            </button>
-            {editingId && (
-              <button
-                className="border rounded px-4 py-2"
-                onClick={() => {
-                  setEditingId(null)
-                  setForm({ min_sales: '0', commission_percent: '0' })
-                }}
-                type="button"
-              >
-                Cancel
-              </button>
-            )}
-          </div>
-          {error && <p className="text-red-600 text-sm mt-3">{error}</p>}
-        </div>
+      {isCreateModalOpen && (
+        <BookingCommissionTierCreateModal
+          tierType={tierType}
+          onClose={() => setIsCreateModalOpen(false)}
+          onSuccess={async () => {
+            setIsCreateModalOpen(false)
+            await fetchTiers()
+          }}
+        />
       )}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <div className="flex flex-wrap items-center gap-2">
-          {/* Placeholder for future filters */}
+          {canCreate && (
+            <button
+              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+              onClick={() => setIsCreateModalOpen(true)}
+              type="button"
+            >
+              <i className="fa-solid fa-plus" />
+              {t('common.create')}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -303,11 +241,7 @@ export default function BookingCommissionTiersTable({
                             type="button"
                             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
                             onClick={() => {
-                              setEditingId(tier.id)
-                              setForm({
-                                min_sales: String(tier.min_sales),
-                                commission_percent: String(tier.commission_percent),
-                              })
+                              setEditingTier(tier)
                             }}
                             aria-label="Edit"
                             title="Edit"
@@ -319,7 +253,7 @@ export default function BookingCommissionTiersTable({
                           <button
                             type="button"
                             className="inline-flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-red-600 text-white hover:bg-red-700"
-                            onClick={() => void remove(tier.id)}
+                            onClick={() => setDeleteTarget(tier)}
                             aria-label="Delete"
                             title="Delete"
                           >
@@ -337,6 +271,29 @@ export default function BookingCommissionTiersTable({
           </tbody>
         </table>
       </div>
+
+      {editingTier && (
+        <BookingCommissionTierEditModal
+          tierType={tierType}
+          tier={editingTier}
+          onClose={() => setEditingTier(null)}
+          onSuccess={async () => {
+            setEditingTier(null)
+            await fetchTiers()
+          }}
+        />
+      )}
+
+      {deleteTarget && (
+        <BookingCommissionTierDeleteModal
+          tier={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onSuccess={async () => {
+            setDeleteTarget(null)
+            await fetchTiers()
+          }}
+        />
+      )}
 
       <PaginationControls
         currentPage={currentPage}

@@ -30,10 +30,10 @@ export default async function Page() {
         <span className="text-gray-500">Booking</span>
         <span className="mx-1">/</span>
         <Link href="/booking/reports" className="text-blue-600 hover:underline">
-          Reports
+        Daily Deposit Reports
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">Booking Reports</h2>
+      <h2 className="text-3xl font-semibold mb-6">Daily Deposit Reports</h2>
       <BookingReportsPage canExport={canExport} />
     </div>
   )

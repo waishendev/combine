@@ -30,7 +30,7 @@ export default async function Page() {
           Staff Commissions
         </Link>
       </div>
-      <h2 className="text-3xl font-semibold mb-6">Ecommerce Staff Commissions</h2>
+      <h2 className="text-3xl font-semibold mb-6">Staff Product Commissions</h2>
       <StaffCommissionsTable type="ECOMMERCE" routeBasePath="/ecommerce/commissions" countLabel="Sales Count" />
     </div>
   )

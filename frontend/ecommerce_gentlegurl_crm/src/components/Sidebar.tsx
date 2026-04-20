@@ -47,12 +47,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
       // ======================
       // Overview
       // ======================
-      {
-        key: 'dashboard',
-        label: 'Dashboard',
-        icon: 'fa-solid fa-gauge',
-        href: '/dashboard',
-      },
+      // {
+      //   key: 'dashboard',
+      //   label: 'Dashboard',
+      //   icon: 'fa-solid fa-gauge',
+      //   href: '/dashboard',
+      // },
         // ======================
       // Admin Management
       // ======================
@@ -91,14 +91,20 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             href: '/staffs',
             requiredPermission: 'staff.view',
           },
+          {
+            key: 'ecommerce-commission-tiers',
+            label: 'Product Commission Tiers',
+            href: '/ecommerce/commission-tiers',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
         ],
       },
       // ======================
       // Sales
       // ======================
       {
-        key: 'orders',
-        label: 'Orders',
+        key: 'online-orders',
+        label: 'Online Orders',
         icon: 'fa-solid fa-bag-shopping',
         children: [
           {
@@ -164,12 +170,6 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             key: 'product',
             label: 'Products',
             href: '/product',
-            requiredPermission: 'ecommerce.products.view',
-          },
-          {
-            key: 'product-stock-movements',
-            label: 'Stock Movements',
-            href: '/products/stock-movements',
             requiredPermission: 'ecommerce.products.view',
           },
           {
@@ -292,30 +292,30 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
         icon: 'fa-solid fa-chart-line',
         children: [
 
-          {
-            key: 'sales-customers-ecommerce',
-            label: 'Ecommerce Customer Sales',
-            href: '/reports/sales/customers-ecommerce',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'sales-customers-booking',
-            label: 'Booking Customer Sales',
-            href: '/reports/sales/customers-booking',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'sales-ecommerce',
-            label: 'Ecommerce Sales',
-            href: '/reports/sales/ecommerce',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'sales-booking',
-            label: 'Booking Sales',
-            href: '/reports/sales/booking',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
+          // {
+          //   key: 'sales-customers-ecommerce',
+          //   label: 'Ecommerce Customer Sales',
+          //   href: '/reports/sales/customers-ecommerce',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
+          // {
+          //   key: 'sales-customers-booking',
+          //   label: 'Booking Customer Sales',
+          //   href: '/reports/sales/customers-booking',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
+          // {
+          //   key: 'sales-ecommerce',
+          //   label: 'Ecommerce Sales',
+          //   href: '/reports/sales/ecommerce',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
+          // {
+          //   key: 'sales-booking',
+          //   label: 'Booking Sales',
+          //   href: '/reports/sales/booking',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
           
           // {
           //   key: 'sales-daily',
@@ -323,18 +323,18 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           //   href: '/reports/sales/daily',
           //   requiredPermission: 'ecommerce.reports.sales.view',
           // },
-          {
-            key: 'sales-by-category',
-            label: 'Category Sales',
-            href: '/reports/sales/by-category',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'sales-by-product',
-            label: 'Product Sales',
-            href: '/reports/sales/by-product',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
+          // {
+          //   key: 'sales-by-category',
+          //   label: 'Category Sales',
+          //   href: '/reports/sales/by-category',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
+          // {
+          //   key: 'sales-by-product',
+          //   label: 'Product Sales',
+          //   href: '/reports/sales/by-product',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
           // {
           //   key: 'sales-by-customer',
           //   label: 'Customer Sales',
@@ -342,28 +342,16 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           //   requiredPermission: 'ecommerce.reports.sales.view',
           // },
          
+          // {
+          //   key: 'staff-commission',
+          //   label: 'Staff Commission',
+          //   href: '/reports/staff-commission',
+          //   requiredPermission: 'ecommerce.reports.sales.view',
+          // },
           {
             key: 'staff-commission',
-            label: 'Staff Commission',
-            href: '/reports/staff-commission',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'ecommerce-tier-commission',
-            label: 'Tier Commissions',
+            label: 'Staff Product Commissions',
             href: '/ecommerce/commissions',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'ecommerce-commission-tiers',
-            label: 'Commission Tiers',
-            href: '/ecommerce/commission-tiers',
-            requiredPermission: 'ecommerce.reports.sales.view',
-          },
-          {
-            key: 'ecommerce-commission-logs',
-            label: 'Commission Logs',
-            href: '/booking/commissions/logs',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
           {
@@ -380,42 +368,62 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           },
         ],
       },
-      {
-        key: 'daily-reports',
-        label: 'Daily Reports',
-        icon: 'fa-solid fa-chart-line',
-        children: [
+      // {
+      //   key: 'daily-reports',
+      //   label: 'Daily Reports',
+      //   icon: 'fa-solid fa-chart-line',
+      //   children: [
       
-              {
-                key: 'sales-daily-customers-ecommerce',
-                label: 'Ecommerce Customer Sales',
-                href: '/reports/sales/daily/customers-ecommerce',
-                requiredPermission: 'ecommerce.reports.sales.view',
-              },
-              {
-                key: 'sales-daily-customers-booking',
-                label: 'Booking Customer Sales',
-                href: '/reports/sales/daily/customers-booking',
-                requiredPermission: 'ecommerce.reports.sales.view',
-              },
-              {
-                key: 'sales-daily-ecommerce',
-                label: 'Ecommerce Sales',
-                href: '/reports/sales/daily/ecommerce',
-                requiredPermission: 'ecommerce.reports.sales.view',
-              },
-              {
-                key: 'sales-daily-booking',
-                label: 'Booking Sales',
-                href: '/reports/sales/daily/booking',
-                requiredPermission: 'ecommerce.reports.sales.view',
-              },
+      //         {
+      //           key: 'sales-daily-customers-ecommerce',
+      //           label: 'Ecommerce Customer Sales',
+      //           href: '/reports/sales/daily/customers-ecommerce',
+      //           requiredPermission: 'ecommerce.reports.sales.view',
+      //         },
+      //         {
+      //           key: 'sales-daily-customers-booking',
+      //           label: 'Booking Customer Sales',
+      //           href: '/reports/sales/daily/customers-booking',
+      //           requiredPermission: 'ecommerce.reports.sales.view',
+      //         },
+      //         {
+      //           key: 'sales-daily-ecommerce',
+      //           label: 'Ecommerce Sales',
+      //           href: '/reports/sales/daily/ecommerce',
+      //           requiredPermission: 'ecommerce.reports.sales.view',
+      //         },
+      //         {
+      //           key: 'sales-daily-booking',
+      //           label: 'Booking Sales',
+      //           href: '/reports/sales/daily/booking',
+      //           requiredPermission: 'ecommerce.reports.sales.view',
+      //         },
 
+      //   ],
+      // },
+
+      {
+        key: 'logs',
+        label: 'Logs',
+        icon: 'fa-solid fa-clipboard-list',
+        children: [
+          {
+            key: 'product-stock-movements',
+            label: 'Stock Movements Logs',
+            href: '/products/stock-movements',
+            requiredPermission: 'ecommerce.products.view',
+          },
+          {
+            key: 'ecommerce-commission-logs',
+            label: 'Commission Logs',
+            href: '/booking/commissions/logs',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
         ],
       },
 
-      
-            // ======================
+
+       // ======================
       // Payment Gateway
       // ======================
       {
@@ -503,12 +511,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
 
   const bookingMenuItems: MenuItem[] = useMemo(
     () => [
-      {
-        key: 'booking-dashboard',
-        label: 'Booking Dashboard',
-        icon: 'fa-solid fa-calendar-days',
-        href: '/booking/reports',
-      },
+      // {
+      //   key: 'booking-dashboard',
+      //   label: 'Booking Dashboard',
+      //   icon: 'fa-solid fa-calendar-days',
+      //   href: '/booking/reports',
+      // },
       {
         key: 'booking-management',
         label: 'Booking',
@@ -545,12 +553,6 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             requiredPermission: 'service-packages.view',
           },
           {
-            key: 'booking-customer-service-packages',
-            label: 'Customer Packages',
-            href: '/booking/customer-service-packages',
-            requiredPermission: 'customer-service-packages.view',
-          },
-          {
             key: 'booking-schedules',
             label: 'Staff Schedules',
             href: '/booking/staff-schedules',
@@ -564,22 +566,17 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           // },
           {
             key: 'booking-commission-tiers',
-            label: 'Commission Tiers',
+            label: 'Booking Commission Tiers',
             href: '/booking/commission-tiers',
           },
           {
-            key: 'booking-commissions',
-            label: 'Commissions',
-            href: '/booking/commissions',
-          },
-          {
-            key: 'booking-commission-logs',
-            label: 'Commission Logs',
-            href: '/booking/commissions/logs',
+            key: 'booking-customer-service-packages',
+            label: 'Customer Packages',
+            href: '/booking/customer-service-packages',
+            requiredPermission: 'customer-service-packages.view',
           },
         ],
       },
-
       ...(staffId
         ? ([
             {
@@ -622,7 +619,25 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           }
         ],
       },
-
+      {
+        key: 'marketing',
+        label: 'Marketing',
+        icon: 'fa-solid fa-bullhorn',
+        children: [
+          {
+            key: 'booking-announcements',
+            label: 'Announcements',
+            href: '/booking/announcements',
+            requiredPermission: 'booking.settings.view',
+          },
+          {
+            key: 'booking-marquee',
+            label: 'Marquee',
+            href: '/booking/marquee',
+            requiredPermission: 'booking.settings.view',
+          },
+        ],
+      },
 
 
 
@@ -639,7 +654,25 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
         href: '/booking/landing-page',
         requiredPermission: 'booking.landing-page.view',
       },
-
+      {
+        key: 'logs',
+        label: 'Logs',
+        icon: 'fa-solid fa-clipboard-list',
+        children: [
+          {
+            key: 'booking-logs',
+            label: 'Booking Audit Logs',
+            icon: 'fa-solid fa-clipboard-list',
+            href: '/booking/logs',
+            requiredPermission: 'booking.logs.view',
+          },
+          {
+            key: 'booking-commission-logs',
+            label: 'Commission Logs',
+            href: '/booking/commissions/logs',
+          },
+        ],
+      },
       {
         key: 'booking-payment-gateway',
         label: 'Payment Gateway',
@@ -659,21 +692,29 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           },
         ],
       },
-
       {
-        key: 'booking-reports',
+        key: 'reports',
         label: 'Reports',
         icon: 'fa-solid fa-chart-line',
-        href: '/booking/reports',
-        requiredPermission: 'booking.reports.view',
+        children: [
+          {
+            key: 'booking-commissions',
+            label: 'Staff Booking Commissions',
+            href: '/booking/commissions',
+          },
+          {
+            key: 'booking-reports',
+            label: 'Daily Deposit Reports',
+            href: '/booking/reports',
+            requiredPermission: 'booking.reports.view',
+          },
+        ],
       },
-      {
-        key: 'booking-logs',
-        label: 'Audit Logs',
-        icon: 'fa-solid fa-clipboard-list',
-        href: '/booking/logs',
-        requiredPermission: 'booking.logs.view',
-      },
+
+
+
+
+
       {
         key: 'settings',
         label: 'Shop Settings',
@@ -695,19 +736,6 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             key: 'shop-logo',
             label: 'Upload Logo',
             href: '/booking/shop-logo',
-            requiredPermission: 'booking.settings.view',
-          },
-
-          {
-            key: 'booking-announcements',
-            label: 'Announcements',
-            href: '/booking/announcements',
-            requiredPermission: 'booking.settings.view',
-          },
-          {
-            key: 'booking-marquee',
-            label: 'Marquee',
-            href: '/booking/marquee',
             requiredPermission: 'booking.settings.view',
           },
         ],

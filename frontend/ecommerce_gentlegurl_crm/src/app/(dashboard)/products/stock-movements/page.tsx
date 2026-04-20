@@ -25,10 +25,10 @@ export default async function ProductsStockMovementsPage() {
         <span className="mx-1">/</span>
         <Link href="/product" className="text-blue-600 hover:underline">Products</Link>
         <span className="mx-1">/</span>
-        <span className="text-gray-700">Stock Movements</span>
+        <span className="text-gray-700">Stock Movements Logs</span>
       </div>
 
-      <h2 className="text-3xl font-semibold mb-6">Stock Movements</h2>
+      <h2 className="text-3xl font-semibold mb-6">Stock Movements Logs</h2>
       <ProductStockMovementLogsPage />
     </div>
   )
