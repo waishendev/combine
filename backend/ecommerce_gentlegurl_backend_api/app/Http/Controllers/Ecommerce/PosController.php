@@ -47,6 +47,7 @@ use App\Services\Voucher\VoucherService;
 use App\Support\OrderReceiptEmailLabels;
 use App\Support\Pricing\ProductPricing;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -2420,6 +2421,7 @@ class PosController extends Controller
         $validated = $request->validate([
             'discount_type' => ['nullable', 'in:percentage,fixed'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'discount_remark' => ['nullable', 'string', 'max:255'],
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id);
@@ -2431,6 +2433,7 @@ class PosController extends Controller
         if (!$discountType || $discountValue <= 0) {
             $item->discount_type = null;
             $item->discount_value = 0;
+            $item->discount_remark = null;
             $item->save();
 
             return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
@@ -2450,9 +2453,78 @@ class PosController extends Controller
 
         $item->discount_type = $discountType;
         $item->discount_value = $discountValue;
+        $item->discount_remark = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
         $item->save();
 
         return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
+    }
+
+    public function updatePackageCartItemDiscount(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'discount_type' => ['nullable', 'in:percentage,fixed'],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'discount_remark' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->packageItems()->findOrFail($itemId);
+
+        $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+        return $this->saveNonProductLineDiscount($cart, $item, $validated, $lineTotal);
+    }
+
+    public function updateAppointmentSettlementCartItemDiscount(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'discount_type' => ['nullable', 'in:percentage,fixed'],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'discount_remark' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id)->loadMissing('appointmentSettlementItems.booking.service');
+        $item = $cart->appointmentSettlementItems->firstWhere('id', $itemId);
+        if (! $item) {
+            abort(404);
+        }
+
+        $booking = $item->booking;
+        if (! $booking) {
+            return $this->respondError(__('Booking not found for settlement line.'), 422);
+        }
+
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $lineTotal = max(0.0, (float) ($summary['balance_due'] ?? 0));
+        return $this->saveNonProductLineDiscount($cart, $item, $validated, $lineTotal);
+    }
+
+    protected function saveNonProductLineDiscount(PosCart $cart, Model $item, array $validated, float $lineTotal)
+    {
+        $discountType = $validated['discount_type'] ?? null;
+        $discountValue = (float) ($validated['discount_value'] ?? 0);
+
+        if (!$discountType || $discountValue <= 0) {
+            $item->discount_type = null;
+            $item->discount_value = 0;
+            $item->discount_remark = null;
+            $item->save();
+
+            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
+        }
+
+        if ($discountType === 'percentage' && $discountValue > 100) {
+            return $this->respondError(__('Percentage discount must be between 0 and 100.'), 422);
+        }
+        if ($discountType === 'fixed' && $discountValue > $lineTotal) {
+            return $this->respondError(__('Fixed discount must not exceed line total.'), 422);
+        }
+
+        $item->discount_type = $discountType;
+        $item->discount_value = $discountValue;
+        $item->discount_remark = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
+        $item->save();
+
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
     }
 
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
@@ -2642,13 +2714,19 @@ class PosController extends Controller
             $isStaffUser = !empty($request->user()?->staff_id);
 
             $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
-            $packageSubtotal = (float) $cart->packageItems->sum(fn (PosCartPackageItem $item) => ((float) $item->price_snapshot) * (int) $item->qty);
+            $packageSubtotal = (float) $cart->packageItems->sum(function (PosCartPackageItem $item) {
+                $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+                $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
+                return max(0.0, $lineTotal - $discountAmount);
+            });
             $depositTotal = $this->resolvePosBookingDepositForCart($cart);
             $settlementTotal = (float) $cart->appointmentSettlementItems->sum(function (PosCartAppointmentSettlementItem $row) {
                 $booking = $row->booking;
                 if (! $booking) return 0.0;
                 $summary = $this->resolveAppointmentFinancialSummary($booking);
-                return max(0.0, (float) ($summary['balance_due'] ?? 0));
+                $lineTotal = max(0.0, (float) ($summary['balance_due'] ?? 0));
+                $discountAmount = $this->resolveManualDiscountAmount((string) ($row->discount_type ?? ''), (float) ($row->discount_value ?? 0), $lineTotal);
+                return max(0.0, $lineTotal - $discountAmount);
             });
             $subtotal = (float) $cartPricing['subtotal'] + $packageSubtotal + $depositTotal + $settlementTotal;
             $discountTotal = 0.0;
@@ -2858,6 +2936,7 @@ class PosController extends Controller
                     'is_staff_free_applied' => $pricing['is_staff_free_applied'],
                     'discount_type' => $item->discount_type,
                     'discount_value' => (float) ($item->discount_value ?? 0),
+                    'discount_remark' => $item->discount_remark,
                     'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
                     'line_total_after_discount' => (float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total']),
                     'promotion_id' => $pricing['promotion_id'] ?? null,
@@ -3045,6 +3124,11 @@ class PosController extends Controller
                     ->with('items')
                     ->where('is_active', true)
                     ->findOrFail((int) $packageItem->service_package_id);
+                $packageLineGross = round(((float) $packageItem->price_snapshot) * (int) $packageItem->qty, 2);
+                $packageDiscount = $this->resolveManualDiscountAmount((string) ($packageItem->discount_type ?? ''), (float) ($packageItem->discount_value ?? 0), $packageLineGross);
+                $packageLineNet = max(0.0, $packageLineGross - $packageDiscount);
+                $unitNetAmount = (int) $packageItem->qty > 0 ? round($packageLineNet / (int) $packageItem->qty, 2) : 0.0;
+                $unitDiscountAmount = (int) $packageItem->qty > 0 ? round($packageDiscount / (int) $packageItem->qty, 2) : 0.0;
 
                 $payloadItem = $packagePayloadByCartId->get((int) $packageItem->id) ?? [];
                 $splitRows = collect($payloadItem['staff_splits'] ?? []);
@@ -3062,7 +3146,7 @@ class PosController extends Controller
                             continue;
                         }
                         $sharePercent = (int) ($split['share_percent'] ?? 0);
-                        $splitSales = round(((float) $packageItem->price_snapshot) * ($sharePercent / 100), 2);
+                        $splitSales = round($unitNetAmount * ($sharePercent / 100), 2);
                         $rate = (float) ($split['service_commission_rate_snapshot'] ?? 0);
 
                         ServicePackageStaffSplit::query()->create([
@@ -3086,11 +3170,16 @@ class PosController extends Controller
                         'display_name_snapshot' => (string) ($packageItem->package_name_snapshot ?: $servicePackage->name),
                         'quantity' => 1,
                         'price_snapshot' => (float) $packageItem->price_snapshot,
-                        'unit_price_snapshot' => (float) $packageItem->price_snapshot,
-                        'line_total' => (float) $packageItem->price_snapshot,
+                        'unit_price_snapshot' => (float) $unitNetAmount,
+                        'line_total' => (float) $unitNetAmount,
                         'line_total_snapshot' => (float) $packageItem->price_snapshot,
-                        'effective_unit_price' => (float) $packageItem->price_snapshot,
-                        'effective_line_total' => (float) $packageItem->price_snapshot,
+                        'effective_unit_price' => (float) $unitNetAmount,
+                        'effective_line_total' => (float) $unitNetAmount,
+                        'discount_type' => $packageItem->discount_type,
+                        'discount_value' => (float) ($packageItem->discount_value ?? 0),
+                        'discount_remark' => $packageItem->discount_remark,
+                        'discount_amount' => (float) $unitDiscountAmount,
+                        'line_total_after_discount' => (float) $unitNetAmount,
                         'locked' => true,
                         'service_package_id' => (int) $packageItem->service_package_id,
                         'customer_service_package_id' => (int) $ownedPackage->id,
@@ -3103,7 +3192,7 @@ class PosController extends Controller
                     'name' => (string) ($packageItem->package_name_snapshot ?: $servicePackage->name),
                     'qty' => (int) $packageItem->qty,
                     'unit_price' => (float) $packageItem->price_snapshot,
-                    'line_total' => round(((float) $packageItem->price_snapshot) * (int) $packageItem->qty, 2),
+                    'line_total' => (float) $packageLineNet,
                     'customer_id' => (int) ($packageItem->customer_id ?? $customerId),
                     'customer_name' => $packageItem->customer?->name,
                     'staff_splits' => $splitRows->values()->all(),
@@ -3124,6 +3213,8 @@ class PosController extends Controller
                 $serviceBalanceDue = max(0.0, (float) ($summary['service_balance_due'] ?? 0));
                 $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
                 $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
+                $settlementDiscount = $this->resolveManualDiscountAmount((string) ($settlementItem->discount_type ?? ''), (float) ($settlementItem->discount_value ?? 0), $balanceDue);
+                $discountLeft = $settlementDiscount;
                 if ($balanceDue <= 0.0001) {
                     $this->recordPackageCoveredAppointmentOnOrder($order, $booking);
 
@@ -3131,6 +3222,9 @@ class PosController extends Controller
                 }
 
                 if ($serviceBalanceDue > 0.0001) {
+                    $serviceLineDiscount = min($discountLeft, $serviceBalanceDue);
+                    $serviceLineNet = max(0.0, $serviceBalanceDue - $serviceLineDiscount);
+                    $discountLeft -= $serviceLineDiscount;
                     OrderItem::query()->create([
                         'order_id' => (int) $order->id,
                         'line_type' => 'booking_settlement',
@@ -3138,12 +3232,17 @@ class PosController extends Controller
                         'product_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
                         'display_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
                         'quantity' => 1,
-                        'price_snapshot' => $serviceBalanceDue,
-                        'unit_price_snapshot' => $serviceBalanceDue,
-                        'line_total' => $serviceBalanceDue,
+                        'price_snapshot' => $serviceLineNet,
+                        'unit_price_snapshot' => $serviceLineNet,
+                        'line_total' => $serviceLineNet,
                         'line_total_snapshot' => $serviceBalanceDue,
-                        'effective_unit_price' => $serviceBalanceDue,
-                        'effective_line_total' => $serviceBalanceDue,
+                        'effective_unit_price' => $serviceLineNet,
+                        'effective_line_total' => $serviceLineNet,
+                        'discount_type' => $settlementItem->discount_type,
+                        'discount_value' => (float) ($settlementItem->discount_value ?? 0),
+                        'discount_remark' => $settlementItem->discount_remark,
+                        'discount_amount' => $serviceLineDiscount,
+                        'line_total_after_discount' => $serviceLineNet,
                         'locked' => true,
                         'booking_id' => (int) $booking->id,
                         'booking_service_id' => (int) ($booking->service_id ?? 0),
@@ -3155,6 +3254,9 @@ class PosController extends Controller
                     if ($addonAmount <= 0.0001) {
                         continue;
                     }
+                    $addonLineDiscount = min($discountLeft, $addonAmount);
+                    $addonLineNet = max(0.0, $addonAmount - $addonLineDiscount);
+                    $discountLeft -= $addonLineDiscount;
                     OrderItem::query()->create([
                         'order_id' => (int) $order->id,
                         'line_type' => 'booking_addon',
@@ -3163,12 +3265,17 @@ class PosController extends Controller
                         'display_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
                         'variant_name_snapshot' => 'Booking Add-on Settlement',
                         'quantity' => 1,
-                        'price_snapshot' => $addonAmount,
-                        'unit_price_snapshot' => $addonAmount,
-                        'line_total' => $addonAmount,
+                        'price_snapshot' => $addonLineNet,
+                        'unit_price_snapshot' => $addonLineNet,
+                        'line_total' => $addonLineNet,
                         'line_total_snapshot' => $addonAmount,
-                        'effective_unit_price' => $addonAmount,
-                        'effective_line_total' => $addonAmount,
+                        'effective_unit_price' => $addonLineNet,
+                        'effective_line_total' => $addonLineNet,
+                        'discount_type' => $settlementItem->discount_type,
+                        'discount_value' => (float) ($settlementItem->discount_value ?? 0),
+                        'discount_remark' => $settlementItem->discount_remark,
+                        'discount_amount' => $addonLineDiscount,
+                        'line_total_after_discount' => $addonLineNet,
                         'locked' => true,
                         'booking_id' => (int) $booking->id,
                         'booking_service_id' => (int) ($booking->service_id ?? 0),
@@ -3456,6 +3563,7 @@ class PosController extends Controller
                 'product_name' => $product?->name,
                 'discount_type' => $item->discount_type,
                 'discount_value' => (float) ($item->discount_value ?? 0),
+                'discount_remark' => $item->discount_remark,
                 'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
                 'line_total_after_discount' => (float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total']),
                 'promotion_applied' => (bool) ($pricing['promotion_applied'] ?? false),
@@ -3536,7 +3644,9 @@ class PosController extends Controller
         })->values();
 
         $packageItems = $cart->packageItems->map(function (PosCartPackageItem $item) {
-            $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
+            $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+            $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
+            $netLineTotal = max(0.0, $lineTotal - $discountAmount);
 
             return [
                 'id' => $item->id,
@@ -3545,7 +3655,13 @@ class PosController extends Controller
                 'package_name' => $item->package_name_snapshot,
                 'qty' => (int) $item->qty,
                 'unit_price' => (float) $item->price_snapshot,
-                'line_total' => (float) $lineTotal,
+                'line_total' => (float) $netLineTotal,
+                'line_total_snapshot' => (float) $lineTotal,
+                'discount_type' => $item->discount_type,
+                'discount_value' => (float) ($item->discount_value ?? 0),
+                'discount_amount' => (float) $discountAmount,
+                'line_total_after_discount' => (float) $netLineTotal,
+                'discount_remark' => $item->discount_remark,
                 'customer_id' => $item->customer_id ? (int) $item->customer_id : null,
                 'customer_name' => $item->customer_id ? (string) ($item->customer?->name ?? '') : null,
             ];
@@ -3562,6 +3678,10 @@ class PosController extends Controller
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
             $guestEmail = trim((string) ($booking->guest_email ?? ''));
             $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
+
+            $lineTotal = round($balanceDue, 2);
+            $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
+            $netLineTotal = max(0.0, $lineTotal - $discountAmount);
 
             return [
                 'id' => (int) $item->id,
@@ -3581,7 +3701,13 @@ class PosController extends Controller
                 'staff_splits' => $staffSplits->values()->all(),
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
-                'balance_due' => round($balanceDue, 2),
+                'balance_due' => (float) $netLineTotal,
+                'balance_due_snapshot' => (float) $lineTotal,
+                'discount_type' => $item->discount_type,
+                'discount_value' => (float) ($item->discount_value ?? 0),
+                'discount_amount' => (float) $discountAmount,
+                'line_total_after_discount' => (float) $netLineTotal,
+                'discount_remark' => $item->discount_remark,
                 'service_total' => (float) ($summary['service_total'] ?? 0),
                 'settled_service_amount' => $summary['settled_service_amount'] ?? null,
                 'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
@@ -3979,11 +4105,7 @@ class PosController extends Controller
             $line = (float) ($base[$id]['line_total_after_promotion'] ?? $base[$id]['effective_line_total']);
             $manual = 0.0;
             if (empty($base[$id]['promotion_applied']) && ! empty($item->discount_type) && (float) $item->discount_value > 0) {
-                if ($item->discount_type === 'percentage') {
-                    $manual = $line * ((float) $item->discount_value / 100);
-                } else {
-                    $manual = min($line, (float) $item->discount_value);
-                }
+                $manual = $this->resolveManualDiscountAmount((string) $item->discount_type, (float) $item->discount_value, $line);
             }
             $base[$id]['manual_discount_amount'] = $manual;
             $base[$id]['line_total_after_discount'] = max(0, $line - $manual);
@@ -4004,6 +4126,20 @@ class PosController extends Controller
         return 'Min spend RM ' . number_format((float) ($tier->min_amount ?? 0), 2)
             . ' => ' . $tier->discount_type
             . ' ' . number_format((float) ($tier->discount_value ?? 0), 2);
+    }
+
+    protected function resolveManualDiscountAmount(string $discountType, float $discountValue, float $lineTotal): float
+    {
+        if ($lineTotal <= 0 || $discountValue <= 0) {
+            return 0.0;
+        }
+
+        if ($discountType === 'percentage') {
+            $percent = min(100, max(0, $discountValue));
+            return round($lineTotal * ($percent / 100), 2);
+        }
+
+        return round(min($lineTotal, max(0, $discountValue)), 2);
     }
 
     protected function clearVoucherFromCart(PosCart $cart): void

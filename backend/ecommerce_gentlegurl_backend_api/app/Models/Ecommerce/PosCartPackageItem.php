@@ -10,6 +10,7 @@ class PosCartPackageItem extends Model
 {
     protected $fillable = [
         'pos_cart_id', 'service_package_id', 'customer_id', 'package_name_snapshot', 'price_snapshot', 'qty', 'staff_splits',
+        'discount_type', 'discount_value', 'discount_remark',
     ];
 
     protected function casts(): array
@@ -19,6 +20,8 @@ class PosCartPackageItem extends Model
             'qty' => 'integer',
             'customer_id' => 'integer',
             'staff_splits' => 'array',
+            'discount_value' => 'decimal:2',
+            'discount_remark' => 'string',
         ];
     }
 
