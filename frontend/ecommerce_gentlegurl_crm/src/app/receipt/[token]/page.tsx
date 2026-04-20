@@ -8,6 +8,12 @@ type ReceiptItem = {
   qty: number
   unit_price: number
   line_total?: number
+  line_total_snapshot?: number
+  discount_type?: 'percentage' | 'fixed' | null
+  discount_value?: number
+  discount_amount?: number
+  line_total_after_discount?: number
+  discount_remark?: string | null
 }
 
 function lineTypeLabel(type?: string) {
@@ -145,7 +151,11 @@ export default async function PublicReceiptPage({ params }: Props) {
             </tr>
           </thead>
           <tbody>
-            {packageCoveredItems.map((item, idx) => (
+            {packageCoveredItems.map((item, idx) => {
+              const gross = Number(item.line_total_snapshot ?? item.line_total ?? item.qty * item.unit_price)
+              const discountAmount = Number(item.discount_amount ?? 0)
+              const net = Number(item.line_total_after_discount ?? item.line_total ?? (gross - discountAmount))
+              return (
               <tr key={`${item.sku}-${idx}`} className="border-t border-gray-200 text-sm">
                 <td className="px-4 py-3">
                   <p className="font-semibold">{item.name}</p>
@@ -155,12 +165,33 @@ export default async function PublicReceiptPage({ params }: Props) {
                   {!isPackageCoveredReceipt && item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
                   {!isPackageCoveredReceipt && item.variant_name ? <p className="text-xs text-gray-500">Variant: {item.variant_name}</p> : null}
                   {isPackageCoveredReceipt ? <p className="text-xs text-gray-500">Variant: Service</p> : null}
+                  {discountAmount > 0 ? (
+                    <div className="mt-1 space-y-0.5 text-xs text-amber-700">
+                      <p>Original: {money(gross)}</p>
+                      <p>
+                        Discount:{' '}
+                        {item.discount_type === 'percentage'
+                          ? `${Number(item.discount_value ?? 0)}%`
+                          : money(item.discount_value ?? 0)}{' '}
+                        ({money(discountAmount)})
+                      </p>
+                      {item.discount_remark ? <p>Remark: {item.discount_remark}</p> : null}
+                    </div>
+                  ) : null}
                 </td>
                 <td className="px-4 py-3 text-right">{item.qty}</td>
                 <td className="px-4 py-3 text-right">{money(item.unit_price)}</td>
-                <td className="px-4 py-3 text-right">{money(item.line_total ?? item.qty * item.unit_price)}</td>
+                <td className="px-4 py-3 text-right">
+                  {discountAmount > 0 ? (
+                    <div>
+                      <p className="text-xs text-gray-400 line-through">{money(gross)}</p>
+                      <p className="font-semibold text-amber-700">{money(net)}</p>
+                    </div>
+                  ) : money(net)}
+                </td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -174,7 +205,7 @@ export default async function PublicReceiptPage({ params }: Props) {
             </tr>
             <tr className="border-b border-gray-100">
               <td className="px-4 py-2 text-gray-500">Discount</td>
-              <td className="px-4 py-2 text-right font-semibold">{money(receipt.discount_total)}</td>
+              <td className="px-4 py-2 text-right font-semibold">- {money(receipt.discount_total)}</td>
             </tr>
             <tr className="border-b border-gray-100">
               <td className="px-4 py-2 text-gray-500">Shipping</td>

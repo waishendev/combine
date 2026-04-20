@@ -685,7 +685,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
   const [discountSaving, setDiscountSaving] = useState(false)
   const [discountTarget, setDiscountTarget] = useState<DiscountTarget | null>(null)
-  const [discountTypeDraft, setDiscountTypeDraft] = useState<'percentage' | 'fixed'>('percentage')
+  const [discountTypeDraft, setDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
   const [discountValueDraft, setDiscountValueDraft] = useState('')
   const [discountRemarkDraft, setDiscountRemarkDraft] = useState('')
   const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -2237,8 +2237,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return
     }
     setDiscountTarget(target)
-    setDiscountTypeDraft(target.discountType ?? 'percentage')
-    setDiscountValueDraft(String(target.discountValue ?? 0))
+    setDiscountTypeDraft(target.discountType ?? 'fixed')
+    const nextValue = Number(target.discountValue ?? 0)
+    setDiscountValueDraft(nextValue > 0 ? String(nextValue) : '')
     setDiscountRemarkDraft(target.discountRemark ?? '')
     setDiscountModalOpen(true)
   }
@@ -6507,7 +6508,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             <div className="mt-5 flex gap-2">
               <button type="button" onClick={() => setDiscountModalOpen(false)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
-              <button type="button" onClick={() => { setDiscountValueDraft('0'); setDiscountRemarkDraft('') }} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Clear</button>
+              <button type="button" onClick={() => { setDiscountValueDraft(''); setDiscountRemarkDraft('') }} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Clear</button>
               <button type="button" onClick={() => void submitDiscountModal()} disabled={discountSaving} className="flex-1 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{discountSaving ? 'Saving…' : 'Apply'}</button>
             </div>
           </div>
