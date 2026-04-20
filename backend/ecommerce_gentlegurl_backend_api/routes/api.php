@@ -435,6 +435,8 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment']);
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
         Route::post('/appointments/{id}/reschedule', [PosController::class, 'rescheduleAppointment']);
+        Route::post('/appointments/{id}/send-confirmation-email', [PosController::class, 'sendBookingConfirmationEmail'])
+            ->middleware('throttle:6,1');
         Route::get('/cart', [PosController::class, 'cart']);
         Route::post('/book-service', [PosController::class, 'bookService']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);

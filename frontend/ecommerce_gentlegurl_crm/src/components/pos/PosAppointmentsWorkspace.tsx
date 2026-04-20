@@ -214,6 +214,8 @@ export default function PosAppointmentsWorkspace({
   const [appointmentQrCodeFullscreen, setAppointmentQrCodeFullscreen] = useState(false)
   const [appointmentReceiptQrLoaded, setAppointmentReceiptQrLoaded] = useState(false)
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
+  const [sendingConfirmationEmail, setSendingConfirmationEmail] = useState(false)
+  const [confirmationEmailCooldownUntil, setConfirmationEmailCooldownUntil] = useState(0)
 
   const [editSettlementOpen, setEditSettlementOpen] = useState(false)
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
@@ -1102,6 +1104,34 @@ export default function PosAppointmentsWorkspace({
       setAppointmentActionLoading(false)
     }
   }, [appointmentDetail?.id, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+
+  const sendConfirmationEmail = useCallback(async () => {
+    if (!appointmentDetail?.id) return
+    const email = (appointmentDetail.customer?.email?.trim() || appointmentDetail.guest_email?.trim() || '').trim()
+    if (!email) {
+      showMsg('No email address available for this booking.', 'error')
+      return
+    }
+    setSendingConfirmationEmail(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/send-confirmation-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to send confirmation email.', 'error')
+        return
+      }
+      setConfirmationEmailCooldownUntil(Date.now() + 10_000)
+      showMsg('Confirmation email sent to ' + email, 'success')
+    } catch {
+      showMsg('Unable to send confirmation email.', 'error')
+    } finally {
+      setSendingConfirmationEmail(false)
+    }
+  }, [appointmentDetail, showMsg])
 
   const updateAppointmentStatus = useCallback(
     async (status: 'CANCELLED' | 'LATE_CANCELLATION' | 'NO_SHOW') => {
@@ -2055,6 +2085,21 @@ export default function PosAppointmentsWorkspace({
                           Late cancellation
                         </button>
                       </div>
+                      <button
+                        type="button"
+                        disabled={sendingConfirmationEmail || Date.now() < confirmationEmailCooldownUntil || appointmentActionLoading}
+                        onClick={() => void sendConfirmationEmail()}
+                        className="mt-3 flex min-h-[44px] w-full items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2.5 text-sm font-semibold text-blue-900 shadow-sm transition hover:bg-blue-100 disabled:opacity-50"
+                      >
+                        <svg className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M21.75 6.75v10.5a2.25 2.25 0 01-2.25 2.25h-15a2.25 2.25 0 01-2.25-2.25V6.75m19.5 0A2.25 2.25 0 0019.5 4.5h-15a2.25 2.25 0 00-2.25 2.25m19.5 0v.243a2.25 2.25 0 01-1.07 1.916l-7.5 4.615a2.25 2.25 0 01-2.36 0L3.32 8.91a2.25 2.25 0 01-1.07-1.916V6.75" />
+                        </svg>
+                        {sendingConfirmationEmail
+                          ? 'Sending…'
+                          : Date.now() < confirmationEmailCooldownUntil
+                            ? 'Sent (wait…)'
+                            : 'Send Confirmation Email'}
+                      </button>
                     </section>
                   ) : null}
 
