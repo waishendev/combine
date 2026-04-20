@@ -3,6 +3,16 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import Link from 'next/link'
 import OrderViewPanel from './OrderViewPanel'
+import {
+  printReceipt,
+  printReceiptBluetooth,
+  printReceiptWifi,
+  testWifiPrinterConnection,
+  connectBluetoothPrinter,
+  disconnectBluetoothPrinter,
+  isBluetoothPrinterConnected,
+  type ReceiptLineItem,
+} from '@/utils/printReceipt'
 type CartItem = {
   id: number
   qty: number
@@ -715,6 +725,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [sendingReceiptEmail, setSendingReceiptEmail] = useState(false)
   const [receiptCooldownUntil, setReceiptCooldownUntil] = useState<number>(0)
   const [receiptQrLoaded, setReceiptQrLoaded] = useState(false)
+  const [autoPrint, setAutoPrint] = useState(false)
+  const [printMode, setPrintMode] = useState<'usb' | 'bluetooth' | 'wifi'>('bluetooth')
+  const [btPrinterName, setBtPrinterName] = useState<string | null>(null)
+  const [btConnecting, setBtConnecting] = useState(false)
+  const [wifiPrinterIp, setWifiPrinterIp] = useState('')
+  const [wifiPrinterPort, setWifiPrinterPort] = useState('9100')
+  const [wifiTesting, setWifiTesting] = useState(false)
+  const [wifiTestOk, setWifiTestOk] = useState<boolean | null>(null)
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
@@ -979,6 +997,46 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     window.setTimeout(() => dismissToast(id), 3200)
   }, [dismissToast])
 
+
+  const handleConnectBtPrinter = async () => {
+    setBtConnecting(true)
+    try {
+      const name = await connectBluetoothPrinter()
+      setBtPrinterName(name)
+      pushToast('success', `Connected: ${name}`)
+    } catch (err) {
+      pushToast('error', err instanceof Error ? err.message : 'Failed to connect printer')
+      setBtPrinterName(null)
+    } finally {
+      setBtConnecting(false)
+    }
+  }
+
+  const handleDisconnectBtPrinter = () => {
+    disconnectBluetoothPrinter()
+    setBtPrinterName(null)
+    pushToast('info', 'Printer disconnected')
+  }
+
+  const handleTestWifiPrinter = async () => {
+    const ip = wifiPrinterIp.trim()
+    if (!ip) {
+      pushToast('error', 'Please enter printer IP address')
+      return
+    }
+    setWifiTesting(true)
+    setWifiTestOk(null)
+    try {
+      await testWifiPrinterConnection(ip, Number(wifiPrinterPort) || 9100)
+      setWifiTestOk(true)
+      pushToast('success', `Test print sent to ${ip}`)
+    } catch (err) {
+      setWifiTestOk(false)
+      pushToast('error', err instanceof Error ? err.message : 'WiFi print test failed')
+    } finally {
+      setWifiTesting(false)
+    }
+  }
 
   const focusScanner = () => {
     scannerInputRef.current?.focus()
@@ -3241,6 +3299,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return
     }
 
+    const receiptLineItems: ReceiptLineItem[] = [
+      ...cartItems.map((item) => ({
+        name: item.product_name ?? item.variant_name ?? 'Product',
+        qty: item.qty,
+        amount: item.line_total,
+      })),
+      ...(cart.service_items ?? []).map((item) => ({
+        name: item.service_name ?? 'Service',
+        qty: item.qty,
+        amount: item.line_total,
+      })),
+      ...(cart.package_items ?? []).map((item) => ({
+        name: item.package_name ?? 'Package',
+        qty: item.qty,
+        amount: item.line_total,
+      })),
+      ...(cart.appointment_settlement_items ?? []).map((item) => ({
+        name: item.service_name ?? `Booking ${item.booking_code}`,
+        qty: 1,
+        amount: item.balance_due,
+      })),
+    ]
+
     const clearedCartId = cart.id
     setCheckoutResult({
       order_id: Number(json.data.order.id),
@@ -3259,7 +3340,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCheckoutIdentityMode('member')
     setMemberQuery('')
     setMembers([])
-    // Backend clears session cart but checkout JSON omits `cart`; sync UI immediately then confirm via GET /pos/cart.
     setCart({
       id: clearedCartId,
       items: [],
@@ -3290,7 +3370,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setQrProofFileName(null)
     setCheckoutConfirmationOpen(false)
     setCheckingOut(false)
-    // Don't show toast, will show success modal instead
+
+    if (autoPrint) {
+      const receiptPayload = {
+        order_number: json.data.order.order_number,
+        payment_method: paymentMethod,
+        total: Number(json.data.order.grand_total ?? 0),
+        paid_amount: meta.paid_amount,
+        change_amount: meta.change_amount,
+        items: receiptLineItems,
+      }
+
+      if (printMode === 'bluetooth' && isBluetoothPrinterConnected()) {
+        printReceiptBluetooth(receiptPayload).catch(() => pushToast('error', 'Bluetooth print failed'))
+      } else if (printMode === 'wifi' && wifiPrinterIp.trim()) {
+        printReceiptWifi(wifiPrinterIp.trim(), Number(wifiPrinterPort) || 9100, receiptPayload)
+          .catch(() => pushToast('error', 'WiFi print failed'))
+      } else if (printMode === 'usb' && json.data.receipt_public_url) {
+        printReceipt(json.data.receipt_public_url)
+      }
+    }
+
     focusScanner()
   }
 
@@ -6293,6 +6393,161 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   )}
                 </div>
               )}
+
+              <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-sm overflow-hidden">
+                <label className="flex cursor-pointer items-center gap-3 px-5 py-4 select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoPrint}
+                    onChange={(e) => setAutoPrint(e.target.checked)}
+                    className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <div className="flex items-center gap-2">
+                    <svg className="h-5 w-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
+                    </svg>
+                    <span className="text-sm font-semibold text-gray-700">Auto Print Receipt</span>
+                  </div>
+                </label>
+
+                {autoPrint && (
+                  <div className="border-t border-gray-200 px-5 py-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Print via</span>
+                      <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs font-semibold">
+                        <button
+                          type="button"
+                          onClick={() => setPrintMode('bluetooth')}
+                          className={`px-3 py-1.5 transition-all ${printMode === 'bluetooth' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          Bluetooth
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrintMode('wifi')}
+                          className={`px-3 py-1.5 border-l border-gray-300 transition-all ${printMode === 'wifi' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          WiFi
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrintMode('usb')}
+                          className={`px-3 py-1.5 border-l border-gray-300 transition-all ${printMode === 'usb' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+                        >
+                          USB
+                        </button>
+                      </div>
+                    </div>
+
+                    {printMode === 'bluetooth' && (
+                      <div>
+                        {btPrinterName ? (
+                          <div className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-3 py-2.5">
+                            <div className="flex items-center gap-2 text-sm font-medium text-green-800">
+                              <span className="relative flex h-2.5 w-2.5">
+                                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75" />
+                                <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+                              </span>
+                              {btPrinterName}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={handleDisconnectBtPrinter}
+                              className="text-xs font-semibold text-red-600 hover:text-red-700 underline transition-colors"
+                            >
+                              Disconnect
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => void handleConnectBtPrinter()}
+                            disabled={btConnecting}
+                            className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {btConnecting ? (
+                              <span className="flex items-center justify-center gap-2">
+                                <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                                Connecting...
+                              </span>
+                            ) : (
+                              <span className="flex items-center justify-center gap-2">
+                                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                                </svg>
+                                Connect Bluetooth Printer
+                              </span>
+                            )}
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {printMode === 'wifi' && (
+                      <div className="space-y-2">
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={wifiPrinterIp}
+                            onChange={(e) => { setWifiPrinterIp(e.target.value); setWifiTestOk(null) }}
+                            placeholder="Printer IP (e.g. 192.168.1.100)"
+                            className="h-9 flex-1 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
+                          />
+                          <input
+                            type="text"
+                            value={wifiPrinterPort}
+                            onChange={(e) => { setWifiPrinterPort(e.target.value); setWifiTestOk(null) }}
+                            placeholder="Port"
+                            className="h-9 w-20 rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-800 outline-none transition focus:border-blue-500"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => void handleTestWifiPrinter()}
+                          disabled={wifiTesting || !wifiPrinterIp.trim()}
+                          className="w-full rounded-lg border-2 border-dashed border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-600 transition-all hover:border-blue-400 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {wifiTesting ? (
+                            <span className="flex items-center justify-center gap-2">
+                              <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                              </svg>
+                              Testing...
+                            </span>
+                          ) : (
+                            <span className="flex items-center justify-center gap-2">
+                              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                              </svg>
+                              Test Print
+                            </span>
+                          )}
+                        </button>
+                        {wifiTestOk === true && (
+                          <div className="flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-medium text-green-800">
+                            <span className="relative flex h-2.5 w-2.5">
+                              <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-green-500" />
+                            </span>
+                            Printer reachable — test receipt sent
+                          </div>
+                        )}
+                        {wifiTestOk === false && (
+                          <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-medium text-red-700">
+                            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01" />
+                            </svg>
+                            Could not reach printer — check IP &amp; port
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {checkoutError ? (
                 <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{checkoutError}</div>
