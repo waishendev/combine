@@ -4,7 +4,7 @@ import "./globals.css";
 import { Providers } from "@/components/providers";
 import { Header } from "@/components/layout/Header";
 import Marquee from "@/components/home/Marquee";
-import AnnouncementModal from "@/components/home/AnnouncementModal";
+import AnnouncementModalHomeOnly from "@/components/home/AnnouncementModalHomeOnly";
 import { Footer } from "@/components/layout/Footer";
 import { WhatsappButton } from "@/components/layout/WhatsappButton";
 import CursorTrail from "@/components/visual/CursorTrail";
@@ -79,7 +79,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
           {homepage?.marquees && homepage.marquees.length > 0 && <Marquee items={homepage.marquees} />}
           <Header logoUrl={homepage?.shop_logo_url ?? null} />
           {homepage?.announcements && homepage.announcements.length > 0 && (
-            <AnnouncementModal items={homepage.announcements} />
+            <AnnouncementModalHomeOnly items={homepage.announcements} />
           )}
           <main className="min-h-[70vh] bg-[var(--background-soft)]/70">{children}</main>
           <Footer footer={homepage?.settings?.footer} />
