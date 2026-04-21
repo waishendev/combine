@@ -234,7 +234,9 @@ export default function PreviewHeader({ mode }: PreviewHeaderProps) {
                 </div>
               )}
             </div>
-
+            <a href="#" className="transition-colors hover:text-[var(--accent-strong)]">
+              Appointments
+            </a>
             <a href="#" className="transition-colors hover:text-[var(--accent-strong)]">
               Tracking
             </a>

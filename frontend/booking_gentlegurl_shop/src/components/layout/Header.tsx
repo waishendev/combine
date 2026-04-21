@@ -22,6 +22,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
   const userMenuRef = useRef<HTMLDivElement | null>(null);
 
   const packagesHref = PACKAGES_PATH;
+  const ecommerceHref = process.env.NEXT_PUBLIC_ECOMMERCE_BASE_URL?.trim() || "/";
 
   const isActive = (path: string) => (pathname === path || pathname?.startsWith(`${path}/`) ? "text-[var(--foreground)]" : "text-[var(--text-muted)]");
   const packagesNavClass =
@@ -143,6 +144,13 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
               <Link href="/booking" className={isActive("/booking")}>
                 Book
               </Link>
+              <Link
+                href={ecommerceHref}
+                className="text-[var(--text-muted)] transition-colors hover:text-[var(--foreground)]"
+              >
+                Ecommerce
+              </Link>
+              
             </nav>
           </div>
 
@@ -362,6 +370,14 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                 >
                   Book
                 </Link>
+                <Link
+                  href={ecommerceHref}
+                  className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                  onClick={() => setMobileMenuOpen(false)}
+                >
+                  Ecommerce
+                </Link>
+                
               </nav>
             </div>
           </div>

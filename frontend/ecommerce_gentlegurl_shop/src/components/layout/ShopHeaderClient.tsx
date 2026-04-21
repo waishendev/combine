@@ -54,6 +54,12 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   const fallbackLogo = "/images/logo.png";
   // 直接使用服务端传递的 logo，如果没有则使用 fallback
   const resolvedLogoUrl = logoUrl || fallbackLogo;
+  const bookingHref = useMemo(() => {
+    const rawBase = process.env.NEXT_PUBLIC_BOOKING_BASE_URL;
+    // const base = rawBase?.trim().replace(/\/+$/, "");
+    // return base ? `${base}/booking` : "/booking";
+    return rawBase;
+  }, []);
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -385,7 +391,12 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                 </div>
               )}
             </div>
-
+            <Link
+              href={bookingHref}
+              className="text-sm font-medium text-[var(--foreground)]/80 transition-colors hover:text-[var(--accent-strong)]"
+            >
+              Appointments
+            </Link>
             <Link href="/tracking">Tracking</Link>
             <Link href="/reviews">Store Reviews</Link>
           </nav>
@@ -1005,6 +1016,14 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                 )}
               </div>
               
+              <Link
+                href={bookingHref}
+                className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                Appointments
+              </Link>
+
               <Link
                 href="/tracking"
                 className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
