@@ -6,7 +6,7 @@ use App\Models\Permission;
 use App\Models\Role;
 use Illuminate\Database\Seeder;
 
-class StaffRbacSeeder extends Seeder
+class StaffPermissionSeeder extends Seeder
 {
     public function run(): void
     {
@@ -32,10 +32,11 @@ class StaffRbacSeeder extends Seeder
         }
 
         $permissionIds = Permission::whereIn('slug', [
-            'staff.view',
-            'pos.checkout',
-            'pos.orders.view',
-            'reports.my-pos-summary.view',
+            'booking.commission-tiers.view',
+            // 'staff.view',
+            // 'pos.checkout',
+            // 'pos.orders.view',
+            // 'reports.my-pos-summary.view',
         ])->pluck('id')->all();
 
         if (! empty($permissionIds)) {

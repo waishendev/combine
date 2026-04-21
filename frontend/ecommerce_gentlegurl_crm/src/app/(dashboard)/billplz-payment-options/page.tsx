@@ -14,7 +14,7 @@ export default async function BillplzPaymentOptionsPage() {
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'ecommerce.payment-gateways.view' || perm === 'booking.payment-gateways.view',
+    (perm) => perm === 'ecommerce.billplz-payment-gateways.view',
   )
 
   if (!hasPermission) {

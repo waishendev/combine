@@ -31,7 +31,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.marquees' => 'Ecommerce Marquee',
             'ecommerce.sliders' => 'Ecommerce Sliders',
             'ecommerce.loyalty' => 'Ecommerce Loyalty',
-            'ecommerce.notifications' => 'Ecommerce Notifications',
+            // 'ecommerce.notifications' => 'Ecommerce Notifications',
             'ecommerce.loyalty.settings' => 'Ecommerce Loyalty Settings',
             'ecommerce.loyalty.tiers' => 'Ecommerce Loyalty Tiers',
             'ecommerce.vouchers' => 'Ecommerce Vouchers',
@@ -41,7 +41,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.reports.sales' => 'Ecommerce Sales Reports',
             'reports.my-pos-summary' => 'My POS Summary Reports',
             'reports.pos-summary' => 'POS Summary Reports',
-            'ecommerce.notifications.templates' => 'Ecommerce Notification Templates',
+            // 'ecommerce.notifications.templates' => 'Ecommerce Notification Templates',
             'ecommerce.dashboard' => 'Ecommerce Dashboard',
             'ecommerce.settings' => 'Ecommerce Settings',
             'ecommerce.orders' => 'Ecommerce Orders',
@@ -51,6 +51,9 @@ class PermissionSeeder extends Seeder
             'booking.payment-gateways' => 'Booking Payment Gateways',
             'booking.bank-accounts' => 'Booking Manual Bank Accounts',
             'booking.landing-page' => 'Booking Landing Page',
+            // Keep these permissions grouped under "Booking"
+            'service-packages' => 'Booking',
+            'customer-service-packages' => 'Booking',
         ];
 
         $groupModels = [];
@@ -91,8 +94,10 @@ class PermissionSeeder extends Seeder
             'ecommerce.loyalty.tiers' => ['view', 'create','edit', 'update', 'delete'],
             'ecommerce.loyalty.rewards' => ['view', 'create', 'update', 'delete'],
             'ecommerce.loyalty.redemptions' => ['view', 'update'],
-            'ecommerce.notifications' => ['templates'],
-            'ecommerce.notifications.templates' => ['view', 'create', 'update', 'delete'],
+            'ecommerce.stock-movements-logs' => ['view'],
+            'ecommerce.commision-logs' => ['view'],
+            // 'ecommerce.notifications' => ['templates'],
+            // 'ecommerce.notifications.templates' => ['view', 'create', 'update', 'delete'],
             'ecommerce.vouchers' => ['view', 'create', 'update', 'delete', 'assign', 'assign.logs.view'],
             'ecommerce.promotions' => ['view', 'create', 'update', 'delete'],
             'ecommerce.reports.sales' => ['view', 'export'],
@@ -100,6 +105,8 @@ class PermissionSeeder extends Seeder
             'reports.pos-summary' => ['view'],
             'ecommerce.dashboard' => ['view'],
             'ecommerce.settings' => ['view', 'update'],
+            'service-packages' => ['view', 'create', 'update', 'delete'],
+            'customer-service-packages' => ['view', 'update'],
             'booking' => [
                 'appointments.view',
                 'appointments.update_status',

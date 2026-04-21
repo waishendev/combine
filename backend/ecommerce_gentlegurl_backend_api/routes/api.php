@@ -514,7 +514,7 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.products.update');
 
         Route::get('/product-stock-movements', [ProductStockMovementController::class, 'index'])
-            ->middleware('permission:ecommerce.products.view');
+            ->middleware('permission:ecommerce.stock-movements-logs.view');
 
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
             ->middleware('permission:ecommerce.products.delete');
@@ -668,17 +668,17 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.payment-gateways.delete');
 
         Route::get('/billplz-payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'index'])
-            ->middleware('permission:ecommerce.payment-gateways.view');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.view');
         Route::post('/billplz-payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'store'])
-            ->middleware('permission:ecommerce.payment-gateways.create');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.create');
         Route::get('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'show'])
-            ->middleware('permission:ecommerce.payment-gateways.view');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.view');
         Route::put('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'update'])
-            ->middleware('permission:ecommerce.payment-gateways.update');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.update');
         Route::post('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'update'])
-            ->middleware('permission:ecommerce.payment-gateways.update');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.update');
         Route::delete('/billplz-payment-gateway-options/{paymentGatewayOption}', [BillplzPaymentGatewayOptionController::class, 'destroy'])
-            ->middleware('permission:ecommerce.payment-gateways.delete');
+            ->middleware('permission:ecommerce.billplz-payment-gateways.delete');
 
         Route::post('/cart/merge', [CartMergeController::class, 'merge'])
             ->middleware('permission:ecommerce.carts.merge');
@@ -969,20 +969,20 @@ $protectedRoutes = function () {
             ->middleware('permission:ecommerce.marquees.update');
 
         // Notification Templates
-        Route::get('/notification-templates', [NotificationTemplateController::class, 'index'])
-            ->middleware('permission:ecommerce.notifications.templates.view');
+        // Route::get('/notification-templates', [NotificationTemplateController::class, 'index'])
+        //     ->middleware('permission:ecommerce.notifications.templates.view');
 
-        Route::post('/notification-templates', [NotificationTemplateController::class, 'store'])
-            ->middleware('permission:ecommerce.notifications.templates.create');
+        // Route::post('/notification-templates', [NotificationTemplateController::class, 'store'])
+        //     ->middleware('permission:ecommerce.notifications.templates.create');
 
-        Route::get('/notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'show'])
-            ->middleware('permission:ecommerce.notifications.templates.view');
+        // Route::get('/notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'show'])
+        //     ->middleware('permission:ecommerce.notifications.templates.view');
 
-        Route::put('/notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'update'])
-            ->middleware('permission:ecommerce.notifications.templates.update');
+        // Route::put('/notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'update'])
+        //     ->middleware('permission:ecommerce.notifications.templates.update');
 
-        Route::delete('/notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'destroy'])
-            ->middleware('permission:ecommerce.notifications.templates.delete');
+        // Route::delete('/notification-templates/{notificationTemplate}', [NotificationTemplateController::class, 'destroy'])
+        //     ->middleware('permission:ecommerce.notifications.templates.delete');
 
         Route::get('/dashboard/overview', [DashboardController::class, 'overview'])
             ->middleware('permission:ecommerce.dashboard.view');
@@ -1160,6 +1160,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.view');
     Route::post('/staff-schedules/import', [\App\Http\Controllers\Admin\Booking\StaffScheduleController::class, 'importCsv'])
         ->middleware('permission:booking.schedules.create|booking.schedules.update');
+
+
     Route::apiResource('/staff-schedules', \App\Http\Controllers\Admin\Booking\StaffScheduleController::class);
     Route::get('/leave-requests', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'index'])
         ->middleware('permission:booking.schedules.view');
@@ -1175,6 +1177,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.update');
     Route::get('/leave-logs', [\App\Http\Controllers\Admin\Booking\LeaveLogController::class, 'index'])
         ->middleware('permission:booking.leave.logs.view');
+
+        
     Route::apiResource('/blocks', \App\Http\Controllers\Admin\Booking\BlockController::class);
     Route::apiResource('/commission-tiers', \App\Http\Controllers\Admin\Booking\CommissionTierController::class)
         ->only(['index', 'store', 'update', 'destroy']);

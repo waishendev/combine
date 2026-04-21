@@ -15,7 +15,7 @@ export default async function Page() {
 
   // Check if user has permission to view commission tiers
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'booking.commission-tiers.view' || perm === 'commission-tiers.view'
+    (perm) => perm === 'booking.commission-tiers.view'
   )
   
   if (!hasPermission) {

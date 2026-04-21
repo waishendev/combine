@@ -37,9 +37,9 @@ const EMPTY_FORM = {
 }
 
 export default function BillplzPaymentOptionTable({ permissions }: { permissions: string[] }) {
-  const canCreate = permissions.includes('ecommerce.payment-gateways.create')
-  const canUpdate = permissions.includes('ecommerce.payment-gateways.update')
-  const canDelete = permissions.includes('ecommerce.payment-gateways.delete')
+  const canCreate = permissions.includes('ecommerce.billplz-payment-gateways.create')
+  const canUpdate = permissions.includes('ecommerce.billplz-payment-gateways.update')
+  const canDelete = permissions.includes('ecommerce.billplz-payment-gateways.delete')
 
   const [typeFilter, setTypeFilter] = useState<WorkspaceType>('ecommerce')
   const [groupFilter, setGroupFilter] = useState<GatewayGroup>('online_banking')

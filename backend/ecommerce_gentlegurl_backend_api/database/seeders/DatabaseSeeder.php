@@ -16,6 +16,13 @@ class DatabaseSeeder extends Seeder
         $this->call([
             PermissionSeeder::class,
             AdminSeeder::class,
+            CustomerSuperAdminSeeder::class,
+            SuperAdminRoleSeeder::class,
+            SuperAdminSeeder::class,
+            StaffPermissionSeeder::class,
+
+
+
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
             ShippingSettingSeeder::class,
@@ -29,11 +36,8 @@ class DatabaseSeeder extends Seeder
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
 
-            SuperAdminRoleSeeder::class,
-            SuperAdminSeeder::class,
             EnsurePromotionPermissionsForSuperAdminSeeder::class,
-            StaffRbacSeeder::class,
-            AddServicePackagePermissionsSeeder::class,
+           
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
             BookingLandingPageSeeder::class,

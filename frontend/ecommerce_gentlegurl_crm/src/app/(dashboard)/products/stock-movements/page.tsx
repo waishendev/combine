@@ -13,7 +13,7 @@ export default async function ProductsStockMovementsPage() {
     redirect('/login')
   }
 
-  const hasPermission = user.permissions.some((perm) => perm === 'ecommerce.products.view')
+  const hasPermission = user.permissions.some((perm) => perm === 'ecommerce.stock-movements-logs.view')
   if (!hasPermission) {
     redirect('/dashboard')
   }

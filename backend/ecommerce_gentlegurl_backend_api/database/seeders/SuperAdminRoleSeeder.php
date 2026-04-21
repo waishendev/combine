@@ -24,16 +24,20 @@ class SuperAdminRoleSeeder extends Seeder
         $superAdminRole->save();
 
         // 获取所有权限并分配给超级管理员角色
-        $manageSystemPermission = Permission::firstOrCreate(
-            ['slug' => 'admins.manage-system'],
-            [
-                'name' => 'Admins Manage-system',
-                'description' => null,
-                'group_id' => null,
-            ]
-        );
+        // $manageSystemPermission = Permission::firstOrCreate(
+        //     ['slug' => 'admins.manage-system'],
+        //     [
+        //         'name' => 'Admins Manage-system',
+        //         'description' => null,
+        //         'group_id' => null,
+        //     ]
+        // );
+
+        // $allPermissionIds = Permission::pluck('id')->toArray();
+        // $superAdminRole->permissions()->sync(array_values(array_unique(array_merge($allPermissionIds, [$manageSystemPermission->id]))));
 
         $allPermissionIds = Permission::pluck('id')->toArray();
-        $superAdminRole->permissions()->sync(array_values(array_unique(array_merge($allPermissionIds, [$manageSystemPermission->id]))));
+        $superAdminRole->permissions()->sync($allPermissionIds);
+
     }
 }
