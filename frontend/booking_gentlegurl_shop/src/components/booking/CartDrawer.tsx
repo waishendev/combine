@@ -282,8 +282,36 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       const orderNo = checkoutResponse?.order_no;
       const bookingId = checkoutResponse?.booking_ids?.[0];
 
-      // Booking flow takes priority — when booking_ids exist, always use payBooking
-      // so that the booking backend (with correct redirect to booking frontend) is used.
+      // For multi-line booking cart checkout, pay via order whenever an order is returned.
+      // This guarantees Billplz amount uses order.grand_total (full cart payable) instead of
+      // a single booking deposit amount.
+      if (orderId) {
+        if (selectedPaymentMethod !== "manual_transfer") {
+          const payResponse = await payPublicOrder(orderId, {
+            payment_method: selectedPaymentMethod,
+            billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
+          });
+          const redirectUrl = payResponse?.data?.redirect_url;
+          if (redirectUrl) {
+            window.location.href = redirectUrl;
+            return;
+          }
+        }
+
+        onClose();
+        const nextParams = new URLSearchParams({
+          order_id: String(orderId),
+          payment_method: selectedPaymentMethod,
+          provider: selectedPaymentMethod === "manual_transfer" ? "manual" : "billplz",
+        });
+        if (orderNo) {
+          nextParams.set("order_no", orderNo);
+        }
+        router.push(`/payment-result?${nextParams.toString()}`);
+        return;
+      }
+
+      // Fallback for legacy/non-order checkout (e.g. guest flow) where only booking_id exists.
       if (bookingId) {
         const paymentResponse = await payBooking(bookingId, {
           payment_method: selectedPaymentMethod,
@@ -306,32 +334,6 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         });
         if (bookingOrderNo) {
           nextParams.set("order_no", bookingOrderNo);
-        }
-        router.push(`/payment-result?${nextParams.toString()}`);
-        return;
-      }
-
-      if (orderId) {
-        if (selectedPaymentMethod !== "manual_transfer") {
-          const payResponse = await payPublicOrder(orderId, {
-            payment_method: selectedPaymentMethod,
-            billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
-          });
-          const redirectUrl = payResponse?.data?.redirect_url;
-          if (redirectUrl) {
-            window.location.href = redirectUrl;
-            return;
-          }
-        }
-
-        onClose();
-        const nextParams = new URLSearchParams({
-          order_id: String(orderId),
-          payment_method: selectedPaymentMethod,
-          provider: selectedPaymentMethod === "manual_transfer" ? "manual" : "billplz",
-        });
-        if (orderNo) {
-          nextParams.set("order_no", orderNo);
         }
         router.push(`/payment-result?${nextParams.toString()}`);
         return;
