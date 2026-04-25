@@ -838,7 +838,7 @@ class CartController extends Controller
         $mainResult = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
         $addonResult = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
         $addonDepositItems = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => []])->all();
-        $candidates = [];
+        $candidatesByItem = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => []])->all();
         foreach ($items as $item) {
             $itemId = (int) $item->id;
             $claimStatus = $claimStatusesByItem[$itemId] ?? null;
@@ -852,7 +852,7 @@ class CartController extends Controller
                         continue;
                     }
                     $linkedDeposit = max(0, (float) ($selectedOption['linked_deposit_amount'] ?? 0));
-                    $candidates[] = [
+                    $candidatesByItem[$itemId][] = [
                         'item_id' => $itemId,
                         'type' => $linkedType,
                         'deposit_amount' => $linkedDeposit,
@@ -877,7 +877,7 @@ class CartController extends Controller
 
             $mainType = strtoupper((string) ($item->service?->service_type ?? $item->service_type ?? 'STANDARD'));
             $mainDeposit = (float) ($item->service?->deposit_amount ?? 0);
-            $candidates[] = ['item_id' => $itemId, 'type' => $mainType, 'deposit_amount' => $mainDeposit, 'scope' => 'main'];
+            $candidatesByItem[$itemId][] = ['item_id' => $itemId, 'type' => $mainType, 'deposit_amount' => $mainDeposit, 'scope' => 'main'];
 
             foreach ((array) ($item->question_answers_json['selected_options'] ?? []) as $selectedOption) {
                 $linkedType = strtoupper((string) ($selectedOption['linked_service_type'] ?? ''));
@@ -885,7 +885,7 @@ class CartController extends Controller
                     continue;
                 }
                 $linkedDeposit = max(0, (float) ($selectedOption['linked_deposit_amount'] ?? 0));
-                $candidates[] = [
+                $candidatesByItem[$itemId][] = [
                     'item_id' => $itemId,
                     'type' => $linkedType,
                     'deposit_amount' => $linkedDeposit,
@@ -901,44 +901,49 @@ class CartController extends Controller
             }
         }
 
-        $premiumCandidates = array_values(array_filter($candidates, fn (array $row) => $row['type'] === 'PREMIUM'));
-        if (! empty($premiumCandidates)) {
-            foreach ($premiumCandidates as $row) {
-                $itemId = (int) $row['item_id'];
-                $deposit = (float) $row['deposit_amount'];
-                $result[$itemId] += $deposit;
-                if (($row['scope'] ?? 'main') === 'addon') {
-                    $addonResult[$itemId] += $deposit;
-                    foreach ($addonDepositItems[$itemId] as &$addonRow) {
-                        if ((int) ($addonRow['id'] ?? 0) === (int) ($row['option_id'] ?? 0)) {
-                            $addonRow['deposit_contribution'] = round($deposit, 2);
-                            break;
-                        }
-                    }
-                    unset($addonRow);
-                } else {
-                    $mainResult[$itemId] += $deposit;
-                }
+        foreach ($candidatesByItem as $itemId => $candidates) {
+            $itemId = (int) $itemId;
+            $candidates = array_values(array_filter(is_array($candidates) ? $candidates : [], fn ($row) => is_array($row)));
+            if (empty($candidates)) {
+                continue;
             }
-        } else {
-            $standardCandidates = array_values(array_filter($candidates, fn (array $row) => $row['type'] !== 'PREMIUM'));
-            if (! empty($standardCandidates)) {
-                $applied = $standardCandidates[0];
-                $appliedItemId = (int) ($applied['item_id'] ?? 0);
-                $appliedAmount = max(0, (float) ($applied['deposit_amount'] ?? 0));
-                $result[$appliedItemId] = $appliedAmount;
-                if (($applied['scope'] ?? 'main') === 'addon') {
-                    $addonResult[$appliedItemId] = $appliedAmount;
-                    foreach ($addonDepositItems[$appliedItemId] as &$addonRow) {
-                        if ((int) ($addonRow['id'] ?? 0) === (int) ($applied['option_id'] ?? 0)) {
-                            $addonRow['deposit_contribution'] = round($appliedAmount, 2);
-                            break;
+
+            $premiumCandidates = array_values(array_filter($candidates, fn (array $row) => ($row['type'] ?? null) === 'PREMIUM'));
+            if (! empty($premiumCandidates)) {
+                foreach ($premiumCandidates as $row) {
+                    $deposit = (float) ($row['deposit_amount'] ?? 0);
+                    $result[$itemId] += $deposit;
+                    if (($row['scope'] ?? 'main') === 'addon') {
+                        $addonResult[$itemId] += $deposit;
+                        foreach ($addonDepositItems[$itemId] as &$addonRow) {
+                            if ((int) ($addonRow['id'] ?? 0) === (int) ($row['option_id'] ?? 0)) {
+                                $addonRow['deposit_contribution'] = round($deposit, 2);
+                                break;
+                            }
                         }
+                        unset($addonRow);
+                    } else {
+                        $mainResult[$itemId] += $deposit;
                     }
-                    unset($addonRow);
-                } else {
-                    $mainResult[$appliedItemId] = $appliedAmount;
                 }
+                continue;
+            }
+
+            // STANDARD tier: apply the first candidate for this cart line only (main first, then add-ons).
+            $applied = $candidates[0];
+            $appliedAmount = max(0, (float) ($applied['deposit_amount'] ?? 0));
+            $result[$itemId] += $appliedAmount;
+            if (($applied['scope'] ?? 'main') === 'addon') {
+                $addonResult[$itemId] += $appliedAmount;
+                foreach ($addonDepositItems[$itemId] as &$addonRow) {
+                    if ((int) ($addonRow['id'] ?? 0) === (int) ($applied['option_id'] ?? 0)) {
+                        $addonRow['deposit_contribution'] = round($appliedAmount, 2);
+                        break;
+                    }
+                }
+                unset($addonRow);
+            } else {
+                $mainResult[$itemId] += $appliedAmount;
             }
         }
 
