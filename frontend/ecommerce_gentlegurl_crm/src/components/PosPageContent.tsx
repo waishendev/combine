@@ -6388,35 +6388,85 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                           </tr>
 
-                          <tr className={`${stRowClass} align-top`}>
-                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement</p>
-                              <p className="mt-1 text-xs text-gray-700">Service</p>
-                              {mainCoveredByPkg ? (
-                                <p className="mt-1 text-[10px] leading-snug text-cyan-800">
-                                  Included in your package (main service)
-                                </p>
-                              ) : null}
-                            </td>
-                            <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
-                            <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
-                              {mainCoveredByPkg ? (
-                                <span>
-                                  <span className="text-gray-400 line-through">{stServiceLabel}</span>{' '}
-                                  <span className="font-medium">RM 0.00</span>
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                              <p className="text-lg font-bold leading-tight text-orange-700">
-                                {mainCoveredByPkg ? 'RM 0.00' : stServiceLabel}
-                              </p>
-                            </td>
-                          </tr>
+                          {hasServiceBlocks ? (
+                            <>
+                              {(settlement.main_services ?? []).map((service, idx) => {
+                                const servicePrice = Number(service.extra_price ?? 0)
+                                const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
+                                const serviceSubtotal = servicePrice + serviceAddonTotal
+                                return (
+                                  <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
+                                    <tr className={`${stRowClass} align-top`}>
+                                      <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement Block</p>
+                                        <p className="mt-1 text-xs text-gray-700">
+                                          {service.name}{service.is_original ? ' (Original)' : ''}
+                                        </p>
+                                      </td>
+                                      <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
+                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-400">—</td>
+                                      <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
+                                        <p className="text-lg font-bold leading-tight text-orange-700">RM {servicePrice.toFixed(2)}</p>
+                                      </td>
+                                    </tr>
+                                    {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                      <tr
+                                        key={`chk-main-block-addon-row-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`}
+                                        className={`${stRowClass} align-top`}
+                                      >
+                                        <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
+                                          <span className="text-gray-500">+</span> {addon.name}
+                                        </td>
+                                        <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                                        <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                                        <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                          <p className="text-lg font-bold leading-tight text-orange-700">RM {Number(addon.extra_price ?? 0).toFixed(2)}</p>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    <tr className={`${stRowClass} align-top`}>
+                                      <td className="px-4 py-2 pl-8 text-xs font-semibold text-gray-700 sm:px-5 sm:pl-10">Block Subtotal</td>
+                                      <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                                      <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                                      <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                        <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceSubtotal.toFixed(2)}</p>
+                                      </td>
+                                    </tr>
+                                  </Fragment>
+                                )
+                              })}
+                            </>
+                          ) : (
+                            <>
+                              <tr className={`${stRowClass} align-top`}>
+                                <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement</p>
+                                  <p className="mt-1 text-xs text-gray-700">Service</p>
+                                  {mainCoveredByPkg ? (
+                                    <p className="mt-1 text-[10px] leading-snug text-cyan-800">
+                                      Included in your package (main service)
+                                    </p>
+                                  ) : null}
+                                </td>
+                                <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
+                                <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
+                                  {mainCoveredByPkg ? (
+                                    <span>
+                                      <span className="text-gray-400 line-through">{stServiceLabel}</span>{' '}
+                                      <span className="font-medium">RM 0.00</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
+                                  <p className="text-lg font-bold leading-tight text-orange-700">
+                                    {mainCoveredByPkg ? 'RM 0.00' : stServiceLabel}
+                                  </p>
+                                </td>
+                              </tr>
 
-                          {addonCount > 0 && !hasServiceBlocks ? (
+                              {addonCount > 0 ? (
                             <>
                               <tr className={`${stRowClass} align-top`}>
                                 <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
@@ -6456,6 +6506,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               ) : null}
                             </>
                           ) : null}
+                            </>
+                          )}
 
                           {depositCredit > 0.0001 ? (
                             <tr className={`${stRowClass} align-top`}>
