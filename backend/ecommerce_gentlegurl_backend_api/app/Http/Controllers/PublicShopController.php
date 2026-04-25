@@ -201,10 +201,39 @@ class PublicShopController extends Controller
         }
 
         if ($keyword) {
-            $productsQuery->where(function ($query) use ($keyword) {
-                $query->where('name', 'like', "%{$keyword}%")
-                    ->orWhere('sku', 'like', "%{$keyword}%");
-            });
+            $rawKeyword = trim((string) $keyword);
+
+            // Commercial-grade keyword matching:
+            // - case-insensitive
+            // - collapse whitespace
+            // - treat common separators as spaces
+            // - split into terms and require all terms to match (AND),
+            //   each term can match either name or sku (OR).
+            $normalized = preg_replace('/[\\-_\\/]+/u', ' ', $rawKeyword);
+            $normalized = preg_replace('/\\s+/u', ' ', (string) $normalized);
+            $terms = preg_split('/\\s+/u', mb_strtolower((string) $normalized), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+
+            // If we fail to tokenize for any reason, fall back to raw keyword.
+            if (empty($terms)) {
+                $productsQuery->where(function ($query) use ($rawKeyword) {
+                    $query->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($rawKeyword) . '%'])
+                        ->orWhereRaw('LOWER(sku) LIKE ?', ['%' . mb_strtolower($rawKeyword) . '%']);
+                });
+            } else {
+                $productsQuery->where(function ($query) use ($terms) {
+                    foreach ($terms as $term) {
+                        // Skip extremely short terms to avoid noisy matches.
+                        if (mb_strlen($term) < 2) {
+                            continue;
+                        }
+                        $like = '%' . $term . '%';
+                        $query->where(function ($sub) use ($like) {
+                            $sub->whereRaw('LOWER(name) LIKE ?', [$like])
+                                ->orWhereRaw('LOWER(sku) LIKE ?', [$like]);
+                        });
+                    }
+                });
+            }
         }
 
         if ($request->filled('min_price')) {

@@ -88,6 +88,17 @@ const normalizeMenuSlug = (value?: string | null) => {
   }
 };
 
+const normalizeSearchQuery = (input: string) => {
+  const lowered = input.toLowerCase();
+  const spaced = lowered
+    .replace(/[\u2010-\u2015-]+/g, " ")
+    .replace(/\bpro\s*max\b/g, "pro max")
+    .replace(/\bpromax\b/g, "pro max")
+    .replace(/\bairpods\s*pro\b/g, "airpods pro")
+    .replace(/\bairpodspro\b/g, "airpods pro");
+  return spaced.replace(/\s+/g, " ").trim();
+};
+
 export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -205,7 +216,7 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
   useEffect(() => {
     const handler = setTimeout(() => {
-      const nextSearch = searchTerm.trim();
+      const nextSearch = normalizeSearchQuery(searchTerm);
       setDebouncedSearch(nextSearch);
 
       if (nextSearch !== querySearch) {

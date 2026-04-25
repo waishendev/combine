@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { getWishlistItems } from "@/lib/apiClient";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
@@ -51,14 +51,14 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [searchImageErrors, setSearchImageErrors] = useState<Set<string>>(new Set());
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const fallbackLogo = "/images/logo.png";
   // 直接使用服务端传递的 logo，如果没有则使用 fallback
   const resolvedLogoUrl = logoUrl || fallbackLogo;
   const bookingHref = useMemo(() => {
     const rawBase = process.env.NEXT_PUBLIC_BOOKING_BASE_URL;
-    // const base = rawBase?.trim().replace(/\/+$/, "");
-    // return base ? `${base}/booking` : "/booking";
-    return rawBase;
+    const base = rawBase?.trim().replace(/\/+$/, "");
+    return base ? `${base}/booking` : "/booking";
   }, []);
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -157,6 +157,36 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   };
 
   useEffect(() => {
+    if (!searchOpen) return;
+
+    const t = window.setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 50);
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSearchOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [searchOpen]);
+
+  const navigateToShopSearch = useCallback(
+    (rawQuery?: string) => {
+      const q = (rawQuery ?? searchQuery).trim();
+      if (!q) return;
+      setSearchOpen(false);
+      router.push(`/shop?q=${encodeURIComponent(q)}`);
+    },
+    [router, searchQuery],
+  );
+
+  useEffect(() => {
     if (!searchOpen) {
       setSearchQuery("");
       setSearchResults([]);
@@ -224,8 +254,10 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
     setSearchImageErrors((prev) => new Set(prev).add(imageSrc));
   };
 
-  const getSearchImageSrc = (imageSrc: string) =>
-    searchImageErrors.has(imageSrc) ? "/images/placeholder.png" : imageSrc;
+  const getSearchImageSrc = (imageSrc?: string | null) => {
+    if (!imageSrc) return "/images/placeholder.png";
+    return searchImageErrors.has(imageSrc) ? "/images/placeholder.png" : imageSrc;
+  };
 
   const resolvePriceText = (
     value?: number | string | { min: number; max: number } | null,
@@ -726,9 +758,16 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                   <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
                 </svg>
                 <input
+                  ref={searchInputRef}
                   type="text"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      navigateToShopSearch();
+                    }
+                  }}
                   placeholder="Search products"
                   className="w-full rounded-full border border-[var(--card-border)] bg-[var(--card)] px-11 py-3 text-sm text-[var(--foreground)] outline-none transition focus:border-[var(--accent-strong)]"
                 />
@@ -778,7 +817,7 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
                           : product.id
                             ? String(product.id)
                             : "";
-                      const image = getPrimaryProductImage(product);
+                      const image = getPrimaryProductImage(product) || "/images/placeholder.png";
                       const priceText = resolvePriceText(
                         product.price_display ?? product.original_price ?? product.price,
                       );
