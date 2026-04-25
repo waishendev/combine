@@ -211,7 +211,7 @@ class ServiceController extends Controller
     public function exportCsv(Request $request)
     {
         $services = BookingService::query()
-            ->with(['allowedStaffs:id', 'primarySlots'])
+            ->with(['allowedStaffs:id', 'primarySlots', 'questions.options'])
             ->orderBy('id')
             ->get();
 
@@ -222,7 +222,7 @@ class ServiceController extends Controller
 
         $headers = [
             'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
-            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots',
+            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
         ];
         fputcsv($stream, $headers);
 
@@ -243,6 +243,31 @@ class ServiceController extends Controller
                 $service->is_active ? 'true' : 'false',
                 $service->allowedStaffs->pluck('id')->join('|'),
                 $service->primarySlots->pluck('start_time')->map(fn ($time) => substr((string) $time, 0, 5))->join('|'),
+                json_encode(
+                    $service->questions
+                        ->sortBy('sort_order')
+                        ->values()
+                        ->map(fn (BookingServiceQuestion $question) => [
+                            'title' => (string) $question->title,
+                            'description' => $question->description,
+                            'question_type' => (string) $question->question_type,
+                            'is_required' => (bool) $question->is_required,
+                            'is_active' => (bool) $question->is_active,
+                            'options' => $question->options
+                                ->sortBy('sort_order')
+                                ->values()
+                                ->map(fn (BookingServiceQuestionOption $option) => [
+                                    'label' => (string) ($option->label ?? ''),
+                                    'linked_booking_service_id' => (int) ($option->linked_booking_service_id ?? 0),
+                                    'extra_duration_min' => (int) ($option->extra_duration_min ?? 0),
+                                    'extra_price' => (float) ($option->extra_price ?? 0),
+                                    'is_active' => (bool) $option->is_active,
+                                ])
+                                ->all(),
+                        ])
+                        ->all(),
+                    JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+                ),
             ]);
         }
 
@@ -277,7 +302,7 @@ class ServiceController extends Controller
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
         $allowedHeaders = [
             'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
-            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots',
+            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
         ];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
         if (! empty($unknownHeaders)) {
@@ -320,6 +345,16 @@ class ServiceController extends Controller
                 ->unique()
                 ->values()
                 ->all();
+            $questionsPayload = [];
+            if (isset($payload['questions_json']) && trim((string) $payload['questions_json']) !== '') {
+                $decodedQuestions = json_decode((string) $payload['questions_json'], true);
+                if (! is_array($decodedQuestions)) {
+                    $summary['failed']++;
+                    $summary['failedRows'][] = ['row' => $rowNumber, 'reason' => 'questions_json must be valid JSON array.'];
+                    continue;
+                }
+                $questionsPayload = $decodedQuestions;
+            }
 
             $raw = [
                 'name' => $payload['name'] ?? null,
@@ -336,6 +371,7 @@ class ServiceController extends Controller
                 'is_active' => $payload['is_active'] ?? 'true',
                 'allowed_staff_ids' => $allowedStaffIds,
                 'primary_slots' => $primarySlots,
+                'questions' => $questionsPayload,
             ];
 
             $raw['is_active'] = filter_var((string) $raw['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
@@ -358,6 +394,18 @@ class ServiceController extends Controller
                 'allowed_staff_ids.*' => ['integer', 'exists:staffs,id'],
                 'primary_slots' => ['nullable', 'array'],
                 'primary_slots.*' => ['date_format:H:i'],
+                'questions' => ['nullable', 'array'],
+                'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+                'questions.*.description' => ['nullable', 'string'],
+                'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
+                'questions.*.is_required' => ['nullable', 'boolean'],
+                'questions.*.is_active' => ['nullable', 'boolean'],
+                'questions.*.options' => ['nullable', 'array'],
+                'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+                'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
+                'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
+                'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
+                'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             ]);
 
             if ($validator->fails()) {
@@ -394,6 +442,56 @@ class ServiceController extends Controller
                         $currentAllowed = $service->allowedStaffs()->pluck('staffs.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
                         $incomingSlots = collect($validated['primary_slots'] ?? [])->map(fn ($time) => substr((string) $time, 0, 5))->sort()->values()->all();
                         $currentSlots = $service->primarySlots()->pluck('start_time')->map(fn ($time) => substr((string) $time, 0, 5))->sort()->values()->all();
+                        $incomingQuestions = collect($validated['questions'] ?? [])
+                            ->map(function ($question) {
+                                $options = collect($question['options'] ?? [])
+                                    ->map(fn ($option) => [
+                                        'label' => trim((string) ($option['label'] ?? '')),
+                                        'linked_booking_service_id' => (int) ($option['linked_booking_service_id'] ?? 0),
+                                        'extra_duration_min' => max(0, (int) ($option['extra_duration_min'] ?? 0)),
+                                        'extra_price' => max(0, (float) ($option['extra_price'] ?? 0)),
+                                        'is_active' => (bool) ($option['is_active'] ?? true),
+                                    ])
+                                    ->values()
+                                    ->all();
+
+                                return [
+                                    'title' => trim((string) ($question['title'] ?? '')),
+                                    'description' => $question['description'] ?? null,
+                                    'question_type' => (string) ($question['question_type'] ?? 'single_choice'),
+                                    'is_required' => (bool) ($question['is_required'] ?? false),
+                                    'is_active' => (bool) ($question['is_active'] ?? true),
+                                    'options' => $options,
+                                ];
+                            })
+                            ->values()
+                            ->all();
+                        $currentQuestions = $service->questions()
+                            ->with('options')
+                            ->orderBy('sort_order')
+                            ->get()
+                            ->map(function (BookingServiceQuestion $question) {
+                                return [
+                                    'title' => trim((string) $question->title),
+                                    'description' => $question->description,
+                                    'question_type' => (string) $question->question_type,
+                                    'is_required' => (bool) $question->is_required,
+                                    'is_active' => (bool) $question->is_active,
+                                    'options' => $question->options
+                                        ->sortBy('sort_order')
+                                        ->values()
+                                        ->map(fn (BookingServiceQuestionOption $option) => [
+                                            'label' => trim((string) ($option->label ?? '')),
+                                            'linked_booking_service_id' => (int) ($option->linked_booking_service_id ?? 0),
+                                            'extra_duration_min' => max(0, (int) ($option->extra_duration_min ?? 0)),
+                                            'extra_price' => max(0, (float) ($option->extra_price ?? 0)),
+                                            'is_active' => (bool) $option->is_active,
+                                        ])
+                                        ->all(),
+                                ];
+                            })
+                            ->values()
+                            ->all();
                         $isUnchanged =
                             ($service->name === $validated['name']) &&
                             ($service->service_type === $validated['service_type']) &&
@@ -408,7 +506,8 @@ class ServiceController extends Controller
                             ((float) ($service->price_range_min ?? 0) === (float) ($validated['price_range_min'] ?? 0)) &&
                             ((float) ($service->price_range_max ?? 0) === (float) ($validated['price_range_max'] ?? 0)) &&
                             ($incomingAllowed === $currentAllowed) &&
-                            ($incomingSlots === $currentSlots);
+                            ($incomingSlots === $currentSlots) &&
+                            ($incomingQuestions === $currentQuestions);
                         if ($isUnchanged) {
                             $summary['skipped']++;
                             return;
@@ -433,6 +532,7 @@ class ServiceController extends Controller
 
                     $this->syncAllowedStaffs($service, $this->resolveAllowedStaffIds($validated['allowed_staff_ids']));
                     $this->syncPrimarySlots($service, $validated['primary_slots'] ?? []);
+                    $this->syncQuestions($service, $validated['questions'] ?? []);
                 });
             } catch (\Throwable $throwable) {
                 $summary['failed']++;
