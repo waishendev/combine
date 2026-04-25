@@ -222,6 +222,19 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementError, setEditSettlementError] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
   const [editSelectedAddonIds, setEditSelectedAddonIds] = useState<Set<number>>(new Set())
+  const [editMainServiceCatalog, setEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
+  const [editMainServiceCatalogLoading, setEditMainServiceCatalogLoading] = useState(false)
+  const [editMainServiceQuery, setEditMainServiceQuery] = useState('')
+  const [editAddedMainBlocks, setEditAddedMainBlocks] = useState<Array<{
+    service_id: number
+    service_name: string
+    price: number
+    duration_min: number
+    addon_questions: ServiceAddonQuestion[]
+    selected_addon_ids: Set<number>
+    staff_splits: Array<{ staff_id: number | null; share_percent: string }>
+    auto_balance: boolean
+  }>>([])
   const [editSettledAmount, setEditSettledAmount] = useState('')
   const [editStaffSplits, setEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
   const [editStaffSplitAutoBalance, setEditStaffSplitAutoBalance] = useState(true)
@@ -930,6 +943,24 @@ export default function PosAppointmentsWorkspace({
         .filter((id): id is number => id != null),
     )
     setEditSelectedAddonIds(currentAddonIds)
+    const addedMainBlocksSeed = (appointmentDetail.main_services ?? [])
+      .filter((service) => !service.is_original)
+      .map((service) => ({
+        service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
+        service_name: String(service.name ?? 'Service'),
+        price: Number(service.extra_price ?? 0),
+        duration_min: Number(service.extra_duration_min ?? 0),
+        addon_questions: [] as ServiceAddonQuestion[],
+        selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
+        staff_splits: (service.staff_splits ?? []).map((split) => ({
+          staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+          share_percent: String(split.share_percent ?? ''),
+        })),
+        auto_balance: true,
+      }))
+      .filter((block) => block.service_id > 0)
+    setEditAddedMainBlocks(addedMainBlocksSeed)
+    setEditMainServiceQuery('')
 
     const settled = appointmentDetail.settled_service_amount
     setEditSettledAmount(settled != null ? String(settled) : '')
@@ -947,15 +978,38 @@ export default function PosAppointmentsWorkspace({
     }
 
     setEditAddonOptionsLoading(true)
+    setEditMainServiceCatalogLoading(true)
     setEditSettlementOpen(true)
     try {
-      const res = await fetch(`/api/proxy/pos/services/${appointmentDetail.service.id}/addon-options`)
-      const json = await res.json().catch(() => null)
-      setEditAddonQuestions((json?.data?.questions ?? []) as ServiceAddonQuestion[])
+      const [addonRes, servicesRes] = await Promise.all([
+        fetch(`/api/proxy/pos/services/${appointmentDetail.service.id}/addon-options`),
+        fetch('/api/proxy/booking/services', { cache: 'no-store' }),
+      ])
+      const addonJson = await addonRes.json().catch(() => null)
+      setEditAddonQuestions((addonJson?.data?.questions ?? []) as ServiceAddonQuestion[])
+      const servicesJson = await servicesRes.json().catch(() => null)
+      const catalog = (Array.isArray(servicesJson?.data) ? servicesJson.data : []) as BookingServiceOption[]
+      setEditMainServiceCatalog(catalog)
+      if (addedMainBlocksSeed.length > 0) {
+        const hydrated = await Promise.all(addedMainBlocksSeed.map(async (block) => {
+          try {
+            const addonRes2 = await fetch(`/api/proxy/pos/services/${block.service_id}/addon-options`)
+            const addonJson2 = await addonRes2.json().catch(() => null)
+            const questions = (addonJson2?.data?.questions ?? []) as ServiceAddonQuestion[]
+            return { ...block, addon_questions: questions, staff_splits: block.staff_splits.length > 0 ? rebalanceEditSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }] }
+          } catch {
+            return { ...block, addon_questions: [], staff_splits: block.staff_splits.length > 0 ? rebalanceEditSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }] }
+          }
+        }))
+        setEditAddedMainBlocks(hydrated)
+      }
     } catch {
       setEditAddonQuestions([])
+      setEditMainServiceCatalog([])
+      setEditAddedMainBlocks([])
     } finally {
       setEditAddonOptionsLoading(false)
+      setEditMainServiceCatalogLoading(false)
     }
   }, [appointmentDetail, rebalanceEditSettlementPrimaryShare])
 
@@ -970,6 +1024,29 @@ export default function PosAppointmentsWorkspace({
       return next
     })
   }, [])
+
+  const addEditMainServiceBlock = useCallback(async (service: BookingServiceOption) => {
+    if (!service?.id) return
+    if (editAddedMainBlocks.some((block) => block.service_id === service.id)) return
+    let questions: ServiceAddonQuestion[] = []
+    try {
+      const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
+      const json = await res.json().catch(() => null)
+      questions = (json?.data?.questions ?? []) as ServiceAddonQuestion[]
+    } catch {
+      questions = []
+    }
+    setEditAddedMainBlocks((prev) => [...prev, {
+      service_id: service.id,
+      service_name: service.name,
+      price: Number(service.service_price ?? service.price ?? 0),
+      duration_min: Number(service.duration_min ?? 0),
+      addon_questions: questions,
+      selected_addon_ids: new Set<number>(),
+      staff_splits: [{ staff_id: null, share_percent: '100' }],
+      auto_balance: true,
+    }])
+  }, [editAddedMainBlocks])
 
   const updateEditSettlementSplitShare = useCallback((index: number, value: string) => {
     setEditSettlementError(null)
@@ -997,6 +1074,15 @@ export default function PosAppointmentsWorkspace({
       const isRange = appointmentDetail.is_range_priced
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
+        main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
+        main_service_items: editAddedMainBlocks.map((block) => ({
+          booking_service_id: block.service_id,
+          addon_option_ids: Array.from(block.selected_addon_ids),
+          staff_splits: block.staff_splits.map((row) => ({
+            staff_id: Number(row.staff_id ?? 0),
+            share_percent: Number.parseInt(row.share_percent || '0', 10),
+          })),
+        })),
       }
       if (isRange) {
         const amt = parseFloat(editSettledAmount)
@@ -1032,6 +1118,23 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      for (const block of editAddedMainBlocks) {
+        const blockSplits = block.staff_splits.map((row) => ({
+          staff_id: Number(row.staff_id ?? 0),
+          share_percent: Number.parseInt(row.share_percent || '0', 10),
+        }))
+        if (blockSplits.length < 1 || blockSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+          setEditSettlementError(`Please complete staff split for ${block.service_name}.`)
+          return
+        }
+        const blockUnique = new Set(blockSplits.map((row) => row.staff_id))
+        const blockSum = blockSplits.reduce((sum, row) => sum + row.share_percent, 0)
+        if (blockUnique.size !== blockSplits.length || blockSum !== 100) {
+          setEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
+          return
+        }
+      }
+
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1049,7 +1152,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, editAddedMainBlocks, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -1458,6 +1561,26 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.service_total],
   )
 
+  const appointmentSettlementDurationMin = useMemo(() => {
+    if (!appointmentDetail) return 0
+    const mainDuration = (appointmentDetail.main_services ?? []).reduce((sum, service) => {
+      const own = Number(service.extra_duration_min ?? 0)
+      const addon = (service.add_ons ?? []).reduce((addonSum, addonRow) => addonSum + Number(addonRow.extra_duration_min ?? 0), 0)
+      return sum + own + addon
+    }, 0)
+    if (mainDuration > 0) return mainDuration
+    return Math.max(0, Number(formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at).replace(/[^\d]/g, '')) || 0)
+  }, [appointmentDetail])
+
+  const appointmentSettlementDisplayEndAt = useMemo(() => {
+    const startAt = appointmentDetail?.appointment_start_at
+    if (!startAt) return appointmentDetail?.appointment_end_at ?? null
+    if (appointmentSettlementDurationMin <= 0) return appointmentDetail?.appointment_end_at ?? null
+    const start = new Date(startAt)
+    if (Number.isNaN(start.getTime())) return appointmentDetail?.appointment_end_at ?? null
+    return new Date(start.getTime() + appointmentSettlementDurationMin * 60 * 1000).toISOString()
+  }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, appointmentSettlementDurationMin])
+
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
     [appointmentAddonTotal, appointmentServiceAmount],
@@ -1806,7 +1929,7 @@ export default function PosAppointmentsWorkspace({
                       <p className="mt-1.5 text-sm font-semibold leading-snug text-slate-900">{appointmentDetail.service?.name ?? '—'}</p>
                     </div>
 
-                    {appointmentDetail.add_ons?.length ? (
+                    {appointmentDetail.add_ons?.length && !(appointmentDetail.main_services?.length) ? (
                       <div className="mt-3 rounded-lg border border-violet-100 bg-gradient-to-br from-violet-50/80 to-white px-3 py-3 shadow-sm ring-1 ring-violet-100/80">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Add-ons</p>
                         <ul className="mt-2 space-y-2 text-sm text-slate-800">
@@ -1822,6 +1945,35 @@ export default function PosAppointmentsWorkspace({
                             </li>
                           ))}
                         </ul>
+                      </div>
+                    ) : null}
+
+                    {(appointmentDetail.main_services ?? []).length > 0 ? (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 shadow-sm ring-1 ring-slate-200/80">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Settlement Service Blocks</p>
+                        <div className="mt-2 space-y-2">
+                          {(appointmentDetail.main_services ?? []).map((service, serviceIdx) => (
+                            <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {service.name}
+                                  {service.is_original ? <span className="ml-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">Original</span> : null}
+                                </p>
+                                <span className="text-xs font-semibold tabular-nums text-slate-900">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                              </div>
+                              {(service.add_ons ?? []).length > 0 ? (
+                                <ul className="mt-1.5 space-y-0.5 text-xs text-slate-700">
+                                  {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                    <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2">
+                                      <span>+ {addon.name}</span>
+                                      <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     ) : null}
 
@@ -1854,13 +2006,13 @@ export default function PosAppointmentsWorkspace({
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</span>
                         <span className="min-w-0 text-slate-800">
-                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
+                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentSettlementDisplayEndAt)}
                         </span>
                       </div>
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</span>
                         <span className="font-medium tabular-nums text-slate-900">
-                          {formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
+                          {appointmentSettlementDurationMin > 0 ? `${appointmentSettlementDurationMin} min` : formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
                       </div>
                     </div>
@@ -2774,6 +2926,41 @@ export default function PosAppointmentsWorkspace({
                 </div>
               ) : null}
 
+              <div className="space-y-3">
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Service Block · Original</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">{appointmentDetail.service?.name ?? 'Service'}</p>
+                  <p className="text-xs text-gray-600">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Add Main Service</p>
+                  <input
+                    type="text"
+                    value={editMainServiceQuery}
+                    onChange={(e) => setEditMainServiceQuery(e.target.value)}
+                    placeholder="Search service and click Add"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
+                    {editMainServiceCatalog
+                      .filter((service) => service.id !== appointmentDetail.service?.id)
+                      .filter((service) => !editAddedMainBlocks.some((block) => block.service_id === service.id))
+                      .filter((service) => (service.name ?? '').toLowerCase().includes(editMainServiceQuery.trim().toLowerCase()))
+                      .map((service) => (
+                        <button
+                          key={`add-main-btn-${service.id}`}
+                          type="button"
+                          onClick={() => void addEditMainServiceBlock(service)}
+                          className="flex w-full items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                        >
+                          <span>{service.name}</span>
+                          <span className="text-xs font-semibold text-gray-500">+ Add</span>
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </div>
+
               <div>
                 <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
                 {editAddonOptionsLoading ? (
@@ -2892,38 +3079,173 @@ export default function PosAppointmentsWorkspace({
                 </div>
               </div>
 
+              {editAddedMainBlocks.map((block) => {
+                const addonOptions = block.addon_questions.flatMap((q) => q.options)
+                const selectedAddons = addonOptions.filter((opt) => block.selected_addon_ids.has(opt.id))
+                const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
+                const blockSubtotal = Number(block.price ?? 0) + addonTotal
+                return (
+                  <div key={`added-main-block-${block.service_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
+                        <p className="text-sm font-semibold text-gray-900">{block.service_name}</p>
+                        <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditAddedMainBlocks((prev) => prev.filter((item) => item.service_id !== block.service_id))}
+                        className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {block.addon_questions.map((question) => (
+                        <div key={`added-q-${block.service_id}-${question.id}`}>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>
+                          {question.options.map((opt) => {
+                            const checked = block.selected_addon_ids.has(opt.id)
+                            return (
+                              <label key={`added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
+                                <span className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => setEditAddedMainBlocks((prev) => prev.map((item) => {
+                                      if (item.service_id !== block.service_id) return item
+                                      const next = new Set(item.selected_addon_ids)
+                                      if (next.has(opt.id)) next.delete(opt.id)
+                                      else next.add(opt.id)
+                                      return { ...item, selected_addon_ids: next }
+                                    }))}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                                  />
+                                  {opt.label}
+                                </span>
+                                <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {block.staff_splits.map((split, idx) => (
+                        <div key={`added-split-${block.service_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                          <select
+                            value={split.staff_id ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value ? Number(e.target.value) : null
+                              setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, staff_id: value } : row) }
+                                : item))
+                            }}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          >
+                            <option value="">Select staff</option>
+                            {activeStaffs.map((staff) => <option key={`added-staff-${block.service_id}-${staff.id}`} value={staff.id}>{staff.name}</option>)}
+                          </select>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={split.share_percent}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, share_percent: value } : row) }
+                                : item))
+                            }}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                              ? { ...item, staff_splits: item.staff_splits.length <= 1 ? item.staff_splits : item.staff_splits.filter((_, rowIdx) => rowIdx !== idx) }
+                              : item))}
+                            className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id ? { ...item, staff_splits: [...item.staff_splits, { staff_id: null, share_percent: '' }] } : item))}
+                        className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700"
+                      >
+                        + Add Staff
+                      </button>
+                    </div>
+                    <div className="mt-3 border-t border-gray-200 pt-2 text-sm font-semibold text-gray-800">Block Subtotal: RM {blockSubtotal.toFixed(2)}</div>
+                  </div>
+                )
+              })}
+
               {(() => {
                 const allOptions = editAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => editSelectedAddonIds.has(o.id))
                 const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
+                const selectedMainServices = editAddedMainBlocks
+                const addedMainTotal = selectedMainServices.reduce((sum, service) => {
+                  const addonOptions = service.addon_questions.flatMap((q) => q.options)
+                  const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
+                  return sum + Number(service.price ?? 0) + addonTotal
+                }, 0)
                 const isRange = appointmentDetail.is_range_priced
                 const settledAmt = parseFloat(editSettledAmount)
-                const serviceAmt = isRange && Number.isFinite(settledAmt) ? settledAmt : Number(appointmentDetail.service_total ?? 0)
+                const originalServiceAmt = isRange && Number.isFinite(settledAmt)
+                  ? settledAmt
+                  : Number(
+                    (appointmentDetail.main_services ?? [])
+                      .find((service) => service.is_original)?.extra_price
+                      ?? appointmentDetail.service_total
+                      ?? 0,
+                  )
+                const serviceAmt = originalServiceAmt + addedMainTotal
+                const depositOffset = Number(appointmentDetail.deposit_contribution ?? 0)
+                const packageOffset = Number(appointmentDetail.package_offset ?? 0)
+                const finalTotal = Math.max(0, serviceAmt + addonTotal - depositOffset - packageOffset)
                 return (
                   <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Summary</p>
                     <div className="space-y-1.5 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Service</span>
+                        <span className="text-gray-600">Original Service</span>
                         <span className="font-semibold tabular-nums text-gray-900">
                           {isRange && !Number.isFinite(settledAmt)
                             ? `RM ${Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - ${Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}`
-                            : `RM ${serviceAmt.toFixed(2)}`}
+                            : `RM ${originalServiceAmt.toFixed(2)}`}
                         </span>
                       </div>
+                      {selectedMainServices.length > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Added Main Services ({selectedMainServices.length})</span>
+                          <span className="font-semibold tabular-nums text-gray-900">+RM {addedMainTotal.toFixed(2)}</span>
+                        </div>
+                      ) : null}
                       {selectedAddons.length > 0 ? (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Add-ons ({selectedAddons.length})</span>
                           <span className="font-semibold tabular-nums text-gray-900">+RM {addonTotal.toFixed(2)}</span>
                         </div>
                       ) : null}
+                      {depositOffset > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Deposit Offset</span>
+                          <span className="font-semibold tabular-nums text-emerald-700">−RM {depositOffset.toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                      {packageOffset > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Package Offset</span>
+                          <span className="font-semibold tabular-nums text-emerald-700">−RM {packageOffset.toFixed(2)}</span>
+                        </div>
+                      ) : null}
                       <div className="flex justify-between border-t border-gray-200 pt-1.5">
-                        <span className="font-bold text-gray-900">Subtotal</span>
-                        <span className="font-bold tabular-nums text-gray-900">
-                          {isRange && !Number.isFinite(settledAmt)
-                            ? `RM ${(Number(appointmentDetail.service?.price_range_min ?? 0) + addonTotal).toFixed(2)} - ${(Number(appointmentDetail.service?.price_range_max ?? 0) + addonTotal).toFixed(2)}`
-                            : `RM ${(serviceAmt + addonTotal).toFixed(2)}`}
-                        </span>
+                        <span className="font-bold text-gray-900">Final Amount</span>
+                        <span className="font-bold tabular-nums text-gray-900">RM {finalTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>

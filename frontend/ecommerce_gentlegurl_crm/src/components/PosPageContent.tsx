@@ -103,6 +103,8 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
+  main_services?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_service_settlement_items?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   addon_total_price?: number
   deposit_contribution?: number
   package_offset?: number
@@ -642,6 +644,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
   const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
+  const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
+  const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
+  const [cartEditMainServiceQuery, setCartEditMainServiceQuery] = useState('')
+  const [cartEditAddedMainBlocks, setCartEditAddedMainBlocks] = useState<Array<{
+    service_id: number
+    service_name: string
+    price: number
+    duration_min: number
+    addon_questions: Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>
+    selected_addon_ids: Set<number>
+    staff_splits: Array<{ staff_id: number | null; share_percent: string }>
+  }>>([])
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
   const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
   const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
@@ -767,6 +781,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (!endAt) return start.toLocaleString()
     return `${start.toLocaleString()} - ${new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   }, [])
+
+  const getSettlementDurationMin = useCallback((settlement: AppointmentSettlementCartItem): number => {
+    const mainDuration = (settlement.main_services ?? []).reduce((sum, service) => {
+      const own = Number(service.extra_duration_min ?? 0)
+      const addonDuration = (service.add_ons ?? []).reduce((addonSum, addon) => addonSum + Number(addon.extra_duration_min ?? 0), 0)
+      return sum + own + addonDuration
+    }, 0)
+    if (mainDuration > 0) return mainDuration
+    return 0
+  }, [])
+
+  const getSettlementDisplayEndAt = useCallback((settlement: AppointmentSettlementCartItem): string | null => {
+    const startAt = settlement.appointment_start_at
+    if (!startAt) return settlement.appointment_end_at ?? null
+    const durationMin = getSettlementDurationMin(settlement)
+    if (durationMin <= 0) return settlement.appointment_end_at ?? null
+    const start = new Date(startAt)
+    if (Number.isNaN(start.getTime())) return settlement.appointment_end_at ?? null
+    return new Date(start.getTime() + durationMin * 60 * 1000).toISOString()
+  }, [getSettlementDurationMin])
 
   const normalizedProductQuery = useMemo(() => {
     const source = productSearchMode === 'barcode' ? debouncedSkuQuery : productQuery
@@ -2444,6 +2478,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         .filter((id): id is number => id != null),
     )
     setCartEditSelectedAddonIds(currentAddonIds)
+    const addedMainBlocksSeed = (settlement.main_services ?? [])
+      .filter((service) => !service.is_original)
+      .map((service) => ({
+        service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
+        service_name: String(service.name ?? 'Service'),
+        price: Number(service.extra_price ?? 0),
+        duration_min: Number(service.extra_duration_min ?? 0),
+        addon_questions: [] as typeof cartEditAddonQuestions,
+        selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
+        staff_splits: (service.staff_splits ?? []).map((split) => ({
+          staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+          share_percent: String(split.share_percent ?? ''),
+        })),
+      }))
+      .filter((block) => block.service_id > 0)
+    setCartEditAddedMainBlocks(addedMainBlocksSeed)
+    setCartEditMainServiceQuery('')
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
     setCartEditStaffSplitAutoBalance(true)
     const initialSplits = (settlement.staff_splits ?? [])
@@ -2459,20 +2510,51 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     setCartEditAddonOptionsLoading(true)
+    setCartEditMainServiceCatalogLoading(true)
     setCartEditSettlementOpen(true)
     try {
       const serviceId = settlement.booking_service_id
       if (serviceId) {
-        const res = await fetch(`/api/proxy/pos/services/${serviceId}/addon-options`)
-        const json = await res.json().catch(() => null)
-        setCartEditAddonQuestions((json?.data?.questions ?? []) as typeof cartEditAddonQuestions)
+        const [addonRes, servicesRes] = await Promise.all([
+          fetch(`/api/proxy/pos/services/${serviceId}/addon-options`),
+          fetch('/api/proxy/booking/services', { cache: 'no-store' }),
+        ])
+        const addonJson = await addonRes.json().catch(() => null)
+        setCartEditAddonQuestions((addonJson?.data?.questions ?? []) as typeof cartEditAddonQuestions)
+        const servicesJson = await servicesRes.json().catch(() => null)
+        setCartEditMainServiceCatalog((Array.isArray(servicesJson?.data) ? servicesJson.data : []) as BookingServiceOption[])
+        if (addedMainBlocksSeed.length > 0) {
+          const hydrated = await Promise.all(addedMainBlocksSeed.map(async (block) => {
+            try {
+              const addonRes2 = await fetch(`/api/proxy/pos/services/${block.service_id}/addon-options`)
+              const addonJson2 = await addonRes2.json().catch(() => null)
+              return {
+                ...block,
+                addon_questions: (addonJson2?.data?.questions ?? []) as typeof cartEditAddonQuestions,
+                staff_splits: block.staff_splits.length > 0 ? rebalanceSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }],
+              }
+            } catch {
+              return {
+                ...block,
+                addon_questions: [],
+                staff_splits: block.staff_splits.length > 0 ? rebalanceSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }],
+              }
+            }
+          }))
+          setCartEditAddedMainBlocks(hydrated)
+        }
       } else {
         setCartEditAddonQuestions([])
+        setCartEditMainServiceCatalog([])
+        setCartEditAddedMainBlocks([])
       }
     } catch {
       setCartEditAddonQuestions([])
+      setCartEditMainServiceCatalog([])
+      setCartEditAddedMainBlocks([])
     } finally {
       setCartEditAddonOptionsLoading(false)
+      setCartEditMainServiceCatalogLoading(false)
     }
   }
 
@@ -2485,6 +2567,28 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     })
   }
 
+  const addCartEditMainServiceBlock = async (service: BookingServiceOption) => {
+    if (!service?.id) return
+    if (cartEditAddedMainBlocks.some((block) => block.service_id === service.id)) return
+    let questions: typeof cartEditAddonQuestions = []
+    try {
+      const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
+      const json = await res.json().catch(() => null)
+      questions = (json?.data?.questions ?? []) as typeof cartEditAddonQuestions
+    } catch {
+      questions = []
+    }
+    setCartEditAddedMainBlocks((prev) => [...prev, {
+      service_id: service.id,
+      service_name: service.name,
+      price: Number(service.service_price ?? service.price ?? 0),
+      duration_min: Number(service.duration_min ?? 0),
+      addon_questions: questions,
+      selected_addon_ids: new Set<number>(),
+      staff_splits: [{ staff_id: null, share_percent: '100' }],
+    }])
+  }
+
   const saveCartEditSettlement = async () => {
     if (!cartEditSettlementBookingId) return
     setCartEditSettlementError(null)
@@ -2493,6 +2597,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const isRange = cartEditSettlementItem?.is_range_priced
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(cartEditSelectedAddonIds),
+        main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
+        main_service_items: cartEditAddedMainBlocks.map((block) => ({
+          booking_service_id: block.service_id,
+          addon_option_ids: Array.from(block.selected_addon_ids),
+          staff_splits: block.staff_splits.map((row) => ({
+            staff_id: Number(row.staff_id ?? 0),
+            share_percent: Number.parseInt(row.share_percent || '0', 10),
+          })),
+        })),
       }
       if (isRange) {
         const amt = parseFloat(cartEditSettledAmount)
@@ -2527,6 +2640,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         return
       }
       payload.staff_splits = normalizedSplits
+
+      for (const block of cartEditAddedMainBlocks) {
+        const blockSplits = block.staff_splits.map((row) => ({
+          staff_id: Number(row.staff_id ?? 0),
+          share_percent: Number.parseInt(row.share_percent || '0', 10),
+        }))
+        if (blockSplits.length < 1 || blockSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+          setCartEditSettlementError(`Please complete staff split for ${block.service_name}.`)
+          return
+        }
+        const blockUnique = new Set(blockSplits.map((row) => row.staff_id))
+        const blockSum = blockSplits.reduce((sum, row) => sum + row.share_percent, 0)
+        if (blockUnique.size !== blockSplits.length || blockSum !== 100) {
+          setCartEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
+          return
+        }
+      }
 
       const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
         method: 'POST',
@@ -4896,9 +5026,32 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <p>Name: {settlement.customer_name || '—'}</p>
                         <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                         {settlement.appointment_start_at ? (
-                          <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}</p>
+                          <>
+                            <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, getSettlementDisplayEndAt(settlement))}</p>
+                            <p>Duration: {getSettlementDurationMin(settlement) > 0 ? `${getSettlementDurationMin(settlement)} min` : '—'}</p>
+                          </>
                         ) : null}
                       </div>
+                      {(settlement.main_services ?? []).length > 0 ? (
+                        <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-700">
+                          {(settlement.main_services ?? []).map((service, idx) => (
+                            <div key={`cart-main-display-${settlement.id}-${service.id ?? service.name}-${idx}`} className="mb-1 last:mb-0">
+                              <div className="flex justify-between gap-2">
+                                <span>
+                                  {service.name}{service.is_original ? ' (Original)' : ''}
+                                </span>
+                                <span className="tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                              </div>
+                              {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                <div key={`cart-main-addon-display-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
+                                  <span>+ {addon.name}</span>
+                                  <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       {settlement.requires_settled_amount ? (
                         <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
                           <p className="text-[11px] font-semibold text-amber-900">
@@ -4913,6 +5066,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const serviceTotal = Number(settlement.service_total ?? 0)
                       const serviceDue = Number(settlement.service_balance_due ?? serviceTotal)
                       const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotal > 0.0001
+                      const hasServiceBlocks = (settlement.main_services ?? []).length > 0
                       const addonRows = settlement.addon_settlement_items ?? []
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
@@ -4949,7 +5103,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                             )}
 
-                            {addonRows.length > 0 ? (
+                            {!hasServiceBlocks && addonRows.length > 0 ? (
                               <div className="space-y-1.5 border-b border-gray-200 pb-2">
                                 <div className="flex justify-between gap-2">
                                   <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</span>
@@ -4970,6 +5124,34 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     </div>
                                   ))}
                                 </div>
+                              </div>
+                            ) : null}
+
+                            {hasServiceBlocks ? (
+                              <div className="space-y-2 border-b border-gray-200 pb-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service Blocks</p>
+                                {(settlement.main_services ?? []).map((service, idx) => {
+                                  const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
+                                  const blockSubtotal = Number(service.extra_price ?? 0) + serviceAddonTotal
+                                  return (
+                                    <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
+                                      <div className="flex justify-between gap-2 text-gray-800">
+                                        <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>
+                                        <span className="font-semibold tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                                      </div>
+                                      {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                        <div key={`settlement-service-block-addon-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="mt-0.5 flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
+                                          <span>+ {addon.name}</span>
+                                          <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                        </div>
+                                      ))}
+                                      <div className="mt-1 flex justify-between gap-2 border-t border-gray-200 pt-1 text-[10px] font-semibold text-gray-700">
+                                        <span>Subtotal</span>
+                                        <span className="tabular-nums">RM {blockSubtotal.toFixed(2)}</span>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             ) : null}
 
@@ -5441,6 +5623,56 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               ) : null}
 
               <div>
+                <p className="text-sm font-bold text-gray-900 mb-2">Main Services</p>
+                <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                  {(cartEditSettlementItem.main_services ?? []).filter((service) => service.is_original).map((service) => (
+                    <div key={`cart-main-original-${service.id ?? service.name}`} className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-gray-900">{service.name}</p>
+                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-800">Original</span>
+                      </div>
+                      <p className="text-xs text-gray-600">
+                        RM {Number(service.extra_price ?? 0).toFixed(2)}
+                        {(service.extra_duration_min ?? 0) > 0 ? ` · ${service.extra_duration_min}min` : ''}
+                      </p>
+                    </div>
+                  ))}
+                    <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">+ Add Main Service</p>
+                      {cartEditMainServiceCatalogLoading ? <span className="text-[11px] text-gray-500">Loading…</span> : null}
+                    </div>
+                    <input
+                      type="text"
+                      value={cartEditMainServiceQuery}
+                      onChange={(e) => setCartEditMainServiceQuery(e.target.value)}
+                      placeholder="Search service..."
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                    />
+                    <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                      {cartEditMainServiceCatalog
+                        .filter((service) => service.id !== cartEditSettlementItem.booking_service_id)
+                        .filter((service) => !cartEditAddedMainBlocks.some((block) => block.service_id === service.id))
+                        .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
+                        .map((service) => {
+                          const price = Number(service.service_price ?? service.price ?? 0)
+                          const duration = Number(service.duration_min ?? 0)
+                          return (
+                            <button key={`cart-main-${service.id}`} type="button" onClick={() => void addCartEditMainServiceBlock(service)} className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:bg-gray-50">
+                              <span className="text-sm font-medium text-gray-900">{service.name}</span>
+                              <span className="text-xs font-semibold text-gray-600">
+                                + Add · RM {price.toFixed(2)}
+                                {duration > 0 ? ` · ${duration}min` : ''}
+                              </span>
+                            </button>
+                          )
+                        })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
                 <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
                 {cartEditAddonOptionsLoading ? (
                   <p className="text-xs text-gray-500">Loading add-on options...</p>
@@ -5558,38 +5790,171 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               </div>
 
+              {cartEditAddedMainBlocks.map((block) => {
+                const addonOptions = block.addon_questions.flatMap((q) => q.options)
+                const selectedAddons = addonOptions.filter((opt) => block.selected_addon_ids.has(opt.id))
+                const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
+                const blockSubtotal = Number(block.price ?? 0) + addonTotal
+                return (
+                  <div key={`cart-added-main-block-${block.service_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
+                        <p className="text-sm font-semibold text-gray-900">{block.service_name}</p>
+                        <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setCartEditAddedMainBlocks((prev) => prev.filter((item) => item.service_id !== block.service_id))}
+                        className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {block.addon_questions.map((question) => (
+                      <div key={`cart-added-q-${block.service_id}-${question.id}`} className="mb-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>
+                        {question.options.map((opt) => {
+                          const checked = block.selected_addon_ids.has(opt.id)
+                          return (
+                            <label key={`cart-added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
+                              <span className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => {
+                                    if (item.service_id !== block.service_id) return item
+                                    const next = new Set(item.selected_addon_ids)
+                                    if (next.has(opt.id)) next.delete(opt.id)
+                                    else next.add(opt.id)
+                                    return { ...item, selected_addon_ids: next }
+                                  }))}
+                                  className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                                />
+                                {opt.label}
+                              </span>
+                              <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
+                            </label>
+                          )
+                        })}
+                      </div>
+                    ))}
+                    <div className="space-y-2">
+                      {block.staff_splits.map((split, idx) => (
+                        <div key={`cart-added-split-${block.service_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                          <select
+                            value={split.staff_id ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value ? Number(e.target.value) : null
+                              setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, staff_id: value } : row) }
+                                : item))
+                            }}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          >
+                            <option value="">Select staff</option>
+                            {activeStaffs.map((staff) => <option key={`cart-added-staff-${block.service_id}-${staff.id}`} value={staff.id}>{staff.name}</option>)}
+                          </select>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={split.share_percent}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, share_percent: value } : row) }
+                                : item))
+                            }}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                              ? { ...item, staff_splits: item.staff_splits.length <= 1 ? item.staff_splits : item.staff_splits.filter((_, rowIdx) => rowIdx !== idx) }
+                              : item))}
+                            className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id ? { ...item, staff_splits: [...item.staff_splits, { staff_id: null, share_percent: '' }] } : item))}
+                        className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700"
+                      >
+                        + Add Staff
+                      </button>
+                    </div>
+                    <div className="mt-3 border-t border-gray-200 pt-2 text-sm font-semibold text-gray-800">Block Subtotal: RM {blockSubtotal.toFixed(2)}</div>
+                  </div>
+                )
+              })}
+
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
                 const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
+                const selectedMainServices = cartEditAddedMainBlocks
+                const addedMainTotal = selectedMainServices.reduce((sum, service) => {
+                  const addonOptions = service.addon_questions.flatMap((q) => q.options)
+                  const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
+                  return sum + Number(service.price ?? 0) + addonTotal
+                }, 0)
                 const isRange = cartEditSettlementItem.is_range_priced
                 const settledAmt = parseFloat(cartEditSettledAmount)
-                const serviceAmt = isRange && Number.isFinite(settledAmt) ? settledAmt : Number(cartEditSettlementItem.service_total ?? 0)
+                const originalServiceAmt = isRange && Number.isFinite(settledAmt)
+                  ? settledAmt
+                  : Number(
+                    (cartEditSettlementItem.main_services ?? [])
+                      .find((service) => service.is_original)?.extra_price
+                      ?? cartEditSettlementItem.service_total
+                      ?? 0,
+                  )
+                const serviceAmt = originalServiceAmt + addedMainTotal
+                const depositOffset = Number(cartEditSettlementItem.deposit_contribution ?? 0)
+                const packageOffset = Number(cartEditSettlementItem.package_offset ?? 0)
+                const finalTotal = Math.max(0, serviceAmt + addonTotal - depositOffset - packageOffset)
                 return (
                   <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Summary</p>
                     <div className="space-y-1.5 text-sm">
                       <div className="flex justify-between">
-                        <span className="text-gray-600">Service</span>
+                        <span className="text-gray-600">Original Service</span>
                         <span className="font-semibold tabular-nums text-gray-900">
                           {isRange && !Number.isFinite(settledAmt)
                             ? `RM ${Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} - ${Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}`
-                            : `RM ${serviceAmt.toFixed(2)}`}
+                            : `RM ${originalServiceAmt.toFixed(2)}`}
                         </span>
                       </div>
+                      {selectedMainServices.length > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Added Main Services ({selectedMainServices.length})</span>
+                          <span className="font-semibold tabular-nums text-gray-900">+RM {addedMainTotal.toFixed(2)}</span>
+                        </div>
+                      ) : null}
                       {selectedAddons.length > 0 ? (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Add-ons ({selectedAddons.length})</span>
                           <span className="font-semibold tabular-nums text-gray-900">+RM {addonTotal.toFixed(2)}</span>
                         </div>
                       ) : null}
+                      {depositOffset > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Deposit Offset</span>
+                          <span className="font-semibold tabular-nums text-emerald-700">−RM {depositOffset.toFixed(2)}</span>
+                        </div>
+                      ) : null}
+                      {packageOffset > 0 ? (
+                        <div className="flex justify-between">
+                          <span className="text-gray-600">Package Offset</span>
+                          <span className="font-semibold tabular-nums text-emerald-700">−RM {packageOffset.toFixed(2)}</span>
+                        </div>
+                      ) : null}
                       <div className="flex justify-between border-t border-gray-200 pt-1.5">
-                        <span className="font-bold text-gray-900">Subtotal</span>
-                        <span className="font-bold tabular-nums text-gray-900">
-                          {isRange && !Number.isFinite(settledAmt)
-                            ? `RM ${(Number(cartEditSettlementItem.service_price_range_min ?? 0) + addonTotal).toFixed(2)} - ${(Number(cartEditSettlementItem.service_price_range_max ?? 0) + addonTotal).toFixed(2)}`
-                            : `RM ${(serviceAmt + addonTotal).toFixed(2)}`}
-                        </span>
+                        <span className="font-bold text-gray-900">Final Amount</span>
+                        <span className="font-bold tabular-nums text-gray-900">RM {finalTotal.toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
@@ -5937,6 +6302,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       const addons = settlement.addon_settlement_items ?? []
                       const addonCount = addons.length
+                      const hasServiceBlocks = (settlement.main_services ?? []).length > 0
                       const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const serviceDue = Number(settlement.service_balance_due ?? settlement.service_total ?? 0)
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
@@ -5965,14 +6331,33 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                                 {settlement.appointment_start_at ? (
                                   <p>
-                                    Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}
+                                    Appointment: {formatDateTimeRange(settlement.appointment_start_at, getSettlementDisplayEndAt(settlement))}
                                   </p>
                                 ) : null}
+                                <p>Duration: {getSettlementDurationMin(settlement) > 0 ? `${getSettlementDurationMin(settlement)} min` : '—'}</p>
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
                               <div className="space-y-2">
                                 <p className="text-xs leading-relaxed text-gray-700">{getSettlementWorkerSummary(settlement)}</p>
+                                {(settlement.main_services ?? []).length > 0 ? (
+                                  <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
+                                    {(settlement.main_services ?? []).map((service, idx) => (
+                                      <div key={`checkout-main-display-${settlement.id}-${service.id ?? service.name}-${idx}`} className="mb-1 last:mb-0">
+                                        <div className="flex justify-between gap-2">
+                                          <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>
+                                          <span className="tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                                        </div>
+                                        {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                          <div key={`checkout-main-addon-display-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
+                                            <span>+ {addon.name}</span>
+                                            <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => void openSettlementSplitEditor(settlement)}
@@ -6003,35 +6388,85 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                           </tr>
 
-                          <tr className={`${stRowClass} align-top`}>
-                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement</p>
-                              <p className="mt-1 text-xs text-gray-700">Service</p>
-                              {mainCoveredByPkg ? (
-                                <p className="mt-1 text-[10px] leading-snug text-cyan-800">
-                                  Included in your package (main service)
-                                </p>
-                              ) : null}
-                            </td>
-                            <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
-                            <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
-                              {mainCoveredByPkg ? (
-                                <span>
-                                  <span className="text-gray-400 line-through">{stServiceLabel}</span>{' '}
-                                  <span className="font-medium">RM 0.00</span>
-                                </span>
-                              ) : (
-                                <span className="text-gray-400">—</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                              <p className="text-lg font-bold leading-tight text-orange-700">
-                                {mainCoveredByPkg ? 'RM 0.00' : stServiceLabel}
-                              </p>
-                            </td>
-                          </tr>
+                          {hasServiceBlocks ? (
+                            <>
+                              {(settlement.main_services ?? []).map((service, idx) => {
+                                const servicePrice = Number(service.extra_price ?? 0)
+                                const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
+                                const serviceSubtotal = servicePrice + serviceAddonTotal
+                                return (
+                                  <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
+                                    <tr className={`${stRowClass} align-top`}>
+                                      <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement Block</p>
+                                        <p className="mt-1 text-xs text-gray-700">
+                                          {service.name}{service.is_original ? ' (Original)' : ''}
+                                        </p>
+                                      </td>
+                                      <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
+                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-400">—</td>
+                                      <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
+                                        <p className="text-lg font-bold leading-tight text-orange-700">RM {servicePrice.toFixed(2)}</p>
+                                      </td>
+                                    </tr>
+                                    {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                      <tr
+                                        key={`chk-main-block-addon-row-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`}
+                                        className={`${stRowClass} align-top`}
+                                      >
+                                        <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
+                                          <span className="text-gray-500">+</span> {addon.name}
+                                        </td>
+                                        <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                                        <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                                        <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                          <p className="text-lg font-bold leading-tight text-orange-700">RM {Number(addon.extra_price ?? 0).toFixed(2)}</p>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                    <tr className={`${stRowClass} align-top`}>
+                                      <td className="px-4 py-2 pl-8 text-xs font-semibold text-gray-700 sm:px-5 sm:pl-10">Block Subtotal</td>
+                                      <td className="min-w-[260px] px-4 py-2" aria-hidden />
+                                      <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
+                                      <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
+                                        <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceSubtotal.toFixed(2)}</p>
+                                      </td>
+                                    </tr>
+                                  </Fragment>
+                                )
+                              })}
+                            </>
+                          ) : (
+                            <>
+                              <tr className={`${stRowClass} align-top`}>
+                                <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement</p>
+                                  <p className="mt-1 text-xs text-gray-700">Service</p>
+                                  {mainCoveredByPkg ? (
+                                    <p className="mt-1 text-[10px] leading-snug text-cyan-800">
+                                      Included in your package (main service)
+                                    </p>
+                                  ) : null}
+                                </td>
+                                <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
+                                <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
+                                  {mainCoveredByPkg ? (
+                                    <span>
+                                      <span className="text-gray-400 line-through">{stServiceLabel}</span>{' '}
+                                      <span className="font-medium">RM 0.00</span>
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
+                                  <p className="text-lg font-bold leading-tight text-orange-700">
+                                    {mainCoveredByPkg ? 'RM 0.00' : stServiceLabel}
+                                  </p>
+                                </td>
+                              </tr>
 
-                          {addonCount > 0 ? (
+                              {addonCount > 0 ? (
                             <>
                               <tr className={`${stRowClass} align-top`}>
                                 <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
@@ -6071,6 +6506,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               ) : null}
                             </>
                           ) : null}
+                            </>
+                          )}
 
                           {depositCredit > 0.0001 ? (
                             <tr className={`${stRowClass} align-top`}>

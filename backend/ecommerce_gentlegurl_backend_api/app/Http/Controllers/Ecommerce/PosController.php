@@ -50,6 +50,7 @@ use App\Support\Pricing\ProductPricing;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -462,6 +463,8 @@ class PosController extends Controller
             ],
             'staff_splits' => $staffSplits->values()->all(),
             'service_total' => (float) $summary['service_total'],
+            'main_services' => $summary['main_services'] ?? [],
+            'main_service_settlement_items' => $summary['main_service_settlement_items'] ?? [],
             'settled_service_amount' => $summary['settled_service_amount'],
             'is_range_priced' => (bool) $summary['is_range_priced'],
             'requires_settled_amount' => (bool) $summary['requires_settled_amount'],
@@ -848,6 +851,15 @@ class PosController extends Controller
         $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
         $validated = $request->validate([
             'settled_service_amount' => [$isRangePriced ? 'required' : 'nullable', 'numeric', 'min:0'],
+            'main_service_ids' => ['nullable', 'array'],
+            'main_service_ids.*' => ['integer'],
+            'main_service_items' => ['nullable', 'array'],
+            'main_service_items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'main_service_items.*.addon_option_ids' => ['nullable', 'array'],
+            'main_service_items.*.addon_option_ids.*' => ['integer'],
+            'main_service_items.*.staff_splits' => ['nullable', 'array', 'min:1'],
+            'main_service_items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'main_service_items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'addon_option_ids' => ['nullable', 'array'],
             'addon_option_ids.*' => ['integer'],
             'staff_splits' => ['nullable', 'array', 'min:1'],
@@ -868,6 +880,110 @@ class PosController extends Controller
             $booking->settled_service_amount = round($amount, 2);
         } elseif (! $isRangePriced) {
             $booking->settled_service_amount = null;
+        }
+
+        $existingSettlementItems = collect($booking->addon_items_json ?? []);
+
+        if ($request->has('main_service_ids') || $request->has('main_service_items')) {
+            $itemsPayload = collect($validated['main_service_items'] ?? [])
+                ->map(function (array $item): array {
+                    return [
+                        'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
+                        'addon_option_ids' => collect($item['addon_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->values()->all(),
+                        'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
+                            'staff_id' => (int) ($split['staff_id'] ?? 0),
+                            'share_percent' => (int) ($split['share_percent'] ?? 0),
+                        ])->values()->all(),
+                    ];
+                })
+                ->filter(fn (array $item) => (int) ($item['booking_service_id'] ?? 0) > 0)
+                ->values();
+
+            $serviceIds = ($itemsPayload->isNotEmpty()
+                ? $itemsPayload->pluck('booking_service_id')
+                : collect($validated['main_service_ids'] ?? []))
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn (int $id) => $id > 0)
+                ->reject(fn (int $id) => $id === (int) ($booking->service_id ?? 0))
+                ->unique()
+                ->values();
+
+            $servicesById = $serviceIds->isEmpty()
+                ? collect()
+                : BookingService::query()
+                    ->whereIn('id', $serviceIds->all())
+                    ->where('is_active', true)
+                    ->get(['id', 'name', 'service_price', 'price', 'duration_min'])
+                    ->keyBy('id');
+
+            $existingMainByServiceId = $existingSettlementItems
+                ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+                ->keyBy(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0));
+
+            $mainServiceRows = $serviceIds
+                ->map(function (int $serviceId) use ($servicesById, $existingMainByServiceId, $itemsPayload) {
+                    $service = $servicesById->get($serviceId);
+                    if (! $service) {
+                        return null;
+                    }
+                    $existing = (array) ($existingMainByServiceId->get($serviceId) ?? []);
+                    $price = round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2);
+                    $itemPayload = (array) ($itemsPayload->first(fn (array $item) => (int) ($item['booking_service_id'] ?? 0) === $serviceId) ?? []);
+                    $availableOptions = BookingService::query()
+                        ->with(['questions.options.linkedBookingService'])
+                        ->find($serviceId)?->questions
+                        ?->flatMap(fn ($q) => $q->options)
+                        ?->filter(fn ($opt) => $opt->is_active)
+                        ?->keyBy('id') ?? collect();
+                    $addonItems = collect($itemPayload['addon_option_ids'] ?? [])
+                        ->map(fn ($optId) => $availableOptions->get($optId))
+                        ->filter()
+                        ->map(fn (BookingServiceQuestionOption $option) => [
+                            'id' => (int) $option->id,
+                            'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                            'extra_duration_min' => $option->linkedBookingService
+                                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                                : max(0, (int) ($option->extra_duration_min ?? 0)),
+                            'extra_price' => $option->linkedBookingService
+                                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                                : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                            'linked_booking_service_id' => $option->linkedBookingService
+                                ? (int) $option->linkedBookingService->id
+                                : null,
+                        ])->values()->all();
+                    $itemSplits = collect($itemPayload['staff_splits'] ?? [])->values();
+                    if ($itemSplits->isNotEmpty()) {
+                        $splitSum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+                        $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
+                        if ($splitSum !== 100 || $uniqueCount !== $itemSplits->count()) {
+                            throw ValidationException::withMessages([
+                                'main_service_items' => __('Invalid staff split for added main service.'),
+                            ]);
+                        }
+                    }
+
+                    return [
+                        'item_kind' => 'main_service',
+                        'id' => isset($existing['id']) ? (int) $existing['id'] : null,
+                        'name' => (string) ($service->name ?? $existing['name'] ?? 'Service'),
+                        'extra_duration_min' => max(0, (int) ($service->duration_min ?? ($existing['extra_duration_min'] ?? 0))),
+                        'extra_price' => $price,
+                        'linked_booking_service_id' => (int) $serviceId,
+                        'is_original' => false,
+                        'addon_items' => $addonItems,
+                        'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
+                        'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
+                        'staff_splits' => $itemSplits->values()->all(),
+                    ];
+                })
+                ->filter()
+                ->values();
+
+            $existingSettlementItems = $existingSettlementItems
+                ->reject(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+                ->values()
+                ->concat($mainServiceRows)
+                ->values();
         }
 
         if ($request->has('addon_option_ids')) {
@@ -900,10 +1016,19 @@ class PosController extends Controller
                         : null,
                 ])->values()->all();
 
-            $booking->addon_items_json = $newAddonItems;
-            $booking->addon_price = round(collect($newAddonItems)->sum('extra_price'), 2);
-            $booking->addon_duration_min = (int) collect($newAddonItems)->sum('extra_duration_min');
+            $existingMainRows = $existingSettlementItems
+                ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+                ->values()
+                ->all();
+            $booking->addon_items_json = array_values([...$existingMainRows, ...$newAddonItems]);
+        } else {
+            $booking->addon_items_json = $existingSettlementItems->values()->all();
         }
+        $addonRowsForBooking = collect($booking->addon_items_json ?? [])
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
+            ->values();
+        $booking->addon_price = round((float) $addonRowsForBooking->sum(fn ($item) => max(0, (float) ($item['extra_price'] ?? 0))), 2);
+        $booking->addon_duration_min = (int) $addonRowsForBooking->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
 
         $normalizedSplits = $this->normalizeBookingStaffSplits(
             collect($validated['staff_splits'] ?? []),
@@ -927,6 +1052,7 @@ class PosController extends Controller
             'service_total' => (float) $summary['service_total'],
             'settled_service_amount' => $summary['settled_service_amount'],
             'requires_settled_amount' => (bool) $summary['requires_settled_amount'],
+            'main_services' => $summary['main_services'] ?? [],
             'balance_due' => (float) $summary['balance_due'],
             'amount_due_now' => (float) $summary['amount_due_now'],
             'add_ons' => $summary['add_ons'],
@@ -3324,6 +3450,7 @@ class PosController extends Controller
 
                 $summary = $this->resolveAppointmentFinancialSummary($booking);
                 $serviceBalanceDue = max(0.0, (float) ($summary['service_balance_due'] ?? 0));
+                $mainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
                 $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
                 $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
                 $settlementDiscount = $this->resolveManualDiscountAmount((string) ($settlementItem->discount_type ?? ''), (float) ($settlementItem->discount_value ?? 0), $balanceDue);
@@ -3335,31 +3462,75 @@ class PosController extends Controller
                 }
 
                 if ($serviceBalanceDue > 0.0001) {
-                    $serviceLineDiscount = min($discountLeft, $serviceBalanceDue);
-                    $serviceLineNet = max(0.0, $serviceBalanceDue - $serviceLineDiscount);
-                    $discountLeft -= $serviceLineDiscount;
-                    OrderItem::query()->create([
-                        'order_id' => (int) $order->id,
-                        'line_type' => 'booking_settlement',
-                        'product_id' => null,
-                        'product_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
-                        'display_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
-                        'quantity' => 1,
-                        'price_snapshot' => $serviceLineNet,
-                        'unit_price_snapshot' => $serviceLineNet,
-                        'line_total' => $serviceLineNet,
-                        'line_total_snapshot' => $serviceBalanceDue,
-                        'effective_unit_price' => $serviceLineNet,
-                        'effective_line_total' => $serviceLineNet,
-                        'discount_type' => $settlementItem->discount_type,
-                        'discount_value' => (float) ($settlementItem->discount_value ?? 0),
-                        'discount_remark' => $settlementItem->discount_remark,
-                        'discount_amount' => $serviceLineDiscount,
-                        'line_total_after_discount' => $serviceLineNet,
-                        'locked' => true,
-                        'booking_id' => (int) $booking->id,
-                        'booking_service_id' => (int) ($booking->service_id ?? 0),
-                    ]);
+                    $serviceLines = $mainSettlementItems->isNotEmpty()
+                        ? $mainSettlementItems
+                        : collect([[
+                            'name' => (string) ($booking->service?->name ?? 'Service'),
+                            'balance_due' => $serviceBalanceDue,
+                            'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
+                            'is_original' => true,
+                        ]]);
+
+                    foreach ($serviceLines as $mainLine) {
+                        $mainAmount = max(0.0, (float) ($mainLine['balance_due'] ?? 0));
+                        if ($mainAmount <= 0.0001) {
+                            continue;
+                        }
+                        $serviceLineDiscount = min($discountLeft, $mainAmount);
+                        $serviceLineNet = max(0.0, $mainAmount - $serviceLineDiscount);
+                        $discountLeft -= $serviceLineDiscount;
+
+                        $settlementOrderItem = OrderItem::query()->create([
+                            'order_id' => (int) $order->id,
+                            'line_type' => 'booking_settlement',
+                            'product_id' => null,
+                            'product_name_snapshot' => 'Final Settlement - ' . (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service')),
+                            'display_name_snapshot' => 'Final Settlement - ' . (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service')),
+                            'quantity' => 1,
+                            'price_snapshot' => $serviceLineNet,
+                            'unit_price_snapshot' => $serviceLineNet,
+                            'line_total' => $serviceLineNet,
+                            'line_total_snapshot' => $mainAmount,
+                            'effective_unit_price' => $serviceLineNet,
+                            'effective_line_total' => $serviceLineNet,
+                            'discount_type' => $settlementItem->discount_type,
+                            'discount_value' => (float) ($settlementItem->discount_value ?? 0),
+                            'discount_remark' => $settlementItem->discount_remark,
+                            'discount_amount' => $serviceLineDiscount,
+                            'line_total_after_discount' => $serviceLineNet,
+                            'locked' => true,
+                            'booking_id' => (int) $booking->id,
+                            'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? ($booking->service_id ?? 0)),
+                        ]);
+
+                        $lineSplits = collect($mainLine['staff_splits'] ?? [])->map(fn ($split) => [
+                            'staff_id' => (int) ($split['staff_id'] ?? 0),
+                            'share_percent' => (int) ($split['share_percent'] ?? 0),
+                        ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values();
+                        if ($lineSplits->isEmpty() && (($mainLine['is_original'] ?? false) === true)) {
+                            $lineSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))
+                                ->map(fn ($split) => [
+                                    'staff_id' => (int) ($split['staff_id'] ?? 0),
+                                    'share_percent' => (int) ($split['share_percent'] ?? 0),
+                                ])
+                                ->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                                ->values();
+                        }
+                        if ($lineSplits->isNotEmpty()) {
+                            $splitSum = (int) $lineSplits->sum('share_percent');
+                            $uniqueCount = $lineSplits->pluck('staff_id')->unique()->count();
+                            if ($splitSum === 100 && $uniqueCount === $lineSplits->count()) {
+                                foreach ($lineSplits as $split) {
+                                    OrderItemStaffSplit::query()->create([
+                                        'order_item_id' => (int) $settlementOrderItem->id,
+                                        'staff_id' => (int) $split['staff_id'],
+                                        'share_percent' => (int) $split['share_percent'],
+                                        'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                                    ]);
+                                }
+                            }
+                        }
+                    }
                 }
 
                 foreach ($addonSettlementItems as $addon) {
@@ -3367,6 +3538,11 @@ class PosController extends Controller
                     if ($addonAmount <= 0.0001) {
                         continue;
                     }
+                    $addonServiceRef = (string) ($addon['service_ref'] ?? 'original');
+                    $addonName = (string) ($addon['name'] ?? 'Add-on');
+                    $addonDisplayName = $addonServiceRef === 'original'
+                        ? $addonName
+                        : sprintf('%s::%s', $addonServiceRef, $addonName);
                     $addonLineDiscount = min($discountLeft, $addonAmount);
                     $addonLineNet = max(0.0, $addonAmount - $addonLineDiscount);
                     $discountLeft -= $addonLineDiscount;
@@ -3374,8 +3550,8 @@ class PosController extends Controller
                         'order_id' => (int) $order->id,
                         'line_type' => 'booking_addon',
                         'product_id' => null,
-                        'product_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
-                        'display_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
+                        'product_name_snapshot' => $addonDisplayName,
+                        'display_name_snapshot' => $addonDisplayName,
                         'variant_name_snapshot' => 'Booking Add-on Settlement',
                         'quantity' => 1,
                         'price_snapshot' => $addonLineNet,
@@ -3892,6 +4068,8 @@ class PosController extends Controller
                 'line_total_after_discount' => (float) $netLineTotal,
                 'discount_remark' => $item->discount_remark,
                 'service_total' => (float) ($summary['service_total'] ?? 0),
+                'main_services' => $summary['main_services'] ?? [],
+                'main_service_settlement_items' => $summary['main_service_settlement_items'] ?? [],
                 'settled_service_amount' => $summary['settled_service_amount'] ?? null,
                 'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
                 'requires_settled_amount' => (bool) ($summary['requires_settled_amount'] ?? false),
@@ -4447,15 +4625,74 @@ class PosController extends Controller
     {
         $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
         $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
-        $serviceTotal = $settledServiceAmount !== null
+        $originalServiceAmount = $settledServiceAmount !== null
             ? $settledServiceAmount
             : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
-        $addonItems = collect($booking->addon_items_json ?? [])->map(fn ($item) => [
+        $settlementItems = collect($booking->addon_items_json ?? []);
+        $extraMainServices = $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->map(fn ($item) => [
+                'id' => isset($item['id']) ? (int) $item['id'] : null,
+                'name' => (string) ($item['name'] ?? $item['label'] ?? 'Service'),
+                'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
+                'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+                'linked_booking_service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
+                'is_original' => false,
+                'add_ons' => collect($item['addon_items'] ?? [])->map(fn ($addon) => [
+                    'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                    'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                    'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
+                    'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
+                ])->values()->all(),
+                'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
+                    'staff_id' => (int) ($split['staff_id'] ?? 0),
+                    'share_percent' => (int) ($split['share_percent'] ?? 0),
+                ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all(),
+            ])
+            ->values();
+        $mainServices = collect([[
+            'id' => (int) ($booking->service_id ?? 0),
+            'name' => (string) ($booking->service?->name ?? 'Service'),
+            'extra_duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)),
+            'extra_price' => round(max(0, $originalServiceAmount), 2),
+            'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
+            'is_original' => true,
+            'add_ons' => [],
+            'staff_splits' => $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all(),
+        ]])->concat($extraMainServices)->values();
+
+        $serviceTotal = round((float) $mainServices->sum('extra_price'), 2);
+        $originalAddonItems = $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
+            ->map(fn ($item) => [
             'id' => isset($item['id']) ? (int) $item['id'] : null,
             'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
             'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
             'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+            'service_ref' => 'original',
         ])->values();
+        $addedMainAddonItems = $extraMainServices
+            ->flatMap(fn (array $service) => collect($service['add_ons'] ?? [])->map(fn (array $addon) => [
+                ...$addon,
+                'service_ref' => (string) ($service['name'] ?? 'Service'),
+            ]))
+            ->values();
+        $addonItems = $originalAddonItems->concat($addedMainAddonItems)->values();
+        $mainServices = $mainServices->map(function (array $service) use ($originalAddonItems) {
+            if (($service['is_original'] ?? false) === true) {
+                return [
+                    ...$service,
+                    'add_ons' => $originalAddonItems->map(fn (array $addon) => [
+                        'id' => $addon['id'] ?? null,
+                        'name' => $addon['name'] ?? 'Add-on',
+                        'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
+                        'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                    ])->values()->all(),
+                ];
+            }
+
+            return $service;
+        })->values();
         $addonTotalDurationMin = (int) $addonItems->sum('extra_duration_min');
         $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum('extra_price')), 2);
         $addonPaidRows = OrderItem::query()
@@ -4467,7 +4704,7 @@ class PosController extends Controller
             ->map(fn ($rows) => (float) $rows->sum(fn ($row) => (float) ($row->line_total ?? 0)));
         $usedPaidByName = [];
         $addonSettlementItems = $addonItems->map(function (array $addon) use ($addonPaidByName, &$usedPaidByName) {
-            $name = (string) ($addon['name'] ?? 'Add-on');
+            $name = ((string) ($addon['service_ref'] ?? 'original')) . '::' . (string) ($addon['name'] ?? 'Add-on');
             $totalPaidForName = (float) ($addonPaidByName->get($name) ?? 0);
             $alreadyUsed = (float) ($usedPaidByName[$name] ?? 0);
             $availablePaid = max(0, $totalPaidForName - $alreadyUsed);
@@ -4478,6 +4715,7 @@ class PosController extends Controller
 
             return [
                 ...$addon,
+                'display_name' => $name,
                 'paid_amount' => round($paidApplied, 2),
                 'balance_due' => round($balanceDue, 2),
             ];
@@ -4566,6 +4804,30 @@ class PosController extends Controller
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_settlement')
             ->sum('line_total');
+        $mainSettlementPaidRows = OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_settlement')
+            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total']);
+        $mainPaidByName = $mainSettlementPaidRows
+            ->groupBy(fn (OrderItem $row) => (string) ($row->display_name_snapshot ?: $row->product_name_snapshot ?: 'Service'))
+            ->map(fn ($rows) => (float) $rows->sum(fn ($row) => (float) ($row->line_total ?? 0)));
+        $usedMainPaidByName = [];
+        $mainSettlementItems = $mainServices->map(function (array $main) use ($mainPaidByName, &$usedMainPaidByName) {
+            $displayName = 'Final Settlement - ' . (string) ($main['name'] ?? 'Service');
+            $totalPaidForName = (float) ($mainPaidByName->get($displayName) ?? 0);
+            $alreadyUsed = (float) ($usedMainPaidByName[$displayName] ?? 0);
+            $availablePaid = max(0, $totalPaidForName - $alreadyUsed);
+            $mainPrice = max(0, (float) ($main['extra_price'] ?? 0));
+            $paidApplied = min($mainPrice, $availablePaid);
+            $usedMainPaidByName[$displayName] = $alreadyUsed + $paidApplied;
+            $balanceDue = max(0, $mainPrice - $paidApplied);
+
+            return [
+                ...$main,
+                'paid_amount' => round($paidApplied, 2),
+                'balance_due' => round($balanceDue, 2),
+            ];
+        })->values();
         $addonPaid = (float) $addonSettlementItems->sum('paid_amount');
         $addonPaidSettlement = (float) $addonPaidRows
             ->filter(fn (OrderItem $row) => strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0)
@@ -4589,14 +4851,29 @@ class PosController extends Controller
         }
 
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
-        $packageOffset = $coveredByPackage ? $serviceTotal : 0.0;
-        $serviceOutstandingBeforeSettlement = max(0, $serviceTotal - $depositPaid - $packageOffset);
-        $serviceBalanceDue = max(0, $serviceOutstandingBeforeSettlement - $serviceSettlementPaid);
+        $packageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
+
+        $serviceOutstandingRows = $mainSettlementItems->map(function (array $item) use ($depositPaid, $packageOffset) {
+            $lineAmount = max(0, (float) ($item['extra_price'] ?? 0));
+            $linePaid = max(0, (float) ($item['paid_amount'] ?? 0));
+            $lineOutstanding = max(0, $lineAmount - $linePaid);
+            if (($item['is_original'] ?? false) === true) {
+                $lineOutstanding = max(0, $lineOutstanding - $depositPaid - $packageOffset);
+            }
+
+            return [
+                ...$item,
+                'balance_due' => round($lineOutstanding, 2),
+            ];
+        })->values();
+        $serviceBalanceDue = round((float) $serviceOutstandingRows->sum('balance_due'), 2);
         $addonBalanceDue = round((float) $addonSettlementItems->sum('balance_due'), 2);
         $balanceDue = max(0, $serviceBalanceDue + $addonBalanceDue);
 
         return [
             'service_total' => round($serviceTotal, 2),
+            'main_services' => $mainServices->all(),
+            'main_service_settlement_items' => $serviceOutstandingRows->all(),
             'settled_service_amount' => $settledServiceAmount !== null ? round($settledServiceAmount, 2) : null,
             'is_range_priced' => $isRangePriced,
             'requires_settled_amount' => $isRangePriced && $settledServiceAmount === null,
