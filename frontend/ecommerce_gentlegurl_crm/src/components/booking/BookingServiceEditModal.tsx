@@ -877,6 +877,22 @@ export default function BookingServiceEditModal({
                   <option value="false">Inactive</option>
                 </select>
               </div>
+              <div>
+                <label htmlFor="edit-allowPhotoUpload" className="block text-sm font-medium text-gray-700 mb-1">
+                  Allow Photo Upload
+                </label>
+                <select
+                  id="edit-allowPhotoUpload"
+                  name="allow_photo_upload"
+                  value={form.allow_photo_upload}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={disableForm}
+                >
+                  <option value="false">Disabled</option>
+                  <option value="true">Enabled</option>
+                </select>
+              </div>
             </div>
 
             <div className="mt-6 w-full">
