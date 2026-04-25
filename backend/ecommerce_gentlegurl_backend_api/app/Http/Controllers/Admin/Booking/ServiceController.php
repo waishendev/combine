@@ -20,12 +20,15 @@ use Illuminate\Support\Str;
 
 class ServiceController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
+        $perPage = $request->integer('per_page', 20);
+        $perPage = max(1, min(200, $perPage));
+
         $services = BookingService::query()
             ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])
             ->latest()
-            ->paginate(20);
+            ->paginate($perPage);
 
         $services->getCollection()->transform(fn (BookingService $service) => $this->formatService($service));
 
