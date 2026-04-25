@@ -67,7 +67,10 @@ class ServiceController extends Controller
 
     public function show(int $id)
     {
-        $service = BookingService::query()->with(['primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type,deposit_amount'])->findOrFail($id);
+        $service = BookingService::query()->with([
+            'primarySlots',
+            'questions.options.linkedBookingService:id,name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
+        ])->findOrFail($id);
 
         return $this->respond($this->mapService($service, true));
     }
@@ -135,7 +138,11 @@ class ServiceController extends Controller
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
             'questions' => $service->questions()
                 ->where('is_active', true)
-                ->with(['options' => fn ($q) => $q->where('is_active', true)->with('linkedBookingService:id,name,duration_min,service_price,image_path,description,service_type,deposit_amount')->orderBy('sort_order')->orderBy('id')])
+                ->with(['options' => fn ($q) => $q
+                    ->where('is_active', true)
+                    ->with('linkedBookingService:id,name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount')
+                    ->orderBy('sort_order')
+                    ->orderBy('id')])
                 ->orderBy('sort_order')
                 ->orderBy('id')
                 ->get()
@@ -154,6 +161,9 @@ class ServiceController extends Controller
                             'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
                             'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : (int) $option->extra_duration_min,
                             'extra_price' => $linkedService ? (float) $linkedService->service_price : (float) $option->extra_price,
+                            'linked_price_mode' => $linkedService ? (string) ($linkedService->price_mode ?? 'fixed') : null,
+                            'linked_price_range_min' => $linkedService && $linkedService->price_range_min !== null ? (float) $linkedService->price_range_min : null,
+                            'linked_price_range_max' => $linkedService && $linkedService->price_range_max !== null ? (float) $linkedService->price_range_max : null,
                             'sort_order' => (int) $option->sort_order,
                             'is_active' => (bool) $option->is_active,
                             'image_path' => $linkedService?->image_path,

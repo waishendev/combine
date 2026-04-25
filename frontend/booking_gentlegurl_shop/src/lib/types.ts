@@ -43,6 +43,10 @@ export type BookingServiceQuestionOption = {
   linked_booking_service_id?: number | null;
   extra_duration_min: number;
   extra_price: number;
+  /** When option is linked to a booking service that uses range pricing. */
+  linked_price_mode?: "fixed" | "range" | string | null;
+  linked_price_range_min?: number | null;
+  linked_price_range_max?: number | null;
   sort_order: number;
   is_active: boolean;
   /** Present when the option is linked to another booking service (same as SERVICES list images). */

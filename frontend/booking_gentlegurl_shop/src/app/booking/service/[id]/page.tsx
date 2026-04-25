@@ -57,14 +57,39 @@ export default function ServiceAddonsPage() {
   }, [service?.questions, selectedOptionIds]);
 
   const totalAddonDuration = selectedOptions.reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0);
-  const totalAddonPrice = selectedOptions.reduce((sum, o) => sum + Number(o.extra_price || 0), 0);
+  const addonPriceRange = useMemo(() => {
+    const rows = selectedOptions.map((o) => {
+      const linkedRange =
+        String(o.linked_price_mode ?? '') === 'range' &&
+        o.linked_price_range_min != null &&
+        o.linked_price_range_max != null;
+
+      if (linkedRange) {
+        return {
+          min: Number(o.linked_price_range_min ?? 0),
+          max: Number(o.linked_price_range_max ?? 0),
+          isRange: true,
+        };
+      }
+
+      const fixed = Number(o.extra_price || 0);
+      return { min: fixed, max: fixed, isRange: false };
+    });
+
+    const min = rows.reduce((sum, r) => sum + (Number.isFinite(r.min) ? r.min : 0), 0);
+    const max = rows.reduce((sum, r) => sum + (Number.isFinite(r.max) ? r.max : 0), 0);
+    const anyRange = rows.some((r) => r.isRange);
+    return { min, max, isRange: anyRange };
+  }, [selectedOptions]);
   const baseDurationMin = service ? Number(service.duration_minutes || 0) : 0;
   const estimatedTotalMinutes = baseDurationMin + totalAddonDuration;
   const isRangePrice = service?.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null;
   const listedServicePrice = service ? Number(service.price ?? 0) : 0;
   const listedPriceRangeMin = service ? Number(service.price_range_min ?? 0) : 0;
   const listedPriceRangeMax = service ? Number(service.price_range_max ?? 0) : 0;
-  const estimatedTotalCost = listedServicePrice + totalAddonPrice;
+  const estimatedTotalCost = listedServicePrice + addonPriceRange.min;
+  const estimatedTotalCostRangeMin = listedPriceRangeMin + addonPriceRange.min;
+  const estimatedTotalCostRangeMax = listedPriceRangeMax + addonPriceRange.max;
   const depositPreview = useMemo(() => depositPreviewForService(service, selectedOptionIds), [service, selectedOptionIds]);
   /** Typical salon model: deposit is credited toward the appointment; balance due after service. */
   const estimatedBalanceAtSalon = Math.max(0, estimatedTotalCost - depositPreview.depositTotal);
@@ -195,7 +220,11 @@ export default function ServiceAddonsPage() {
                                 </div>
                                 <div className="flex justify-between gap-3 pt-2">
                                   <span className="text-[var(--text-muted)]">Add-on price</span>
-                                  <span className="shrink-0 font-medium tabular-nums text-[var(--foreground)]">+RM {Number(opt.extra_price).toFixed(2)}</span>
+                                  <span className="shrink-0 font-medium tabular-nums text-[var(--foreground)]">
+                                    {String(opt.linked_price_mode ?? '') === 'range' && opt.linked_price_range_min != null && opt.linked_price_range_max != null
+                                      ? `+RM ${Number(opt.linked_price_range_min).toFixed(2)} - +RM ${Number(opt.linked_price_range_max).toFixed(2)}`
+                                      : `+RM ${Number(opt.extra_price).toFixed(2)}`}
+                                  </span>
                                 </div>
                               </div>
                             </div>
@@ -263,7 +292,11 @@ export default function ServiceAddonsPage() {
                             </div>
                             <div className="flex justify-between gap-3 pt-2">
                               <span className="text-[var(--text-muted)]">Add-on price</span>
-                              <span className="shrink-0 font-medium tabular-nums text-[var(--foreground)]">+RM {Number(opt.extra_price).toFixed(2)}</span>
+                              <span className="shrink-0 font-medium tabular-nums text-[var(--foreground)]">
+                                {String(opt.linked_price_mode ?? '') === 'range' && opt.linked_price_range_min != null && opt.linked_price_range_max != null
+                                  ? `+RM ${Number(opt.linked_price_range_min).toFixed(2)} - +RM ${Number(opt.linked_price_range_max).toFixed(2)}`
+                                  : `+RM ${Number(opt.extra_price).toFixed(2)}`}
+                              </span>
                             </div>
                           </div>
                         </li>
@@ -307,6 +340,19 @@ export default function ServiceAddonsPage() {
                       </div>
                       <div className="text-right">
                         <span className="block font-semibold tabular-nums">{estimatedTotalMinutes} min</span>
+                      </div>
+                    </li>
+                    <li className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--card-border)] border-dotted pb-3">
+                      <div>
+                        <span className="font-medium text-[var(--foreground)]">Approx. total price</span>
+                        <p className="mt-0.5 text-xs text-[var(--text-muted)]">Menu price range + add-ons</p>
+                      </div>
+                      <div className="text-right">
+                        <span className="block font-semibold tabular-nums">
+                          {isRangePrice || addonPriceRange.isRange
+                            ? `RM ${estimatedTotalCostRangeMin.toFixed(2)} - RM ${estimatedTotalCostRangeMax.toFixed(2)}`
+                            : `RM ${estimatedTotalCost.toFixed(2)}`}
+                        </span>
                       </div>
                     </li>
                     <li className="flex flex-col gap-3 border-b border-[var(--card-border)] border-dotted pb-3">
