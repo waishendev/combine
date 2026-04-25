@@ -278,6 +278,27 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         },
       );
 
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[Booking CartDrawer] checkout totals verification", {
+          booking_item_count: cart?.items?.length ?? 0,
+          package_item_count: cart?.package_items?.length ?? 0,
+          displayed_total: Number(cart?.package_total ?? 0) + depositDisplay.total,
+          displayed_deposit_total: depositDisplay.total,
+          displayed_package_total: Number(cart?.package_total ?? 0),
+          checkout_response_cart_total: Number(checkoutResponse?.cart_total ?? 0),
+          checkout_response_deposit_total: Number(checkoutResponse?.deposit_total ?? 0),
+          checkout_response_package_total: Number(checkoutResponse?.package_total ?? 0),
+          checkout_response_booking_ids: checkoutResponse?.booking_ids ?? [],
+          checkout_response_order_id: checkoutResponse?.order_id ?? null,
+          checkout_response_payment_method: checkoutResponse?.payment_method ?? null,
+        });
+      }
+
+      if (checkoutResponse?.payment_url) {
+        window.location.href = checkoutResponse.payment_url;
+        return;
+      }
+
       const orderId = checkoutResponse?.order_id;
       const orderNo = checkoutResponse?.order_no;
       const bookingId = checkoutResponse?.booking_ids?.[0];

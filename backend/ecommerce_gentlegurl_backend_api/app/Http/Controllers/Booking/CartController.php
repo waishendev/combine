@@ -12,15 +12,20 @@ use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingSetting;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\ServicePackage;
+use App\Models\BillplzBill;
 use App\Models\BillplzPaymentGatewayOption;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Services\BillplzService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Support\WorkspaceType;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use RuntimeException;
 
 class CartController extends Controller
 {
@@ -28,6 +33,7 @@ class CartController extends Controller
         private readonly BookingAvailabilityService $availabilityService,
         private readonly BookingCartCleanupService $cartCleanupService,
         private readonly CustomerServicePackageService $customerServicePackageService,
+        private readonly BillplzService $billplzService,
     ) {}
 
     public function add(Request $request)
@@ -354,35 +360,35 @@ class CartController extends Controller
             }
             $order = null;
 
-            if ($customer) {
-                $order = Order::query()->create([
-                    'order_number' => $this->generateOrderNumber(),
-                    'customer_id' => (int) $customer->id,
-                    'status' => 'pending',
-                    'payment_status' => 'unpaid',
-                    'payment_method' => $paymentMethod,
-                    'requested_payment_method' => $paymentMethod,
-                    'payment_provider' => str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual',
-                    'selected_gateway_code' => $selectedGatewayOption?->code,
-                    'selected_gateway_name' => $selectedGatewayOption?->name,
-                    'billplz_gateway_option_id' => $selectedGatewayOption?->id,
-                    'bank_account_id' => $paymentMethod === 'manual_transfer'
-                        ? (int) ($validated['bank_account_id'] ?? 0) ?: null
-                        : null,
-                    'pickup_or_shipping' => 'pickup',
-                    'subtotal' => round($depositTotal + $packageTotal, 2),
-                    'discount_total' => 0,
-                    'shipping_fee' => 0,
-                    'grand_total' => round($depositTotal + $packageTotal, 2),
-                    'placed_at' => now(),
-                    'shipping_name' => (string) ($validated['guest_name'] ?? ''),
-                    'shipping_phone' => (string) ($validated['guest_phone'] ?? ''),
-                    'billing_same_as_shipping' => $billingSameAsContact,
-                    'billing_name' => $billingSameAsContact ? (string) ($validated['guest_name'] ?? '') : (string) ($validated['billing_name'] ?? ''),
-                    'billing_phone' => $billingSameAsContact ? (string) ($validated['guest_phone'] ?? '') : (string) ($validated['billing_phone'] ?? ''),
-                    'notes' => 'Booking cart checkout',
-                ]);
-            }
+            $order = Order::query()->create([
+                'order_number' => $this->generateOrderNumber(),
+                'customer_id' => $customer?->id,
+                'status' => 'pending',
+                'payment_status' => 'unpaid',
+                'payment_method' => $paymentMethod,
+                'requested_payment_method' => $paymentMethod,
+                'payment_provider' => str_starts_with($paymentMethod, 'billplz_') ? 'billplz' : 'manual',
+                'selected_gateway_code' => $selectedGatewayOption?->code,
+                'selected_gateway_name' => $selectedGatewayOption?->name,
+                'billplz_gateway_option_id' => $selectedGatewayOption?->id,
+                'bank_account_id' => $paymentMethod === 'manual_transfer'
+                    ? (int) ($validated['bank_account_id'] ?? 0) ?: null
+                    : null,
+                'pickup_or_shipping' => 'pickup',
+                'subtotal' => round($depositTotal + $packageTotal, 2),
+                'discount_total' => 0,
+                'shipping_fee' => 0,
+                'grand_total' => round($depositTotal + $packageTotal, 2),
+                'placed_at' => now(),
+                'shipping_name' => (string) ($validated['guest_name'] ?? ''),
+                'shipping_phone' => (string) ($validated['guest_phone'] ?? ''),
+                'billing_same_as_shipping' => $billingSameAsContact,
+                'billing_name' => $billingSameAsContact ? (string) ($validated['guest_name'] ?? '') : (string) ($validated['billing_name'] ?? ''),
+                'billing_phone' => $billingSameAsContact ? (string) ($validated['guest_phone'] ?? '') : (string) ($validated['billing_phone'] ?? ''),
+                'notes' => $customer
+                    ? 'Booking cart checkout'
+                    : ('Booking cart checkout | guest_token:' . (string) ($cart->guest_token ?? '')),
+            ]);
 
             foreach ($activeItems as $item) {
                 $service = $item->service;
@@ -528,6 +534,63 @@ class CartController extends Controller
 
             $cart->update(['status' => 'converted']);
 
+            $billplzPaymentUrl = null;
+            if (! $customer && $order && str_starts_with($paymentMethod, 'billplz_')) {
+                $billResponse = $this->billplzService->createBill(
+                    $order,
+                    WorkspaceType::BOOKING,
+                    $selectedGatewayOption?->code,
+                    (array) data_get($selectedGatewayOption?->meta, 'billplz_payload', []),
+                );
+
+                $billplzId = data_get($billResponse, 'id');
+                $billplzUrl = data_get($billResponse, 'url');
+                if (! $billplzId || ! $billplzUrl) {
+                    throw new RuntimeException('Invalid Billplz response.');
+                }
+
+                $order->payment_reference = $billplzId;
+                $order->payment_url = $billplzUrl;
+                $order->payment_provider = $order->payment_provider ?: 'billplz';
+                $order->payment_meta = [
+                    'provider' => 'billplz',
+                    'bill_id' => $billplzId,
+                    'collection_id' => data_get($billResponse, 'collection_id'),
+                    'state' => data_get($billResponse, 'state'),
+                    'reference_1' => data_get($billResponse, 'reference_1'),
+                ];
+                $order->save();
+
+                BillplzBill::updateOrCreate(
+                    ['billplz_id' => $billplzId],
+                    [
+                        'order_id' => $order->id,
+                        'collection_id' => data_get($billResponse, 'collection_id'),
+                        'state' => data_get($billResponse, 'state'),
+                        'paid' => false,
+                        'amount' => data_get($billResponse, 'amount'),
+                        'payload' => $billResponse,
+                    ]
+                );
+
+                $billplzPaymentUrl = (string) $billplzUrl;
+            }
+
+            Log::info('Booking cart checkout amount summary', [
+                'cart_id' => (string) $cart->id,
+                'customer_id' => $customer?->id,
+                'booking_item_count' => $activeItems->count(),
+                'package_item_count' => $activePackageItems->count(),
+                'booking_ids' => $bookingIds,
+                'deposit_total' => $depositTotal,
+                'package_total' => round($packageTotal, 2),
+                'cart_total' => round($depositTotal + $addonTotal + $packageTotal, 2),
+                'order_id' => $order?->id,
+                'order_grand_total' => (float) ($order?->grand_total ?? 0),
+                'payment_method' => $paymentMethod,
+                'billplz_amount_sen' => $order ? (int) round(((float) $order->grand_total) * 100) : null,
+            ]);
+
             return $this->respond([
                 'status' => 'success',
                 'booking_ids' => $bookingIds,
@@ -539,6 +602,7 @@ class CartController extends Controller
                 'order_id' => $order?->id,
                 'order_no' => $order?->order_number,
                 'payment_method' => $order?->payment_method,
+                'payment_url' => $billplzPaymentUrl,
                 'payment_expires_at' => $activeItems->min('expires_at')?->toIso8601String(),
                 'payment_instruction' => 'Complete payment before hold expires to confirm booking.',
             ]);
