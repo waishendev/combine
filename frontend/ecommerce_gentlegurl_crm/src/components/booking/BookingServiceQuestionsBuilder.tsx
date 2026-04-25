@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 
 import { Switch } from '@/components/ui/switch'
+import BookingServiceLinkedBookingServicePicker from './BookingServiceLinkedBookingServicePicker'
 
 export type QuestionOptionForm = {
   id?: number
@@ -323,19 +324,12 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
                           placeholder="Option label (optional — defaults to selected service name)"
                           className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
                         />
-                        <select
+                        <BookingServiceLinkedBookingServicePicker
+                          options={bookingServiceOptions}
                           value={option.linked_booking_service_id}
+                          onChange={(next) => setOption(qIndex, oIndex, { linked_booking_service_id: next })}
                           disabled={disabled}
-                          onChange={(e) => setOption(qIndex, oIndex, { linked_booking_service_id: e.target.value })}
-                          className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                        >
-                          <option value="">Select linked booking service</option>
-                          {bookingServiceOptions.map((service) => (
-                            <option key={service.id} value={String(service.id)}>
-                              {service.name} ({service.duration_min} min, RM{Number(service.service_price || 0).toFixed(2)})
-                            </option>
-                          ))}
-                        </select>
+                        />
                         {(() => {
                           const selectedService = bookingServiceOptions.find(
                             (service) => String(service.id) === option.linked_booking_service_id,

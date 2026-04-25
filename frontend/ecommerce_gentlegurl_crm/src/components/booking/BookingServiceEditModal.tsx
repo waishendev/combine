@@ -260,39 +260,56 @@ export default function BookingServiceEditModal({
 
     const loadBookingServices = async () => {
       try {
-        const res = await fetch('/api/proxy/admin/booking/services?per_page=200', { cache: 'no-store' })
-        if (!res.ok) {
-          if (!ignore) setBookingServiceOptions([])
-          return
-        }
-        const json = await res.json().catch(() => null)
-        const payload = (json && typeof json === 'object' && 'data' in json)
-          ? (json as { data?: { data?: unknown[] } | unknown[] }).data
-          : null
-        const rows = Array.isArray((payload as { data?: unknown[] } | null)?.data)
-          ? ((payload as { data?: unknown[] }).data ?? [])
-          : Array.isArray(payload)
-            ? payload
-            : []
+        const controller = new AbortController()
+        const perPage = 200
+        const collected = new Map<number, BookingServiceOption>()
 
-        const mapped = rows
-          .map((row): BookingServiceOption | null => {
-            if (!row || typeof row !== 'object') return null
+        for (let page = 1; page <= 50; page += 1) {
+          const res = await fetch(
+            `/api/proxy/admin/booking/services?page=${page}&per_page=${perPage}`,
+            { cache: 'no-store', signal: controller.signal },
+          )
+          if (!res.ok) break
+
+          const json = await res.json().catch(() => null)
+          const payload =
+            json && typeof json === 'object' && 'data' in json
+              ? (json as { data?: { data?: unknown[]; last_page?: number } | unknown[] }).data
+              : null
+
+          const rows = Array.isArray((payload as { data?: unknown[] } | null)?.data)
+            ? ((payload as { data?: unknown[] }).data ?? [])
+            : Array.isArray(payload)
+              ? payload
+              : []
+
+          for (const row of rows) {
+            if (!row || typeof row !== 'object') continue
             const maybe = row as Record<string, unknown>
             const id = Number(maybe.id)
             const name = String(maybe.name ?? '').trim()
-            if (!id || !name) return null
-            return {
+            if (!id || !name) continue
+            if (id === serviceId) continue
+            collected.set(id, {
               id,
               name,
               duration_min: Math.max(0, Number(maybe.duration_min ?? 0)),
               service_price: Math.max(0, Number(maybe.service_price ?? 0)),
-            }
-          })
-          .filter((row): row is BookingServiceOption => Boolean(row))
-          .filter((row) => row.id !== serviceId)
+            })
+          }
 
-        if (!ignore) setBookingServiceOptions(mapped)
+          const lastPage =
+            payload && typeof payload === 'object' && 'last_page' in payload
+              ? Number((payload as { last_page?: unknown }).last_page)
+              : NaN
+
+          if (Number.isFinite(lastPage) && page >= lastPage) break
+          if (rows.length < perPage) break
+        }
+
+        if (!ignore) {
+          setBookingServiceOptions(Array.from(collected.values()))
+        }
       } catch {
         if (!ignore) setBookingServiceOptions([])
       }
