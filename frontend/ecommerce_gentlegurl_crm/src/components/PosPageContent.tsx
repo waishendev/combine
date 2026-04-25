@@ -782,6 +782,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return `${start.toLocaleString()} - ${new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   }, [])
 
+  const getSettlementDurationMin = useCallback((settlement: AppointmentSettlementCartItem): number => {
+    const mainDuration = (settlement.main_services ?? []).reduce((sum, service) => {
+      const own = Number(service.extra_duration_min ?? 0)
+      const addonDuration = (service.add_ons ?? []).reduce((addonSum, addon) => addonSum + Number(addon.extra_duration_min ?? 0), 0)
+      return sum + own + addonDuration
+    }, 0)
+    if (mainDuration > 0) return mainDuration
+    return 0
+  }, [])
+
+  const getSettlementDisplayEndAt = useCallback((settlement: AppointmentSettlementCartItem): string | null => {
+    const startAt = settlement.appointment_start_at
+    if (!startAt) return settlement.appointment_end_at ?? null
+    const durationMin = getSettlementDurationMin(settlement)
+    if (durationMin <= 0) return settlement.appointment_end_at ?? null
+    const start = new Date(startAt)
+    if (Number.isNaN(start.getTime())) return settlement.appointment_end_at ?? null
+    return new Date(start.getTime() + durationMin * 60 * 1000).toISOString()
+  }, [getSettlementDurationMin])
+
   const normalizedProductQuery = useMemo(() => {
     const source = productSearchMode === 'barcode' ? debouncedSkuQuery : productQuery
     return source.trim().toLowerCase()
@@ -5006,9 +5026,32 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <p>Name: {settlement.customer_name || '—'}</p>
                         <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                         {settlement.appointment_start_at ? (
-                          <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}</p>
+                          <>
+                            <p>Appointment: {formatDateTimeRange(settlement.appointment_start_at, getSettlementDisplayEndAt(settlement))}</p>
+                            <p>Duration: {getSettlementDurationMin(settlement) > 0 ? `${getSettlementDurationMin(settlement)} min` : '—'}</p>
+                          </>
                         ) : null}
                       </div>
+                      {(settlement.main_services ?? []).length > 0 ? (
+                        <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-700">
+                          {(settlement.main_services ?? []).map((service, idx) => (
+                            <div key={`cart-main-display-${settlement.id}-${service.id ?? service.name}-${idx}`} className="mb-1 last:mb-0">
+                              <div className="flex justify-between gap-2">
+                                <span>
+                                  {service.name}{service.is_original ? ' (Original)' : ''}
+                                </span>
+                                <span className="tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                              </div>
+                              {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                <div key={`cart-main-addon-display-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
+                                  <span>+ {addon.name}</span>
+                                  <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
                       {settlement.requires_settled_amount ? (
                         <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
                           <p className="text-[11px] font-semibold text-amber-900">
@@ -6258,14 +6301,33 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                                 {settlement.appointment_start_at ? (
                                   <p>
-                                    Appointment: {formatDateTimeRange(settlement.appointment_start_at, settlement.appointment_end_at)}
+                                    Appointment: {formatDateTimeRange(settlement.appointment_start_at, getSettlementDisplayEndAt(settlement))}
                                   </p>
                                 ) : null}
+                                <p>Duration: {getSettlementDurationMin(settlement) > 0 ? `${getSettlementDurationMin(settlement)} min` : '—'}</p>
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
                               <div className="space-y-2">
                                 <p className="text-xs leading-relaxed text-gray-700">{getSettlementWorkerSummary(settlement)}</p>
+                                {(settlement.main_services ?? []).length > 0 ? (
+                                  <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
+                                    {(settlement.main_services ?? []).map((service, idx) => (
+                                      <div key={`checkout-main-display-${settlement.id}-${service.id ?? service.name}-${idx}`} className="mb-1 last:mb-0">
+                                        <div className="flex justify-between gap-2">
+                                          <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>
+                                          <span className="tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                                        </div>
+                                        {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                          <div key={`checkout-main-addon-display-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
+                                            <span>+ {addon.name}</span>
+                                            <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    ))}
+                                  </div>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => void openSettlementSplitEditor(settlement)}

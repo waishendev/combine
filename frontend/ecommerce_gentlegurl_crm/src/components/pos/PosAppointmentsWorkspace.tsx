@@ -1561,6 +1561,26 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.service_total],
   )
 
+  const appointmentSettlementDurationMin = useMemo(() => {
+    if (!appointmentDetail) return 0
+    const mainDuration = (appointmentDetail.main_services ?? []).reduce((sum, service) => {
+      const own = Number(service.extra_duration_min ?? 0)
+      const addon = (service.add_ons ?? []).reduce((addonSum, addonRow) => addonSum + Number(addonRow.extra_duration_min ?? 0), 0)
+      return sum + own + addon
+    }, 0)
+    if (mainDuration > 0) return mainDuration
+    return Math.max(0, Number(formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at).replace(/[^\d]/g, '')) || 0)
+  }, [appointmentDetail])
+
+  const appointmentSettlementDisplayEndAt = useMemo(() => {
+    const startAt = appointmentDetail?.appointment_start_at
+    if (!startAt) return appointmentDetail?.appointment_end_at ?? null
+    if (appointmentSettlementDurationMin <= 0) return appointmentDetail?.appointment_end_at ?? null
+    const start = new Date(startAt)
+    if (Number.isNaN(start.getTime())) return appointmentDetail?.appointment_end_at ?? null
+    return new Date(start.getTime() + appointmentSettlementDurationMin * 60 * 1000).toISOString()
+  }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, appointmentSettlementDurationMin])
+
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
     [appointmentAddonTotal, appointmentServiceAmount],
@@ -1928,6 +1948,35 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     ) : null}
 
+                    {(appointmentDetail.main_services ?? []).length > 0 ? (
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 shadow-sm ring-1 ring-slate-200/80">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Settlement Service Blocks</p>
+                        <div className="mt-2 space-y-2">
+                          {(appointmentDetail.main_services ?? []).map((service, serviceIdx) => (
+                            <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-slate-900">
+                                  {service.name}
+                                  {service.is_original ? <span className="ml-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">Original</span> : null}
+                                </p>
+                                <span className="text-xs font-semibold tabular-nums text-slate-900">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                              </div>
+                              {(service.add_ons ?? []).length > 0 ? (
+                                <ul className="mt-1.5 space-y-0.5 text-xs text-slate-700">
+                                  {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                    <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2">
+                                      <span>+ {addon.name}</span>
+                                      <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
                     {!appointmentIsTerminalCancelled &&
                     !(appointmentStatusUpper === 'COMPLETED' && appointmentPaymentBadgeIsPaid) ? (
                       <div className="mt-3">
@@ -1957,13 +2006,13 @@ export default function PosAppointmentsWorkspace({
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</span>
                         <span className="min-w-0 text-slate-800">
-                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
+                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentSettlementDisplayEndAt)}
                         </span>
                       </div>
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</span>
                         <span className="font-medium tabular-nums text-slate-900">
-                          {formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
+                          {appointmentSettlementDurationMin > 0 ? `${appointmentSettlementDurationMin} min` : formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
                       </div>
                     </div>
