@@ -11,7 +11,7 @@ export default async function SalesVisualPage() {
     redirect('/login')
   }
 
-  if (!user.permissions.includes('ecommerce.reports.sales.view')) {
+  if (!user.permissions.includes('ecommerce.daily-sales-reports.view')) {
     redirect('/dashboard')
   }
 

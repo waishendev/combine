@@ -14,7 +14,7 @@ export default async function Page() {
   }
 
   const hasPermission = user.permissions.some(
-    (perm) => perm === 'ecommerce.reports.sales.view' || perm === 'booking.commission-tiers.view' || perm === 'commission-tiers.view',
+    (perm) =>  perm === 'ecommerce.commission-tiers.view',
   )
 
   if (!hasPermission) {

@@ -50,6 +50,10 @@ class AdminSeeder extends Seeder
             // 'customers.update',
             // 'customers.delete',
             // 'customers.verify',
+            'pos.orders.view',
+            'pos.checkout',
+            'ecommerce.daily-sales-reports.view',
+            'ecommerce.commission-tiers.view',
             'ecommerce.categories.view',
             'ecommerce.categories.create',
             'ecommerce.categories.update',
@@ -124,13 +128,13 @@ class AdminSeeder extends Seeder
             'ecommerce.vouchers.update',
             'ecommerce.vouchers.delete',
             'ecommerce.vouchers.assign',
-            'ecommerce.vouchers.assign.logs.view',
+            // 'ecommerce.vouchers.assign.logs.view',
             'ecommerce.promotions.view',
             'ecommerce.promotions.create',
             'ecommerce.promotions.update',
             'ecommerce.promotions.delete',
             // 'ecommerce.reports.sales.view',
-            'ecommerce.reports.sales.export',
+            // 'ecommerce.reports.sales.export',
             'reports.my-pos-summary.view',
             'reports.pos-summary.view',
             'ecommerce.dashboard.view',
@@ -147,6 +151,11 @@ class AdminSeeder extends Seeder
             'booking.bank-accounts.delete',
             'booking.settings.view',
             'booking.seo.view',
+            'service-packages.view',
+            'service-packages.create',
+            'service-packages.update',
+            'service-packages.delete',
+            'booking.landing-page.view'
         ];
 
         $adminPermissionIds = Permission::whereIn('slug', $adminPermissionSlugs)

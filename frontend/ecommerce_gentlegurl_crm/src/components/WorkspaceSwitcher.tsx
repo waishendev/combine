@@ -25,7 +25,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
   const showPos = permissions.includes('pos.checkout')
-  const showSalesReport = permissions.includes('ecommerce.reports.sales.view')
+  const showSalesReport = permissions.includes('ecommerce.daily-sales-reports.view')
   const isPosCheckout = pathname === '/pos'
   const isPosAppointments = pathname === '/pos/appointments' || pathname.startsWith('/pos/appointments/')
   const isPosRoute = pathname === '/pos' || pathname.startsWith('/pos/')

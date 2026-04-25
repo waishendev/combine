@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingServicePrimarySlot;
@@ -10,6 +11,7 @@ use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -204,7 +206,16 @@ class ServiceController extends Controller
     public function destroy(int $id)
     {
         $service = BookingService::findOrFail($id);
+    
+        if (Booking::query()->where('service_id', $id)->exists()) {
+            return $this->respondError(
+                'This service cannot be deleted because it is already used in existing bookings. Please set it to inactive instead.',
+                422
+            );
+        }
+    
         $service->delete();
+    
         return $this->respond(null);
     }
 
