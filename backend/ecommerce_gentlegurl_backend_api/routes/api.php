@@ -989,46 +989,46 @@ $protectedRoutes = function () {
 
         Route::prefix('reports')->group(function () {
             Route::get('/sales/overview', [SalesReportController::class, 'overview'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/daily', [SalesReportController::class, 'daily'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/by-category', [SalesReportController::class, 'byCategory'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/by-products', [SalesReportController::class, 'byProducts'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/by-customers', [SalesReportController::class, 'byCustomers'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/ecommerce', [SalesChannelReportController::class, 'ecommerce'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/booking', [SalesChannelReportController::class, 'booking'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/visual-daily/ecommerce', [SalesChannelReportController::class, 'visualDailyEcommerce'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/visual-daily/booking', [SalesChannelReportController::class, 'visualDailyBooking'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/visual-daily/all', [SalesChannelReportController::class, 'visualDailyAll'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/customers-ecommerce', [CustomerSalesDomainReportController::class, 'ecommerce'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/customers-booking', [CustomerSalesDomainReportController::class, 'booking'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/staff-commission', [StaffCommissionReportController::class, 'summary'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/staff-commission/detail', [StaffCommissionReportController::class, 'detail'])
-                ->middleware('permission:ecommerce.reports.sales.view');
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/my-pos-summary', [MyPosSummaryReportController::class, 'index'])
                 ->middleware('permission:reports.my-pos-summary.view');
