@@ -225,7 +225,16 @@ export default function PosAppointmentsWorkspace({
   const [editMainServiceCatalog, setEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [editMainServiceCatalogLoading, setEditMainServiceCatalogLoading] = useState(false)
   const [editMainServiceQuery, setEditMainServiceQuery] = useState('')
-  const [editSelectedMainServiceIds, setEditSelectedMainServiceIds] = useState<Set<number>>(new Set())
+  const [editAddedMainBlocks, setEditAddedMainBlocks] = useState<Array<{
+    service_id: number
+    service_name: string
+    price: number
+    duration_min: number
+    addon_questions: ServiceAddonQuestion[]
+    selected_addon_ids: Set<number>
+    staff_splits: Array<{ staff_id: number | null; share_percent: string }>
+    auto_balance: boolean
+  }>>([])
   const [editSettledAmount, setEditSettledAmount] = useState('')
   const [editStaffSplits, setEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
   const [editStaffSplitAutoBalance, setEditStaffSplitAutoBalance] = useState(true)
@@ -934,14 +943,23 @@ export default function PosAppointmentsWorkspace({
         .filter((id): id is number => id != null),
     )
     setEditSelectedAddonIds(currentAddonIds)
-    setEditSelectedMainServiceIds(
-      new Set(
-        (appointmentDetail.main_services ?? [])
-          .filter((service) => !service.is_original)
-          .map((service) => Number(service.linked_booking_service_id ?? service.id))
-          .filter((id): id is number => Number.isFinite(id) && id > 0),
-      ),
-    )
+    const addedMainBlocksSeed = (appointmentDetail.main_services ?? [])
+      .filter((service) => !service.is_original)
+      .map((service) => ({
+        service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
+        service_name: String(service.name ?? 'Service'),
+        price: Number(service.extra_price ?? 0),
+        duration_min: Number(service.extra_duration_min ?? 0),
+        addon_questions: [] as ServiceAddonQuestion[],
+        selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
+        staff_splits: (service.staff_splits ?? []).map((split) => ({
+          staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
+          share_percent: String(split.share_percent ?? ''),
+        })),
+        auto_balance: true,
+      }))
+      .filter((block) => block.service_id > 0)
+    setEditAddedMainBlocks(addedMainBlocksSeed)
     setEditMainServiceQuery('')
 
     const settled = appointmentDetail.settled_service_amount
@@ -970,10 +988,25 @@ export default function PosAppointmentsWorkspace({
       const addonJson = await addonRes.json().catch(() => null)
       setEditAddonQuestions((addonJson?.data?.questions ?? []) as ServiceAddonQuestion[])
       const servicesJson = await servicesRes.json().catch(() => null)
-      setEditMainServiceCatalog((Array.isArray(servicesJson?.data) ? servicesJson.data : []) as BookingServiceOption[])
+      const catalog = (Array.isArray(servicesJson?.data) ? servicesJson.data : []) as BookingServiceOption[]
+      setEditMainServiceCatalog(catalog)
+      if (addedMainBlocksSeed.length > 0) {
+        const hydrated = await Promise.all(addedMainBlocksSeed.map(async (block) => {
+          try {
+            const addonRes2 = await fetch(`/api/proxy/pos/services/${block.service_id}/addon-options`)
+            const addonJson2 = await addonRes2.json().catch(() => null)
+            const questions = (addonJson2?.data?.questions ?? []) as ServiceAddonQuestion[]
+            return { ...block, addon_questions: questions, staff_splits: block.staff_splits.length > 0 ? rebalanceEditSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }] }
+          } catch {
+            return { ...block, addon_questions: [], staff_splits: block.staff_splits.length > 0 ? rebalanceEditSettlementPrimaryShare(block.staff_splits) : [{ staff_id: null, share_percent: '100' }] }
+          }
+        }))
+        setEditAddedMainBlocks(hydrated)
+      }
     } catch {
       setEditAddonQuestions([])
       setEditMainServiceCatalog([])
+      setEditAddedMainBlocks([])
     } finally {
       setEditAddonOptionsLoading(false)
       setEditMainServiceCatalogLoading(false)
@@ -992,14 +1025,28 @@ export default function PosAppointmentsWorkspace({
     })
   }, [])
 
-  const toggleEditMainService = useCallback((serviceId: number) => {
-    setEditSelectedMainServiceIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(serviceId)) next.delete(serviceId)
-      else next.add(serviceId)
-      return next
-    })
-  }, [])
+  const addEditMainServiceBlock = useCallback(async (service: BookingServiceOption) => {
+    if (!service?.id) return
+    if (editAddedMainBlocks.some((block) => block.service_id === service.id)) return
+    let questions: ServiceAddonQuestion[] = []
+    try {
+      const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
+      const json = await res.json().catch(() => null)
+      questions = (json?.data?.questions ?? []) as ServiceAddonQuestion[]
+    } catch {
+      questions = []
+    }
+    setEditAddedMainBlocks((prev) => [...prev, {
+      service_id: service.id,
+      service_name: service.name,
+      price: Number(service.service_price ?? service.price ?? 0),
+      duration_min: Number(service.duration_min ?? 0),
+      addon_questions: questions,
+      selected_addon_ids: new Set<number>(),
+      staff_splits: [{ staff_id: null, share_percent: '100' }],
+      auto_balance: true,
+    }])
+  }, [editAddedMainBlocks])
 
   const updateEditSettlementSplitShare = useCallback((index: number, value: string) => {
     setEditSettlementError(null)
@@ -1027,11 +1074,14 @@ export default function PosAppointmentsWorkspace({
       const isRange = appointmentDetail.is_range_priced
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
-        main_service_ids: Array.from(editSelectedMainServiceIds),
-        main_service_items: Array.from(editSelectedMainServiceIds).map((serviceId) => ({
-          booking_service_id: serviceId,
-          addon_option_ids: [],
-          staff_splits: [],
+        main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
+        main_service_items: editAddedMainBlocks.map((block) => ({
+          booking_service_id: block.service_id,
+          addon_option_ids: Array.from(block.selected_addon_ids),
+          staff_splits: block.staff_splits.map((row) => ({
+            staff_id: Number(row.staff_id ?? 0),
+            share_percent: Number.parseInt(row.share_percent || '0', 10),
+          })),
         })),
       }
       if (isRange) {
@@ -1068,6 +1118,23 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      for (const block of editAddedMainBlocks) {
+        const blockSplits = block.staff_splits.map((row) => ({
+          staff_id: Number(row.staff_id ?? 0),
+          share_percent: Number.parseInt(row.share_percent || '0', 10),
+        }))
+        if (blockSplits.length < 1 || blockSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+          setEditSettlementError(`Please complete staff split for ${block.service_name}.`)
+          return
+        }
+        const blockUnique = new Set(blockSplits.map((row) => row.staff_id))
+        const blockSum = blockSplits.reduce((sum, row) => sum + row.share_percent, 0)
+        if (blockUnique.size !== blockSplits.length || blockSum !== 100) {
+          setEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
+          return
+        }
+      }
+
       const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/edit-settlement`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1085,7 +1152,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, editSelectedAddonIds, editSelectedMainServiceIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, editAddedMainBlocks, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -2810,62 +2877,37 @@ export default function PosAppointmentsWorkspace({
                 </div>
               ) : null}
 
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <p className="text-sm font-bold text-gray-900">Main Services</p>
+              <div className="space-y-3">
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Service Block · Original</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900">{appointmentDetail.service?.name ?? 'Service'}</p>
+                  <p className="text-xs text-gray-600">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</p>
                 </div>
-                <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  {(appointmentDetail.main_services ?? []).filter((service) => service.is_original).map((service) => (
-                    <div key={`original-main-${service.id ?? service.name}`} className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-gray-900">{service.name}</p>
-                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-800">Original</span>
-                      </div>
-                      <p className="text-xs text-gray-600">
-                        RM {Number(service.extra_price ?? 0).toFixed(2)}
-                        {(service.extra_duration_min ?? 0) > 0 ? ` · ${service.extra_duration_min}min` : ''}
-                      </p>
-                    </div>
-                  ))}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">+ Add Main Service</p>
-                      {editMainServiceCatalogLoading ? <span className="text-[11px] text-gray-500">Loading…</span> : null}
-                    </div>
-                    <input
-                      type="text"
-                      value={editMainServiceQuery}
-                      onChange={(e) => setEditMainServiceQuery(e.target.value)}
-                      placeholder="Search service..."
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                    />
-                    <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
-                      {editMainServiceCatalog
-                        .filter((service) => service.id !== appointmentDetail.service?.id)
-                        .filter((service) => (service.name ?? '').toLowerCase().includes(editMainServiceQuery.trim().toLowerCase()))
-                        .map((service) => {
-                          const checked = editSelectedMainServiceIds.has(service.id)
-                          const price = Number(service.service_price ?? service.price ?? 0)
-                          const duration = Number(service.duration_min ?? 0)
-                          return (
-                            <label key={`extra-main-${service.id}`} className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 ${checked ? 'border-indigo-400 bg-indigo-50' : 'border-gray-200 bg-white'}`}>
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleEditMainService(service.id)}
-                                  className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                />
-                                <span className="text-sm font-medium text-gray-900">{service.name}</span>
-                              </div>
-                              <span className="text-xs font-semibold text-gray-600">
-                                +RM {price.toFixed(2)}
-                                {duration > 0 ? ` · ${duration}min` : ''}
-                              </span>
-                            </label>
-                          )
-                        })}
-                    </div>
+                <div className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-600">Add Main Service</p>
+                  <input
+                    type="text"
+                    value={editMainServiceQuery}
+                    onChange={(e) => setEditMainServiceQuery(e.target.value)}
+                    placeholder="Search service and click Add"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                  />
+                  <div className="mt-2 max-h-32 space-y-1 overflow-y-auto">
+                    {editMainServiceCatalog
+                      .filter((service) => service.id !== appointmentDetail.service?.id)
+                      .filter((service) => !editAddedMainBlocks.some((block) => block.service_id === service.id))
+                      .filter((service) => (service.name ?? '').toLowerCase().includes(editMainServiceQuery.trim().toLowerCase()))
+                      .map((service) => (
+                        <button
+                          key={`add-main-btn-${service.id}`}
+                          type="button"
+                          onClick={() => void addEditMainServiceBlock(service)}
+                          className="flex w-full items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-left text-sm hover:bg-gray-50"
+                        >
+                          <span>{service.name}</span>
+                          <span className="text-xs font-semibold text-gray-500">+ Add</span>
+                        </button>
+                      ))}
                   </div>
                 </div>
               </div>
@@ -2988,12 +3030,120 @@ export default function PosAppointmentsWorkspace({
                 </div>
               </div>
 
+              {editAddedMainBlocks.map((block) => {
+                const addonOptions = block.addon_questions.flatMap((q) => q.options)
+                const selectedAddons = addonOptions.filter((opt) => block.selected_addon_ids.has(opt.id))
+                const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
+                const blockSubtotal = Number(block.price ?? 0) + addonTotal
+                return (
+                  <div key={`added-main-block-${block.service_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="mb-2 flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
+                        <p className="text-sm font-semibold text-gray-900">{block.service_name}</p>
+                        <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setEditAddedMainBlocks((prev) => prev.filter((item) => item.service_id !== block.service_id))}
+                        className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {block.addon_questions.map((question) => (
+                        <div key={`added-q-${block.service_id}-${question.id}`}>
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>
+                          {question.options.map((opt) => {
+                            const checked = block.selected_addon_ids.has(opt.id)
+                            return (
+                              <label key={`added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
+                                <span className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => setEditAddedMainBlocks((prev) => prev.map((item) => {
+                                      if (item.service_id !== block.service_id) return item
+                                      const next = new Set(item.selected_addon_ids)
+                                      if (next.has(opt.id)) next.delete(opt.id)
+                                      else next.add(opt.id)
+                                      return { ...item, selected_addon_ids: next }
+                                    }))}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600"
+                                  />
+                                  {opt.label}
+                                </span>
+                                <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 space-y-2">
+                      {block.staff_splits.map((split, idx) => (
+                        <div key={`added-split-${block.service_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                          <select
+                            value={split.staff_id ?? ''}
+                            onChange={(e) => {
+                              const value = e.target.value ? Number(e.target.value) : null
+                              setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, staff_id: value } : row) }
+                                : item))
+                            }}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          >
+                            <option value="">Select staff</option>
+                            {activeStaffs.map((staff) => <option key={`added-staff-${block.service_id}-${staff.id}`} value={staff.id}>{staff.name}</option>)}
+                          </select>
+                          <input
+                            type="number"
+                            min={1}
+                            max={100}
+                            value={split.share_percent}
+                            onChange={(e) => {
+                              const value = e.target.value
+                              setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, share_percent: value } : row) }
+                                : item))
+                            }}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
+                              ? { ...item, staff_splits: item.staff_splits.length <= 1 ? item.staff_splits : item.staff_splits.filter((_, rowIdx) => rowIdx !== idx) }
+                              : item))}
+                            className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id ? { ...item, staff_splits: [...item.staff_splits, { staff_id: null, share_percent: '' }] } : item))}
+                        className="rounded-md border border-indigo-200 px-2 py-1 text-xs font-semibold text-indigo-700"
+                      >
+                        + Add Staff
+                      </button>
+                    </div>
+                    <div className="mt-3 border-t border-gray-200 pt-2 text-sm font-semibold text-gray-800">Block Subtotal: RM {blockSubtotal.toFixed(2)}</div>
+                  </div>
+                )
+              })}
+
               {(() => {
                 const allOptions = editAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => editSelectedAddonIds.has(o.id))
                 const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
-                const selectedMainServices = editMainServiceCatalog.filter((service) => editSelectedMainServiceIds.has(service.id))
-                const addedMainTotal = selectedMainServices.reduce((sum, service) => sum + Number(service.service_price ?? service.price ?? 0), 0)
+                const selectedMainServices = editAddedMainBlocks
+                const addedMainTotal = selectedMainServices.reduce((sum, service) => {
+                  const addonOptions = service.addon_questions.flatMap((q) => q.options)
+                  const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
+                  return sum + Number(service.price ?? 0) + addonTotal
+                }, 0)
                 const isRange = appointmentDetail.is_range_priced
                 const settledAmt = parseFloat(editSettledAmount)
                 const originalServiceAmt = isRange && Number.isFinite(settledAmt)
