@@ -38,6 +38,7 @@ interface FormState {
   deposit_amount: string
   buffer_min: string
   is_active: 'true' | 'false'
+  allow_photo_upload: 'true' | 'false'
   imageFile: File | null
   allowed_staff_ids: number[]
   primary_slots: string
@@ -57,6 +58,7 @@ const initialFormState: FormState = {
   deposit_amount: '0',
   buffer_min: '15',
   is_active: 'true',
+  allow_photo_upload: 'false',
   imageFile: null,
   allowed_staff_ids: [],
   primary_slots: '',
@@ -141,6 +143,10 @@ export default function BookingServiceEditModal({
           buffer_min: String(service.buffer_min ?? 15),
           is_active:
             service.is_active === true || service.is_active === 'true' || service.is_active === 1
+              ? 'true'
+              : 'false',
+          allow_photo_upload:
+            service.allow_photo_upload === true || service.allow_photo_upload === 'true' || service.allow_photo_upload === 1
               ? 'true'
               : 'false',
           imageFile: null,
@@ -432,6 +438,7 @@ export default function BookingServiceEditModal({
       fd.append('deposit_amount', String(deposit))
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active === 'true' ? '1' : '0')
+      fd.append('allow_photo_upload', form.allow_photo_upload === 'true' ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
@@ -510,6 +517,7 @@ export default function BookingServiceEditModal({
             deposit_amount: deposit,
             buffer_min: buffer,
             isActive: form.is_active === 'true',
+            allowPhotoUpload: form.allow_photo_upload === 'true',
             imagePath: loadedService?.imagePath ?? '',
             imageUrl: loadedService?.imageUrl ?? '',
             createdAt: loadedService?.createdAt,

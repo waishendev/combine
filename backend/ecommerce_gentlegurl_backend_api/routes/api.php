@@ -1085,6 +1085,8 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
     Route::get('/cart', [\App\Http\Controllers\Booking\CartController::class, 'show']);
     Route::post('/cart/add', [\App\Http\Controllers\Booking\CartController::class, 'add']);
     Route::delete('/cart/item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removeItem']);
+    Route::post('/cart/item/{itemId}/photos', [\App\Http\Controllers\Booking\CartController::class, 'uploadItemPhotos']);
+    Route::delete('/cart/item/{itemId}/photos/{photoId}', [\App\Http\Controllers\Booking\CartController::class, 'removeItemPhoto']);
     Route::post('/cart/item/{itemId}/release-package-claim', [\App\Http\Controllers\Booking\CartController::class, 'releasePackageClaim']);
     Route::post('/cart/checkout', [\App\Http\Controllers\Booking\CartController::class, 'checkout']);
     Route::post('/{id}/pay', [\App\Http\Controllers\Booking\PaymentController::class, 'pay']);

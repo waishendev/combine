@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCart;
 use App\Models\Booking\BookingCartItem;
 use App\Models\Booking\BookingCartPackageItem;
+use App\Models\Booking\BookingItemPhoto;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingSetting;
@@ -25,6 +26,8 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 class CartController extends Controller
@@ -292,6 +295,81 @@ class CartController extends Controller
         });
     }
 
+
+    public function uploadItemPhotos(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'photos' => ['required', 'array', 'min:1', 'max:3'],
+            'photos.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp,gif', 'max:5120'],
+        ]);
+
+        return DB::transaction(function () use ($request, $itemId, $validated) {
+            $cart = $this->resolveActiveCart($request);
+            $this->cleanupExpiredItems($cart);
+
+            $item = BookingCartItem::query()
+                ->where('booking_cart_id', $cart->id)
+                ->where('status', 'active')
+                ->with('service')
+                ->findOrFail($itemId);
+
+            if (! (bool) ($item->service?->allow_photo_upload ?? false)) {
+                return $this->respondError('Photo upload is not enabled for this service.', 422);
+            }
+
+            $existingCount = BookingItemPhoto::query()->where('booking_cart_item_id', $item->id)->count();
+            $incoming = count($validated['photos']);
+            if (($existingCount + $incoming) > 3) {
+                return $this->respondError('Maximum 3 photos are allowed per booking item.', 422);
+            }
+
+            $sortOrder = BookingItemPhoto::query()->where('booking_cart_item_id', $item->id)->max('sort_order');
+            $nextSort = is_numeric($sortOrder) ? ((int) $sortOrder + 1) : 0;
+
+            foreach ($validated['photos'] as $photo) {
+                $ext = strtolower((string) $photo->getClientOriginalExtension());
+                $filename = sprintf('%s-%s.%s', now()->format('YmdHis'), Str::uuid(), $ext);
+                $path = $photo->storeAs('booking/item-photos', $filename, 'public');
+
+                BookingItemPhoto::query()->create([
+                    'booking_cart_item_id' => (int) $item->id,
+                    'file_path' => $path,
+                    'original_name' => (string) $photo->getClientOriginalName(),
+                    'mime_type' => (string) $photo->getClientMimeType(),
+                    'size' => (int) $photo->getSize(),
+                    'sort_order' => $nextSort++,
+                ]);
+            }
+
+            return $this->respond($this->buildCartPayload($cart->fresh()));
+        });
+    }
+
+    public function removeItemPhoto(Request $request, int $itemId, int $photoId)
+    {
+        return DB::transaction(function () use ($request, $itemId, $photoId) {
+            $cart = $this->resolveActiveCart($request);
+            $this->cleanupExpiredItems($cart);
+
+            $item = BookingCartItem::query()
+                ->where('booking_cart_id', $cart->id)
+                ->where('status', 'active')
+                ->findOrFail($itemId);
+
+            $photo = BookingItemPhoto::query()
+                ->where('booking_cart_item_id', $item->id)
+                ->findOrFail($photoId);
+
+            if ($photo->file_path && Storage::disk('public')->exists($photo->file_path)) {
+                Storage::disk('public')->delete($photo->file_path);
+            }
+
+            $photo->delete();
+
+            return $this->respond($this->buildCartPayload($cart->fresh()));
+        });
+    }
+
     public function checkout(Request $request)
     {
         $customer = $request->user('customer');
@@ -437,6 +515,10 @@ class CartController extends Controller
                         (int) $booking->id,
                     );
                 }
+
+                BookingItemPhoto::query()
+                    ->where('booking_cart_item_id', (int) $item->id)
+                    ->update(['booking_id' => (int) $booking->id]);
 
                 $item->update(['status' => 'converted']);
                 $bookingIds[] = $booking->id;
@@ -695,6 +777,10 @@ class CartController extends Controller
             ->where('status', 'active')
             ->update(['booking_cart_id' => $customerCart->id, 'updated_at' => now()]);
 
+        BookingItemPhoto::query()
+            ->whereIn('booking_cart_item_id', BookingCartItem::query()->where('booking_cart_id', $customerCart->id)->pluck('id'))
+            ->update(['updated_at' => now()]);
+
         $guestCart->update(['status' => 'converted']);
     }
 
@@ -734,8 +820,9 @@ class CartController extends Controller
     {
         $cart->load([
             'items' => fn ($q) => $q->where('status', 'active')->orderBy('expires_at'),
-            'items.service:id,name,deposit_amount,service_type,service_price,price,price_mode,price_range_min,price_range_max',
+            'items.service:id,name,deposit_amount,service_type,service_price,price,price_mode,price_range_min,price_range_max,allow_photo_upload',
             'items.staff:id,name',
+            'items.photos',
             'packageItems' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
         ]);
 
@@ -771,6 +858,14 @@ class CartController extends Controller
                 'price_range_min' => $item->service?->price_range_min !== null ? (float) $item->service->price_range_min : null,
                 'price_range_max' => $item->service?->price_range_max !== null ? (float) $item->service->price_range_max : null,
                 'selected_options' => $item->question_answers_json['selected_options'] ?? [],
+                'allow_photo_upload' => (bool) ($item->service?->allow_photo_upload ?? false),
+                'photos' => $item->photos->map(fn (BookingItemPhoto $photo) => [
+                    'id' => (int) $photo->id,
+                    'file_url' => $photo->file_url,
+                    'original_name' => (string) $photo->original_name,
+                    'mime_type' => (string) $photo->mime_type,
+                    'size' => (int) $photo->size,
+                ])->values(),
                 'expires_at' => $item->expires_at?->toIso8601String(),
                 'status' => $item->status,
                 'package_claim_status' => $claimStatusesByItem[(int) $item->id] ?? null,

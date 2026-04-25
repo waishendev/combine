@@ -43,13 +43,18 @@ class AppointmentController extends Controller
 
     public function show(int $id)
     {
-        $booking = Booking::with(['service', 'staff', 'customer'])->findOrFail($id);
+        $booking = Booking::with(['service', 'staff', 'customer', 'itemPhotos'])->findOrFail($id);
         $addonItems = $this->mapAddonItems($booking->addon_items_json);
 
         return $this->respond(array_merge($booking->toArray(), [
             'add_ons' => $addonItems,
             'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
             'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
+            'uploaded_item_photos' => $booking->itemPhotos->map(fn ($photo) => [
+                'id' => (int) $photo->id,
+                'file_url' => $photo->file_url,
+                'original_name' => (string) $photo->original_name,
+            ])->values(),
         ]));
     }
 

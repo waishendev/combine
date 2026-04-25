@@ -12,6 +12,7 @@ type BookingDetail = {
   guest_email: string | null
   service: { id: number; name: string; duration_min: number } | null
   add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  uploaded_item_photos?: Array<{ id: number; file_url: string; original_name?: string }>
   addon_total_duration_min?: number
   addon_total_price?: number
   staff: { id: number; name: string } | null
@@ -460,6 +461,20 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
                     </div>
                   ) : (
                     <p className="text-sm text-slate-500">No add-ons selected.</p>
+                  )}
+                </Section>
+
+                <Section title="Reference Photos" description="Customer uploaded design/condition photos.">
+                  {(data.uploaded_item_photos?.length ?? 0) > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {data.uploaded_item_photos?.map((photo) => (
+                        <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded border border-slate-200">
+                          <img src={photo.file_url} alt={photo.original_name || 'Uploaded booking photo'} className="h-20 w-full object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500">No customer photos uploaded.</p>
                   )}
                 </Section>
 

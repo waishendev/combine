@@ -43,4 +43,10 @@ class Booking extends Model
     {
         return $this->belongsTo(Customer::class, 'customer_id');
     }
+
+    public function itemPhotos()
+    {
+        return $this->hasMany(BookingItemPhoto::class, 'booking_id')->orderBy('sort_order')->orderBy('id');
+    }
 }
+

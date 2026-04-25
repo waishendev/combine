@@ -13,6 +13,7 @@ export type BookingServiceApiItem = {
   deposit_amount?: string | number | null
   buffer_min?: number | string | null
   is_active?: boolean | number | string | null
+  allow_photo_upload?: boolean | number | string | null
   image_path?: string | null
   image_url?: string | null
   created_at?: string | null
@@ -36,6 +37,8 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     isActiveValue === 'true' ||
     isActiveValue === '1' ||
     isActiveValue === 1
+
+  const allowPhotoUpload = item.allow_photo_upload === true || item.allow_photo_upload === 'true' || item.allow_photo_upload === '1' || item.allow_photo_upload === 1
 
   const durationMin = typeof item.duration_min === 'number' 
     ? item.duration_min 
@@ -67,6 +70,7 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
     deposit_amount: depositAmount,
     buffer_min: bufferMin,
     isActive,
+    allowPhotoUpload,
     imagePath: item.image_path ?? '',
     imageUrl: item.image_url ?? item.image_path ?? '',
     createdAt: item.created_at ?? undefined,

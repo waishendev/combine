@@ -13,6 +13,7 @@ type BookingDetail = {
   guest_email: string | null
   service: { id: number; name: string; duration_min: number } | null
   add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  uploaded_item_photos?: Array<{ id: number; file_url: string; original_name?: string }>
   addon_total_duration_min?: number
   addon_total_price?: number
   staff: { id: number; name: string } | null
@@ -223,6 +224,19 @@ export default function BookingAppointmentDetailPage({ bookingId, permissions }:
             <div className="md:col-span-2">
               <dt className="text-slate-500">Add-ons</dt>
               <dd className="font-medium">
+                {(data.uploaded_item_photos?.length ?? 0) > 0 ? (
+                  <div className="rounded-lg border border-slate-200 p-3">
+                    <p className="text-xs font-semibold uppercase text-slate-500">Uploaded reference photos</p>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {data.uploaded_item_photos?.map((photo) => (
+                        <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded border border-slate-200">
+                          <img src={photo.file_url} alt={photo.original_name || 'Uploaded booking photo'} className="h-20 w-full object-cover" />
+                        </a>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
                 {(data.add_ons?.length ?? 0) > 0 ? (
                   <div className="space-y-1">
                     {data.add_ons?.map((addon, index) => (

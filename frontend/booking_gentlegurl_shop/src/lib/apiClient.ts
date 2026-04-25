@@ -4,7 +4,7 @@ import {
   AuthUser, 
   BookingLandingPage,
   BookingServiceCategory,
-  BookingCart, 
+  BookingCart,
   BookingPolicy,
   BookingRecord, 
   BookingSlot, 
@@ -205,6 +205,25 @@ export async function addPackageCartItem(payload: {
 
 export async function getBookingCart() {
   const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart");
+  return unwrapData<BookingCart>(response);
+}
+
+
+export async function uploadBookingCartItemPhotos(itemId: number, files: File[]) {
+  const fd = new FormData();
+  files.forEach((file) => fd.append('photos[]', file));
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/photos`, {
+    method: 'POST',
+    body: fd,
+  });
+  return unwrapData<BookingCart>(response);
+}
+
+export async function removeBookingCartItemPhoto(itemId: number, photoId: number) {
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/photos/${photoId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({}),
+  });
   return unwrapData<BookingCart>(response);
 }
 
