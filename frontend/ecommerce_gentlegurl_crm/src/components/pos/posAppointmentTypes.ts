@@ -56,7 +56,7 @@ export type PosAppointmentDetail = {
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
-  main_services?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean }>
+  main_services?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   main_service_settlement_items?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   settled_service_amount?: number | null
   is_range_priced?: boolean

@@ -1028,6 +1028,11 @@ export default function PosAppointmentsWorkspace({
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
         main_service_ids: Array.from(editSelectedMainServiceIds),
+        main_service_items: Array.from(editSelectedMainServiceIds).map((serviceId) => ({
+          booking_service_id: serviceId,
+          addon_option_ids: [],
+          staff_splits: [],
+        })),
       }
       if (isRange) {
         const amt = parseFloat(editSettledAmount)

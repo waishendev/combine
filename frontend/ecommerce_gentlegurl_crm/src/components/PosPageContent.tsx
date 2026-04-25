@@ -103,7 +103,7 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean }>
+  main_services?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   main_service_settlement_items?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   addon_total_price?: number
   deposit_contribution?: number
@@ -2527,6 +2527,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(cartEditSelectedAddonIds),
         main_service_ids: Array.from(cartEditSelectedMainServiceIds),
+        main_service_items: Array.from(cartEditSelectedMainServiceIds).map((serviceId) => ({
+          booking_service_id: serviceId,
+          addon_option_ids: [],
+          staff_splits: [],
+        })),
       }
       if (isRange) {
         const amt = parseFloat(cartEditSettledAmount)
