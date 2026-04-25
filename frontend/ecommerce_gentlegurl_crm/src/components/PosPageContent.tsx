@@ -838,6 +838,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const hasCartGuestSettlement = useMemo(() => {
     return cartAppointmentSettlementItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim()))
   }, [cartAppointmentSettlementItems])
+  const settlementLockedIdentityMode = useMemo<'member' | 'guest' | null>(() => {
+    if (!hasCartAppointmentSettlements) return null
+    return hasCartGuestSettlement ? 'guest' : 'member'
+  }, [hasCartAppointmentSettlements, hasCartGuestSettlement])
   /** Member/guest validation before pay (product-only carts skip) */
   const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
   /** Rules C,E,F,G: any package ⇒ member only, no guest */
@@ -864,6 +868,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (hasCartGuestSettlement) {
       setCheckoutIdentityMode('guest')
       setBookingIdentityMode('guest')
+      const guestRow = cartAppointmentSettlementItems.find((row) => !row.customer_id && (row.guest_name || row.guest_phone || row.guest_email))
+      if (guestRow) {
+        setGuestContactCache((prev) => ({
+          name: prev.name.trim() ? prev.name : (guestRow.guest_name ?? ''),
+          phone: prev.phone.trim() ? prev.phone : (guestRow.guest_phone ?? ''),
+          email: prev.email.trim() ? prev.email : (guestRow.guest_email ?? ''),
+        }))
+        // Booking modal uses uncontrolled inputs; keep them in sync when possible.
+        if (bookingGuestNameRef.current && !bookingGuestNameRef.current.value.trim() && guestRow.guest_name) {
+          bookingGuestNameRef.current.value = guestRow.guest_name
+        }
+        if (bookingGuestPhoneRef.current && !bookingGuestPhoneRef.current.value.trim() && guestRow.guest_phone) {
+          bookingGuestPhoneRef.current.value = guestRow.guest_phone
+        }
+        if (bookingGuestEmailRef.current && !bookingGuestEmailRef.current.value.trim() && guestRow.guest_email) {
+          bookingGuestEmailRef.current.value = guestRow.guest_email
+        }
+      }
       return
     }
     // Settlement is member-only and should freeze identity switching.
@@ -6212,24 +6234,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div className="mt-3 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
                       <button
                         type="button"
-                        disabled={hasCartAppointmentSettlements}
+                        disabled={Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member')}
                         onClick={() => {
                           setCheckoutIdentityMode('member')
                           setCheckoutError(null)
                         }}
-                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member' ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
                         Member
                       </button>
                       <button
                         type="button"
-                        disabled={hasCartAppointmentSettlements || checkoutRequiresMemberOnly}
+                        disabled={checkoutRequiresMemberOnly || Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')}
                         onClick={() => {
                           setCheckoutIdentityMode('guest')
                           setSelectedMember(null)
                           setCheckoutError(null)
                         }}
-                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(hasCartAppointmentSettlements || checkoutRequiresMemberOnly) ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                        className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(checkoutRequiresMemberOnly || (settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')) ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
                         Guest details
                       </button>
@@ -6238,7 +6260,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                   {hasCartAppointmentSettlements ? (
                     <p className="mt-2 text-[11px] text-amber-700">
-                      Settlement is in the cart — member/guest is locked. Remove the settlement item to change customer.
+                      Settlement is in the cart — customer is locked to <span className="font-semibold">{settlementLockedIdentityMode === 'guest' ? 'guest' : 'member'}</span>. Remove the settlement item to change customer.
                     </p>
                   ) : null}
 
@@ -7030,30 +7052,30 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <div className="mt-1 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
                   <button
                     type="button"
-                    disabled={hasCartAppointmentSettlements}
+                    disabled={Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member')}
                     onClick={() => {
                       setBookingIdentityMode('member')
                       setBookingModalError(null)
                     }}
-                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member' ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                   >
                     Member
                   </button>
                   <button
                     type="button"
-                    disabled={hasCartAppointmentSettlements || checkoutRequiresMemberOnly}
+                    disabled={checkoutRequiresMemberOnly || Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')}
                     onClick={() => {
                       setBookingIdentityMode('guest')
                       setBookingModalError(null)
                     }}
-                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(hasCartAppointmentSettlements || checkoutRequiresMemberOnly) ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(checkoutRequiresMemberOnly || (settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')) ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                   >
                     Guest details
                   </button>
                   </div>
                   {hasCartAppointmentSettlements ? (
                     <p className="mt-2 text-[11px] text-amber-700">
-                      Settlement is in the cart — guest details is disabled. Remove settlement to change customer mode.
+                      Settlement is in the cart — customer is locked to <span className="font-semibold">{settlementLockedIdentityMode === 'guest' ? 'guest' : 'member'}</span>. Remove settlement to change customer mode.
                     </p>
                   ) : null}
                 </div>
@@ -7064,9 +7086,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <label className="text-xs font-semibold text-gray-600">Member</label>
                       <button
                         type="button"
-                        disabled={hasCartAppointmentSettlements}
+                        disabled={Boolean(settlementLockedIdentityMode)}
                         onClick={() => openAssignMemberModal('service')}
-                        className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
+                        className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${settlementLockedIdentityMode ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
                         {selectedMember ? 'Change Member' : 'Assign Member'}
                       </button>
