@@ -53,7 +53,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const faviconUrl = await getCrmFavicon();
 
   return {
-    title: 'GentleGurls Commerce Admin',
+    title: 'Gentlegurls Admin',
     description: 'Ecommerce administration dashboard',
     ...(faviconUrl
       ? {

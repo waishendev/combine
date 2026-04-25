@@ -171,11 +171,14 @@ export default function CartPageClient() {
       const voucherDiscount = Number(totals?.discount_total ?? 0);
       const promotionDiscountAmount = promotionDiscount.totalDiscount;
       const discount = voucherDiscount + promotionDiscountAmount;
-      const shipping = Number(totals?.shipping_fee ?? 0);
-      const grand = Number(totals?.grand_total ?? subtotal - discount + shipping);
+      const rawShipping = Number(totals?.shipping_fee ?? 0);
+      const shipping = shippingMethod === "self_pickup" ? 0 : rawShipping;
+      // IMPORTANT: CartContext `totals.grand_total` does not include promotion discounts,
+      // so we always compute grand using the discount we display.
+      const grand = Math.max(subtotal - discount + shipping, 0);
 
       return { subtotal, discount, promotionDiscount: promotionDiscountAmount, voucherDiscount, shipping, grand };
-  }, [totals, promotionDiscount]);
+  }, [promotionDiscount, shippingMethod, totals]);
 
   const formatCurrency = (value: number) => `RM ${value.toFixed(2)}`;
 

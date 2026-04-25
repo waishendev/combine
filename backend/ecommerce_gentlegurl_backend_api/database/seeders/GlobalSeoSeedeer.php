@@ -10,16 +10,24 @@ class GlobalSeoSeedeer extends Seeder
     public function run(): void
     {
         $defaults = [
-            'default_title' => 'My Shop',
             'default_description' => 'Default SEO description',
             'default_keywords' => 'shop, ecommerce',
             'default_og_image' => null,
         ];
 
-        foreach (['ecommerce', 'booking'] as $type) {
+        $byType = [
+            'ecommerce' => [
+                'default_title' => 'Gentlegurls',
+            ],
+            'booking' => [
+                'default_title' => 'Gentlegurls Nail Salon',
+            ],
+        ];
+
+        foreach ($byType as $type => $overrides) {
             SeoGlobal::updateOrCreate(
                 ['type' => $type],
-                $defaults
+                [...$defaults, ...$overrides],
             );
         }
     }
