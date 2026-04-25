@@ -1929,7 +1929,7 @@ export default function PosAppointmentsWorkspace({
                       <p className="mt-1.5 text-sm font-semibold leading-snug text-slate-900">{appointmentDetail.service?.name ?? '—'}</p>
                     </div>
 
-                    {appointmentDetail.add_ons?.length ? (
+                    {appointmentDetail.add_ons?.length && !(appointmentDetail.main_services?.length) ? (
                       <div className="mt-3 rounded-lg border border-violet-100 bg-gradient-to-br from-violet-50/80 to-white px-3 py-3 shadow-sm ring-1 ring-violet-100/80">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Add-ons</p>
                         <ul className="mt-2 space-y-2 text-sm text-slate-800">

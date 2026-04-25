@@ -5066,6 +5066,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const serviceTotal = Number(settlement.service_total ?? 0)
                       const serviceDue = Number(settlement.service_balance_due ?? serviceTotal)
                       const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotal > 0.0001
+                      const hasServiceBlocks = (settlement.main_services ?? []).length > 0
                       const addonRows = settlement.addon_settlement_items ?? []
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
@@ -5102,7 +5103,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                             )}
 
-                            {addonRows.length > 0 ? (
+                            {!hasServiceBlocks && addonRows.length > 0 ? (
                               <div className="space-y-1.5 border-b border-gray-200 pb-2">
                                 <div className="flex justify-between gap-2">
                                   <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</span>
@@ -5123,6 +5124,34 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     </div>
                                   ))}
                                 </div>
+                              </div>
+                            ) : null}
+
+                            {hasServiceBlocks ? (
+                              <div className="space-y-2 border-b border-gray-200 pb-2">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service Blocks</p>
+                                {(settlement.main_services ?? []).map((service, idx) => {
+                                  const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
+                                  const blockSubtotal = Number(service.extra_price ?? 0) + serviceAddonTotal
+                                  return (
+                                    <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
+                                      <div className="flex justify-between gap-2 text-gray-800">
+                                        <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>
+                                        <span className="font-semibold tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                                      </div>
+                                      {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                        <div key={`settlement-service-block-addon-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="mt-0.5 flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
+                                          <span>+ {addon.name}</span>
+                                          <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                        </div>
+                                      ))}
+                                      <div className="mt-1 flex justify-between gap-2 border-t border-gray-200 pt-1 text-[10px] font-semibold text-gray-700">
+                                        <span>Subtotal</span>
+                                        <span className="tabular-nums">RM {blockSubtotal.toFixed(2)}</span>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
                               </div>
                             ) : null}
 
@@ -6273,6 +6302,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       const addons = settlement.addon_settlement_items ?? []
                       const addonCount = addons.length
+                      const hasServiceBlocks = (settlement.main_services ?? []).length > 0
                       const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const serviceDue = Number(settlement.service_balance_due ?? settlement.service_total ?? 0)
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
@@ -6386,7 +6416,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                           </tr>
 
-                          {addonCount > 0 ? (
+                          {addonCount > 0 && !hasServiceBlocks ? (
                             <>
                               <tr className={`${stRowClass} align-top`}>
                                 <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
