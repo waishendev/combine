@@ -6510,6 +6510,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const addonCount = addons.length
                       const hasServiceBlocks = (settlement.main_services ?? []).length > 0
                       const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
+                      const hasOriginalServiceBlock = (settlement.main_services ?? []).some((service) => service.is_original)
                       const serviceDue = Number(settlement.service_balance_due ?? settlement.service_total ?? 0)
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
@@ -6583,6 +6584,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const servicePrice = Number(service.extra_price ?? 0)
                                 const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
                                 const serviceSubtotal = servicePrice + serviceAddonTotal
+                                const isMainServiceBlock = service.is_original || (!hasOriginalServiceBlock && idx === 0)
+                                const isBlockCoveredByPkg = mainCoveredByPkg && isMainServiceBlock
                                 return (
                                   <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
                                     <tr className={`${stRowClass} align-top`}>
@@ -6591,11 +6594,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <p className="mt-1 text-xs text-gray-700">
                                           {service.name}{service.is_original ? ' (Original)' : ''}
                                         </p>
+                                        {isBlockCoveredByPkg ? (
+                                          <p className="mt-1 text-[10px] leading-snug text-cyan-800">
+                                            Included in your package (main service)
+                                          </p>
+                                        ) : null}
                                       </td>
                                       <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
-                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-400">—</td>
+                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
+                                        {isBlockCoveredByPkg ? (
+                                          <span>
+                                            <span className="text-gray-400 line-through">RM {servicePrice.toFixed(2)}</span>{' '}
+                                            <span className="font-medium">RM 0.00</span>
+                                          </span>
+                                        ) : (
+                                          <span className="text-gray-400">—</span>
+                                        )}
+                                      </td>
                                       <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                                        <p className="text-lg font-bold leading-tight text-orange-700">RM {servicePrice.toFixed(2)}</p>
+                                        <p className="text-lg font-bold leading-tight text-orange-700">
+                                          {isBlockCoveredByPkg ? 'RM 0.00' : `RM ${servicePrice.toFixed(2)}`}
+                                        </p>
                                       </td>
                                     </tr>
                                     {(service.add_ons ?? []).map((addon, addonIdx) => (
