@@ -475,9 +475,60 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       setMessage("Each photo must be 5MB or smaller.");
       return;
     }
+    const existingCount = (cart?.items ?? []).find((item) => item.id === itemId)?.photos?.length ?? 0;
+    const remaining = Math.max(0, 3 - existingCount);
+    if (remaining <= 0) {
+      setMessage("You can upload up to 3 photos only.");
+      return;
+    }
+    const accepted = arr.slice(0, remaining);
     setPhotoBusyItemId(itemId);
     try {
-      const updatedCart = await uploadBookingCartItemPhotos(itemId, arr);
+      const compressImageToFile = async (file: File) => {
+        const sourceBitmap = await createImageBitmap(file);
+        const srcW = sourceBitmap.width;
+        const srcH = sourceBitmap.height;
+        const maxLongEdge = 1600;
+        const longEdge = Math.max(srcW, srcH);
+        const scale = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1;
+        const targetW = Math.max(1, Math.round(srcW * scale));
+        const targetH = Math.max(1, Math.round(srcH * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          sourceBitmap.close();
+          return file;
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(sourceBitmap, 0, 0, targetW, targetH);
+        sourceBitmap.close();
+
+        const preferWebp = (() => {
+          try {
+            return canvas.toDataURL("image/webp").startsWith("data:image/webp");
+          } catch {
+            return false;
+          }
+        })();
+        const outType = preferWebp ? "image/webp" : "image/jpeg";
+        const quality = 0.78;
+
+        const blob: Blob | null = await new Promise((resolve) => {
+          canvas.toBlob((b) => resolve(b), outType, quality);
+        });
+        if (!blob) return file;
+
+        const ext = outType === "image/webp" ? "webp" : "jpg";
+        const nextName = file.name.replace(/\.[^/.]+$/, "") + `.${ext}`;
+        return new File([blob], nextName, { type: outType, lastModified: Date.now() });
+      };
+
+      const processedFiles = await Promise.all(accepted.map((file) => compressImageToFile(file)));
+      const updatedCart = await uploadBookingCartItemPhotos(itemId, processedFiles);
       setCart(updatedCart);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to upload photos.");
@@ -557,11 +608,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               Deposit waived for this member. Booking deposit is not required for checkout.
             </div>
           ) : null}
-          {isZeroPayableCheckout ? (
+          {/* {isZeroPayableCheckout ? (
             <div className="mb-4 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-xs text-[var(--status-success)]">
-              No payment required for this booking.
+              No payment required for this booking but still need comfirm .
             </div>
-          ) : null}
+          ) : null} */}
 
           <div className="space-y-2">
             {cart?.items?.map((item) => {
@@ -721,42 +772,86 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/30 p-2.5">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Reference photos</p>
-                        <label className="inline-flex cursor-pointer items-center rounded-full border border-[var(--card-border)] px-2.5 py-1 text-[10px] font-semibold text-[var(--foreground)]">
-                          {item.photos && item.photos.length > 0 ? "View Photos" : "Upload Photos"}
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            className="hidden"
-                            disabled={photoBusyItemId === item.id || (item.photos?.length ?? 0) >= 3}
-                            onChange={(event) => {
-                              void handlePhotoUpload(item.id, event.target.files);
-                              event.currentTarget.value = "";
-                            }}
-                          />
-                        </label>
+                        <span className="text-[10px] font-semibold text-[var(--text-muted)]">{(item.photos?.length ?? 0)}/3</span>
                       </div>
-                      {item.photos && item.photos.length > 0 ? (
-                        <div className="mt-2 grid grid-cols-3 gap-2">
-                          {item.photos.map((photo) => (
-                            <div key={photo.id} className="relative overflow-hidden rounded-md border border-[var(--card-border)]">
-                              <a href={photo.file_url} target="_blank" rel="noreferrer" className="block">
-                                <img src={photo.file_url} alt={photo.original_name || "Reference photo"} className="h-16 w-full object-cover" />
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => void handlePhotoRemove(item.id, photo.id)}
-                                disabled={photoBusyItemId === item.id}
-                                className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
-                              >
-                                <i className="fa-solid fa-xmark text-[10px]" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-[10px] text-[var(--text-muted)]">No photos uploaded yet.</p>
-                      )}
+                      <input
+                        id={`cart-photo-input-${item.id}`}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        disabled={photoBusyItemId === item.id || (item.photos?.length ?? 0) >= 3}
+                        onChange={(event) => {
+                          void handlePhotoUpload(item.id, event.target.files);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        {Array.from({ length: 3 }).map((_, index) => {
+                          const photo = item.photos?.[index] ?? null;
+                          const isEmpty = !photo;
+                          return (
+                            <button
+                              key={index}
+                              type="button"
+                              className={[
+                                "group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200",
+                                isEmpty
+                                  ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
+                                  : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
+                              ].join(" ")}
+                              onClick={() => {
+                                if (isEmpty && (item.photos?.length ?? 0) < 3 && photoBusyItemId !== item.id) {
+                                  const input = document.getElementById(`cart-photo-input-${item.id}`) as HTMLInputElement | null;
+                                  input?.click();
+                                }
+                              }}
+                              disabled={photoBusyItemId === item.id}
+                              aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
+                            >
+                              {isEmpty ? (
+                                <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
+                                  <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--muted)]/40 group-hover:bg-[var(--muted)]/60 transition">
+                                    <i className="fa-solid fa-cloud-arrow-up text-[var(--text-muted)] text-sm" aria-hidden />
+                                  </div>
+                                  <span className="text-[10px] font-medium text-[var(--text-muted)]">Click to upload</span>
+                                </div>
+                              ) : (
+                                <>
+                                  <a
+                                    href={photo.file_url}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block h-full w-full"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
+                                      <img
+                                        src={photo.file_url}
+                                        alt={photo.original_name || "Reference photo"}
+                                        className="h-full w-full object-contain"
+                                      />
+                                    </div>
+                                  </a>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      void handlePhotoRemove(item.id, photo.id);
+                                    }}
+                                    disabled={photoBusyItemId === item.id}
+                                    className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
+                                    aria-label={`Remove ${photo.original_name || "photo"}`}
+                                  >
+                                    <i className="fa-solid fa-xmark text-[10px]" />
+                                  </button>
+                                </>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                   ) : null}
 

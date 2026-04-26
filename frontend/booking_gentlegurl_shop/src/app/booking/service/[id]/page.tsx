@@ -2,13 +2,70 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
 import { getBookingServiceDepositNote, getBookingServiceDetail } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { loadBookingPhotoDraft, saveBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
 import { BookingServiceQuestion, BookingServiceQuestionOption, Service } from "@/lib/types";
+
+async function compressImageToDataUrl(
+  file: File,
+  {
+    maxLongEdge = 1600,
+    quality = 0.78,
+    preferredType = "image/webp",
+  }: { maxLongEdge?: number; quality?: number; preferredType?: string } = {}
+) {
+  const sourceBitmap = await createImageBitmap(file);
+
+  const srcW = sourceBitmap.width;
+  const srcH = sourceBitmap.height;
+  if (!srcW || !srcH) {
+    sourceBitmap.close();
+    throw new Error("Invalid image.");
+  }
+
+  const longEdge = Math.max(srcW, srcH);
+  const scale = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1;
+  const targetW = Math.max(1, Math.round(srcW * scale));
+  const targetH = Math.max(1, Math.round(srcH * scale));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = targetW;
+  canvas.height = targetH;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    sourceBitmap.close();
+    throw new Error("Canvas unavailable.");
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(sourceBitmap, 0, 0, targetW, targetH);
+  sourceBitmap.close();
+
+  const canWebp =
+    preferredType === "image/webp" &&
+    (() => {
+      try {
+        return canvas.toDataURL("image/webp").startsWith("data:image/webp");
+      } catch {
+        return false;
+      }
+    })();
+
+  const outType = canWebp ? "image/webp" : "image/jpeg";
+  const dataUrl = canvas.toDataURL(outType, quality);
+
+  return {
+    dataUrl,
+    outType,
+    width: targetW,
+    height: targetH,
+  };
+}
 
 export default function ServiceAddonsPage() {
   const params = useParams<{ id: string }>();
@@ -17,6 +74,7 @@ export default function ServiceAddonsPage() {
   const categoryId = searchParams.get("category_id");
   const id = params.id;
   const backHref = categoryId ? `/booking?category_id=${encodeURIComponent(categoryId)}` : "/booking";
+  const photoInputRef = useRef<HTMLInputElement | null>(null);
   const [service, setService] = useState<Service | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [depositNote, setDepositNote] = useState<string | null>(null);
@@ -150,25 +208,30 @@ export default function ServiceAddonsPage() {
     }
 
     Promise.all(
-      accepted.map((file) =>
-        new Promise<{ id: string; url: string; name: string; type: string }>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () =>
-            resolve({
-              id: `${file.name}-${file.size}-${Math.random()}`,
-              url: String(reader.result ?? ''),
-              name: file.name,
-              type: file.type || "image/jpeg",
-            });
-          reader.readAsDataURL(file);
-        })
-      )
-    ).then((next) => {
-      setPhotoPreviews((prev) => [...prev, ...next].slice(0, 3));
-      if (files.length > accepted.length) {
-        setPhotoError('Only first 3 photos were kept.');
-      }
-    });
+      accepted.map(async (file) => {
+        const { dataUrl, outType } = await compressImageToDataUrl(file, {
+          // Keep aspect ratio; resize only (no crop).
+          maxLongEdge: 1600,
+          quality: 0.78,
+          preferredType: "image/webp",
+        });
+        return {
+          id: `${file.name}-${file.size}-${Math.random()}`,
+          url: dataUrl,
+          name: file.name,
+          type: outType,
+        };
+      })
+    )
+      .then((next) => {
+        setPhotoPreviews((prev) => [...prev, ...next].slice(0, 3));
+        if (files.length > accepted.length) {
+          setPhotoError('Only first 3 photos were kept.');
+        }
+      })
+      .catch(() => {
+        setPhotoError("Unable to process one of the photos. Please try another image.");
+      });
 
     event.target.value = '';
   }, [photoPreviews.length]);
@@ -318,34 +381,81 @@ export default function ServiceAddonsPage() {
                 <h2 className="font-[var(--font-heading)] text-lg font-semibold">Reference Photos (Optional)</h2>
                 <p className="mt-1 text-sm text-[var(--text-muted)]">
                   If you have a preferred design or would like to share your nail condition, feel free to upload it here.
+                  <span className="ml-1 text-xs text-[var(--text-muted)]">Max 3 photos.</span>
                 </p>
-                <div className="mt-4">
-                  <label className="inline-flex cursor-pointer items-center rounded-lg border border-[var(--card-border)] px-4 py-2 text-sm font-medium hover:bg-[var(--muted)]/50">
-                    <i className="fa-solid fa-upload mr-2" aria-hidden />
-                    Upload Photos
-                    <input type="file" accept="image/*" multiple className="hidden" onChange={onPhotoSelect} />
-                  </label>
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">Up to 3 image files.</p>
-                  {photoError ? <p className="mt-2 text-sm text-[var(--status-error)]">{photoError}</p> : null}
+
+                <input
+                  ref={photoInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  onChange={onPhotoSelect}
+                />
+
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  {Array.from({ length: 3 }).map((_, index) => {
+                    const photo = photoPreviews[index];
+                    const isEmpty = !photo;
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        className={[
+                          "group relative aspect-square overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-200",
+                          isEmpty
+                            ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
+                            : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
+                        ].join(" ")}
+                        onClick={() => {
+                          if (isEmpty) {
+                            photoInputRef.current?.click();
+                          }
+                        }}
+                        disabled={isEmpty ? photoPreviews.length >= 3 : false}
+                        aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
+                      >
+                        {isEmpty ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center p-3 text-center">
+                            <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--muted)]/40 group-hover:bg-[var(--muted)]/60 transition">
+                              <i className="fa-solid fa-cloud-arrow-up text-[var(--text-muted)]" aria-hidden />
+                            </div>
+                            <span className="text-xs font-medium text-[var(--text-muted)]">Click to upload</span>
+                          </div>
+                        ) : (
+                          <>
+                            <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
+                              <img
+                                src={photo.url}
+                                alt={photo.name}
+                                className="h-full w-full object-contain"
+                              />
+                            </div>
+                            <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                              {index + 1}/3
+                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removePhoto(photo.id);
+                              }}
+                              className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/70"
+                              aria-label={`Remove ${photo.name}`}
+                            >
+                              <i className="fa-solid fa-xmark" aria-hidden />
+                            </button>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
 
-                {photoPreviews.length > 0 ? (
-                  <div className="mt-4 grid grid-cols-3 gap-3">
-                    {photoPreviews.map((photo) => (
-                      <div key={photo.id} className="relative overflow-hidden rounded-xl border border-[var(--card-border)]">
-                        <img src={photo.url} alt={photo.name} className="h-24 w-full object-cover" />
-                        <button
-                          type="button"
-                          onClick={() => removePhoto(photo.id)}
-                          className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white"
-                          aria-label={`Remove ${photo.name}`}
-                        >
-                          <i className="fa-solid fa-xmark" aria-hidden />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
+                {photoPreviews.length >= 3 ? (
+                  <p className="mt-3 text-xs text-[var(--text-muted)]">You’ve reached the maximum of 3 photos.</p>
                 ) : null}
+                {photoError ? <p className="mt-2 text-sm text-[var(--status-error)]">{photoError}</p> : null}
               </section>
             ) : null}
 
@@ -360,7 +470,7 @@ export default function ServiceAddonsPage() {
                 placeholder="Share any requests, preferences, or notes for our team"
                 rows={4}
                 maxLength={2000}
-                className="mt-3 w-full rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+                className="mt-3 w-full rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
               />
             </section>
 

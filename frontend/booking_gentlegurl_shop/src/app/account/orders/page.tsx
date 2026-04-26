@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { getMyOrders, PublicAccountOrder } from "@/lib/apiClient";
+import { getMyEcommerceOrders, PublicAccountOrder } from "@/lib/apiClient";
 import { useEffect } from "react";
 
 function money(amount: number | null | undefined) {
@@ -42,7 +42,7 @@ export default function BookingAccountOrdersPage() {
       try {
         setLoading(true);
         setError(null);
-        const rows = await getMyOrders();
+        const rows = await getMyEcommerceOrders();
         if (!cancelled) {
           setOrders(rows ?? []);
         }
@@ -72,7 +72,7 @@ export default function BookingAccountOrdersPage() {
         <div>
           <h2 className="text-2xl font-semibold text-[var(--foreground)]">My Orders</h2>
           <p className="text-sm text-[var(--foreground)]/70">
-            Orders containing booking or service package items are shown here with full item details.
+            Your ecommerce online orders are shown here with full item details.
           </p>
         </div>
       </div>
@@ -86,13 +86,13 @@ export default function BookingAccountOrdersPage() {
 
       {!loading && !hasOrders ? (
         <div className="flex flex-col items-start justify-center rounded-xl border border-dashed border-[var(--muted)] bg-[var(--background)] p-10 text-center shadow-sm">
-          <p className="mb-3 text-lg font-semibold text-[var(--foreground)]">You have no booking-related orders yet.</p>
-          <p className="mb-4 text-sm text-[var(--foreground)]/70">Try placing a booking or package order to see it here.</p>
+          <p className="mb-3 text-lg font-semibold text-[var(--foreground)]">You have no ecommerce orders yet.</p>
+          <p className="mb-4 text-sm text-[var(--foreground)]/70">Try placing an online order to see it here.</p>
           <Link
-            href="/booking"
+            href="/"
             className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
           >
-            Start Booking
+            Shop Now
           </Link>
         </div>
       ) : null}

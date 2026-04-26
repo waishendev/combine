@@ -46,6 +46,9 @@ export default function CustomerRow({
   onToggleDepositWaiver,
 }: CustomerRowProps) {
   const { t } = useI18n()
+  const requiredDeposit =
+    customer.allowBookingWithoutDeposit == null ? null : !customer.allowBookingWithoutDeposit
+
   return (
     <tr className="text-sm">
       <td className="px-4 py-2 border border-gray-200">{customer.name}</td>
@@ -58,6 +61,9 @@ export default function CustomerRow({
           label={customer.isActive ? t('common.active') : t('common.inactive')}
         />
       </td>
+      <td className="px-4 py-2 border border-gray-200 font-medium text-gray-900">
+        {requiredDeposit == null ? '-' : requiredDeposit ? 'Yes' : 'No'}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{customer.createdAt}</td>
       {(showActions || canView) && (
         <td className="px-4 py-2 border border-gray-200">
@@ -68,10 +74,10 @@ export default function CustomerRow({
                 className="inline-flex h-8 items-center justify-center rounded bg-slate-700 px-2 text-xs font-semibold text-white hover:bg-slate-800"
                 title="View History"
               >
-                History
+                 <i className="fa-solid fa-eye" />
               </Link>
             )}
-            {canView && (
+            {/* {canView && (
               <button
                 type="button"
                 className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
@@ -81,7 +87,7 @@ export default function CustomerRow({
               >
                 <i className="fa-solid fa-eye" />
               </button>
-            )}
+            )} */}
             {canAssignVoucher && (
               <button
                 type="button"

@@ -7844,7 +7844,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
 
                 <div>
-                  <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
+                  <label className="text-xs font-semibold text-gray-600">Remarks (optional)</label>
                   <textarea
                     value={bookingNotes}
                     onChange={(e) => setBookingNotes(e.target.value)}

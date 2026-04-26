@@ -2745,7 +2745,7 @@ export default function PosAppointmentsWorkspace({
                   </div>
 
                   <div>
-                    <label className="text-xs font-semibold text-gray-600">Notes (optional)</label>
+                    <label className="text-xs font-semibold text-gray-600">Remarks (optional)</label>
                     <textarea
                       rows={3}
                       value={createAppointmentNotes}

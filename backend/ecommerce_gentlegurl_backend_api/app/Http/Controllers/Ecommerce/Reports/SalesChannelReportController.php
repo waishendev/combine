@@ -51,6 +51,7 @@ class SalesChannelReportController extends Controller
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'status' => $request->query('status'),
+            'customer_id' => $request->query('customer_id'),
             'per_page' => (int) $request->query('per_page', $request->query('limit', 15)),
             'page' => (int) $request->query('page', 1),
         ]);
@@ -66,6 +67,7 @@ class SalesChannelReportController extends Controller
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'type' => $request->query('type'),
+            'customer_id' => $request->query('customer_id'),
             'per_page' => (int) $request->query('per_page', $request->query('limit', 15)),
             'page' => (int) $request->query('page', 1),
         ]);
@@ -81,6 +83,7 @@ class SalesChannelReportController extends Controller
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'status' => $request->query('status'),
+            'customer_id' => $request->query('customer_id'),
         ]);
 
         return response()->streamDownload(function () use ($rows) {
@@ -115,6 +118,7 @@ class SalesChannelReportController extends Controller
             'channel' => $request->query('channel'),
             'payment_method' => $request->query('payment_method'),
             'type' => $request->query('type'),
+            'customer_id' => $request->query('customer_id'),
         ]);
 
         return response()->streamDownload(function () use ($rows) {

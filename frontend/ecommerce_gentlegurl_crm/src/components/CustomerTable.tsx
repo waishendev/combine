@@ -380,7 +380,7 @@ export default function CustomerTable({
     }
   }
 
-  const colCount = showActions || canView ? 7 : 6
+  const colCount = showActions || canView ? 8 : 7
 
   const totalPages = meta.last_page || 1
 
@@ -658,6 +658,7 @@ export default function CustomerTable({
                   { key: 'phone', label: 'Phone' },
                   { key: 'tier', label: 'Tier' },
                   { key: 'isActive', label: t('common.status') },
+                  { key: 'allowBookingWithoutDeposit', label: 'Required Deposit' },
                   { key: 'createdAt', label: t('common.createdAt') },
                 ] as const
               ).map(({ key, label }) => (

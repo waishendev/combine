@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { type ReactNode, useEffect, useMemo, useState } from 'react'
 
 import BookingAppointmentDrawer from '@/components/booking/BookingAppointmentDrawer'
 import OrderViewPanel from '@/components/OrderViewPanel'
+import StatusBadge from '@/components/StatusBadge'
 
 type HistoryResponse = {
   data?: {
@@ -79,12 +80,23 @@ type DrawerState =
   | { type: 'booking'; bookingId: number }
   | { type: 'package'; data: HistoryPackage }
 
+type CustomerDetailBrief = {
+  id?: number
+  name?: string | null
+  email?: string | null
+  phone?: string | null
+  customer_type?: string | null
+  tier?: string | null
+  is_active?: boolean | null
+  loyalty_summary?: {
+    available_points: number
+  } | null
+}
+
 const tabs: Array<{ key: TabKey; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'ecommerce', label: 'Ecommerce Orders' },
-  { key: 'pos', label: 'POS Purchases' },
-  { key: 'booking', label: 'Booking Appointments' },
-  { key: 'packages', label: 'Packages' },
+  { key: 'overview', label: 'All' },
+  { key: 'ecommerce', label: 'Ecommerce' },
+  { key: 'booking', label: 'Booking' },
 ]
 
 function formatDate(value?: string | null) {
@@ -185,7 +197,15 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [payload, setPayload] = useState<HistoryResponse['data']>()
+  const [customerDetail, setCustomerDetail] = useState<CustomerDetailBrief | null>(null)
   const [drawer, setDrawer] = useState<DrawerState | null>(null)
+
+  const formatYmd = (d: Date) => {
+    const y = d.getFullYear()
+    const m = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${y}-${m}-${day}`
+  }
 
   useEffect(() => {
     const controller = new AbortController()
@@ -194,17 +214,162 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch(`/api/proxy/customers/${customerId}/history`, {
-          cache: 'no-store',
-          signal: controller.signal,
-        })
+        const to = formatYmd(new Date())
+        const from = '2000-01-01'
+        const qs = new URLSearchParams()
+        qs.set('date_from', from)
+        qs.set('date_to', to)
+        qs.set('per_page', '200')
+        qs.set('page', '1')
+        qs.set('customer_id', customerId)
 
-        if (!response.ok) {
+        const [ecommerceResponse, bookingResponse, customerResponse] = await Promise.all([
+          fetch(`/api/proxy/ecommerce/reports/sales/ecommerce?${qs.toString()}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
+          fetch(`/api/proxy/ecommerce/reports/sales/booking?${qs.toString()}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          }),
+          fetch(`/api/proxy/customers/${customerId}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+            headers: { Accept: 'application/json', 'Accept-Language': 'en' },
+          }),
+        ])
+
+        if (!ecommerceResponse.ok || !bookingResponse.ok) {
           throw new Error('Failed to load customer history.')
         }
 
-        const json: HistoryResponse = await response.json()
-        setPayload(json.data)
+        type EcommerceRow = {
+          order_id: number
+          order_no: string
+          order_datetime: string
+          channel: string
+          payment_method: string
+          status: string
+          net_amount: number
+        }
+
+        type BookingRow = {
+          order_id: number
+          order_no: string
+          order_datetime: string
+          payment_method: string
+          channel: string
+          status: string
+          type: string
+          booking_id?: number | null
+          booking_no?: string | null
+          package_name?: string | null
+          net_amount: number
+        }
+
+        const ecommerceJson = (await ecommerceResponse.json().catch(() => null)) as { rows?: EcommerceRow[] } | null
+        const bookingJson = (await bookingResponse.json().catch(() => null)) as { rows?: BookingRow[] } | null
+        const ecRows = Array.isArray(ecommerceJson?.rows) ? ecommerceJson!.rows! : []
+        const bkRows = Array.isArray(bookingJson?.rows) ? bookingJson!.rows! : []
+
+        const ecommerceOrders: HistoryOrder[] = ecRows
+          .filter((r) => String(r.channel).toLowerCase() === 'online')
+          .map((r) => ({
+            id: Number(r.order_id),
+            order_number: r.order_no,
+            date: r.order_datetime,
+            status: r.status,
+            total_amount: r.net_amount,
+          }))
+
+        const posOrders: HistoryPosOrder[] = ecRows
+          .filter((r) => String(r.channel).toLowerCase() !== 'online')
+          .map((r) => ({
+            id: Number(r.order_id),
+            receipt_number: r.order_no,
+            date: r.order_datetime,
+            payment_method: r.payment_method,
+            status: r.status,
+            total_amount: r.net_amount,
+          }))
+
+        const bookingAppointments: HistoryBooking[] = bkRows
+          .filter((r) => r.type !== 'package_purchase')
+          .map((r) => ({
+            id: Number(r.booking_id ?? 0),
+            booking_no: r.booking_no ?? r.order_no,
+            date_time: r.order_datetime,
+            service_names: [],
+            staff: null,
+            status: r.status,
+            amount: r.net_amount,
+          }))
+          .filter((r) => r.id > 0)
+
+        const packages: HistoryPackage[] = bkRows
+          .filter((r) => r.type === 'package_purchase')
+          .map((r) => ({
+            id: Number(r.order_id),
+            package_name: r.package_name ?? 'Package',
+            purchase_date: r.order_datetime,
+            remaining_sessions: null,
+            status: r.status,
+            purchased_from: String(r.channel).toLowerCase() === 'online' ? 'online' : 'offline',
+            purchased_ref_id: Number(r.order_id),
+            usage_count: null,
+            balances: [],
+          }))
+
+        const parseTime = (value?: string | null) => {
+          if (!value) return null
+          const d = new Date(value)
+          const t = d.getTime()
+          return Number.isNaN(t) ? null : t
+        }
+
+        const latestActivityMs = Math.max(
+          0,
+          ...ecRows.map((r) => parseTime(r.order_datetime) ?? 0),
+          ...bkRows.map((r) => parseTime(r.order_datetime) ?? 0),
+        )
+
+        const totalSpent =
+          ecRows.reduce((sum, r) => sum + Number(r.net_amount ?? 0), 0) +
+          bkRows.reduce((sum, r) => sum + Number(r.net_amount ?? 0), 0)
+
+        const totalOrdersBookings = ecRows.length + bkRows.length
+
+        let customerJson: { data?: CustomerDetailBrief } | null = null
+        if (customerResponse.ok) {
+          customerJson = (await customerResponse.json().catch(() => null)) as
+            | { data?: CustomerDetailBrief }
+            | null
+          const detail = customerJson?.data
+          if (detail && typeof detail === 'object') {
+            setCustomerDetail(detail)
+          } else {
+            setCustomerDetail(null)
+          }
+        } else {
+          setCustomerDetail(null)
+        }
+
+        setPayload({
+          customer_summary: {
+            id: Number(customerId),
+            name: customerJson?.data?.name ?? '-',
+            phone: customerJson?.data?.phone ?? '-',
+            email: customerJson?.data?.email ?? '-',
+            customer_type: customerJson?.data?.customer_type ?? '-',
+            total_spent: totalSpent,
+            total_orders_bookings: totalOrdersBookings,
+            last_activity_date: latestActivityMs ? new Date(latestActivityMs).toISOString() : null,
+          },
+          ecommerce_orders: ecommerceOrders,
+          pos_orders: posOrders,
+          booking_appointments: bookingAppointments,
+          service_packages: packages,
+        })
       } catch (fetchError) {
         if (!(fetchError instanceof DOMException && fetchError.name === 'AbortError')) {
           setError(fetchError instanceof Error ? fetchError.message : 'Failed to load customer history.')
@@ -222,7 +387,24 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
 
   const summaryCards = useMemo(() => {
     const summary = payload?.customer_summary
-    return [
+    const statusValue = customerDetail?.is_active == null ? null : customerDetail.is_active ? 'active' : 'inactive'
+    const tierValue = customerDetail?.tier?.trim() ? customerDetail.tier : null
+    const pointsValue =
+      customerDetail?.loyalty_summary && typeof customerDetail.loyalty_summary.available_points === 'number'
+        ? customerDetail.loyalty_summary.available_points
+        : null
+
+    const cards: Array<{ label: string; value: ReactNode }> = [
+      {
+        label: 'Status',
+        value: statusValue ? (
+          <StatusBadge status={statusValue} label={statusValue === 'active' ? 'Active' : 'Inactive'} />
+        ) : (
+          '-'
+        ),
+      },
+      { label: 'Tier', value: tierValue ? <span className="capitalize">{tierValue}</span> : '-' },
+      { label: 'Available Points', value: pointsValue != null ? pointsValue.toLocaleString() : '-' },
       { label: 'Customer Name', value: summary?.name ?? '-' },
       { label: 'Phone', value: summary?.phone ?? '-' },
       { label: 'Email', value: summary?.email ?? '-' },
@@ -231,7 +413,8 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
       { label: 'Total Orders/Bookings', value: String(summary?.total_orders_bookings ?? 0) },
       { label: 'Last Activity Date', value: formatDate(summary?.last_activity_date) },
     ]
-  }, [payload?.customer_summary])
+    return cards
+  }, [customerDetail?.is_active, customerDetail?.loyalty_summary, customerDetail?.tier, payload?.customer_summary])
 
   if (loading) {
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading customer history...</div>
@@ -249,29 +432,38 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
   return (
     <>
       <div className="space-y-6">
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <h3 className="mb-4 text-lg font-semibold text-gray-900">Customer Summary</h3>
+        <div className="rounded-xl border border-slate-300 bg-slate-50 p-5 shadow-sm">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-slate-900">Customer Summary</h3>
+          </div>
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {summaryCards.map((item) => (
-              <div key={item.label} className="rounded-md border border-gray-100 bg-gray-50 px-4 py-3">
-                <p className="text-xs uppercase tracking-wide text-gray-500">{item.label}</p>
-                <p className="mt-1 text-sm font-semibold text-gray-900">{item.value}</p>
+              <div
+                key={item.label}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-3"
+              >
+                <p className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                  {item.label}
+                </p>
+                <div className="mt-1 text-sm font-semibold text-slate-900">
+                  {item.value}
+                </div>
               </div>
             ))}
           </div>
         </div>
 
-        <div className="rounded-lg border border-gray-200 bg-white p-5">
-          <div className="mb-4 flex flex-wrap gap-2 border-b border-gray-100 pb-3">
+        <div className="rounded-xl border border-slate-300 bg-slate-50 p-5 shadow-sm">
+          <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
                 type="button"
                 onClick={() => setActiveTab(tab.key)}
-                className={`rounded-md px-3 py-2 text-sm font-medium ${
+                className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
                   activeTab === tab.key
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
                 }`}
               >
                 {tab.label}
@@ -279,167 +471,265 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
             ))}
           </div>
 
+          <div className="space-y-6">
           {(activeTab === 'overview' || activeTab === 'ecommerce') && (
-            <section className="mb-6">
-              <h4 className="mb-2 text-base font-semibold">Ecommerce Orders</h4>
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-3 py-2">Order No</th>
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Total</th>
-                    <th className="px-3 py-2">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ecommerceOrders.map((order) => (
-                    <tr key={`e-${order.id}`} className="border-t">
-                      <td className="px-3 py-2">{order.order_number ?? '-'}</td>
-                      <td className="px-3 py-2">{formatDate(order.date)}</td>
-                      <td className="px-3 py-2">{order.status ?? '-'}</td>
-                      <td className="px-3 py-2">{formatAmount(order.total_amount)}</td>
-                      <td className="px-3 py-2">
-                        <button type="button" onClick={() => setDrawer({ type: 'order', orderId: order.id })} className="text-blue-600 hover:underline">
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {ecommerceOrders.length === 0 && (
+            <section className="rounded-xl border border-slate-300 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                <h4 className="text-base font-semibold text-slate-900">Ecommerce Orders</h4>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {ecommerceOrders.length} records
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
                     <tr>
-                      <td className="px-3 py-3 text-gray-500" colSpan={5}>
-                        No ecommerce order history.
-                      </td>
+                      <th className="px-4 py-3 font-semibold">Order No</th>
+                      <th className="px-4 py-3 font-semibold">Date</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Total</th>
+                      <th className="px-4 py-3 font-semibold">Action</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {ecommerceOrders.map((order, index) => (
+                      <tr
+                        key={`e-${order.id}`}
+                        className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
+                      >
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">
+                          {order.order_number ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {formatDate(order.date)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {order.status ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">
+                          {formatAmount(order.total_amount)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setDrawer({ type: 'order', orderId: order.id })}
+                            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {ecommerceOrders.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
+                          No ecommerce order history.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
 
           {(activeTab === 'overview' || activeTab === 'pos') && (
-            <section className="mb-6">
-              <h4 className="mb-2 text-base font-semibold">POS Purchases</h4>
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-3 py-2">Receipt No</th>
-                    <th className="px-3 py-2">Date</th>
-                    <th className="px-3 py-2">Payment Method</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Total</th>
-                    <th className="px-3 py-2">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {posOrders.map((order) => (
-                    <tr key={`p-${order.id}`} className="border-t">
-                      <td className="px-3 py-2">{order.receipt_number ?? '-'}</td>
-                      <td className="px-3 py-2">{formatDate(order.date)}</td>
-                      <td className="px-3 py-2">{order.payment_method ?? '-'}</td>
-                      <td className="px-3 py-2">{order.status ?? '-'}</td>
-                      <td className="px-3 py-2">{formatAmount(order.total_amount)}</td>
-                      <td className="px-3 py-2">
-                        <button type="button" onClick={() => setDrawer({ type: 'order', orderId: order.id })} className="text-blue-600 hover:underline">
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {posOrders.length === 0 && (
+            <section className="rounded-xl border border-slate-300 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                <h4 className="text-base font-semibold text-slate-900">POS Purchases</h4>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {posOrders.length} records
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
                     <tr>
-                      <td className="px-3 py-3 text-gray-500" colSpan={6}>
-                        No POS purchase history.
-                      </td>
+                      <th className="px-4 py-3 font-semibold">Receipt No</th>
+                      <th className="px-4 py-3 font-semibold">Date</th>
+                      <th className="px-4 py-3 font-semibold">Payment Method</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Total</th>
+                      <th className="px-4 py-3 font-semibold">Action</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {posOrders.map((order, index) => (
+                      <tr
+                        key={`p-${order.id}`}
+                        className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
+                      >
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">
+                          {order.receipt_number ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {formatDate(order.date)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {order.payment_method ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {order.status ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">
+                          {formatAmount(order.total_amount)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setDrawer({ type: 'order', orderId: order.id })}
+                            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {posOrders.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                          No POS purchase history.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
 
           {(activeTab === 'overview' || activeTab === 'booking') && (
-            <section className="mb-6">
-              <h4 className="mb-2 text-base font-semibold">Booking Appointments</h4>
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-3 py-2">Booking No</th>
-                    <th className="px-3 py-2">Date/Time</th>
-                    <th className="px-3 py-2">Services</th>
-                    <th className="px-3 py-2">Staff</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Amount</th>
-                    <th className="px-3 py-2">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bookings.map((booking) => (
-                    <tr key={`b-${booking.id}`} className="border-t">
-                      <td className="px-3 py-2">{booking.booking_no ?? '-'}</td>
-                      <td className="px-3 py-2">{formatDate(booking.date_time)}</td>
-                      <td className="px-3 py-2">{booking.service_names?.join(', ') || '-'}</td>
-                      <td className="px-3 py-2">{booking.staff ?? '-'}</td>
-                      <td className="px-3 py-2">{booking.status ?? '-'}</td>
-                      <td className="px-3 py-2">{formatAmount(booking.amount)}</td>
-                      <td className="px-3 py-2">
-                        <button type="button" onClick={() => setDrawer({ type: 'booking', bookingId: booking.id })} className="text-blue-600 hover:underline">
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {bookings.length === 0 && (
+            <section className="rounded-xl border border-slate-300 bg-white">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                <h4 className="text-base font-semibold text-slate-900">Booking Appointments</h4>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                  {bookings.length} records
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
                     <tr>
-                      <td className="px-3 py-3 text-gray-500" colSpan={7}>
-                        No booking history.
-                      </td>
+                      <th className="px-4 py-3 font-semibold">Booking No</th>
+                      <th className="px-4 py-3 font-semibold">Date/Time</th>
+                      <th className="px-4 py-3 font-semibold">Services</th>
+                      <th className="px-4 py-3 font-semibold">Staff</th>
+                      <th className="px-4 py-3 font-semibold">Status</th>
+                      <th className="px-4 py-3 font-semibold">Amount</th>
+                      <th className="px-4 py-3 font-semibold">Action</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {bookings.map((booking, index) => (
+                      <tr
+                        key={`b-${booking.id}`}
+                        className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
+                      >
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">
+                          {booking.booking_no ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {formatDate(booking.date_time)}
+                        </td>
+                        <td className="px-4 py-3 min-w-[260px] text-slate-700">
+                          {booking.service_names?.join(', ') || '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {booking.staff ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                          {booking.status ?? '-'}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">
+                          {formatAmount(booking.amount)}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <button
+                            type="button"
+                            onClick={() => setDrawer({ type: 'booking', bookingId: booking.id })}
+                            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {bookings.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
+                          No booking history.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </section>
           )}
 
           {(activeTab === 'overview' || activeTab === 'packages') && (
             <section>
-              <h4 className="mb-2 text-base font-semibold">Service Packages</h4>
-              <table className="min-w-full text-sm">
-                <thead>
-                  <tr className="bg-gray-50 text-left">
-                    <th className="px-3 py-2">Package Name</th>
-                    <th className="px-3 py-2">Purchase Date</th>
-                    <th className="px-3 py-2">Remaining Sessions</th>
-                    <th className="px-3 py-2">Status</th>
-                    <th className="px-3 py-2">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {packages.map((pkg) => (
-                    <tr key={`s-${pkg.id}`} className="border-t">
-                      <td className="px-3 py-2">{pkg.package_name ?? '-'}</td>
-                      <td className="px-3 py-2">{formatDate(pkg.purchase_date)}</td>
-                      <td className="px-3 py-2">{pkg.remaining_sessions ?? '-'}</td>
-                      <td className="px-3 py-2">{pkg.status ?? '-'}</td>
-                      <td className="px-3 py-2">
-                        <button type="button" onClick={() => setDrawer({ type: 'package', data: pkg })} className="text-blue-600 hover:underline">
-                          View
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {packages.length === 0 && (
-                    <tr>
-                      <td className="px-3 py-3 text-gray-500" colSpan={5}>
-                        No service package history.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+              <div className="rounded-xl border border-slate-300 bg-white">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
+                  <h4 className="text-base font-semibold text-slate-900">Service Packages</h4>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {packages.length} records
+                  </span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
+                      <tr>
+                        <th className="px-4 py-3 font-semibold">Package Name</th>
+                        <th className="px-4 py-3 font-semibold">Purchase Date</th>
+                        <th className="px-4 py-3 font-semibold">Remaining Sessions</th>
+                        <th className="px-4 py-3 font-semibold">Status</th>
+                        <th className="px-4 py-3 font-semibold">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {packages.map((pkg, index) => (
+                        <tr
+                          key={`s-${pkg.id}`}
+                          className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
+                        >
+                          <td className="px-4 py-3 font-medium text-slate-900">
+                            {pkg.package_name ?? '-'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                            {formatDate(pkg.purchase_date)}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-slate-900">
+                            {pkg.remaining_sessions ?? '-'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">
+                            {pkg.status ?? '-'}
+                          </td>
+                          <td className="px-4 py-3 whitespace-nowrap">
+                            <button
+                              type="button"
+                              onClick={() => setDrawer({ type: 'package', data: pkg })}
+                              className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                            >
+                              View
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                      {packages.length === 0 && (
+                        <tr>
+                          <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
+                            No service package history.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </section>
           )}
+          </div>
         </div>
       </div>
 

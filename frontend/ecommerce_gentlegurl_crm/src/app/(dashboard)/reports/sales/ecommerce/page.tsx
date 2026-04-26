@@ -28,7 +28,7 @@ export default async function EcommerceSalesPage() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Ecommerce Sales</h2>
-      <SalesChannelReportPage mode="ecommerce" canExport={canExport} />
+      <SalesChannelReportPage mode="ecommerce" canExport={canExport} lockedChannel="online" />
     </div>
   )
 }

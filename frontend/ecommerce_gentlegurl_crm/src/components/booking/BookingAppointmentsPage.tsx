@@ -541,7 +541,7 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
               />
               <textarea
                 className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Notes (optional)"
+                placeholder="Remarks (optional)"
                 rows={3}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}

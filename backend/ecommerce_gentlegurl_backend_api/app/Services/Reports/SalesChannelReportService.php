@@ -46,8 +46,9 @@ class SalesChannelReportService
         $page = max(1, (int) ($filters['page'] ?? 1));
         $paymentMethod = $this->nullableString($filters['payment_method'] ?? null);
         $status = $this->nullableString($filters['status'] ?? null);
+        $customerId = $this->nullableInt($filters['customer_id'] ?? null);
 
-        $baseQuery = $this->baseEcommerceRowsQuery($start, $end, $channel, $paymentMethod, $status);
+        $baseQuery = $this->baseEcommerceRowsQuery($start, $end, $channel, $paymentMethod, $status, $customerId);
 
         $paginator = (clone $baseQuery)
             ->orderByDesc('order_datetime')
@@ -108,8 +109,9 @@ class SalesChannelReportService
         $channel = $this->normalizeChannel((string) ($filters['channel'] ?? self::CHANNEL_ALL));
         $paymentMethod = $this->nullableString($filters['payment_method'] ?? null);
         $status = $this->nullableString($filters['status'] ?? null);
+        $customerId = $this->nullableInt($filters['customer_id'] ?? null);
 
-        return $this->baseEcommerceRowsQuery($start, $end, $channel, $paymentMethod, $status)
+        return $this->baseEcommerceRowsQuery($start, $end, $channel, $paymentMethod, $status, $customerId)
             ->orderByDesc('order_datetime')
             ->cursor()
             ->map(function ($row) {
@@ -136,8 +138,9 @@ class SalesChannelReportService
         $perPage = max(1, (int) ($filters['per_page'] ?? 15));
         $page = max(1, (int) ($filters['page'] ?? 1));
         $paymentMethod = $this->nullableString($filters['payment_method'] ?? null);
+        $customerId = $this->nullableInt($filters['customer_id'] ?? null);
 
-        $baseQuery = $this->baseBookingRowsQuery($start, $end, $channel, $paymentMethod, $type);
+        $baseQuery = $this->baseBookingRowsQuery($start, $end, $channel, $paymentMethod, $type, $customerId);
 
         $paginator = (clone $baseQuery)
             ->orderByDesc('order_datetime')
@@ -152,6 +155,7 @@ class SalesChannelReportService
                 'channel' => (string) $row->channel,
                 'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                 'type' => (string) $row->type,
+                'booking_id' => $row->booking_id ? (int) $row->booking_id : null,
                 'booking_no' => $row->booking_no,
                 'package_name' => $row->package_name,
                 'gross_amount' => (float) $row->gross_amount,
@@ -212,8 +216,9 @@ class SalesChannelReportService
         $channel = $this->normalizeChannel((string) ($filters['channel'] ?? self::CHANNEL_ALL));
         $type = $this->normalizeBookingType((string) ($filters['type'] ?? self::BOOKING_TYPE_ALL));
         $paymentMethod = $this->nullableString($filters['payment_method'] ?? null);
+        $customerId = $this->nullableInt($filters['customer_id'] ?? null);
 
-        return $this->baseBookingRowsQuery($start, $end, $channel, $paymentMethod, $type)
+        return $this->baseBookingRowsQuery($start, $end, $channel, $paymentMethod, $type, $customerId)
             ->orderByDesc('order_datetime')
             ->cursor()
             ->map(function ($row) {
@@ -225,6 +230,7 @@ class SalesChannelReportService
                     'channel' => (string) $row->channel,
                     'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                     'type' => (string) $row->type,
+                    'booking_id' => $row->booking_id ? (int) $row->booking_id : null,
                     'booking_no' => $row->booking_no,
                     'package_name' => $row->package_name,
                     'gross_amount' => (float) $row->gross_amount,
@@ -240,7 +246,8 @@ class SalesChannelReportService
         Carbon $end,
         string $channel,
         ?string $paymentMethod,
-        ?string $status
+        ?string $status,
+        ?int $customerId = null
     ) {
         $query = $this->applyOrderScope(
             DB::table('orders as o')
@@ -274,6 +281,9 @@ class SalesChannelReportService
         if ($status !== null) {
             $query->where('o.status', $status);
         }
+        if ($customerId !== null) {
+            $query->where('o.customer_id', $customerId);
+        }
 
         return DB::query()->fromSub($query, 'rows');
     }
@@ -283,7 +293,8 @@ class SalesChannelReportService
         Carbon $end,
         string $channel,
         ?string $paymentMethod,
-        string $type
+        string $type,
+        ?int $customerId = null
     ) {
         $query = $this->applyOrderScope(
             DB::table('orders as o')
@@ -302,6 +313,7 @@ class SalesChannelReportService
             ->selectRaw('o.payment_method')
             ->selectRaw('o.status')
             ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as type")
+            ->selectRaw('oi.booking_id as booking_id')
             ->selectRaw('COALESCE(b.booking_code, CONCAT(\'BOOKING-\', oi.booking_id)) as booking_no')
             ->selectRaw('COALESCE(oi.display_name_snapshot, oi.product_name_snapshot, sp.name) as package_name')
             ->selectRaw('COALESCE(oi.line_total, 0) as gross_amount')
@@ -329,8 +341,25 @@ class SalesChannelReportService
                 $query->where('oi.line_type', $lineType);
             }
         }
+        if ($customerId !== null) {
+            $query->where('o.customer_id', $customerId);
+        }
 
         return DB::query()->fromSub($query, 'rows');
+    }
+
+    private function nullableInt(mixed $value): ?int
+    {
+        if ($value === null) return null;
+        if (is_int($value)) return $value > 0 ? $value : null;
+        if (is_numeric($value)) {
+            $i = (int) $value;
+            return $i > 0 ? $i : null;
+        }
+        $s = is_string($value) ? trim($value) : '';
+        if ($s === '' || strtolower($s) === 'all') return null;
+        $i = (int) $s;
+        return $i > 0 ? $i : null;
     }
 
     private function normalizeChannel(string $channel): string

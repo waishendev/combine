@@ -328,6 +328,13 @@ export async function getMyOrders() {
   return unwrapped?.orders ?? [];
 }
 
+export async function getMyEcommerceOrders() {
+  const response = await request<{ data?: { orders?: PublicAccountOrder[] } | PublicAccountOrder[] }>("/public/shop/orders?scope=ecommerce_products");
+  const unwrapped = unwrapData<{ orders?: PublicAccountOrder[] } | PublicAccountOrder[]>(response);
+  if (Array.isArray(unwrapped)) return unwrapped;
+  return unwrapped?.orders ?? [];
+}
+
 
 export async function getBookingBankAccounts() {
   const response = await request<{ data?: PublicBookingBankAccount[] } | PublicBookingBankAccount[]>("/public/shop/bank-accounts?type=booking");
