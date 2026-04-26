@@ -35,6 +35,11 @@ export default function MyBookingsPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFeedback, setCancelFeedback] = useState<string | null>(null);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [rescheduleBookingModal, setRescheduleBookingModal] = useState<BookingRecord | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<string>("");
+  const [rescheduleTime, setRescheduleTime] = useState<string>("");
+  const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
+  const [rescheduleFeedback, setRescheduleFeedback] = useState<string | null>(null);
   const [photoBusyBookingId, setPhotoBusyBookingId] = useState<number | null>(null);
 
   useEffect(() => {
@@ -93,15 +98,79 @@ export default function MyBookingsPage() {
     };
   };
 
-  const handleReschedule = async (booking: BookingRecord) => {
-    const nextTime = window.prompt("Enter new time (ISO format, e.g. 2026-03-19T15:00:00+08:00)");
-    if (!nextTime) return;
+  const toIsoWithOffset = (date: Date) => {
+    const pad = (value: number) => String(value).padStart(2, "0");
+    const offsetMinutes = -date.getTimezoneOffset();
+    const sign = offsetMinutes >= 0 ? "+" : "-";
+    const abs = Math.abs(offsetMinutes);
+    const offsetHH = pad(Math.floor(abs / 60));
+    const offsetMM = pad(abs % 60);
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${sign}${offsetHH}:${offsetMM}`;
+  };
+
+  const getRescheduleTimeOptions = () => {
+    const options: string[] = [];
+    for (let minutes = 9 * 60; minutes <= 20 * 60; minutes += 30) {
+      const hh = String(Math.floor(minutes / 60)).padStart(2, "0");
+      const mm = String(minutes % 60).padStart(2, "0");
+      options.push(`${hh}:${mm}`);
+    }
+    return options;
+  };
+
+  const openRescheduleModal = (booking: BookingRecord) => {
+    const start = new Date(booking.starts_at);
+    const yyyy = String(start.getFullYear());
+    const mm = String(start.getMonth() + 1).padStart(2, "0");
+    const dd = String(start.getDate()).padStart(2, "0");
+    const hh = String(start.getHours()).padStart(2, "0");
+    const min = String(start.getMinutes()).padStart(2, "0");
+
+    setRescheduleBookingModal(booking);
+    setRescheduleDate(`${yyyy}-${mm}-${dd}`);
+    setRescheduleTime(`${hh}:${min}`);
+    setRescheduleFeedback(null);
+  };
+
+  const handleConfirmReschedule = async () => {
+    if (!rescheduleBookingModal) return;
+    if (!rescheduleDate || !rescheduleTime) {
+      setRescheduleFeedback("Please select a date and time.");
+      return;
+    }
+
+    const [yearRaw, monthRaw, dayRaw] = rescheduleDate.split("-");
+    const [hourRaw, minuteRaw] = rescheduleTime.split(":");
+    const year = Number(yearRaw);
+    const month = Number(monthRaw);
+    const day = Number(dayRaw);
+    const hour = Number(hourRaw);
+    const minute = Number(minuteRaw);
+
+    if (
+      !Number.isFinite(year) ||
+      !Number.isFinite(month) ||
+      !Number.isFinite(day) ||
+      !Number.isFinite(hour) ||
+      !Number.isFinite(minute)
+    ) {
+      setRescheduleFeedback("Invalid date/time.");
+      return;
+    }
+
+    const nextLocal = new Date(year, month - 1, day, hour, minute, 0, 0);
+    const nextIso = toIsoWithOffset(nextLocal);
 
     try {
-      await rescheduleBooking(booking.id, nextTime);
+      setRescheduleSubmitting(true);
+      setRescheduleFeedback(null);
+      await rescheduleBooking(rescheduleBookingModal.id, nextIso);
       await reload();
+      setRescheduleBookingModal(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to reschedule booking.");
+      setRescheduleFeedback(err instanceof Error ? err.message : "Unable to reschedule booking.");
+    } finally {
+      setRescheduleSubmitting(false);
     }
   };
 
@@ -371,7 +440,7 @@ export default function MyBookingsPage() {
 
                 {state.canReschedule ? (
                   <button
-                    onClick={() => handleReschedule(booking)}
+                    onClick={() => openRescheduleModal(booking)}
                     className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white"
                   >
                     Reschedule
@@ -433,6 +502,65 @@ export default function MyBookingsPage() {
                 {cancelSubmitting ? "Submitting..." : "Submit Request"}
               </button>
               <button onClick={() => setModalBooking(null)} className="ml-auto rounded-full border px-4 py-2 text-sm">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {rescheduleBookingModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6">
+            <h2 className="text-xl font-semibold">Reschedule Booking</h2>
+            <p className="mt-2 text-sm text-slate-600">
+              Booking #{rescheduleBookingModal.id} · {rescheduleBookingModal.service_name} · Current:{" "}
+              {new Date(rescheduleBookingModal.starts_at).toLocaleString("en-MY")}
+            </p>
+            <p className="mt-2 text-sm text-slate-600">Pick a new date and time. We’ll confirm availability after you submit.</p>
+
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Date</span>
+                <input
+                  type="date"
+                  value={rescheduleDate}
+                  onChange={(e) => setRescheduleDate(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+
+              <label className="grid gap-1 text-sm">
+                <span className="font-medium text-slate-700">Time</span>
+                <select
+                  value={rescheduleTime}
+                  onChange={(e) => setRescheduleTime(e.target.value)}
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm"
+                >
+                  {getRescheduleTimeOptions().map((time) => (
+                    <option key={time} value={time}>
+                      {time}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            {rescheduleFeedback ? <p className="mt-3 text-sm text-[var(--status-error)]">{rescheduleFeedback}</p> : null}
+
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => void handleConfirmReschedule()}
+                disabled={rescheduleSubmitting}
+                className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white disabled:opacity-60"
+              >
+                {rescheduleSubmitting ? "Rescheduling..." : "Confirm Reschedule"}
+              </button>
+              <button
+                onClick={() => setRescheduleBookingModal(null)}
+                disabled={rescheduleSubmitting}
+                className="ml-auto rounded-full border px-4 py-2 text-sm disabled:opacity-60"
+              >
                 Close
               </button>
             </div>
