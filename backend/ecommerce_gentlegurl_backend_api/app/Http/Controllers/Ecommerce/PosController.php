@@ -1437,6 +1437,10 @@ class PosController extends Controller
             'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'selected_option_ids' => ['nullable', 'array'],
             'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'main_service_items' => ['nullable', 'array', 'min:1'],
+            'main_service_items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'main_service_items.*.selected_option_ids' => ['nullable', 'array'],
+            'main_service_items.*.selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
             'qty' => ['nullable', 'integer', 'min:1'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'staff_splits' => ['nullable', 'array'],
@@ -1444,7 +1448,23 @@ class PosController extends Controller
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $service = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
+        $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
+            'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
+            'selected_option_ids' => collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+        ])->filter(fn (array $item) => $item['booking_service_id'] > 0)->values();
+        if ($mainServicePayload->isEmpty()) {
+            $mainServicePayload = collect([[
+                'booking_service_id' => (int) $validated['booking_service_id'],
+                'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+            ]]);
+        }
+
+        $serviceIds = $mainServicePayload->pluck('booking_service_id')->unique()->values();
+        $servicesById = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->whereIn('id', $serviceIds->all())->get()->keyBy('id');
+        $service = $servicesById->get((int) $mainServicePayload[0]['booking_service_id']);
+        if (! $service) {
+            return $this->respondError(__('Main service is unavailable.'), 422);
+        }
 
         $customer = null;
         $guestName = null;
@@ -1476,62 +1496,100 @@ class PosController extends Controller
         $qty = max(1, (int) ($validated['qty'] ?? 1));
 
         $startAt = Carbon::parse((string) $validated['start_at']);
-        $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
-            ->values();
-        $serviceQuestions = $service->questions()
-            ->where('is_active', true)
-            ->with(['options' => fn ($query) => $query->where('is_active', true)])
-            ->get();
-        $selectedOptions = BookingServiceQuestionOption::query()
-            ->whereIn('id', $selectedOptionIds->all())
-            ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
-            ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
-            ->get();
 
-        foreach ($serviceQuestions as $question) {
-            $selectedForQuestion = $selectedOptions->where('booking_service_question_id', $question->id)->values();
-            if ((bool) $question->is_required && $selectedForQuestion->isEmpty()) {
-                return $this->respondError(__('Please complete required booking questions.'), 422);
+        $mainItems = $mainServicePayload->map(function (array $item) use ($servicesById) {
+            $service = $servicesById->get((int) $item['booking_service_id']);
+            if (! $service) {
+                throw ValidationException::withMessages([
+                    'main_service_items' => __('Main service is unavailable.'),
+                ]);
             }
-            if ((string) $question->question_type === 'single_choice' && $selectedForQuestion->count() > 1) {
-                return $this->respondError(__('Single choice question allows only one option.'), 422);
+
+            $selectedOptionIds = collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
+            $serviceQuestions = $service->questions()
+                ->where('is_active', true)
+                ->with(['options' => fn ($query) => $query->where('is_active', true)])
+                ->get();
+
+            $selectedOptions = BookingServiceQuestionOption::query()
+                ->whereIn('id', $selectedOptionIds->all())
+                ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
+                ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
+                ->get();
+
+            foreach ($serviceQuestions as $question) {
+                $selectedForQuestion = $selectedOptions->where('booking_service_question_id', $question->id)->values();
+                if ((bool) $question->is_required && $selectedForQuestion->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'main_service_items' => __('Please complete required booking questions.'),
+                    ]);
+                }
+                if ((string) $question->question_type === 'single_choice' && $selectedForQuestion->count() > 1) {
+                    throw ValidationException::withMessages([
+                        'main_service_items' => __('Single choice question allows only one option.'),
+                    ]);
+                }
             }
-        }
 
-        $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
-            return $option->linkedBookingService
-                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
-                : max(0, (int) ($option->extra_duration_min ?? 0));
-        });
-        $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
-            return $option->linkedBookingService
-                ? max(0, (float) ($option->linkedBookingService->service_price ?? 0))
-                : max(0, (float) ($option->extra_price ?? 0));
-        }), 2);
-        $addonItems = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
-            'id' => (int) $option->id,
-            'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
-            'extra_duration_min' => $option->linkedBookingService
-                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
-                : max(0, (int) ($option->extra_duration_min ?? 0)),
-            'extra_price' => $option->linkedBookingService
-                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                : round(max(0, (float) ($option->extra_price ?? 0)), 2),
-            'linked_booking_service_id' => $option->linkedBookingService
-                ? (int) $option->linkedBookingService->id
-                : null,
-            'linked_service_type' => $option->linkedBookingService
-                ? (string) $option->linkedBookingService->service_type
-                : null,
-            'linked_deposit_amount' => $option->linkedBookingService
-                ? round(max(0, (float) ($option->linkedBookingService->deposit_amount ?? 0)), 2)
-                : null,
-        ])->values()->all();
-        $endAt = $startAt->copy()->addMinutes((int) ($service->duration_min ?? 0) + $addonDurationMin);
+            $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
+                return $option->linkedBookingService
+                    ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                    : max(0, (int) ($option->extra_duration_min ?? 0));
+            });
+            $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
+                return $option->linkedBookingService
+                    ? max(0, (float) ($option->linkedBookingService->service_price ?? 0))
+                    : max(0, (float) ($option->extra_price ?? 0));
+            }), 2);
+            $addonItems = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
+                'id' => (int) $option->id,
+                'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                'extra_duration_min' => $option->linkedBookingService
+                    ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                    : max(0, (int) ($option->extra_duration_min ?? 0)),
+                'extra_price' => $option->linkedBookingService
+                    ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                    : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                'linked_booking_service_id' => $option->linkedBookingService
+                    ? (int) $option->linkedBookingService->id
+                    : null,
+                'linked_service_type' => $option->linkedBookingService
+                    ? (string) $option->linkedBookingService->service_type
+                    : null,
+                'linked_deposit_amount' => $option->linkedBookingService
+                    ? round(max(0, (float) ($option->linkedBookingService->deposit_amount ?? 0)), 2)
+                    : null,
+            ])->values()->all();
 
+            return [
+                'service' => $service,
+                'selected_option_ids' => $selectedOptionIds->all(),
+                'addon_duration_min' => $addonDurationMin,
+                'addon_price' => $addonPrice,
+                'addon_items' => $addonItems,
+                'duration_min' => max(0, (int) ($service->duration_min ?? 0)) + $addonDurationMin,
+            ];
+        })->values();
+
+        $addonDurationMin = (int) $mainItems->sum('addon_duration_min');
+        $addonPrice = round((float) $mainItems->sum('addon_price'), 2);
+        $addonItems = $mainItems->flatMap(function (array $item, int $index) {
+            $service = $item['service'];
+            $main = [
+                'item_kind' => 'main_service',
+                'id' => 'main_service_' . ($index + 1),
+                'name' => (string) ($service->name ?? 'Service'),
+                'extra_duration_min' => max(0, (int) ($service->duration_min ?? 0)),
+                'extra_price' => round(max(0, (float) ($service->price ?? $service->service_price ?? 0)), 2),
+                'linked_booking_service_id' => (int) $service->id,
+                'is_original' => $index === 0,
+                'addon_items' => $item['addon_items'],
+            ];
+            return [$main, ...$item['addon_items']];
+        })->values()->all();
+        $selectedOptionIds = $mainItems->flatMap(fn (array $item) => $item['selected_option_ids'])->unique()->values();
+        $totalDurationMin = (int) $mainItems->sum('duration_min');
+        $endAt = $startAt->copy()->addMinutes($totalDurationMin);
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
         ])->values();
@@ -1732,16 +1790,33 @@ class PosController extends Controller
             'assigned_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'selected_option_ids' => ['nullable', 'array'],
             'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'main_service_items' => ['nullable', 'array', 'min:1'],
+            'main_service_items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
+            'main_service_items.*.selected_option_ids' => ['nullable', 'array'],
+            'main_service_items.*.selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'staff_splits' => ['nullable', 'array'],
             'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $service = BookingService::query()
-            ->with('allowedStaffs:id')
-            ->where('is_active', true)
-            ->findOrFail((int) $validated['booking_service_id']);
+        $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
+            'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
+            'selected_option_ids' => collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+        ])->filter(fn (array $item) => $item['booking_service_id'] > 0)->values();
+        if ($mainServicePayload->isEmpty()) {
+            $mainServicePayload = collect([[
+                'booking_service_id' => (int) $validated['booking_service_id'],
+                'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
+            ]]);
+        }
+
+        $serviceIds = $mainServicePayload->pluck('booking_service_id')->unique()->values();
+        $servicesById = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->whereIn('id', $serviceIds->all())->get()->keyBy('id');
+        $service = $servicesById->get((int) $mainServicePayload[0]['booking_service_id']);
+        if (! $service) {
+            return $this->respondError(__('Main service is unavailable.'), 422);
+        }
 
         $customer = null;
         $guestName = null;
@@ -1771,67 +1846,105 @@ class PosController extends Controller
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
         }
 
-        $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])
-            ->map(fn ($id) => (int) $id)
-            ->filter(fn ($id) => $id > 0)
-            ->unique()
-            ->values();
-
-        $serviceQuestions = $service->questions()
-            ->where('is_active', true)
-            ->with(['options' => fn ($query) => $query->where('is_active', true)])
-            ->get();
-
-        $selectedOptions = BookingServiceQuestionOption::query()
-            ->whereIn('id', $selectedOptionIds->all())
-            ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
-            ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
-            ->get();
-
-        foreach ($serviceQuestions as $question) {
-            $selectedForQuestion = $selectedOptions->where('booking_service_question_id', $question->id)->values();
-            if ((bool) $question->is_required && $selectedForQuestion->isEmpty()) {
-                return $this->respondError(__('Please complete required booking questions.'), 422);
+        $mainItems = $mainServicePayload->map(function (array $item) use ($servicesById) {
+            $service = $servicesById->get((int) $item['booking_service_id']);
+            if (! $service) {
+                throw ValidationException::withMessages([
+                    'main_service_items' => __('Main service is unavailable.'),
+                ]);
             }
-            if ((string) $question->question_type === 'single_choice' && $selectedForQuestion->count() > 1) {
-                return $this->respondError(__('Single choice question allows only one option.'), 422);
+
+            $selectedOptionIds = collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
+
+            $serviceQuestions = $service->questions()
+                ->where('is_active', true)
+                ->with(['options' => fn ($query) => $query->where('is_active', true)])
+                ->get();
+
+            $selectedOptions = BookingServiceQuestionOption::query()
+                ->whereIn('id', $selectedOptionIds->all())
+                ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
+                ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
+                ->get();
+
+            foreach ($serviceQuestions as $question) {
+                $selectedForQuestion = $selectedOptions->where('booking_service_question_id', $question->id)->values();
+                if ((bool) $question->is_required && $selectedForQuestion->isEmpty()) {
+                    throw ValidationException::withMessages([
+                        'main_service_items' => __('Please complete required booking questions.'),
+                    ]);
+                }
+                if ((string) $question->question_type === 'single_choice' && $selectedForQuestion->count() > 1) {
+                    throw ValidationException::withMessages([
+                        'main_service_items' => __('Single choice question allows only one option.'),
+                    ]);
+                }
             }
-        }
 
-        $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
-            return $option->linkedBookingService
-                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
-                : max(0, (int) ($option->extra_duration_min ?? 0));
-        });
+            $addonDurationMin = (int) $selectedOptions->sum(function (BookingServiceQuestionOption $option): int {
+                return $option->linkedBookingService
+                    ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                    : max(0, (int) ($option->extra_duration_min ?? 0));
+            });
 
-        $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
-            return $option->linkedBookingService
-                ? max(0, (float) ($option->linkedBookingService->service_price ?? 0))
-                : max(0, (float) ($option->extra_price ?? 0));
-        }), 2);
+            $addonPrice = round((float) $selectedOptions->sum(function (BookingServiceQuestionOption $option): float {
+                return $option->linkedBookingService
+                    ? max(0, (float) ($option->linkedBookingService->service_price ?? 0))
+                    : max(0, (float) ($option->extra_price ?? 0));
+            }), 2);
 
-        $addonItems = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
-            'id' => (int) $option->id,
-            'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
-            'extra_duration_min' => $option->linkedBookingService
-                ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
-                : max(0, (int) ($option->extra_duration_min ?? 0)),
-            'extra_price' => $option->linkedBookingService
-                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                : round(max(0, (float) ($option->extra_price ?? 0)), 2),
-            'linked_booking_service_id' => $option->linkedBookingService
-                ? (int) $option->linkedBookingService->id
-                : null,
-            'linked_service_type' => $option->linkedBookingService
-                ? (string) $option->linkedBookingService->service_type
-                : null,
-            'linked_deposit_amount' => $option->linkedBookingService
-                ? round(max(0, (float) ($option->linkedBookingService->deposit_amount ?? 0)), 2)
-                : null,
-        ])->values()->all();
+            $addonRows = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
+                'id' => (int) $option->id,
+                'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                'extra_duration_min' => $option->linkedBookingService
+                    ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
+                    : max(0, (int) ($option->extra_duration_min ?? 0)),
+                'extra_price' => $option->linkedBookingService
+                    ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                    : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                'linked_booking_service_id' => $option->linkedBookingService
+                    ? (int) $option->linkedBookingService->id
+                    : null,
+                'linked_service_type' => $option->linkedBookingService
+                    ? (string) $option->linkedBookingService->service_type
+                    : null,
+                'linked_deposit_amount' => $option->linkedBookingService
+                    ? round(max(0, (float) ($option->linkedBookingService->deposit_amount ?? 0)), 2)
+                    : null,
+            ])->values()->all();
+
+            return [
+                'service' => $service,
+                'selected_option_ids' => $selectedOptionIds->all(),
+                'addon_duration_min' => $addonDurationMin,
+                'addon_price' => $addonPrice,
+                'addon_items' => $addonRows,
+                'duration_min' => max(0, (int) ($service->duration_min ?? 0)) + $addonDurationMin,
+            ];
+        })->values();
+
+        $addonDurationMin = (int) $mainItems->sum('addon_duration_min');
+        $addonPrice = round((float) $mainItems->sum('addon_price'), 2);
+        $addonItems = $mainItems->flatMap(function (array $item, int $index) {
+            $service = $item['service'];
+            $main = [
+                'item_kind' => 'main_service',
+                'id' => 'main_service_' . ($index + 1),
+                'name' => (string) ($service->name ?? 'Service'),
+                'extra_duration_min' => max(0, (int) ($service->duration_min ?? 0)),
+                'extra_price' => round(max(0, (float) ($service->price ?? $service->service_price ?? 0)), 2),
+                'linked_booking_service_id' => (int) $service->id,
+                'is_original' => $index === 0,
+                'addon_items' => $item['addon_items'],
+            ];
+            return [$main, ...$item['addon_items']];
+        })->values()->all();
+        $selectedOptionIds = $mainItems->flatMap(fn (array $item) => $item['selected_option_ids'])->unique()->values();
 
         $startAt = Carbon::parse((string) $validated['start_at']);
-        $endAt = $startAt->copy()->addMinutes((int) ($service->duration_min ?? 0) + $addonDurationMin);
+        $totalDurationMin = (int) $mainItems->sum('duration_min');
+        $endAt = $startAt->copy()->addMinutes($totalDurationMin);
+
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
         if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
