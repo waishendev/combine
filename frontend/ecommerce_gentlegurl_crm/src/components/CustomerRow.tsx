@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 import StatusBadge from './StatusBadge'
 import { useI18n } from '@/lib/i18n'
 
@@ -60,6 +62,15 @@ export default function CustomerRow({
       {(showActions || canView) && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex flex-wrap items-center gap-2">
+            {canView && (
+              <Link
+                href={`/customers/${customer.id}/history`}
+                className="inline-flex h-8 items-center justify-center rounded bg-slate-700 px-2 text-xs font-semibold text-white hover:bg-slate-800"
+                title="View History"
+              >
+                History
+              </Link>
+            )}
             {canView && (
               <button
                 type="button"

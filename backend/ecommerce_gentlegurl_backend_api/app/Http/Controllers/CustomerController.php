@@ -13,6 +13,8 @@ use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\PointsRedemptionItem;
 use App\Models\Ecommerce\PointsTransaction;
 use App\Models\Ecommerce\Voucher;
+use App\Models\Booking\Booking;
+use App\Models\Booking\CustomerServicePackage;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -574,6 +576,138 @@ class CustomerController extends Controller
         fclose($handle);
 
         return $this->respond($summary, 'Customer CSV import finished.');
+    }
+
+    public function history(Request $request, Customer $customer)
+    {
+        $limit = max(1, min(50, $request->integer('limit', 10)));
+
+        $ecommerceOrdersQuery = Order::query()
+            ->where('customer_id', $customer->id)
+            ->where(function ($query) {
+                $query->whereNull('pickup_or_shipping')
+                    ->orWhereNotIn('pickup_or_shipping', ['in_store', 'pos']);
+            });
+
+        $posOrdersQuery = Order::query()
+            ->where('customer_id', $customer->id)
+            ->whereIn('pickup_or_shipping', ['in_store', 'pos']);
+
+        $bookingsQuery = Booking::query()
+            ->where('customer_id', $customer->id);
+
+        $servicePackagesQuery = CustomerServicePackage::query()
+            ->where('customer_id', $customer->id);
+
+        $ecommerceOrders = (clone $ecommerceOrdersQuery)
+            ->latest('created_at')
+            ->limit($limit)
+            ->get(['id', 'order_number', 'status', 'created_at', 'grand_total'])
+            ->map(fn (Order $order) => [
+                'id' => (int) $order->id,
+                'order_number' => $order->order_number,
+                'date' => optional($order->created_at)->toDateTimeString(),
+                'status' => $order->status,
+                'total_amount' => (float) ($order->grand_total ?? 0),
+            ])
+            ->values();
+
+        $posOrders = (clone $posOrdersQuery)
+            ->latest('created_at')
+            ->limit($limit)
+            ->get(['id', 'order_number', 'status', 'payment_method', 'created_at', 'grand_total'])
+            ->map(fn (Order $order) => [
+                'id' => (int) $order->id,
+                'receipt_number' => $order->order_number,
+                'date' => optional($order->created_at)->toDateTimeString(),
+                'payment_method' => $order->payment_method,
+                'status' => $order->status,
+                'total_amount' => (float) ($order->grand_total ?? 0),
+            ])
+            ->values();
+
+        $bookingAppointments = (clone $bookingsQuery)
+            ->with(['service:id,name', 'staff:id,name'])
+            ->latest('start_at')
+            ->limit($limit)
+            ->get(['id', 'booking_code', 'status', 'start_at', 'service_id', 'staff_id', 'settled_service_amount'])
+            ->map(fn (Booking $booking) => [
+                'id' => (int) $booking->id,
+                'booking_no' => $booking->booking_code,
+                'date_time' => optional($booking->start_at)->toDateTimeString(),
+                'service_names' => array_values(array_filter([$booking->service?->name])),
+                'staff' => $booking->staff?->name,
+                'status' => $booking->status,
+                'amount' => $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null,
+            ])
+            ->values();
+
+        $servicePackages = (clone $servicePackagesQuery)
+            ->with([
+                'servicePackage:id,name,description,valid_days',
+                'balances:id,customer_service_package_id,booking_service_id,total_qty,used_qty,remaining_qty',
+                'balances.bookingService:id,name',
+                'usages:id,customer_service_package_id,status',
+            ])
+            ->latest('created_at')
+            ->limit($limit)
+            ->get(['id', 'service_package_id', 'status', 'started_at', 'expires_at', 'purchased_from', 'purchased_ref_id', 'created_at'])
+            ->map(fn (CustomerServicePackage $package) => [
+                'id' => (int) $package->id,
+                'package_name' => $package->servicePackage?->name,
+                'purchase_date' => optional($package->created_at)->toDateTimeString(),
+                'remaining_sessions' => (int) $package->balances->sum('remaining_qty'),
+                'status' => $package->status,
+                'started_at' => optional($package->started_at)->toDateTimeString(),
+                'expires_at' => optional($package->expires_at)->toDateTimeString(),
+                'purchased_from' => $package->purchased_from,
+                'purchased_ref_id' => $package->purchased_ref_id,
+                'usage_count' => (int) $package->usages->count(),
+                'balances' => $package->balances->map(fn ($balance) => [
+                    'booking_service_id' => (int) $balance->booking_service_id,
+                    'service_name' => $balance->bookingService?->name,
+                    'total_qty' => (int) $balance->total_qty,
+                    'used_qty' => (int) $balance->used_qty,
+                    'remaining_qty' => (int) $balance->remaining_qty,
+                ])->values(),
+                'package_description' => $package->servicePackage?->description,
+            ])
+            ->values();
+
+        $totalSpent = (float) ((clone $ecommerceOrdersQuery)->sum('grand_total') + (clone $posOrdersQuery)->sum('grand_total'));
+        $totalOrdersBookings = (int) ((clone $ecommerceOrdersQuery)->count() + (clone $posOrdersQuery)->count() + (clone $bookingsQuery)->count());
+
+        $lastActivityCandidates = array_filter([
+            (clone $ecommerceOrdersQuery)->max('created_at'),
+            (clone $posOrdersQuery)->max('created_at'),
+            (clone $bookingsQuery)->max('start_at'),
+            (clone $servicePackagesQuery)->max('created_at'),
+        ]);
+
+        $lastActivityAt = empty($lastActivityCandidates)
+            ? null
+            : Carbon::parse(max($lastActivityCandidates))->toDateTimeString();
+
+        return $this->respond([
+            'customer_summary' => [
+                'id' => (int) $customer->id,
+                'name' => $customer->name,
+                'phone' => $customer->phone,
+                'email' => $customer->email,
+                'customer_type' => $customer->customerType?->name,
+                'total_spent' => $totalSpent,
+                'total_orders_bookings' => $totalOrdersBookings,
+                'last_activity_date' => $lastActivityAt,
+            ],
+            'ecommerce_orders' => $ecommerceOrders,
+            'pos_orders' => $posOrders,
+            'booking_appointments' => $bookingAppointments,
+            'service_packages' => $servicePackages,
+            'limits' => [
+                'per_section' => $limit,
+                'supports_pagination' => true,
+            ],
+        ]);
     }
 
     public function verifyEmail(Customer $customer)
