@@ -643,16 +643,34 @@ class CustomerController extends Controller
             ->values();
 
         $servicePackages = (clone $servicePackagesQuery)
-            ->with(['servicePackage:id,name', 'balances:id,customer_service_package_id,remaining_qty'])
+            ->with([
+                'servicePackage:id,name,description,valid_days',
+                'balances:id,customer_service_package_id,booking_service_id,total_qty,used_qty,remaining_qty',
+                'balances.bookingService:id,name',
+                'usages:id,customer_service_package_id,status',
+            ])
             ->latest('created_at')
             ->limit($limit)
-            ->get(['id', 'service_package_id', 'status', 'created_at'])
+            ->get(['id', 'service_package_id', 'status', 'started_at', 'expires_at', 'purchased_from', 'purchased_ref_id', 'created_at'])
             ->map(fn (CustomerServicePackage $package) => [
                 'id' => (int) $package->id,
                 'package_name' => $package->servicePackage?->name,
                 'purchase_date' => optional($package->created_at)->toDateTimeString(),
                 'remaining_sessions' => (int) $package->balances->sum('remaining_qty'),
                 'status' => $package->status,
+                'started_at' => optional($package->started_at)->toDateTimeString(),
+                'expires_at' => optional($package->expires_at)->toDateTimeString(),
+                'purchased_from' => $package->purchased_from,
+                'purchased_ref_id' => $package->purchased_ref_id,
+                'usage_count' => (int) $package->usages->count(),
+                'balances' => $package->balances->map(fn ($balance) => [
+                    'booking_service_id' => (int) $balance->booking_service_id,
+                    'service_name' => $balance->bookingService?->name,
+                    'total_qty' => (int) $balance->total_qty,
+                    'used_qty' => (int) $balance->used_qty,
+                    'remaining_qty' => (int) $balance->remaining_qty,
+                ])->values(),
+                'package_description' => $package->servicePackage?->description,
             ])
             ->values();
 
