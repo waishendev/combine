@@ -879,7 +879,7 @@ export default function BookingServiceEditModal({
               </div>
               <div>
                 <label htmlFor="edit-allowPhotoUpload" className="block text-sm font-medium text-gray-700 mb-1">
-                  Allow Photo Upload
+                  Allow Photo Upload (Max 3 photos)
                 </label>
                 <select
                   id="edit-allowPhotoUpload"

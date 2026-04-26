@@ -316,20 +316,24 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
                           </button>
                         </div>
                       </div>
-                      <div className="grid gap-2 md:grid-cols-2">
-                        <input
-                          value={option.label}
-                          disabled={disabled}
-                          onChange={(e) => setOption(qIndex, oIndex, { label: e.target.value })}
-                          placeholder="Option label (optional — defaults to selected service name)"
-                          className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                        />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="grid gap-1">
+                          <span className="block text-sm font-medium text-gray-700">Label</span>
+                          <input
+                            value={option.label}
+                            disabled={disabled}
+                            onChange={(e) => setOption(qIndex, oIndex, { label: e.target.value })}
+                            placeholder="Option label (optional — defaults to selected service name)"
+                            className="h-10 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                          />
+                        </label>
                         <BookingServiceLinkedBookingServicePicker
                           options={bookingServiceOptions}
                           value={option.linked_booking_service_id}
                           onChange={(next) => setOption(qIndex, oIndex, { linked_booking_service_id: next })}
                           disabled={disabled}
                         />
+                       
                         {(() => {
                           const selectedService = bookingServiceOptions.find(
                             (service) => String(service.id) === option.linked_booking_service_id,

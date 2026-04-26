@@ -661,7 +661,7 @@ export default function BookingServiceCreateModal({
             </div>
             <div>
               <label htmlFor="create-allowPhotoUpload" className="block text-sm font-medium text-gray-700 mb-1">
-                Allow Photo Upload
+                Allow Photo Upload (Max 3 photos)
               </label>
               <select
                 id="create-allowPhotoUpload"
