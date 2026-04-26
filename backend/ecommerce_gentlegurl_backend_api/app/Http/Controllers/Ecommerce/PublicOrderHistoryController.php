@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
+use App\Services\Ecommerce\OrderPaymentService;
 use App\Support\WorkspaceType;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -29,6 +30,7 @@ class PublicOrderHistoryController extends Controller
         protected BillplzService $billplzService,
         protected InvoiceService $invoiceService,
         protected ProductReviewService $reviewService,
+        protected OrderPaymentService $orderPaymentService,
     )
     {
     }
@@ -432,6 +434,7 @@ class PublicOrderHistoryController extends Controller
                 $order->payment_url = null;
                 $order->save();
             });
+            $this->orderPaymentService->handlePaid($order->fresh(['items', 'customer']));
 
             return $this->respond([
                 'redirect_url' => '/payment-result?' . http_build_query([

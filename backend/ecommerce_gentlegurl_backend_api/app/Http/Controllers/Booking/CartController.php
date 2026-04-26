@@ -21,6 +21,7 @@ use App\Services\BillplzService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\Ecommerce\OrderPaymentService;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -37,6 +38,7 @@ class CartController extends Controller
         private readonly BookingCartCleanupService $cartCleanupService,
         private readonly CustomerServicePackageService $customerServicePackageService,
         private readonly BillplzService $billplzService,
+        private readonly OrderPaymentService $orderPaymentService,
     ) {}
 
     public function add(Request $request)
@@ -633,6 +635,7 @@ class CartController extends Controller
                 $order->payment_reference = null;
                 $order->payment_url = null;
                 $order->save();
+                $this->orderPaymentService->handlePaid($order->fresh(['items', 'customer']));
 
                 if (! empty($bookingIds)) {
                     Booking::query()

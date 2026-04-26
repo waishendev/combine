@@ -153,6 +153,17 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 </span>
               </div>
             </div>
+            {order.receipt_public_url ? (
+              <a
+                href={order.receipt_public_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+              >
+                <i className="fa-solid fa-receipt text-xs" />
+                View Receipt
+              </a>
+            ) : null}
           </div>
 
           {isZeroAmountOrder ? (

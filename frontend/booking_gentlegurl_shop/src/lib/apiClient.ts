@@ -429,6 +429,7 @@ export type BookingOrderLookupResponse = {
   payment_provider?: string | null;
   payment_reference?: string | null;
   payment_url?: string | null;
+  receipt_public_url?: string | null;
   payment_status: string;
   status: string;
   bank_account?: {

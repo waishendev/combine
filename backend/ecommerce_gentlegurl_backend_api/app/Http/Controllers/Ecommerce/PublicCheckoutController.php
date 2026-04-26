@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\Product;
@@ -25,10 +26,12 @@ use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
 use App\Support\Pricing\ProductPricing;
 use App\Support\WorkspaceType;
+use App\Support\FrontendUrlResolver;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
@@ -436,12 +439,12 @@ class PublicCheckoutController extends Controller
     public function lookup(Request $request)
     {
         $validated = $request->validate([
-            'order_no' => ['required', 'string'],
-            'order_id' => ['nullable', 'integer'],
+            'order_no' => ['nullable', 'string', 'required_without:order_id'],
+            'order_id' => ['nullable', 'integer', 'required_without:order_no'],
         ]);
 
         $orderQuery = Order::with(['bankAccount', 'uploads', 'pickupStore'])
-            ->where('order_number', $validated['order_no']);
+            ->when(! empty($validated['order_no']), fn($query) => $query->where('order_number', $validated['order_no']));
 
         if (!empty($validated['order_id'])) {
             $orderQuery->where('id', $validated['order_id']);
@@ -488,6 +491,7 @@ class PublicCheckoutController extends Controller
             'payment_url' => $order->payment_url,
             'payment_status' => $order->payment_status,
             'status' => $order->status,
+            'receipt_public_url' => $this->resolveReceiptUrl($order),
             'bank_account' => $bankAccount,
             'pickup_store' => $order->pickupStore ? [
                 'id' => $order->pickupStore->id,
@@ -502,6 +506,24 @@ class PublicCheckoutController extends Controller
             ] : null,
             'uploads' => $uploads,
         ]);
+    }
+
+    protected function resolveReceiptUrl(Order $order): ?string
+    {
+        $token = OrderReceiptToken::query()
+            ->where('order_id', $order->id)
+            ->latest('id')
+            ->first();
+
+        if (! $token) {
+            $token = OrderReceiptToken::create([
+                'order_id' => $order->id,
+                'token' => Str::random(40),
+                'expires_at' => now()->addDays(30),
+            ]);
+        }
+
+        return FrontendUrlResolver::resolveBaseUrl() . '/api/proxy/public/receipt/' . $token->token;
     }
 
     public function uploadSlip(Request $request, Order $order)
