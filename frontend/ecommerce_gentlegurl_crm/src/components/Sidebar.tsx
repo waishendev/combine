@@ -366,6 +366,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             href: '/reports/pos-summary',
             requiredPermission: 'reports.pos-summary.view',
           },
+          {
+            key: 'wishlist-report',
+            label: 'Wishlist Report',
+            href: '/reports/wishlist',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
         ],
       },
       // {
