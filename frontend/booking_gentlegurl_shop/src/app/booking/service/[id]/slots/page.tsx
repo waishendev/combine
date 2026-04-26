@@ -9,8 +9,39 @@ import { BookingSlot, Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
 
+function getTzParts(value: Date | string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(new Date(value));
+
+  const read = (type: "year" | "month" | "day" | "hour" | "minute") => Number(parts.find((part) => part.type === type)?.value ?? "0");
+  return {
+    year: read("year"),
+    month: read("month"),
+    day: read("day"),
+    hour: read("hour"),
+    minute: read("minute"),
+  };
+}
+
+function dateInTimezone(value: Date | string) {
+  const { year, month, day } = getTzParts(value);
+  return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function minutesInTimezone(value: Date | string) {
+  const { hour, minute } = getTzParts(value);
+  return hour * 60 + minute;
+}
+
 function todayInTimezone() {
-  return new Date().toISOString().slice(0, 10);
+  return dateInTimezone(new Date());
 }
 
 function formatTime(iso: string) {
@@ -115,15 +146,24 @@ function SlotPageContent() {
   }, [date]);
 
   const filteredSlots = useMemo(() => {
-    if (timeFilter === "all") return slots;
-    return slots.filter((slot) => {
+    const today = todayInTimezone();
+    const nowMinutes = minutesInTimezone(new Date());
+    const upcomingOnly = slots.filter((slot) => {
       const startAt = slot.start_at ?? slot.start_time;
       if (!startAt) return false;
-      const hour = new Date(startAt).getHours();
+      if (date !== today) return true;
+      return minutesInTimezone(startAt) > nowMinutes;
+    });
+
+    if (timeFilter === "all") return upcomingOnly;
+    return upcomingOnly.filter((slot) => {
+      const startAt = slot.start_at ?? slot.start_time;
+      if (!startAt) return false;
+      const hour = getTzParts(startAt).hour;
       if (timeFilter === "morning") return hour < 12;
       return hour >= 12;
     });
-  }, [slots, timeFilter]);
+  }, [slots, timeFilter, date]);
 
   const { morning, afternoon } = useMemo(() => {
     const m: BookingSlot[] = [];
@@ -131,7 +171,7 @@ function SlotPageContent() {
     filteredSlots.forEach((slot) => {
       const startAt = slot.start_at ?? slot.start_time;
       if (!startAt) return;
-      const hour = new Date(startAt).getHours();
+      const hour = getTzParts(startAt).hour;
       if (hour < 12) m.push(slot);
       else a.push(slot);
     });

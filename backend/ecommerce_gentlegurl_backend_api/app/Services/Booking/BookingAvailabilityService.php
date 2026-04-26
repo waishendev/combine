@@ -27,7 +27,8 @@ class BookingAvailabilityService
      */
     public function getAvailableSlots(BookingService $service, int $staffId, string $date, int $stepMin = 15, int $extraDurationMin = 0, bool $applyPrimarySlotPolicy = true): array
     {
-        $day = Carbon::parse($date);
+        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $day = Carbon::parse($date, $timezone);
         $schedule = BookingStaffSchedule::where('staff_id', $staffId)
             ->where('day_of_week', $day->dayOfWeek)
             ->first();
@@ -36,8 +37,10 @@ class BookingAvailabilityService
             return [];
         }
 
-        $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time);
-        $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time);
+        $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time, $timezone);
+        $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time, $timezone);
+        $nowInBusinessTz = Carbon::now($timezone);
+        $isTodayInBusinessTz = $day->isSameDay($nowInBusinessTz);
         $durationMin = (int) $service->duration_min + max(0, $extraDurationMin);
         $bufferMin = (int) $service->buffer_min;
 
@@ -45,6 +48,10 @@ class BookingAvailabilityService
         $period = CarbonPeriod::create($startWindow, $stepMin . ' minutes', $endWindow->copy()->subMinutes($durationMin));
 
         foreach ($period as $candidateStart) {
+            if ($isTodayInBusinessTz && $candidateStart->lessThanOrEqualTo($nowInBusinessTz)) {
+                continue;
+            }
+
             $candidateEnd = $candidateStart->copy()->addMinutes($durationMin);
             if ($this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $candidateStart, $candidateEnd)) {
                 continue;
