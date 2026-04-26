@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BookingRescheduledMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class RescheduleController extends Controller
 {
@@ -95,6 +98,67 @@ class RescheduleController extends Controller
             'created_at' => now(),
         ]);
 
+        $this->sendBookingRescheduledEmail($booking->fresh(['service', 'staff', 'customer']), $oldStart, $oldEnd);
+
         return $this->respond($booking->fresh(['service', 'staff', 'customer']));
+    }
+
+    protected function sendBookingRescheduledEmail(Booking $booking, ?Carbon $oldStart, ?Carbon $oldEnd): void
+    {
+        $recipientEmail = $booking->billing_email
+            ?: $booking->guest_email
+            ?: $booking->customer?->email;
+
+        if (! $recipientEmail || ! filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $customerName = $booking->billing_name
+            ?: $booking->guest_name
+            ?: $booking->customer?->name
+            ?: 'Customer';
+
+        $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
+            ->map(fn ($item) => is_array($item) ? [
+                'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+            ] : null)
+            ->filter()
+            ->values()
+            ->all();
+
+        $widget = SettingService::get('shop_contact_widget', null, 'booking');
+        $phone = data_get($widget, 'whatsapp.phone');
+        $contactPhone = ($phone && is_string($phone) && trim($phone) !== '')
+            ? trim($phone)
+            : '010-387 0881';
+
+        try {
+            Mail::to($recipientEmail)->queue(new BookingRescheduledMail(
+                customerName: $customerName,
+                bookingCode: (string) ($booking->booking_code ?? ''),
+                serviceName: (string) ($booking->service?->name ?? 'Service'),
+                addonItems: $addonItems,
+                staffName: (string) ($booking->staff?->name ?? ''),
+                oldDate: $oldStart?->format('l, d M Y') ?? '—',
+                oldStartTime: $oldStart?->format('h:i A') ?? '—',
+                oldEndTime: $oldEnd?->format('h:i A') ?? '—',
+                newDate: $booking->start_at?->format('l, d M Y') ?? '—',
+                newStartTime: $booking->start_at?->format('h:i A') ?? '—',
+                newEndTime: $booking->end_at?->format('h:i A') ?? '—',
+                durationMin: (int) ($booking->service?->duration_min ?? 0),
+                contactPhone: $contactPhone,
+            ));
+
+            Log::info('Booking rescheduled email queued (customer-side).', [
+                'booking_id' => $booking->id,
+                'email' => $recipientEmail,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue booking rescheduled email (customer-side).', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

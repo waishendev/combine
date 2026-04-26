@@ -3,16 +3,19 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
+use App\Mail\OrderShippedMail;
 use App\Models\Ecommerce\Order;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
 // use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
+use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 
 class OrderController extends Controller
@@ -360,7 +363,74 @@ class OrderController extends Controller
 
         $order->save();
 
+        if ($validated['status'] === 'shipped') {
+            $this->sendOrderShippedEmail($order->fresh(['items', 'customer']));
+        }
+
         return $this->respond($order, __('Order status updated.'));
+    }
+
+    protected function sendOrderShippedEmail(Order $order): void
+    {
+        $recipientEmail = $order->customer?->email;
+
+        if (! $recipientEmail || ! filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $customerName = $order->shipping_name
+            ?: $order->customer?->name
+            ?: 'Customer';
+
+        $items = $order->items
+            ->map(fn ($item) => [
+                'name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Item'),
+                'qty' => (int) $item->quantity,
+                'line_total' => (float) ($item->line_total_after_discount ?? $item->line_total ?? 0),
+            ])
+            ->all();
+
+        $addressParts = array_filter([
+            $order->shipping_address_line1,
+            $order->shipping_address_line2,
+            $order->shipping_city,
+            $order->shipping_state,
+            $order->shipping_postcode,
+            $order->shipping_country,
+        ]);
+
+        $widget = SettingService::get('shop_contact_widget', null, 'booking');
+        $phone = data_get($widget, 'whatsapp.phone');
+        $contactPhone = ($phone && is_string($phone) && trim($phone) !== '')
+            ? trim($phone)
+            : '010-387 0881';
+
+        try {
+            Mail::to($recipientEmail)->queue(new OrderShippedMail(
+                customerName: $customerName,
+                orderNumber: (string) ($order->order_number ?? ''),
+                shippingCourier: (string) ($order->shipping_courier ?? ''),
+                trackingNo: (string) ($order->shipping_tracking_no ?? ''),
+                shippedAt: $order->shipped_at ? $order->shipped_at->format('l, d M Y h:i A') : '',
+                shippingName: (string) ($order->shipping_name ?? ''),
+                shippingPhone: (string) ($order->shipping_phone ?? ''),
+                shippingAddress: implode(', ', $addressParts),
+                grandTotal: (float) $order->grand_total,
+                items: $items,
+                contactPhone: $contactPhone,
+            ));
+
+            Log::info('Order shipped email queued.', [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'email' => $recipientEmail,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue order shipped email.', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function confirmPayment(Request $request, Order $order)

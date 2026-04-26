@@ -19,7 +19,7 @@ class LoyaltyDemoCustomerSeederTesting extends Seeder
     public function run(): void
     {
         $customer = Customer::updateOrCreate(
-            ['email' => 'loyalty.tester@example.com'],
+            ['email' => 'waishendev@gmail.com'],
             [
                 'name' => 'Loyalty Tester',
                 'phone' => '0123456789',
