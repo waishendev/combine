@@ -1097,6 +1097,8 @@ Route::prefix('/booking')->middleware('api.session')->group(function () {
         Route::patch('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'updatePackageItem']);
         Route::delete('/cart/package-item/{itemId}', [\App\Http\Controllers\Booking\CartController::class, 'removePackageItem']);
         Route::get('/my', [\App\Http\Controllers\Booking\MyBookingController::class, 'index']);
+        Route::post('/my/{id}/item-photos', [\App\Http\Controllers\Booking\MyBookingController::class, 'uploadItemPhotos']);
+        Route::delete('/my/{id}/item-photos/{photoId}', [\App\Http\Controllers\Booking\MyBookingController::class, 'removeItemPhoto']);
         Route::get('/{id}/payment-detail', [\App\Http\Controllers\Booking\PaymentController::class, 'detail']);
         Route::post('/{id}/upload-slip', [\App\Http\Controllers\Booking\PaymentController::class, 'uploadSlip']);
         Route::post('/{id}/reschedule', [\App\Http\Controllers\Booking\RescheduleController::class, 'store']);

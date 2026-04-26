@@ -504,6 +504,24 @@ export async function getMyBookings() {
   return unwrapData<BookingRecord[]>(response);
 }
 
+export async function uploadMyBookingItemPhotos(bookingId: number, files: File[]) {
+  const fd = new FormData();
+  files.forEach((file) => fd.append("photos[]", file));
+  const response = await request<{ data?: { uploaded_item_photos?: unknown[] } } | { uploaded_item_photos?: unknown[] }>(
+    `/booking/my/${bookingId}/item-photos`,
+    { method: "POST", body: fd },
+  );
+  return unwrapData<{ uploaded_item_photos?: unknown[] }>(response);
+}
+
+export async function removeMyBookingItemPhoto(bookingId: number, photoId: number) {
+  const response = await request<{ data?: { uploaded_item_photos?: unknown[] } } | { uploaded_item_photos?: unknown[] }>(
+    `/booking/my/${bookingId}/item-photos/${photoId}`,
+    { method: "DELETE", body: JSON.stringify({}) },
+  );
+  return unwrapData<{ uploaded_item_photos?: unknown[] }>(response);
+}
+
 export { ApiError };
 
 

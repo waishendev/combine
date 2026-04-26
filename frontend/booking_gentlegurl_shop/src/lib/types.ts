@@ -202,6 +202,15 @@ export type BookingRecord = {
     paid_at?: string | null;
     receipt_public_url?: string | null;
   }>;
+  uploaded_item_photos?: BookingCartItemPhoto[];
+  service?: {
+    id: number;
+    name: string;
+    duration_min: number;
+    deposit_amount: number;
+    buffer_min: number;
+    allow_photo_upload?: boolean;
+  } | null;
 };
 
 export type AuthUser = {

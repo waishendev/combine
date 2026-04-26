@@ -6,8 +6,10 @@ import {
   getBookingPolicySettings,
   getMyBookings,
   payBooking,
+  removeMyBookingItemPhoto,
   requestBookingCancellation,
   rescheduleBooking,
+  uploadMyBookingItemPhotos,
 } from "@/lib/apiClient";
 import { BookingPolicy, BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
@@ -18,6 +20,7 @@ const defaultPolicy: BookingPolicy = {
 };
 
 const BOOKING_ACTION_STATUS = new Set(["CONFIRMED"]);
+const BOOKING_PHOTO_UPLOAD_STATUS = new Set(["CONFIRMED", "HOLD"]);
 const formatCurrency = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
 
 export default function MyBookingsPage() {
@@ -32,6 +35,7 @@ export default function MyBookingsPage() {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelFeedback, setCancelFeedback] = useState<string | null>(null);
   const [cancelSubmitting, setCancelSubmitting] = useState(false);
+  const [photoBusyBookingId, setPhotoBusyBookingId] = useState<number | null>(null);
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -117,6 +121,63 @@ export default function MyBookingsPage() {
     }
   };
 
+  const handleBookingPhotoUpload = async (booking: BookingRecord, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const selected = Array.from(files);
+    const existing = booking.uploaded_item_photos ?? [];
+    const remaining = 3 - existing.length;
+
+    if (remaining <= 0) {
+      setError("Maximum 3 photos are allowed for this booking.");
+      return;
+    }
+
+    if (!BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status))) {
+      setError("Photo upload is only available for HOLD or CONFIRMED bookings.");
+      return;
+    }
+
+    if (!(booking.service?.allow_photo_upload ?? false)) {
+      setError("This service does not allow photo upload.");
+      return;
+    }
+
+    const filesToUpload = selected.slice(0, remaining);
+    if (filesToUpload.some((file) => !file.type.startsWith("image/"))) {
+      setError("Only image files are allowed.");
+      return;
+    }
+
+    if (filesToUpload.some((file) => file.size > 5 * 1024 * 1024)) {
+      setError("Each photo must be 5MB or smaller.");
+      return;
+    }
+
+    try {
+      setPhotoBusyBookingId(booking.id);
+      setError(null);
+      await uploadMyBookingItemPhotos(booking.id, filesToUpload);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to upload booking photos.");
+    } finally {
+      setPhotoBusyBookingId(null);
+    }
+  };
+
+  const handleRemoveBookingPhoto = async (bookingId: number, photoId: number) => {
+    try {
+      setPhotoBusyBookingId(bookingId);
+      setError(null);
+      await removeMyBookingItemPhoto(bookingId, photoId);
+      await reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to remove booking photo.");
+    } finally {
+      setPhotoBusyBookingId(null);
+    }
+  };
+
   return (
     <>
       <h1 className="text-3xl font-semibold">My Bookings</h1>
@@ -154,6 +215,61 @@ export default function MyBookingsPage() {
               </p>
               <p className="mt-1 text-sm">Status: {booking.status}</p>
               <p className="mt-1 text-sm">Rescheduled: {state.currentCount} / {policy.reschedule.max_changes}</p>
+
+              {(booking.service?.allow_photo_upload ?? false) || (booking.uploaded_item_photos?.length ?? 0) > 0 ? (
+                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-semibold">Reference Photos</p>
+                    <label className="inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs font-medium">
+                      {(booking.uploaded_item_photos?.length ?? 0) > 0 ? "Upload More" : "Upload Photos"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        disabled={
+                          photoBusyBookingId === booking.id ||
+                          !BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ||
+                          !(booking.service?.allow_photo_upload ?? false) ||
+                          (booking.uploaded_item_photos?.length ?? 0) >= 3
+                        }
+                        onChange={(event) => {
+                          void handleBookingPhotoUpload(booking, event.target.files);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  </div>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">
+                    You can upload up to 3 photos. Upload is available only for HOLD or CONFIRMED bookings.
+                  </p>
+
+                  {(booking.uploaded_item_photos?.length ?? 0) > 0 ? (
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {booking.uploaded_item_photos?.map((photo) => (
+                        <div key={photo.id} className="relative overflow-hidden rounded border border-[var(--card-border)]">
+                          <a href={photo.file_url} target="_blank" rel="noreferrer" className="block">
+                            <img src={photo.file_url} alt={photo.original_name || "Booking photo"} className="h-20 w-full object-cover" />
+                          </a>
+                          {BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ? (
+                            <button
+                              type="button"
+                              className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
+                              disabled={photoBusyBookingId === booking.id}
+                              onClick={() => void handleRemoveBookingPhoto(booking.id, photo.id)}
+                            >
+                              <i className="fa-solid fa-xmark text-[10px]" />
+                            </button>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-2 text-xs text-[var(--text-muted)]">No photos uploaded yet.</p>
+                  )}
+                </div>
+              ) : null}
+
               {(booking.receipts?.length ?? 0) > 0 ? (
                 <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
                   <p className="text-sm font-semibold">Receipts</p>
