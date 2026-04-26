@@ -665,12 +665,13 @@ export default function PosAppointmentsWorkspace({
         assigned_staff_id: createAppointmentAssignedStaffId,
         selected_option_ids: createAppointmentSelectedOptionIds,
         main_service_items: [
-          { booking_service_id: createAppointmentServiceDraft.id, selected_option_ids: createAppointmentSelectedOptionIds },
+          { booking_service_id: createAppointmentServiceDraft.id, selected_option_ids: createAppointmentSelectedOptionIds, staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }] },
           ...createAppointmentExtraServiceBlocks
             .filter((block) => block.service?.id)
             .map((block) => ({
               booking_service_id: Number(block.service?.id),
               selected_option_ids: block.selectedOptionIds,
+              staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
             })),
         ],
         start_at: createAppointmentSlotValue,

@@ -1618,6 +1618,22 @@ class PosController extends Controller
             'share_percent' => (int) $split['share_percent'],
             'service_commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
         ])->values()->all();
+        $addonItems = collect($addonItems)
+            ->map(function (array $item) use ($normalizedSplits): array {
+                if (strtolower((string) ($item['item_kind'] ?? '')) === 'main_service') {
+                    $item['staff_splits'] = collect($item['staff_splits'] ?? [])
+                        ->filter(fn ($split) => is_array($split))
+                        ->values()
+                        ->all();
+                    if (empty($item['staff_splits'])) {
+                        $item['staff_splits'] = $normalizedSplits;
+                    }
+                }
+
+                return $item;
+            })
+            ->values()
+            ->all();
 
         $primaryStaffId = (int) ($normalizedSplits[0]['staff_id'] ?? $staff->id);
         $primaryCommissionRate = (float) ($staffCommissionRates[$primaryStaffId] ?? $staff->service_commission_rate ?? 0);
@@ -1994,6 +2010,22 @@ class PosController extends Controller
             'share_percent' => (int) $split['share_percent'],
             'service_commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
         ])->values()->all();
+        $addonItems = collect($addonItems)
+            ->map(function (array $item) use ($normalizedSplits): array {
+                if (strtolower((string) ($item['item_kind'] ?? '')) === 'main_service') {
+                    $item['staff_splits'] = collect($item['staff_splits'] ?? [])
+                        ->filter(fn ($split) => is_array($split))
+                        ->values()
+                        ->all();
+                    if (empty($item['staff_splits'])) {
+                        $item['staff_splits'] = $normalizedSplits;
+                    }
+                }
+
+                return $item;
+            })
+            ->values()
+            ->all();
 
         $primaryStaffId = (int) ($normalizedSplits[0]['staff_id'] ?? $staff->id);
 

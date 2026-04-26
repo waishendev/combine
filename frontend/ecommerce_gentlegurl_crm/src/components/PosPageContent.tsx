@@ -2121,12 +2121,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       assigned_staff_id: bookingAssignedStaffId,
       selected_option_ids: bookingSelectedOptionIds,
       main_service_items: [
-        { booking_service_id: bookingServiceDraft.id, selected_option_ids: bookingSelectedOptionIds },
+        { booking_service_id: bookingServiceDraft.id, selected_option_ids: bookingSelectedOptionIds, staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] },
         ...bookingExtraServiceBlocks
           .filter((block) => block.service?.id)
           .map((block) => ({
             booking_service_id: Number(block.service?.id),
             selected_option_ids: block.selectedOptionIds,
+            staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
           })),
       ],
       start_at: bookingSlotValue,
