@@ -408,6 +408,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
         icon: 'fa-solid fa-clipboard-list',
         children: [
           {
+            key: 'booking-logs',
+            label: 'Booking Audit Logs',
+            href: '/booking/logs',
+            requiredPermission: 'booking.logs.view',
+          },
+          {
             key: 'product-stock-movements',
             label: 'Stock Movements Logs',
             href: '/products/stock-movements',
