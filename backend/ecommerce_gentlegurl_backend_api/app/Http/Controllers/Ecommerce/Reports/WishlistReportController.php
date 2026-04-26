@@ -45,15 +45,22 @@ class WishlistReportController extends Controller
                 'pm.product_id',
                 DB::raw("(array_agg(pm.path ORDER BY pm.sort_order ASC, pm.id ASC))[1] as image_url"),
             ])
-            ->where('pm.type', 'image')
+            ->where('pm.type', '=', 'image')
             ->groupBy('pm.product_id');
+
+        $categorySub = DB::table('product_categories as pc')
+            ->join('categories as c', 'c.id', '=', 'pc.category_id')
+            ->select([
+                'pc.product_id',
+                DB::raw("(array_agg(c.name ORDER BY c.name ASC))[1] as category_name"),
+            ])
+            ->groupBy('pc.product_id');
 
         $query = DB::table('products as p')
             ->leftJoinSub($customerSub, 'cw', fn ($join) => $join->on('cw.product_id', '=', 'p.id'))
             ->leftJoinSub($guestSub, 'gw', fn ($join) => $join->on('gw.product_id', '=', 'p.id'))
             ->leftJoinSub($coverImageSub, 'img', fn ($join) => $join->on('img.product_id', '=', 'p.id'))
-            ->leftJoin('product_categories as pc', 'pc.product_id', '=', 'p.id')
-            ->leftJoin('categories as c', 'c.id', '=', 'pc.category_id')
+            ->leftJoinSub($categorySub, 'cat', fn ($join) => $join->on('cat.product_id', '=', 'p.id'))
             ->where(function (Builder $subQuery) {
                 $subQuery->whereNotNull('cw.product_id')->orWhereNotNull('gw.product_id');
             })
@@ -63,30 +70,37 @@ class WishlistReportController extends Controller
                         ->orWhere('p.sku', 'like', "%{$search}%");
                 });
             })
-            ->when($categoryId, fn (Builder $q) => $q->where('pc.category_id', (int) $categoryId))
+            ->when($categoryId, function (Builder $q) use ($categoryId) {
+                $q->whereExists(function (Builder $categoryFilter) use ($categoryId) {
+                    $categoryFilter
+                        ->select(DB::raw(1))
+                        ->from('product_categories as pcf')
+                        ->whereColumn('pcf.product_id', 'p.id')
+                        ->where('pcf.category_id', (int) $categoryId);
+                });
+            })
             ->when($stockStatus === 'in_stock', fn (Builder $q) => $q->where('p.stock', '>', 0))
             ->when($stockStatus === 'out_of_stock', fn (Builder $q) => $q->where('p.stock', '<=', 0))
             ->when($productStatus === 'active', fn (Builder $q) => $q->where('p.is_active', true))
             ->when($productStatus === 'inactive', fn (Builder $q) => $q->where('p.is_active', false))
-            ->groupBy(['p.id', 'p.name', 'p.sku', 'p.stock', 'p.is_active', 'img.image_url'])
             ->select([
                 'p.id as product_id',
                 'p.name as product_name',
                 'p.sku',
                 'img.image_url',
                 'p.stock as current_stock',
+                'p.low_stock_threshold',
                 DB::raw("CASE WHEN p.is_active THEN 'active' ELSE 'inactive' END as product_status"),
                 DB::raw('COALESCE(cw.customer_wishlist_count, 0) as customer_wishlist_count'),
                 DB::raw('COALESCE(gw.guest_wishlist_count, 0) as guest_wishlist_count'),
                 DB::raw('COALESCE(cw.customer_wishlist_count, 0) + COALESCE(gw.guest_wishlist_count, 0) as total_wishlist_count'),
-                DB::raw('MAX(c.name) as category_name'),
+                'cat.category_name',
                 DB::raw("GREATEST(COALESCE(cw.customer_last_wishlisted_at, '1970-01-01 00:00:00'), COALESCE(gw.guest_last_wishlisted_at, '1970-01-01 00:00:00')) as last_wishlisted_at"),
             ])
             ->orderByDesc('total_wishlist_count')
             ->orderBy('p.id');
 
         $summaryBaseQuery = clone $query;
-        $topProductQuery = clone $query;
 
         $summaryTotals = DB::query()
             ->fromSub($summaryBaseQuery, 'wishlist_rows')
@@ -95,18 +109,18 @@ class WishlistReportController extends Controller
             ->selectRaw('SUM(CASE WHEN current_stock <= 0 AND total_wishlist_count > 0 THEN 1 ELSE 0 END) as out_of_stock_products_with_demand')
             ->first();
 
-        $topWishlistedProduct = $topProductQuery
-            ->select('p.name as product_name')
+        $topWishlistedProduct = DB::query()
+            ->fromSub(clone $query, 'wishlist_rows')
             ->orderByDesc('total_wishlist_count')
-            ->orderBy('p.id')
-            ->first();
+            ->orderBy('product_id')
+            ->value('product_name');
 
         $paginator = $query->paginate($perPage)->withQueryString();
         $rows = collect($paginator->items());
         $summary = [
             'total_wishlisted_products' => (int) ($summaryTotals->total_wishlisted_products ?? 0),
             'total_wishlist_adds' => (int) ($summaryTotals->total_wishlist_adds ?? 0),
-            'top_wishlisted_product' => $topWishlistedProduct->product_name ?? null,
+            'top_wishlisted_product' => $topWishlistedProduct ?: null,
             'out_of_stock_products_with_demand' => (int) ($summaryTotals->out_of_stock_products_with_demand ?? 0),
         ];
 
