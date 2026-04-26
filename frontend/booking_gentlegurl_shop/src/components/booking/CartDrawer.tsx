@@ -760,6 +760,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     </div>
                   ) : null}
 
+                  <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/30 p-2.5">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Remarks</p>
+                    {item.customer_remarks ? (
+                      <p className="mt-2 whitespace-pre-wrap text-[11px] text-[var(--foreground)]">{item.customer_remarks}</p>
+                    ) : (
+                      <p className="mt-2 text-[10px] text-[var(--text-muted)]">No remarks provided.</p>
+                    )}
+                  </div>
+
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">
                       {canUnclaimPackage ? (

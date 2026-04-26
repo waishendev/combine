@@ -128,6 +128,7 @@ export type BookingCartItem = {
   package_covers_main_service?: boolean;
   /** Listed main-service deposit on the service (for “was RM X” copy when package covers main). */
   reference_main_deposit?: number;
+  customer_remarks?: string | null;
 };
 
 export type BookingCart = {
@@ -204,6 +205,7 @@ export type BookingRecord = {
     receipt_public_url?: string | null;
   }>;
   uploaded_item_photos?: BookingCartItemPhoto[];
+  customer_remarks?: string | null;
   service?: {
     id: number;
     name: string;

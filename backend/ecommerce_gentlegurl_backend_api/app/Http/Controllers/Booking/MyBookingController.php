@@ -95,6 +95,7 @@ class MyBookingController extends Controller
                 'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
                 'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
                 'staff_name' => $booking->staff?->name,
+                'customer_remarks' => $this->extractCustomerRemarks($booking->notes),
                 'service' => $booking->service ? [
                     'id' => (int) $booking->service->id,
                     'name' => $booking->service->name,
@@ -206,6 +207,22 @@ class MyBookingController extends Controller
         $photo->delete();
 
         return $this->respond(['uploaded_item_photos' => $booking->fresh('itemPhotos')->itemPhotos->values()]);
+    }
+
+
+    private function extractCustomerRemarks(?string $notes): ?string
+    {
+        $raw = trim((string) ($notes ?? ''));
+        if ($raw === '') {
+            return null;
+        }
+
+        if (preg_match('/(?:^|\|\s*)customer_remarks:\s*(.+?)(?:\s*\|\s*deposit_waived_for_member|$)/i', $raw, $matches)) {
+            $value = trim((string) ($matches[1] ?? ''));
+            return $value !== '' ? $value : null;
+        }
+
+        return null;
     }
 
     private function canManagePhotos(Booking $booking): bool

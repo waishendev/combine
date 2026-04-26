@@ -81,6 +81,7 @@ function SlotPageContent() {
   const serviceId = params.id;
   const selectedOptionIdsParam = searchParams.get("selected_option_ids") || "";
   const categoryId = searchParams.get("category_id");
+  const remarksParam = searchParams.get("remarks") || "";
   const selectedOptionIds = useMemo(
     () => selectedOptionIdsParam.split(",").map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0),
     [selectedOptionIdsParam]
@@ -163,7 +164,7 @@ function SlotPageContent() {
       if (timeFilter === "morning") return hour < 12;
       return hour >= 12;
     });
-  }, [slots, timeFilter, date]);
+  }, [date, slots, timeFilter]);
 
   const { morning, afternoon } = useMemo(() => {
     const m: BookingSlot[] = [];
@@ -257,6 +258,7 @@ function SlotPageContent() {
     }
     if (selectedOptionIdsParam) qs.set("selected_option_ids", selectedOptionIdsParam);
     if (categoryId) qs.set("category_id", categoryId);
+    if (remarksParam) qs.set("remarks", remarksParam);
     router.push(`/booking/service/${serviceId}/staff?${qs.toString()}`);
   };
 
@@ -266,6 +268,7 @@ function SlotPageContent() {
   const addonsBackQs = new URLSearchParams();
   if (selectedOptionIdsParam) addonsBackQs.set("selected_option_ids", selectedOptionIdsParam);
   if (categoryId) addonsBackQs.set("category_id", categoryId);
+  if (remarksParam) addonsBackQs.set("remarks", remarksParam);
   const addonsBackHref = `/booking/service/${serviceId}${addonsBackQs.toString() ? `?${addonsBackQs.toString()}` : ""}`;
 
   return (

@@ -284,6 +284,12 @@ export default function MyBookingsPage() {
               </p>
               <p className="mt-1 text-sm">Status: {booking.status}</p>
               <p className="mt-1 text-sm">Rescheduled: {state.currentCount} / {policy.reschedule.max_changes}</p>
+              {booking.customer_remarks ? (
+                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
+                  <p className="text-sm font-semibold">Customer Remarks</p>
+                  <p className="mt-1 text-sm text-[var(--text-muted)] whitespace-pre-wrap">{booking.customer_remarks}</p>
+                </div>
+              ) : null}
 
               {(booking.service?.allow_photo_upload ?? false) || (booking.uploaded_item_photos?.length ?? 0) > 0 ? (
                 <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">

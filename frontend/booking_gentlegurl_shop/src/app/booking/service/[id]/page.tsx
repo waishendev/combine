@@ -30,6 +30,7 @@ export default function ServiceAddonsPage() {
     }))
   );
   const [photoError, setPhotoError] = useState<string | null>(null);
+  const [customerRemarks, setCustomerRemarks] = useState("");
 
   useEffect(() => {
     const run = async () => {
@@ -121,9 +122,11 @@ export default function ServiceAddonsPage() {
     const qs = new URLSearchParams();
     if (selectedOptionIds.length) qs.set("selected_option_ids", selectedOptionIds.join(","));
     if (categoryId) qs.set("category_id", categoryId);
+    const trimmedRemarks = customerRemarks.trim();
+    if (trimmedRemarks) qs.set("remarks", trimmedRemarks);
     const q = qs.toString();
     router.push(`/booking/service/${id}/slots${q ? `?${q}` : ""}`);
-  }, [categoryId, id, router, selectedOptionIds]);
+  }, [categoryId, customerRemarks, id, router, selectedOptionIds]);
 
 
   const onPhotoSelect = useCallback((event: ChangeEvent<HTMLInputElement>) => {
@@ -345,6 +348,21 @@ export default function ServiceAddonsPage() {
                 ) : null}
               </section>
             ) : null}
+
+            <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
+              <h2 className="font-[var(--font-heading)] text-lg font-semibold">Remarks (Optional)</h2>
+              <p className="mt-1 text-sm text-[var(--text-muted)]">
+                Let us know if you have any special request or notes for this booking.
+              </p>
+              <textarea
+                value={customerRemarks}
+                onChange={(event) => setCustomerRemarks(event.target.value)}
+                placeholder="Share any requests, preferences, or notes for our team"
+                rows={4}
+                maxLength={2000}
+                className="mt-3 w-full rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+              />
+            </section>
 
             <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
               <h2 className="font-[var(--font-heading)] text-lg font-semibold">Booking Summary</h2>

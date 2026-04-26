@@ -29,6 +29,7 @@ export default function ServiceStaffPage() {
   const id = params.id;
   const selectedOptionIdsParam = searchParams.get("selected_option_ids") || "";
   const categoryId = searchParams.get("category_id");
+  const remarksParam = searchParams.get("remarks") || "";
   const slotDate = searchParams.get("date") || "";
   const startAt = searchParams.get("start_at") || "";
   const endAt = searchParams.get("end_at") || "";
@@ -47,6 +48,7 @@ export default function ServiceStaffPage() {
   const slotsBackQs = new URLSearchParams();
   if (selectedOptionIdsParam) slotsBackQs.set("selected_option_ids", selectedOptionIdsParam);
   if (categoryId) slotsBackQs.set("category_id", categoryId);
+  if (remarksParam) slotsBackQs.set("remarks", remarksParam);
   const slotsBackHref = `/booking/service/${id}/slots${slotsBackQs.toString() ? `?${slotsBackQs.toString()}` : ""}`;
 
   const [service, setService] = useState<ServiceDetail | null>(null);
@@ -147,6 +149,7 @@ export default function ServiceStaffPage() {
         staff_id: confirmStaff.id,
         start_at: startAt,
         selected_option_ids: selectedOptionIds,
+        notes: remarksParam,
       });
 
       if (service?.allow_photo_upload) {
@@ -175,7 +178,7 @@ export default function ServiceStaffPage() {
     } finally {
       setAdding(false);
     }
-  }, [confirmStaff, draftDataUrlToFile, id, selectedOptionIds, service?.allow_photo_upload, startAt]);
+  }, [confirmStaff, draftDataUrlToFile, id, remarksParam, selectedOptionIds, service?.allow_photo_upload, startAt]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 pb-24">

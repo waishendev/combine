@@ -182,6 +182,7 @@ export async function addCartItem(payload: {
   staff_id: number;
   start_at: string;
   selected_option_ids?: number[];
+  notes?: string;
 }) {
   const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart/add", {
     method: "POST",
@@ -224,6 +225,16 @@ export async function removeBookingCartItemPhoto(itemId: number, photoId: number
     method: 'DELETE',
     body: JSON.stringify({}),
   });
+  return unwrapData<BookingCart>(response);
+}
+
+
+export async function updateBookingCartItemRemarks(itemId: number, notes?: string) {
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/remarks`, {
+    method: "PATCH",
+    body: JSON.stringify({ notes }),
+  });
+
   return unwrapData<BookingCart>(response);
 }
 
