@@ -11,6 +11,7 @@ export interface CustomerRowData {
   tier: string
   type?: string
   isActive: boolean
+  allowBookingWithoutDeposit?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -26,6 +27,7 @@ interface CustomerRowProps {
   onEdit?: (customer: CustomerRowData) => void
   onDelete?: (customer: CustomerRowData) => void
   onView?: (customer: CustomerRowData) => void
+  onToggleDepositWaiver?: (customer: CustomerRowData) => void
 }
 
 export default function CustomerRow({
@@ -39,6 +41,7 @@ export default function CustomerRow({
   onEdit,
   onDelete,
   onView,
+  onToggleDepositWaiver,
 }: CustomerRowProps) {
   const { t } = useI18n()
   return (
@@ -75,6 +78,18 @@ export default function CustomerRow({
                 onClick={() => onAssignVoucher?.(customer)}
               >
                 <i className="fa-solid fa-ticket" />
+              </button>
+            )}
+            {canUpdate && (
+              <button
+                type="button"
+                className={`inline-flex h-8 items-center justify-center rounded px-2 text-xs font-semibold text-white ${
+                  customer.allowBookingWithoutDeposit ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'
+                }`}
+                onClick={() => onToggleDepositWaiver?.(customer)}
+                title={customer.allowBookingWithoutDeposit ? 'Disable No Deposit Booking' : 'Enable No Deposit Booking'}
+              >
+                {customer.allowBookingWithoutDeposit ? 'Waiver On' : 'Waiver Off'}
               </button>
             )}
             {canUpdate && (

@@ -142,6 +142,7 @@ export type BookingCart = {
   package_total: number;
   cart_total: number;
   next_expiry_at: string | null;
+  allow_booking_without_deposit?: boolean;
 };
 
 export type BookingCartPackageItem = {
@@ -218,6 +219,7 @@ export type AuthUser = {
   name: string;
   email: string;
   phone?: string;
+  allow_booking_without_deposit?: boolean;
 };
 
 export type CustomerProfile = {

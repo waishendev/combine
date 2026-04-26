@@ -112,6 +112,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
   };
 
   const isManualTransfer = (paymentMethod ?? order?.payment_method) === "manual_transfer";
+  const isZeroAmountOrder = Number(order?.grand_total ?? 0) <= 0;
 
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
@@ -148,13 +149,30 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
               <div className="flex items-center justify-between">
                 <span className="text-[var(--foreground)]/70">Payment Method</span>
                 <span className="font-medium">
-                  {(order.payment_provider || "").includes("billplz") ? "Billplz" : "Manual Transfer"}
+                  {isZeroAmountOrder ? "No payment required" : (order.payment_provider || "").includes("billplz") ? "Billplz" : "Manual Transfer"}
                 </span>
               </div>
             </div>
+            {order.receipt_public_url ? (
+              <a
+                href={order.receipt_public_url}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-4 inline-flex w-full items-center justify-center gap-2 rounded bg-[var(--accent)] px-4 py-2 text-sm font-medium text-white transition hover:bg-[var(--accent-strong)]"
+              >
+                <i className="fa-solid fa-receipt text-xs" />
+                View Receipt
+              </a>
+            ) : null}
           </div>
 
-          {isManualTransfer && (
+          {isZeroAmountOrder ? (
+            <p className="text-center text-sm text-[var(--status-success)]">
+              This booking is confirmed. No payment was required.
+            </p>
+          ) : null}
+
+          {isManualTransfer && !isZeroAmountOrder && (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
               <p className="font-medium">Manual Bank Transfer</p>
               {order.bank_account ? (
@@ -219,7 +237,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
             </div>
           )}
 
-          {!isManualTransfer && (
+          {!isManualTransfer && !isZeroAmountOrder && (
             <p className="text-center text-sm text-[var(--foreground)]/80">
               If you completed the online payment, you will receive an email confirmation shortly.
             </p>

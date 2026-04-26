@@ -275,12 +275,12 @@ export async function checkoutCart(payload?: {
   bank_account_id?: number;
   billplz_gateway_option_id?: number;
 }) {
-  const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_url?: string } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_url?: string }>(`/booking/cart/checkout`, {
+  const response = await request<{ data?: { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_status?: string; payment_url?: string; redirect_url?: string } } | { status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_status?: string; payment_url?: string; redirect_url?: string }>(`/booking/cart/checkout`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
 
-  return unwrapData<{ status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_url?: string }>(response);
+  return unwrapData<{ status: string; booking_ids: number[]; owned_package_ids?: number[]; deposit_total: number; package_total?: number; cart_total?: number; order_id?: number; order_no?: string; payment_method?: string; payment_status?: string; payment_url?: string; redirect_url?: string }>(response);
 }
 
 export async function payPublicOrder(orderId: number, payload?: { payment_method?: "billplz_online_banking" | "billplz_credit_card"; billplz_gateway_option_id?: number }) {
@@ -429,6 +429,7 @@ export type BookingOrderLookupResponse = {
   payment_provider?: string | null;
   payment_reference?: string | null;
   payment_url?: string | null;
+  receipt_public_url?: string | null;
   payment_status: string;
   status: string;
   bank_account?: {

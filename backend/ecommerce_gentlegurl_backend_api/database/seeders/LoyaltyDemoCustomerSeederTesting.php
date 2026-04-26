@@ -27,6 +27,7 @@ class LoyaltyDemoCustomerSeederTesting extends Seeder
                 'tier' => 'gold',
                 'is_active' => true,
                 'email_verified_at' => now(),
+                'allow_booking_without_deposit' => true, // free-deposit loyalty test account
             ]
         );
 

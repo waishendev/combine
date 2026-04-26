@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
+use App\Services\Ecommerce\OrderPaymentService;
 use App\Support\WorkspaceType;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -29,6 +30,7 @@ class PublicOrderHistoryController extends Controller
         protected BillplzService $billplzService,
         protected InvoiceService $invoiceService,
         protected ProductReviewService $reviewService,
+        protected OrderPaymentService $orderPaymentService,
     )
     {
     }
@@ -419,6 +421,31 @@ class PublicOrderHistoryController extends Controller
 
         if ($order->status !== 'pending' || $order->payment_status !== 'unpaid') {
             return $this->respondError(__('Order cannot be paid.'), 422);
+        }
+
+        if ((float) $order->grand_total <= 0) {
+            DB::transaction(function () use ($order) {
+                $order->status = 'confirmed';
+                $order->payment_status = 'paid';
+                $order->paid_at = now();
+                $order->payment_method = 'no_payment_required';
+                $order->payment_provider = 'none';
+                $order->payment_reference = null;
+                $order->payment_url = null;
+                $order->save();
+            });
+            $this->orderPaymentService->handlePaid($order->fresh(['items', 'customer']));
+
+            return $this->respond([
+                'redirect_url' => '/payment-result?' . http_build_query([
+                    'order_id' => (int) $order->id,
+                    'order_no' => (string) $order->order_number,
+                    'payment_method' => 'no_payment_required',
+                    'provider' => 'none',
+                ]),
+                'payment_status' => 'paid',
+                'status' => 'confirmed',
+            ]);
         }
 
         if ($this->orderReserveService->isExpired($order)) {

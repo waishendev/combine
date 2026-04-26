@@ -76,6 +76,9 @@ export default function CustomerTable({
   const [deleteTarget, setDeleteTarget] = useState<CustomerRowData | null>(null)
   const [viewingCustomerId, setViewingCustomerId] = useState<number | null>(null)
   const [assigningCustomer, setAssigningCustomer] = useState<CustomerRowData | null>(null)
+  const [depositWaiverTarget, setDepositWaiverTarget] = useState<CustomerRowData | null>(null)
+  const [depositWaiverRemark, setDepositWaiverRemark] = useState('')
+  const [isSavingDepositWaiver, setIsSavingDepositWaiver] = useState(false)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
@@ -457,6 +460,46 @@ export default function CustomerTable({
     })
   }
 
+  const handleToggleDepositWaiver = async () => {
+    if (!depositWaiverTarget) return
+    setIsSavingDepositWaiver(true)
+    try {
+      const nextValue = !Boolean(depositWaiverTarget.allowBookingWithoutDeposit)
+      const response = await fetch(`/api/proxy/customers/${depositWaiverTarget.id}/deposit-waiver`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          allow_booking_without_deposit: nextValue,
+          remark: depositWaiverRemark.trim() || null,
+        }),
+      })
+
+      const json = await response.json().catch(() => null)
+      if (!response.ok) {
+        const message = json && typeof json?.message === 'string' ? json.message : 'Unable to update deposit waiver setting.'
+        throw new Error(message)
+      }
+
+      setRows((prev) =>
+        prev.map((row) =>
+          row.id === depositWaiverTarget.id
+            ? { ...row, allowBookingWithoutDeposit: nextValue }
+            : row,
+        ),
+      )
+      setToastMessage(nextValue ? 'No deposit booking enabled.' : 'No deposit booking disabled.')
+      setTimeout(() => setToastMessage(null), 2500)
+      setDepositWaiverTarget(null)
+      setDepositWaiverRemark('')
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : 'Unable to update deposit waiver setting.')
+    } finally {
+      setIsSavingDepositWaiver(false)
+    }
+  }
+
   return (
     <div>
       {toastMessage && (
@@ -675,6 +718,12 @@ export default function CustomerTable({
                       setViewingCustomerId(customer.id)
                     }
                   }}
+                  onToggleDepositWaiver={() => {
+                    if (canUpdate) {
+                      setDepositWaiverTarget(customer)
+                      setDepositWaiverRemark('')
+                    }
+                  }}
                 />
               ))
             ) : (
@@ -724,6 +773,58 @@ export default function CustomerTable({
             setTimeout(() => setToastMessage(null), 2000)
           }}
         />
+      )}
+
+      {depositWaiverTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
+            <h3 className="text-lg font-semibold text-gray-900">
+              {depositWaiverTarget.allowBookingWithoutDeposit ? 'Disable No Deposit Booking' : 'Enable No Deposit Booking'}
+            </h3>
+            <p className="mt-2 text-sm text-gray-600">
+              Customer: <span className="font-medium text-gray-900">{depositWaiverTarget.name}</span>
+            </p>
+            <p className="mt-1 text-sm text-gray-600">
+              Current status:{' '}
+              <span className={`font-semibold ${depositWaiverTarget.allowBookingWithoutDeposit ? 'text-emerald-600' : 'text-gray-700'}`}>
+                {depositWaiverTarget.allowBookingWithoutDeposit ? 'Enabled' : 'Disabled'}
+              </span>
+            </p>
+
+            <label className="mt-4 block text-sm font-medium text-gray-700">
+              Remark (optional)
+            </label>
+            <textarea
+              value={depositWaiverRemark}
+              onChange={(event) => setDepositWaiverRemark(event.target.value)}
+              rows={3}
+              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
+              placeholder="e.g. VIP customer approved by manager"
+            />
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                onClick={() => {
+                  setDepositWaiverTarget(null)
+                  setDepositWaiverRemark('')
+                }}
+                disabled={isSavingDepositWaiver}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                onClick={() => void handleToggleDepositWaiver()}
+                disabled={isSavingDepositWaiver}
+              >
+                {isSavingDepositWaiver ? 'Saving...' : 'Confirm'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       <PaginationControls

@@ -72,7 +72,7 @@ class PermissionSeeder extends Seeder
             'roles' => ['view', 'view-all', 'manage-system', 'create', 'update', 'delete'],
             'permissions' => ['view', 'create', 'update', 'delete'],
             'permission-groups' => ['view', 'create', 'update', 'delete'],
-            'customers' => ['view', 'create', 'update', 'delete', 'verify'],
+            'customers' => ['view', 'create', 'update', 'delete', 'verify', 'deposit_waiver_logs.view'],
             'staff' => ['view', 'create', 'update', 'delete'],
             'ecommerce.categories' => ['view', 'create', 'update', 'delete'],
             'ecommerce.products' => ['view', 'create', 'update', 'delete'],

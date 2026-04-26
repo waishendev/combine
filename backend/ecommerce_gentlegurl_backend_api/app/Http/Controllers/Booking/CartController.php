@@ -21,6 +21,7 @@ use App\Services\BillplzService;
 use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Services\Ecommerce\OrderPaymentService;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -37,6 +38,7 @@ class CartController extends Controller
         private readonly BookingCartCleanupService $cartCleanupService,
         private readonly CustomerServicePackageService $customerServicePackageService,
         private readonly BillplzService $billplzService,
+        private readonly OrderPaymentService $orderPaymentService,
     ) {}
 
     public function add(Request $request)
@@ -415,11 +417,14 @@ class CartController extends Controller
             if (! $customer && $activePackageItems->isNotEmpty()) {
                 return $this->respondError('Please login to purchase service packages.', 422);
             }
+            $isDepositWaivedForCustomer = (bool) ($customer?->allow_booking_without_deposit ?? false);
 
             $bookingIds = [];
             $ownedPackageIds = [];
             $claimStatusesByItem = $this->claimStatusesByCartItem($customer?->id, $activeItems->pluck('id')->all());
-            $depositBreakdown = $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
+            $depositBreakdown = $isDepositWaivedForCustomer
+                ? $this->buildZeroDepositBreakdown($activeItems->all())
+                : $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
             $depositByCartItemId = $depositBreakdown['deposit_by_cart_item'] ?? [];
             $mainDepositByCartItemId = $depositBreakdown['main_deposit_by_cart_item'] ?? [];
             $addonDepositByCartItemId = $depositBreakdown['addon_deposit_by_cart_item'] ?? [];
@@ -506,6 +511,11 @@ class CartController extends Controller
                     'notes' => $customer ? null : ('guest_token:' . (string) ($cart->guest_token ?? '')),
                 ]);
 
+                if ($isDepositWaivedForCustomer) {
+                    $booking->notes = trim((string) ($booking->notes ? ($booking->notes . ' | ') : '') . 'deposit_waived_for_member');
+                    $booking->save();
+                }
+
                 if ($customer) {
                     $this->customerServicePackageService->attachReservedClaimsToBooking(
                         (int) $customer->id,
@@ -527,12 +537,15 @@ class CartController extends Controller
                 $mainDepositAmount = (float) ($mainDepositByCartItemId[(int) $item->id] ?? 0);
                 $addonDepositItems = collect($addonDepositItemsByCartItemId[(int) $item->id] ?? []);
 
-                if ($order && $mainDepositAmount > 0) {
+                if ($order && ($mainDepositAmount > 0 || $isDepositWaivedForCustomer)) {
+                    $depositLineName = $isDepositWaivedForCustomer
+                        ? 'Booking Deposit (Waived) - ' . (string) ($service->name ?? 'Service')
+                        : 'Booking Deposit - ' . (string) ($service->name ?? 'Service');
                     OrderItem::query()->create([
                         'order_id' => (int) $order->id,
                         'line_type' => 'booking_deposit',
-                        'product_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?? 'Service'),
-                        'display_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?? 'Service'),
+                        'product_name_snapshot' => $depositLineName,
+                        'display_name_snapshot' => $depositLineName,
                         'quantity' => 1,
                         'price_snapshot' => $mainDepositAmount,
                         'unit_price_snapshot' => $mainDepositAmount,
@@ -616,8 +629,31 @@ class CartController extends Controller
 
             $cart->update(['status' => 'converted']);
 
+            if ($order && (float) $order->grand_total <= 0) {
+                $order->status = 'confirmed';
+                $order->payment_status = 'paid';
+                $order->paid_at = now();
+                $order->payment_method = 'no_payment_required';
+                $order->payment_provider = 'none';
+                $order->payment_reference = null;
+                $order->payment_url = null;
+                $order->save();
+                $this->orderPaymentService->handlePaid($order->fresh(['items', 'customer']));
+
+                if (! empty($bookingIds)) {
+                    Booking::query()
+                        ->whereIn('id', $bookingIds)
+                        ->update([
+                            'status' => 'CONFIRMED',
+                            'payment_status' => 'PAID',
+                            'hold_expires_at' => null,
+                            'updated_at' => now(),
+                        ]);
+                }
+            }
+
             $billplzPaymentUrl = null;
-            if (! $customer && $order && str_starts_with($paymentMethod, 'billplz_')) {
+            if (! $customer && $order && (float) $order->grand_total > 0 && str_starts_with($paymentMethod, 'billplz_')) {
                 $billResponse = $this->billplzService->createBill(
                     $order,
                     WorkspaceType::BOOKING,
@@ -670,11 +706,12 @@ class CartController extends Controller
                 'order_id' => $order?->id,
                 'order_grand_total' => (float) ($order?->grand_total ?? 0),
                 'payment_method' => $paymentMethod,
+                'deposit_waived_for_customer' => $isDepositWaivedForCustomer,
                 'billplz_amount_sen' => $order ? (int) round(((float) $order->grand_total) * 100) : null,
             ]);
 
             return $this->respond([
-                'status' => 'success',
+                'status' => $order && (float) $order->grand_total <= 0 ? 'confirmed' : 'success',
                 'booking_ids' => $bookingIds,
                 'owned_package_ids' => $ownedPackageIds,
                 'deposit_total' => $depositTotal,
@@ -684,9 +721,15 @@ class CartController extends Controller
                 'order_id' => $order?->id,
                 'order_no' => $order?->order_number,
                 'payment_method' => $order?->payment_method,
+                'payment_status' => $order?->payment_status,
                 'payment_url' => $billplzPaymentUrl,
+                'redirect_url' => $order
+                    ? '/payment-result?' . http_build_query(['order_id' => (int) $order->id, 'order_no' => (string) $order->order_number])
+                    : null,
                 'payment_expires_at' => $activeItems->min('expires_at')?->toIso8601String(),
-                'payment_instruction' => 'Complete payment before hold expires to confirm booking.',
+                'payment_instruction' => $order && (float) $order->grand_total <= 0
+                    ? 'No payment required for this booking.'
+                    : 'Complete payment before hold expires to confirm booking.',
             ]);
         });
     }
@@ -831,7 +874,15 @@ class CartController extends Controller
 
         $nextExpiry = $activeItems->min('expires_at');
         $claimStatusesByItem = $this->claimStatusesByCartItem($cart->customer_id, $activeItems->pluck('id')->all());
-        $depositBreakdown = $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
+        $isDepositWaivedForCustomer = false;
+        if ($cart->customer_id) {
+            $isDepositWaivedForCustomer = (bool) DB::table('customers')
+                ->where('id', $cart->customer_id)
+                ->value('allow_booking_without_deposit');
+        }
+        $depositBreakdown = $isDepositWaivedForCustomer
+            ? $this->buildZeroDepositBreakdown($activeItems->all())
+            : $this->resolveDepositBreakdownByCartItem($activeItems->all(), $claimStatusesByItem);
         $depositByCartItemId = $depositBreakdown['deposit_by_cart_item'] ?? [];
         $mainDepositByCartItemId = $depositBreakdown['main_deposit_by_cart_item'] ?? [];
         $addonDepositByCartItemId = $depositBreakdown['addon_deposit_by_cart_item'] ?? [];
@@ -892,6 +943,23 @@ class CartController extends Controller
             'package_total' => round($packageTotal, 2),
             'cart_total' => round($depositTotal + $packageTotal, 2),
             'next_expiry_at' => $nextExpiry?->toIso8601String(),
+            'allow_booking_without_deposit' => $isDepositWaivedForCustomer,
+        ];
+    }
+
+    private function buildZeroDepositBreakdown(array $items): array
+    {
+        $map = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => 0.0])->all();
+        $addonItems = collect($items)->mapWithKeys(fn (BookingCartItem $item) => [(int) $item->id => []])->all();
+
+        return [
+            'deposit_by_cart_item' => $map,
+            'main_deposit_by_cart_item' => $map,
+            'addon_deposit_by_cart_item' => $map,
+            'addon_deposit_items_by_cart_item' => $addonItems,
+            'main_deposit_total' => 0.0,
+            'addon_deposit_total' => 0.0,
+            'deposit_total' => 0.0,
         ];
     }
 

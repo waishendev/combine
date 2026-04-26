@@ -76,6 +76,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [billingEmail, setBillingEmail] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [customerId, setCustomerId] = useState<number | null>(null);
+  const [allowNoDepositBooking, setAllowNoDepositBooking] = useState(false);
   const [availableMap, setAvailableMap] = useState<Record<number, number>>({});
   const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
@@ -112,6 +113,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           }
           setIsLoggedIn(true);
           setCustomerId(me.id);
+          setAllowNoDepositBooking(Boolean(me.allow_booking_without_deposit));
           setGuestName((prev) => prev || me.name || "");
           setGuestPhone((prev) => prev || me.phone || "");
           setGuestEmail((prev) => prev || me.email || "");
@@ -119,6 +121,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         .catch(() => {
           setIsLoggedIn(false);
           setCustomerId(null);
+          setAllowNoDepositBooking(false);
         });
 
       Promise.all([
@@ -255,11 +258,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         return;
       }
 
-      if (selectedPaymentMethod === "manual_transfer" && !selectedBankAccountId) {
+      if (!isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" && !selectedBankAccountId) {
         setMessage("Please select a bank account for manual transfer.");
         return;
       }
-      if (selectedPaymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
+      if (!isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
         if (onlineBankingOptions.length > 0) {
           setMessage("Please select an online banking option.");
           return;
@@ -275,9 +278,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           billing_name: billingSameAsContact ? guestName.trim() : billingName.trim(),
           billing_phone: billingSameAsContact ? guestPhone.trim() : billingPhone.trim(),
           billing_email: billingSameAsContact ? guestEmail.trim() : billingEmail.trim(),
-          payment_method: selectedPaymentMethod,
-          bank_account_id: selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
-          billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
+          payment_method: isZeroPayableCheckout ? undefined : selectedPaymentMethod,
+          bank_account_id: !isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
+          billplz_gateway_option_id: !isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
         },
       );
 
@@ -310,6 +313,21 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       // This guarantees Billplz amount uses order.grand_total (full cart payable) instead of
       // a single booking deposit amount.
       if (orderId) {
+        const isZeroCheckoutResponse = Number(checkoutResponse?.cart_total ?? 0) <= 0 || String(checkoutResponse?.payment_status ?? "").toLowerCase() === "paid";
+        if (isZeroCheckoutResponse) {
+          onClose();
+          const nextParams = new URLSearchParams({
+            order_id: String(orderId),
+            payment_method: String(checkoutResponse?.payment_method ?? "no_payment_required"),
+            provider: "none",
+          });
+          if (orderNo) {
+            nextParams.set("order_no", orderNo);
+          }
+          router.push(`/payment-result?${nextParams.toString()}`);
+          return;
+        }
+
         if (selectedPaymentMethod !== "manual_transfer") {
           const payResponse = await payPublicOrder(orderId, {
             payment_method: selectedPaymentMethod,
@@ -403,6 +421,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
   const itemCount = (cart?.items?.length || 0) + (cart?.package_items?.length || 0);
   const hasItems = itemCount > 0;
+  const isZeroPayableCheckout = Number(cart?.cart_total ?? 0) <= 0;
   const depositDisplay = useMemo(() => {
     const bookingItems = cart?.items ?? [];
 
@@ -533,6 +552,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               Double-check your appointment time, then complete payment below.
             </p>
           )}
+          {allowNoDepositBooking ? (
+            <div className="mb-4 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-xs text-[var(--status-success)]">
+              Deposit waived for this member. Booking deposit is not required for checkout.
+            </div>
+          ) : null}
+          {isZeroPayableCheckout ? (
+            <div className="mb-4 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-xs text-[var(--status-success)]">
+              No payment required for this booking.
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             {cart?.items?.map((item) => {
@@ -1052,32 +1081,34 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 )}
               </div>
 
-              <div>
-                <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Payment method</p>
-                <div className="space-y-2">
-                  {paymentOptions.map((option) => (
-                    <label
-                      key={option.key}
-                      className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${
-                        selectedPaymentMethod === option.key
-                          ? "border-[var(--accent-strong)] bg-[var(--muted)]/60 shadow-sm ring-2 ring-[var(--accent)]/25"
-                          : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/50"
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="booking_payment_method"
-                        className="h-4 w-4 accent-[var(--accent-strong)]"
-                        checked={selectedPaymentMethod === option.key}
-                        onChange={() => setSelectedPaymentMethod(option.key)}
-                      />
-                      <span className="text-[var(--foreground)]">{option.name}</span>
-                    </label>
-                  ))}
+              {!isZeroPayableCheckout ? (
+                <div>
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Payment method</p>
+                  <div className="space-y-2">
+                    {paymentOptions.map((option) => (
+                      <label
+                        key={option.key}
+                        className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${
+                          selectedPaymentMethod === option.key
+                            ? "border-[var(--accent-strong)] bg-[var(--muted)]/60 shadow-sm ring-2 ring-[var(--accent)]/25"
+                            : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/50"
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="booking_payment_method"
+                          className="h-4 w-4 accent-[var(--accent-strong)]"
+                          checked={selectedPaymentMethod === option.key}
+                          onChange={() => setSelectedPaymentMethod(option.key)}
+                        />
+                        <span className="text-[var(--foreground)]">{option.name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              ) : null}
 
-              {selectedPaymentMethod === "manual_transfer" ? (
+              {!isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" ? (
                 <div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Bank account</p>
                   <div className="space-y-2">
@@ -1127,7 +1158,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 </div>
               ) : null}
 
-              {selectedPaymentMethod === "billplz_online_banking" ? (
+              {!isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" ? (
                 <div>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Online Banking</p>
                   {onlineBankingOptions.length === 0 ? (
@@ -1220,7 +1251,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 className="flex w-full items-center justify-center gap-2 rounded-full bg-[var(--accent-strong)] px-6 py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:pointer-events-none disabled:opacity-40"
               >
                 <i className="fa-solid fa-lock text-xs opacity-90" aria-hidden />
-                Proceed to payment
+                {isZeroPayableCheckout ? "Confirm booking" : "Proceed to payment"}
               </button>
             </div>
           ) : null}
