@@ -188,7 +188,6 @@ export default function SalesChannelReportPage({
   defaultDatePreset = 'month',
   paramPrefix,
   isAllWorkspace = false,
-  lockedChannel,
 }: {
   mode: Mode
   canExport?: boolean
@@ -197,8 +196,6 @@ export default function SalesChannelReportPage({
   paramPrefix?: string
   /** When true with `paramPrefix`, filter apply/reset also resets the sibling table pages (`ec_page` / `bk_page`). */
   isAllWorkspace?: boolean
-  /** When set, forces channel and hides channel selector. */
-  lockedChannel?: 'online' | 'offline'
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -214,19 +211,17 @@ export default function SalesChannelReportPage({
   const resolved = useMemo(() => {
     const parsedPage = Number(searchParams.get(pageKey))
     const parsedPerPage = Number(searchParams.get(perPageKey))
-    const defaultChannel = mode === 'ecommerce' ? 'online' : 'all'
-    const channel = lockedChannel ?? (searchParams.get('channel') ?? defaultChannel)
     return {
       dateFrom: searchParams.get('date_from') ?? defaultRange.from,
       dateTo: searchParams.get('date_to') ?? defaultRange.to,
-      channel,
+      channel: searchParams.get('channel') ?? 'all',
       paymentMethod: searchParams.get('payment_method') ?? 'all',
       status: searchParams.get('status') ?? 'all',
       type: searchParams.get('type') ?? 'all',
       page: Number.isFinite(parsedPage) && parsedPage > 0 ? parsedPage : DEFAULT_PAGE,
       perPage: Number.isFinite(parsedPerPage) && parsedPerPage > 0 ? parsedPerPage : DEFAULT_PAGE_SIZE,
     }
-  }, [lockedChannel, mode, searchParams, defaultRange.from, defaultRange.to, pageKey, perPageKey])
+  }, [searchParams, defaultRange.from, defaultRange.to, pageKey, perPageKey])
 
   const [inputs, setInputs] = useState(resolved)
   const [ecommerceRows, setEcommerceRows] = useState<EcommerceRow[]>([])
@@ -250,7 +245,7 @@ export default function SalesChannelReportPage({
       const qs = new URLSearchParams()
       qs.set('date_from', resolved.dateFrom)
       qs.set('date_to', resolved.dateTo)
-      qs.set('channel', lockedChannel ?? resolved.channel)
+      qs.set('channel', resolved.channel)
       qs.set('page', String(resolved.page))
       qs.set('per_page', String(resolved.perPage))
       if (resolved.paymentMethod !== 'all') qs.set('payment_method', resolved.paymentMethod)
@@ -304,7 +299,7 @@ export default function SalesChannelReportPage({
     const patch: Record<string, string> = {
       date_from: inputs.dateFrom,
       date_to: inputs.dateTo,
-      channel: lockedChannel ?? inputs.channel,
+      channel: inputs.channel,
       payment_method: inputs.paymentMethod,
       status: inputs.status,
       type: inputs.type,
@@ -327,7 +322,7 @@ export default function SalesChannelReportPage({
     const patch: Record<string, string> = {
       date_from: range.from,
       date_to: range.to,
-      channel: lockedChannel ?? 'all',
+      channel: 'all',
       payment_method: 'all',
       status: 'all',
       type: 'all',
@@ -348,7 +343,7 @@ export default function SalesChannelReportPage({
   const showingRange = `${formatDisplayDate(resolved.dateFrom)} – ${formatDisplayDate(resolved.dateTo)}`
   const activeFilters = [
     { label: 'Date Range', value: showingRange },
-    ...(lockedChannel ? [{ label: 'Channel', value: labelize(lockedChannel) }] : resolved.channel !== 'all' ? [{ label: 'Channel', value: labelize(resolved.channel) }] : []),
+    ...(resolved.channel !== 'all' ? [{ label: 'Channel', value: labelize(resolved.channel) }] : []),
     ...(resolved.paymentMethod !== 'all' ? [{ label: 'Payment', value: labelize(resolved.paymentMethod) }] : []),
     ...(mode === 'ecommerce' && resolved.status !== 'all' ? [{ label: 'Status', value: labelize(resolved.status) }] : []),
     ...(mode === 'booking' && resolved.type !== 'all' ? [{ label: 'Type', value: labelize(resolved.type) }] : []),
@@ -358,7 +353,7 @@ export default function SalesChannelReportPage({
     const qs = new URLSearchParams()
     qs.set('date_from', resolved.dateFrom)
     qs.set('date_to', resolved.dateTo)
-    qs.set('channel', lockedChannel ?? resolved.channel)
+    qs.set('channel', resolved.channel)
     if (resolved.paymentMethod !== 'all') qs.set('payment_method', resolved.paymentMethod)
     if (mode === 'ecommerce' && resolved.status !== 'all') qs.set('status', resolved.status)
     if (mode === 'booking' && resolved.type !== 'all') qs.set('type', resolved.type)
@@ -381,7 +376,7 @@ export default function SalesChannelReportPage({
               </button>
             </div>
             <div className="p-5 grid gap-4 sm:grid-cols-2">
-              <input
+              {/* <input
                 type="date"
                 value={inputs.dateFrom}
                 onChange={(e) => setInputs((p) => ({ ...p, dateFrom: e.target.value }))}
@@ -392,18 +387,16 @@ export default function SalesChannelReportPage({
                 value={inputs.dateTo}
                 onChange={(e) => setInputs((p) => ({ ...p, dateTo: e.target.value }))}
                 className="h-10 rounded border border-slate-200 px-3 text-sm"
-              />
-              {lockedChannel ? null : (
-                <select
-                  value={inputs.channel}
-                  onChange={(e) => setInputs((p) => ({ ...p, channel: e.target.value }))}
-                  className="h-10 rounded border border-slate-200 px-3 text-sm"
-                >
-                  <option value="all">All Channels</option>
-                  <option value="online">Online</option>
-                  <option value="offline">Offline</option>
-                </select>
-              )}
+              /> */}
+              <select
+                value={inputs.channel}
+                onChange={(e) => setInputs((p) => ({ ...p, channel: e.target.value }))}
+                className="h-10 rounded border border-slate-200 px-3 text-sm"
+              >
+                <option value="all">All Channels</option>
+                <option value="online">Online</option>
+                <option value="offline">Offline</option>
+              </select>
               <select
                 value={inputs.paymentMethod}
                 onChange={(e) => setInputs((p) => ({ ...p, paymentMethod: e.target.value }))}

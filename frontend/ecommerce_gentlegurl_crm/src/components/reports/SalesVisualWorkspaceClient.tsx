@@ -132,7 +132,7 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
               Product-line orders only. Booking deposits and other booking lines appear under Booking below (same as POS rows with
               booking line types).
             </p>
-            <SalesChannelReportPage mode="ecommerce" canExport={canExport} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace lockedChannel="online" />
+            <SalesChannelReportPage mode="ecommerce" canExport={canExport} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace />
           </section>
           <section>
             <h4 className="text-base font-semibold text-slate-800">Booking</h4>
@@ -141,7 +141,7 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
           </section>
         </div>
       ) : (
-        <SalesChannelReportPage mode={mode} canExport={canExport} defaultDatePreset="today" lockedChannel={mode === 'ecommerce' ? 'online' : undefined} />
+        <SalesChannelReportPage mode={mode} canExport={canExport} defaultDatePreset="today" />
       )}
     </div>
   )

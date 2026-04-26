@@ -1,6 +1,7 @@
 'use client'
 
 import { type ReactNode, useEffect, useMemo, useState } from 'react'
+import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import BookingAppointmentDrawer from '@/components/booking/BookingAppointmentDrawer'
 import OrderViewPanel from '@/components/OrderViewPanel'
@@ -73,7 +74,7 @@ type HistoryPackage = {
   }>
 }
 
-type TabKey = 'overview' | 'ecommerce' | 'pos' | 'booking' | 'packages'
+type TabKey = 'all' | 'ecommerce' | 'booking'
 
 type DrawerState =
   | { type: 'order'; orderId: number }
@@ -94,7 +95,7 @@ type CustomerDetailBrief = {
 }
 
 const tabs: Array<{ key: TabKey; label: string }> = [
-  { key: 'overview', label: 'All' },
+  { key: 'all', label: 'All' },
   { key: 'ecommerce', label: 'Ecommerce' },
   { key: 'booking', label: 'Booking' },
 ]
@@ -193,12 +194,40 @@ function PackageDetailsDrawer({ data, onClose }: { data: HistoryPackage; onClose
 }
 
 export default function CustomerHistoryPage({ customerId }: { customerId: string }) {
-  const [activeTab, setActiveTab] = useState<TabKey>('overview')
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
+  const [activeTab, setActiveTab] = useState<TabKey>('all')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [payload, setPayload] = useState<HistoryResponse['data']>()
   const [customerDetail, setCustomerDetail] = useState<CustomerDetailBrief | null>(null)
   const [drawer, setDrawer] = useState<DrawerState | null>(null)
+  const [ecommerceTx, setEcommerceTx] = useState<
+    Array<{
+      order_id: number
+      order_no: string
+      order_datetime: string
+      payment_method: string
+      status: string
+      net_amount: number
+    }>
+  >([])
+  const [bookingTx, setBookingTx] = useState<
+    Array<{
+      order_id: number
+      order_no: string
+      order_datetime: string
+      payment_method: string
+      status: string
+      type: string
+      booking_id?: number | null
+      booking_no?: string | null
+      package_name?: string | null
+      net_amount: number
+    }>
+  >([])
 
   const formatYmd = (d: Date) => {
     const y = d.getFullYear()
@@ -207,6 +236,11 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
     return `${y}-${m}-${day}`
   }
 
+  // Re-fetch whenever date filter query changes.
+  const dateFromQuery = searchParams.get('date_from') ?? ''
+  const dateToQuery = searchParams.get('date_to') ?? ''
+  const filterKey = `${dateFromQuery}|${dateToQuery}`
+
   useEffect(() => {
     const controller = new AbortController()
 
@@ -214,8 +248,13 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
       setLoading(true)
       setError(null)
       try {
-        const to = formatYmd(new Date())
-        const from = '2000-01-01'
+        const dateFromParam = dateFromQuery.trim()
+        const dateToParam = dateToQuery.trim()
+        const hasRange = Boolean(dateFromParam && dateToParam)
+
+        const to = hasRange ? dateToParam : formatYmd(new Date())
+        const from = hasRange ? dateFromParam : '2000-01-01'
+
         const qs = new URLSearchParams()
         qs.set('date_from', from)
         qs.set('date_to', to)
@@ -247,7 +286,6 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
           order_id: number
           order_no: string
           order_datetime: string
-          channel: string
           payment_method: string
           status: string
           net_amount: number
@@ -258,7 +296,6 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
           order_no: string
           order_datetime: string
           payment_method: string
-          channel: string
           status: string
           type: string
           booking_id?: number | null
@@ -272,53 +309,8 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
         const ecRows = Array.isArray(ecommerceJson?.rows) ? ecommerceJson!.rows! : []
         const bkRows = Array.isArray(bookingJson?.rows) ? bookingJson!.rows! : []
 
-        const ecommerceOrders: HistoryOrder[] = ecRows
-          .filter((r) => String(r.channel).toLowerCase() === 'online')
-          .map((r) => ({
-            id: Number(r.order_id),
-            order_number: r.order_no,
-            date: r.order_datetime,
-            status: r.status,
-            total_amount: r.net_amount,
-          }))
-
-        const posOrders: HistoryPosOrder[] = ecRows
-          .filter((r) => String(r.channel).toLowerCase() !== 'online')
-          .map((r) => ({
-            id: Number(r.order_id),
-            receipt_number: r.order_no,
-            date: r.order_datetime,
-            payment_method: r.payment_method,
-            status: r.status,
-            total_amount: r.net_amount,
-          }))
-
-        const bookingAppointments: HistoryBooking[] = bkRows
-          .filter((r) => r.type !== 'package_purchase')
-          .map((r) => ({
-            id: Number(r.booking_id ?? 0),
-            booking_no: r.booking_no ?? r.order_no,
-            date_time: r.order_datetime,
-            service_names: [],
-            staff: null,
-            status: r.status,
-            amount: r.net_amount,
-          }))
-          .filter((r) => r.id > 0)
-
-        const packages: HistoryPackage[] = bkRows
-          .filter((r) => r.type === 'package_purchase')
-          .map((r) => ({
-            id: Number(r.order_id),
-            package_name: r.package_name ?? 'Package',
-            purchase_date: r.order_datetime,
-            remaining_sessions: null,
-            status: r.status,
-            purchased_from: String(r.channel).toLowerCase() === 'online' ? 'online' : 'offline',
-            purchased_ref_id: Number(r.order_id),
-            usage_count: null,
-            balances: [],
-          }))
+        setEcommerceTx(ecRows)
+        setBookingTx(bkRows)
 
         const parseTime = (value?: string | null) => {
           if (!value) return null
@@ -365,10 +357,10 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
             total_orders_bookings: totalOrdersBookings,
             last_activity_date: latestActivityMs ? new Date(latestActivityMs).toISOString() : null,
           },
-          ecommerce_orders: ecommerceOrders,
-          pos_orders: posOrders,
-          booking_appointments: bookingAppointments,
-          service_packages: packages,
+          ecommerce_orders: [],
+          pos_orders: [],
+          booking_appointments: [],
+          service_packages: [],
         })
       } catch (fetchError) {
         if (!(fetchError instanceof DOMException && fetchError.name === 'AbortError')) {
@@ -383,7 +375,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
 
     fetchHistory()
     return () => controller.abort()
-  }, [customerId])
+  }, [customerId, filterKey])
 
   const summaryCards = useMemo(() => {
     const summary = payload?.customer_summary
@@ -396,6 +388,11 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
 
     const cards: Array<{ label: string; value: ReactNode }> = [
       {
+        label: 'Customer Name',
+        value: summary?.name ?? '-',
+      },
+      { label: 'Tier', value: tierValue ? <span className="capitalize">{tierValue}</span> : '-' },
+      {
         label: 'Status',
         value: statusValue ? (
           <StatusBadge status={statusValue} label={statusValue === 'active' ? 'Active' : 'Inactive'} />
@@ -403,9 +400,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
           '-'
         ),
       },
-      { label: 'Tier', value: tierValue ? <span className="capitalize">{tierValue}</span> : '-' },
       { label: 'Available Points', value: pointsValue != null ? pointsValue.toLocaleString() : '-' },
-      { label: 'Customer Name', value: summary?.name ?? '-' },
       { label: 'Phone', value: summary?.phone ?? '-' },
       { label: 'Email', value: summary?.email ?? '-' },
       { label: 'Customer Type', value: summary?.customer_type ?? '-' },
@@ -416,6 +411,35 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
     return cards
   }, [customerDetail?.is_active, customerDetail?.loyalty_summary, customerDetail?.tier, payload?.customer_summary])
 
+  const dateFrom = dateFromQuery
+  const dateTo = dateToQuery
+  const [dateInputs, setDateInputs] = useState({ dateFrom, dateTo })
+  useEffect(() => {
+    setDateInputs({ dateFrom, dateTo })
+  }, [dateFrom, dateTo])
+
+  const applyDateRange = () => {
+    const next = new URLSearchParams(searchParams.toString())
+    const from = dateInputs.dateFrom.trim()
+    const to = dateInputs.dateTo.trim()
+    if (from && to) {
+      next.set('date_from', from)
+      next.set('date_to', to)
+    } else {
+      next.delete('date_from')
+      next.delete('date_to')
+    }
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+  }
+
+  const clearDateRange = () => {
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete('date_from')
+    next.delete('date_to')
+    setDateInputs({ dateFrom: '', dateTo: '' })
+    router.replace(`${pathname}?${next.toString()}`, { scroll: false })
+  }
+
   if (loading) {
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading customer history...</div>
   }
@@ -423,11 +447,6 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
   if (error) {
     return <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-sm text-red-600">{error}</div>
   }
-
-  const ecommerceOrders = payload?.ecommerce_orders ?? []
-  const posOrders = payload?.pos_orders ?? []
-  const bookings = payload?.booking_appointments ?? []
-  const packages = payload?.service_packages ?? []
 
   return (
     <>
@@ -454,7 +473,8 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
         </div>
 
         <div className="rounded-xl border border-slate-300 bg-slate-50 p-5 shadow-sm">
-          <div className="mb-4 flex flex-wrap items-center gap-2 border-b border-slate-200 pb-4">
+          <div className="mb-4 flex flex-col gap-3 border-b border-slate-200 pb-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
             {tabs.map((tab) => (
               <button
                 key={tab.key}
@@ -469,15 +489,85 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
                 {tab.label}
               </button>
             ))}
+            </div>
+
+            <div className="flex flex-wrap items-end gap-2">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Date from</p>
+                <input
+                  type="date"
+                  value={dateInputs.dateFrom}
+                  onChange={(e) => setDateInputs((p) => ({ ...p, dateFrom: e.target.value }))}
+                  className="mt-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm"
+                />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">Date to</p>
+                <input
+                  type="date"
+                  value={dateInputs.dateTo}
+                  onChange={(e) => setDateInputs((p) => ({ ...p, dateTo: e.target.value }))}
+                  className="mt-1 h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={applyDateRange}
+                className="h-9 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800"
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                onClick={clearDateRange}
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                All time
+              </button>
+            </div>
           </div>
 
+          {(dateFrom || dateTo) && (
+            <div className="mb-4 flex flex-wrap items-center gap-2">
+              {dateFrom ? (
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                  <span className="text-slate-700">Date From</span>
+                  <span>{dateFrom}</span>
+                  <button
+                    type="button"
+                    onClick={clearDateRange}
+                    className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-blue-700 hover:bg-blue-100"
+                    aria-label="Clear date filter"
+                  >
+                    ×
+                  </button>
+                </span>
+              ) : null}
+
+              {dateTo ? (
+                <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-blue-700">
+                  <span className="text-slate-700">Date To</span>
+                  <span>{dateTo}</span>
+                  <button
+                    type="button"
+                    onClick={clearDateRange}
+                    className="ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full text-blue-700 hover:bg-blue-100"
+                    aria-label="Clear date filter"
+                  >
+                    ×
+                  </button>
+                </span>
+              ) : null}
+            </div>
+          )}
+
           <div className="space-y-6">
-          {(activeTab === 'overview' || activeTab === 'ecommerce') && (
+          {(activeTab === 'all' || activeTab === 'ecommerce') && (
             <section className="rounded-xl border border-slate-300 bg-white">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
-                <h4 className="text-base font-semibold text-slate-900">Ecommerce Orders</h4>
+                <h4 className="text-base font-semibold text-slate-900">Ecommerce</h4>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {ecommerceOrders.length} records
+                  {ecommerceTx.length} records
                 </span>
               </div>
               <div className="overflow-x-auto">
@@ -486,33 +576,24 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
                     <tr>
                       <th className="px-4 py-3 font-semibold">Order No</th>
                       <th className="px-4 py-3 font-semibold">Date</th>
+                      <th className="px-4 py-3 font-semibold">Payment</th>
                       <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Total</th>
+                      <th className="px-4 py-3 font-semibold">Net</th>
                       <th className="px-4 py-3 font-semibold">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {ecommerceOrders.map((order, index) => (
-                      <tr
-                        key={`e-${order.id}`}
-                        className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
-                      >
-                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">
-                          {order.order_number ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {formatDate(order.date)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {order.status ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">
-                          {formatAmount(order.total_amount)}
-                        </td>
+                    {ecommerceTx.map((row, index) => (
+                      <tr key={`ec-${row.order_id}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}>
+                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">{row.order_no ?? '-'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDate(row.order_datetime)}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.payment_method ?? '-'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.status ?? '-'}</td>
+                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">{formatAmount(row.net_amount)}</td>
                         <td className="px-4 py-3 whitespace-nowrap">
                           <button
                             type="button"
-                            onClick={() => setDrawer({ type: 'order', orderId: order.id })}
+                            onClick={() => setDrawer({ type: 'order', orderId: row.order_id })}
                             className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                           >
                             View
@@ -520,75 +601,10 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
                         </td>
                       </tr>
                     ))}
-                    {ecommerceOrders.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
-                          No ecommerce order history.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
-          {(activeTab === 'overview' || activeTab === 'pos') && (
-            <section className="rounded-xl border border-slate-300 bg-white">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
-                <h4 className="text-base font-semibold text-slate-900">POS Purchases</h4>
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {posOrders.length} records
-                </span>
-              </div>
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
-                    <tr>
-                      <th className="px-4 py-3 font-semibold">Receipt No</th>
-                      <th className="px-4 py-3 font-semibold">Date</th>
-                      <th className="px-4 py-3 font-semibold">Payment Method</th>
-                      <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Total</th>
-                      <th className="px-4 py-3 font-semibold">Action</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {posOrders.map((order, index) => (
-                      <tr
-                        key={`p-${order.id}`}
-                        className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
-                      >
-                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">
-                          {order.receipt_number ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {formatDate(order.date)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {order.payment_method ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {order.status ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">
-                          {formatAmount(order.total_amount)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setDrawer({ type: 'order', orderId: order.id })}
-                            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {posOrders.length === 0 && (
+                    {ecommerceTx.length === 0 && (
                       <tr>
                         <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
-                          No POS purchase history.
+                          No ecommerce transactions.
                         </td>
                       </tr>
                     )}
@@ -598,134 +614,64 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
             </section>
           )}
 
-          {(activeTab === 'overview' || activeTab === 'booking') && (
+          {(activeTab === 'all' || activeTab === 'booking') && (
             <section className="rounded-xl border border-slate-300 bg-white">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
-                <h4 className="text-base font-semibold text-slate-900">Booking Appointments</h4>
+                <h4 className="text-base font-semibold text-slate-900">Booking</h4>
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                  {bookings.length} records
+                  {bookingTx.length} records
                 </span>
               </div>
               <div className="overflow-x-auto">
                 <table className="min-w-full text-sm">
                   <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
                     <tr>
-                      <th className="px-4 py-3 font-semibold">Booking No</th>
-                      <th className="px-4 py-3 font-semibold">Date/Time</th>
-                      <th className="px-4 py-3 font-semibold">Services</th>
-                      <th className="px-4 py-3 font-semibold">Staff</th>
-                      <th className="px-4 py-3 font-semibold">Status</th>
-                      <th className="px-4 py-3 font-semibold">Amount</th>
+                      <th className="px-4 py-3 font-semibold">Order No</th>
+                      <th className="px-4 py-3 font-semibold">Date</th>
+                      <th className="px-4 py-3 font-semibold">Type</th>
+                      <th className="px-4 py-3 font-semibold">Ref</th>
+                      <th className="px-4 py-3 font-semibold">Net</th>
                       <th className="px-4 py-3 font-semibold">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {bookings.map((booking, index) => (
-                      <tr
-                        key={`b-${booking.id}`}
-                        className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
-                      >
-                        <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">
-                          {booking.booking_no ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {formatDate(booking.date_time)}
-                        </td>
-                        <td className="px-4 py-3 min-w-[260px] text-slate-700">
-                          {booking.service_names?.join(', ') || '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {booking.staff ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                          {booking.status ?? '-'}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-slate-900">
-                          {formatAmount(booking.amount)}
-                        </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setDrawer({ type: 'booking', bookingId: booking.id })}
-                            className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                          >
-                            View
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                    {bookings.length === 0 && (
-                      <tr>
-                        <td className="px-4 py-8 text-center text-slate-500" colSpan={7}>
-                          No booking history.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
-
-          {(activeTab === 'overview' || activeTab === 'packages') && (
-            <section>
-              <div className="rounded-xl border border-slate-300 bg-white">
-                <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-100/60 px-4 py-3">
-                  <h4 className="text-base font-semibold text-slate-900">Service Packages</h4>
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-700">
-                    {packages.length} records
-                  </span>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full text-sm">
-                    <thead className="sticky top-0 bg-slate-200/70 text-left text-xs uppercase tracking-wide text-slate-600">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold">Package Name</th>
-                        <th className="px-4 py-3 font-semibold">Purchase Date</th>
-                        <th className="px-4 py-3 font-semibold">Remaining Sessions</th>
-                        <th className="px-4 py-3 font-semibold">Status</th>
-                        <th className="px-4 py-3 font-semibold">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {packages.map((pkg, index) => (
-                        <tr
-                          key={`s-${pkg.id}`}
-                          className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}
-                        >
-                          <td className="px-4 py-3 font-medium text-slate-900">
-                            {pkg.package_name ?? '-'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                            {formatDate(pkg.purchase_date)}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-900">
-                            {pkg.remaining_sessions ?? '-'}
-                          </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">
-                            {pkg.status ?? '-'}
-                          </td>
+                    {bookingTx.map((row, index) => {
+                      const ref = row.type === 'package_purchase' ? row.package_name : row.booking_no
+                      const canOpenBooking = Boolean(row.booking_id)
+                      return (
+                        <tr key={`bk-${row.order_id}-${index}`} className={index % 2 === 0 ? 'bg-white' : 'bg-slate-100/40'}>
+                          <td className="px-4 py-3 whitespace-nowrap font-medium text-slate-900">{row.order_no ?? '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">{formatDate(row.order_datetime)}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-slate-700">{row.type ?? '-'}</td>
+                          <td className="px-4 py-3 text-slate-700">{ref ?? '-'}</td>
+                          <td className="px-4 py-3 whitespace-nowrap text-slate-900">{formatAmount(row.net_amount)}</td>
                           <td className="px-4 py-3 whitespace-nowrap">
                             <button
                               type="button"
-                              onClick={() => setDrawer({ type: 'package', data: pkg })}
+                              onClick={() => {
+                                if (canOpenBooking) {
+                                  setDrawer({ type: 'booking', bookingId: Number(row.booking_id) })
+                                } else {
+                                  setDrawer({ type: 'order', orderId: row.order_id })
+                                }
+                              }}
                               className="inline-flex items-center rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                             >
                               View
                             </button>
                           </td>
                         </tr>
-                      ))}
-                      {packages.length === 0 && (
-                        <tr>
-                          <td className="px-4 py-8 text-center text-slate-500" colSpan={5}>
-                            No service package history.
-                          </td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
-                </div>
+                      )
+                    })}
+                    {bookingTx.length === 0 && (
+                      <tr>
+                        <td className="px-4 py-8 text-center text-slate-500" colSpan={6}>
+                          No booking transactions.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </section>
           )}
