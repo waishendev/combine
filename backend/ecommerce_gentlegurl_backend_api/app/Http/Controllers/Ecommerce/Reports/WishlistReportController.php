@@ -43,7 +43,7 @@ class WishlistReportController extends Controller
         $coverImageSub = DB::table('product_media as pm')
             ->select([
                 'pm.product_id',
-                DB::raw('SUBSTRING_INDEX(GROUP_CONCAT(pm.path ORDER BY pm.sort_order ASC, pm.id ASC), ",", 1) as image_url'),
+                DB::raw("(array_agg(pm.path ORDER BY pm.sort_order ASC, pm.id ASC))[1] as image_url"),
             ])
             ->where('pm.type', 'image')
             ->groupBy('pm.product_id');
@@ -75,12 +75,12 @@ class WishlistReportController extends Controller
                 'p.sku',
                 'img.image_url',
                 'p.stock as current_stock',
-                DB::raw('CASE WHEN p.is_active = 1 THEN "active" ELSE "inactive" END as product_status'),
+                DB::raw("CASE WHEN p.is_active THEN 'active' ELSE 'inactive' END as product_status"),
                 DB::raw('COALESCE(cw.customer_wishlist_count, 0) as customer_wishlist_count'),
                 DB::raw('COALESCE(gw.guest_wishlist_count, 0) as guest_wishlist_count'),
                 DB::raw('COALESCE(cw.customer_wishlist_count, 0) + COALESCE(gw.guest_wishlist_count, 0) as total_wishlist_count'),
                 DB::raw('MAX(c.name) as category_name'),
-                DB::raw('GREATEST(COALESCE(cw.customer_last_wishlisted_at, "1970-01-01 00:00:00"), COALESCE(gw.guest_last_wishlisted_at, "1970-01-01 00:00:00")) as last_wishlisted_at'),
+                DB::raw("GREATEST(COALESCE(cw.customer_last_wishlisted_at, '1970-01-01 00:00:00'), COALESCE(gw.guest_last_wishlisted_at, '1970-01-01 00:00:00')) as last_wishlisted_at"),
             ])
             ->orderByDesc('total_wishlist_count')
             ->orderBy('p.id');
