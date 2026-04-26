@@ -3,13 +3,17 @@
 namespace App\Http\Controllers\Payments;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BookingConfirmationMail;
 use App\Models\BillplzBill;
+use App\Models\Booking\Booking;
+use App\Models\Booking\BookingLog;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Carbon\Carbon;
 
 class BillplzCallbackController extends Controller
@@ -113,6 +117,7 @@ class BillplzCallbackController extends Controller
             $order->save();
 
             $this->clearOrderCart($order);
+            $this->confirmOrderBookings($order, $billId);
 
             Log::info('Billplz callback processed successfully', [
                 'order_id' => $order->id,
@@ -163,6 +168,7 @@ class BillplzCallbackController extends Controller
                                 $order->save();
 
                                 $this->clearOrderCart($order);
+                                $this->confirmOrderBookings($order, $billId);
 
                                 if (!$signatureValid) {
                                     Log::warning('Billplz redirect processed despite signature failure - payment confirmed', [
@@ -300,6 +306,121 @@ class BillplzCallbackController extends Controller
         usort($sources, 'strcasecmp');
 
         return implode('|', $sources);
+    }
+
+    protected function confirmOrderBookings(Order $order, ?string $billId = null): void
+    {
+        $bookingIds = $order->items()
+            ->whereNotNull('booking_id')
+            ->pluck('booking_id')
+            ->unique()
+            ->filter()
+            ->values();
+
+        if ($bookingIds->isEmpty()) {
+            return;
+        }
+
+        Booking::query()
+            ->whereIn('id', $bookingIds)
+            ->where('payment_status', '!=', 'PAID')
+            ->update([
+                'status' => 'CONFIRMED',
+                'payment_status' => 'PAID',
+                'hold_expires_at' => null,
+                'updated_at' => now(),
+            ]);
+
+        foreach ($bookingIds as $bookingId) {
+            BookingLog::create([
+                'booking_id' => $bookingId,
+                'actor_type' => 'SYSTEM',
+                'actor_id' => null,
+                'action' => 'PAYMENT_CONFIRMED',
+                'meta' => [
+                    'order_id' => $order->id,
+                    'order_no' => $order->order_number,
+                    'ref' => $billId,
+                    'provider' => 'billplz',
+                    'source' => 'order_callback',
+                ],
+                'created_at' => now(),
+            ]);
+        }
+
+        $bookings = Booking::query()
+            ->whereIn('id', $bookingIds)
+            ->where('status', 'CONFIRMED')
+            ->with(['service', 'staff', 'customer'])
+            ->get();
+
+        foreach ($bookings as $booking) {
+            $this->sendBookingConfirmationEmail($booking);
+        }
+
+        Log::info('Order bookings confirmed after payment', [
+            'order_id' => $order->id,
+            'order_no' => $order->order_number,
+            'booking_ids' => $bookingIds->all(),
+            'bill_id' => $billId,
+        ]);
+    }
+
+    protected function sendBookingConfirmationEmail(?Booking $booking): void
+    {
+        if (!$booking || (string) $booking->status !== 'CONFIRMED') {
+            return;
+        }
+
+        $recipientEmail = $booking->billing_email
+            ?: $booking->guest_email
+            ?: $booking->customer?->email;
+
+        if (!$recipientEmail || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $customerName = $booking->billing_name
+            ?: $booking->guest_name
+            ?: $booking->customer?->name
+            ?: 'Customer';
+
+        try {
+            $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
+                ->map(fn ($item) => is_array($item) ? [
+                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                    'extra_duration_min' => (int) ($item['extra_duration_min'] ?? 0),
+                    'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                ] : null)
+                ->filter()
+                ->values()
+                ->all();
+
+            Mail::to($recipientEmail)->queue(new BookingConfirmationMail(
+                bookingCode: (string) ($booking->booking_code ?? ''),
+                customerName: $customerName,
+                serviceName: (string) ($booking->service?->name ?? 'Service'),
+                staffName: (string) ($booking->staff?->name ?? ''),
+                appointmentDate: $booking->start_at?->format('l, d M Y') ?? '—',
+                appointmentStartTime: $booking->start_at?->format('h:i A') ?? '—',
+                appointmentEndTime: $booking->end_at?->format('h:i A') ?? '—',
+                durationMin: (int) ($booking->service?->duration_min ?? 0),
+                depositAmount: (float) ($booking->deposit_amount ?? 0),
+                source: (string) ($booking->source ?? 'ONLINE'),
+                addonItems: $addonItems,
+            ));
+
+            Log::info('Booking confirmation email queued (order callback).', [
+                'booking_id' => $booking->id,
+                'booking_code' => $booking->booking_code,
+                'email' => $recipientEmail,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue booking confirmation email (order callback).', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function clearOrderCart(Order $order): void

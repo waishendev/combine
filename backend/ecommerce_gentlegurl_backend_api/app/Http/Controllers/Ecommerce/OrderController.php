@@ -3,7 +3,10 @@
 namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
+use App\Mail\BookingConfirmationMail;
 use App\Mail\OrderShippedMail;
+use App\Models\Booking\Booking;
+use App\Models\Booking\BookingLog;
 use App\Models\Ecommerce\Order;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
@@ -454,6 +457,7 @@ class OrderController extends Controller
             $order->save();
 
             $this->paymentService->handlePaid($order);
+            $this->confirmOrderBookings($order);
         });
 
         return $this->respond($order->fresh(['items', 'customer']), __('Payment confirmed.'));
@@ -601,4 +605,109 @@ class OrderController extends Controller
         return $this->respond($order, __('Order marked as completed.'));
     }
 
+    protected function confirmOrderBookings(Order $order): void
+    {
+        $bookingIds = $order->items()
+            ->whereNotNull('booking_id')
+            ->pluck('booking_id')
+            ->unique()
+            ->filter()
+            ->values();
+
+        if ($bookingIds->isEmpty()) {
+            return;
+        }
+
+        Booking::query()
+            ->whereIn('id', $bookingIds)
+            ->where('payment_status', '!=', 'PAID')
+            ->update([
+                'status' => 'CONFIRMED',
+                'payment_status' => 'PAID',
+                'hold_expires_at' => null,
+                'updated_at' => now(),
+            ]);
+
+        foreach ($bookingIds as $bookingId) {
+            BookingLog::create([
+                'booking_id' => $bookingId,
+                'actor_type' => 'SYSTEM',
+                'actor_id' => null,
+                'action' => 'PAYMENT_CONFIRMED',
+                'meta' => [
+                    'order_id' => $order->id,
+                    'order_no' => $order->order_number,
+                    'source' => 'admin_confirm',
+                ],
+                'created_at' => now(),
+            ]);
+        }
+
+        $bookings = Booking::query()
+            ->whereIn('id', $bookingIds)
+            ->where('status', 'CONFIRMED')
+            ->with(['service', 'staff', 'customer'])
+            ->get();
+
+        foreach ($bookings as $booking) {
+            $this->sendBookingConfirmationEmail($booking);
+        }
+
+        Log::info('Order bookings confirmed via admin payment confirmation', [
+            'order_id' => $order->id,
+            'order_no' => $order->order_number,
+            'booking_ids' => $bookingIds->all(),
+        ]);
+    }
+
+    protected function sendBookingConfirmationEmail(?Booking $booking): void
+    {
+        if (!$booking || (string) $booking->status !== 'CONFIRMED') {
+            return;
+        }
+
+        $recipientEmail = $booking->billing_email
+            ?: $booking->guest_email
+            ?: $booking->customer?->email;
+
+        if (!$recipientEmail || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $customerName = $booking->billing_name
+            ?: $booking->guest_name
+            ?: $booking->customer?->name
+            ?: 'Customer';
+
+        try {
+            $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
+                ->map(fn ($item) => is_array($item) ? [
+                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                    'extra_duration_min' => (int) ($item['extra_duration_min'] ?? 0),
+                    'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                ] : null)
+                ->filter()
+                ->values()
+                ->all();
+
+            Mail::to($recipientEmail)->queue(new BookingConfirmationMail(
+                bookingCode: (string) ($booking->booking_code ?? ''),
+                customerName: $customerName,
+                serviceName: (string) ($booking->service?->name ?? 'Service'),
+                staffName: (string) ($booking->staff?->name ?? ''),
+                appointmentDate: $booking->start_at?->format('l, d M Y') ?? '—',
+                appointmentStartTime: $booking->start_at?->format('h:i A') ?? '—',
+                appointmentEndTime: $booking->end_at?->format('h:i A') ?? '—',
+                durationMin: (int) ($booking->service?->duration_min ?? 0),
+                depositAmount: (float) ($booking->deposit_amount ?? 0),
+                source: (string) ($booking->source ?? 'ONLINE'),
+                addonItems: $addonItems,
+            ));
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue booking confirmation email (admin confirm).', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
 }
