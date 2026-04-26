@@ -19,6 +19,7 @@ import {
   removeCartItem,
   removePackageCartItem,
   uploadBookingCartItemPhotos,
+  updateBookingCartItemRemarks,
   updateBookingPackageCartItemQty,
   type PublicBookingBankAccount,
   type PublicBookingPaymentGateway,
@@ -87,6 +88,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [packageActionItemId, setPackageActionItemId] = useState<number | null>(null);
   const [packageQtyBusyId, setPackageQtyBusyId] = useState<number | null>(null);
   const [photoBusyItemId, setPhotoBusyItemId] = useState<number | null>(null);
+  const [remarksBusyItemId, setRemarksBusyItemId] = useState<number | null>(null);
 
   const loadCart = useCallback(async () => {
     try {
@@ -183,6 +185,21 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     if (!cart?.next_expiry_at) return null;
     return formatDuration(secondsLeft(cart.next_expiry_at));
   }, [cart]);
+
+  const saveItemRemarks = useCallback(async (itemId: number, notes: string) => {
+    setRemarksBusyItemId(itemId);
+    setMessage(null);
+    try {
+      const updatedCart = await updateBookingCartItemRemarks(itemId, notes);
+      setCart(updatedCart);
+      const count = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: count }));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save remarks.");
+    } finally {
+      setRemarksBusyItemId(null);
+    }
+  }, []);
 
   const hasPackageItems = (cart?.package_items?.length || 0) > 0;
 
@@ -759,6 +776,29 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       )}
                     </div>
                   ) : null}
+
+                  <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/30 p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Remarks</p>
+                      {item.customer_remarks ? null : (
+                        <span className="text-[10px] text-[var(--text-muted)]">Add remarks</span>
+                      )}
+                    </div>
+                    <textarea
+                      defaultValue={item.customer_remarks ?? ""}
+                      placeholder="Add remarks for this booking item"
+                      rows={2}
+                      maxLength={2000}
+                      disabled={remarksBusyItemId === item.id}
+                      onBlur={(event) => {
+                        const next = event.target.value.trim();
+                        const prev = String(item.customer_remarks ?? "").trim();
+                        if (next === prev) return;
+                        void saveItemRemarks(item.id, event.target.value);
+                      }}
+                      className="mt-2 w-full rounded-md border border-[var(--card-border)] bg-[var(--card)] px-2 py-1.5 text-[11px] outline-none focus:border-[var(--accent)] disabled:opacity-60"
+                    />
+                  </div>
 
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">

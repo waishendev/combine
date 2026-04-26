@@ -49,6 +49,7 @@ class CartController extends Controller
             'start_at' => ['required', 'date'],
             'selected_option_ids' => ['nullable', 'array'],
             'selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
+            'notes' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $service = BookingService::query()->with('allowedStaffs:id')->findOrFail($validated['service_id']);
@@ -57,6 +58,7 @@ class CartController extends Controller
         }
         $startAt = Carbon::parse($validated['start_at']);
         $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values()->all();
+        $customerRemarks = isset($validated['notes']) ? trim((string) $validated['notes']) : '';
         $serviceQuestions = $service->questions()->where('is_active', true)->with(['options' => fn ($q) => $q->where('is_active', true)])->get();
         $selectedOptions = BookingServiceQuestionOption::query()
             ->whereIn('id', $selectedOptionIds)
@@ -87,7 +89,7 @@ class CartController extends Controller
         }), 2);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min + $addonDurationMin);
 
-        return DB::transaction(function () use ($request, $validated, $service, $startAt, $endAt, $addonDurationMin, $addonPrice, $selectedOptions, $selectedOptionIds) {
+        return DB::transaction(function () use ($request, $validated, $service, $startAt, $endAt, $addonDurationMin, $addonPrice, $selectedOptions, $selectedOptionIds, $customerRemarks) {
             $cart = $this->resolveActiveCart($request);
             $this->cleanupExpiredItems($cart);
 
@@ -107,7 +109,13 @@ class CartController extends Controller
                 ->first();
 
             if ($duplicate) {
-                $duplicate->update(['expires_at' => $expiresAt]);
+                $duplicateAnswers = is_array($duplicate->question_answers_json) ? $duplicate->question_answers_json : [];
+                if ($customerRemarks !== '') {
+                    $duplicateAnswers['customer_remarks'] = $customerRemarks;
+                } else {
+                    unset($duplicateAnswers['customer_remarks']);
+                }
+                $duplicate->update(['expires_at' => $expiresAt, 'question_answers_json' => $duplicateAnswers]);
             } else {
                 BookingCartItem::create([
                     'booking_cart_id' => $cart->id,
@@ -141,6 +149,7 @@ class CartController extends Controller
                                 ? (float) $option->linkedBookingService->deposit_amount
                                 : null,
                         ])->values()->all(),
+                        'customer_remarks' => $customerRemarks !== '' ? $customerRemarks : null,
                     ],
                     'expires_at' => $expiresAt,
                     'status' => 'active',
@@ -372,6 +381,36 @@ class CartController extends Controller
         });
     }
 
+
+    public function updateItemRemarks(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        return DB::transaction(function () use ($request, $itemId, $validated) {
+            $cart = $this->resolveActiveCart($request);
+            $this->cleanupExpiredItems($cart);
+
+            $item = BookingCartItem::query()
+                ->where('booking_cart_id', $cart->id)
+                ->where('status', 'active')
+                ->findOrFail($itemId);
+
+            $answers = is_array($item->question_answers_json) ? $item->question_answers_json : [];
+            $remarks = isset($validated['notes']) ? trim((string) $validated['notes']) : '';
+            if ($remarks !== '') {
+                $answers['customer_remarks'] = $remarks;
+            } else {
+                unset($answers['customer_remarks']);
+            }
+
+            $item->update(['question_answers_json' => $answers]);
+
+            return $this->respond($this->buildCartPayload($cart->fresh()));
+        });
+    }
+
     public function checkout(Request $request)
     {
         $customer = $request->user('customer');
@@ -487,6 +526,15 @@ class CartController extends Controller
                 $billingPhone = $billingSameAsContact ? $contactPhone : (string) ($validated['billing_phone'] ?? '');
                 $billingEmail = $billingSameAsContact ? $contactEmail : (string) ($validated['billing_email'] ?? '');
 
+                $customerRemarks = trim((string) data_get($item->question_answers_json, 'customer_remarks', ''));
+                $noteParts = [];
+                if (! $customer && (string) ($cart->guest_token ?? '') !== '') {
+                    $noteParts[] = 'guest_token:' . (string) $cart->guest_token;
+                }
+                if ($customerRemarks !== '') {
+                    $noteParts[] = 'customer_remarks: ' . $customerRemarks;
+                }
+
                 $booking = Booking::create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => $customer ? 'CUSTOMER' : 'GUEST',
@@ -508,7 +556,7 @@ class CartController extends Controller
                     'addon_items_json' => $item->question_answers_json['selected_options'] ?? [],
                     'payment_status' => 'UNPAID',
                     'hold_expires_at' => $item->expires_at,
-                    'notes' => $customer ? null : ('guest_token:' . (string) ($cart->guest_token ?? '')),
+                    'notes' => ! empty($noteParts) ? implode(' | ', $noteParts) : null,
                 ]);
 
                 if ($isDepositWaivedForCustomer) {
@@ -909,6 +957,7 @@ class CartController extends Controller
                 'price_range_min' => $item->service?->price_range_min !== null ? (float) $item->service->price_range_min : null,
                 'price_range_max' => $item->service?->price_range_max !== null ? (float) $item->service->price_range_max : null,
                 'selected_options' => $item->question_answers_json['selected_options'] ?? [],
+                'customer_remarks' => data_get($item->question_answers_json, 'customer_remarks'),
                 'allow_photo_upload' => (bool) ($item->service?->allow_photo_upload ?? false),
                 'photos' => $item->photos->map(fn (BookingItemPhoto $photo) => [
                     'id' => (int) $photo->id,
