@@ -43,6 +43,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
         'gender',
         'date_of_birth',
         'email_verified_at',
+        'allow_booking_without_deposit',
     ];
 
     protected $hidden = [
@@ -60,6 +61,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
             'last_login_at' => 'datetime',
             'date_of_birth' => 'date',
             'email_verified_at' => 'datetime',
+            'allow_booking_without_deposit' => 'boolean',
         ];
     }
 

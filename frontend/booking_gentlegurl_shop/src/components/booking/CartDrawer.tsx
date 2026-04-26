@@ -76,6 +76,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [billingEmail, setBillingEmail] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [customerId, setCustomerId] = useState<number | null>(null);
+  const [allowNoDepositBooking, setAllowNoDepositBooking] = useState(false);
   const [availableMap, setAvailableMap] = useState<Record<number, number>>({});
   const [gateways, setGateways] = useState<PublicBookingPaymentGateway[]>([]);
   const [bankAccounts, setBankAccounts] = useState<PublicBookingBankAccount[]>([]);
@@ -112,6 +113,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           }
           setIsLoggedIn(true);
           setCustomerId(me.id);
+          setAllowNoDepositBooking(Boolean(me.allow_booking_without_deposit));
           setGuestName((prev) => prev || me.name || "");
           setGuestPhone((prev) => prev || me.phone || "");
           setGuestEmail((prev) => prev || me.email || "");
@@ -119,6 +121,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         .catch(() => {
           setIsLoggedIn(false);
           setCustomerId(null);
+          setAllowNoDepositBooking(false);
         });
 
       Promise.all([
@@ -533,6 +536,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               Double-check your appointment time, then complete payment below.
             </p>
           )}
+          {allowNoDepositBooking ? (
+            <div className="mb-4 rounded-xl border border-[var(--status-success-border)] bg-[var(--status-success-bg)] px-3 py-2 text-xs text-[var(--status-success)]">
+              Deposit waived for this member. Booking deposit is not required for checkout.
+            </div>
+          ) : null}
 
           <div className="space-y-2">
             {cart?.items?.map((item) => {

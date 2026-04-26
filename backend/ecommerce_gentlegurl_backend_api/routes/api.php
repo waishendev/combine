@@ -341,6 +341,8 @@ $protectedRoutes = function () {
 
     Route::put('/customers/{customer}', [CustomerController::class, 'update'])
         ->middleware('permission:customers.update');
+    Route::patch('/customers/{customer}/deposit-waiver', [CustomerController::class, 'toggleDepositWaiver'])
+        ->middleware('permission:customers.update');
 
     Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])
         ->middleware('permission:customers.delete');

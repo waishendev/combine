@@ -25,6 +25,7 @@ class PublicAccountController extends Controller
                 ? $customer->date_of_birth->toDateString()
                 : null,
             'tier' => $customer->tier,
+            'allow_booking_without_deposit' => (bool) ($customer->allow_booking_without_deposit ?? false),
         ];
 
         $loyalty = $loyaltySummary->getSummaryFor($customer);

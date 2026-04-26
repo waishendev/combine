@@ -19,6 +19,7 @@ type CustomerDetailData = {
   tier_marked_pending_at: string | null
   tier_effective_at: string | null
   is_active: boolean
+  allow_booking_without_deposit?: boolean
   last_login_at: string | null
   last_login_ip: string | null
   created_at: string
@@ -39,6 +40,16 @@ type CustomerDetailData = {
       amount_to_reach: number
     }
   }
+  latest_deposit_waiver_log?: {
+    id: number
+    action_type: string
+    remark?: string | null
+    created_at?: string | null
+    created_by?: {
+      id: number
+      name: string
+    } | null
+  } | null
 }
 
 export default function CustomerViewPanel({
@@ -193,6 +204,23 @@ export default function CustomerViewPanel({
                   </p>
                 </div>
                 <div className="px-4 py-3 space-y-3 text-sm">
+                  <div>
+                    <p className="text-xs text-gray-500">Deposit Waiver</p>
+                    <p className={`font-medium ${customer.allow_booking_without_deposit ? 'text-emerald-600' : 'text-gray-900'}`}>
+                      {customer.allow_booking_without_deposit ? 'Enabled' : 'Disabled'}
+                    </p>
+                  </div>
+                  {customer.latest_deposit_waiver_log ? (
+                    <div className="rounded border border-gray-200 bg-gray-50 px-3 py-2">
+                      <p className="text-xs font-semibold text-gray-700">Latest Waiver Update</p>
+                      <p className="text-xs text-gray-600 mt-1">
+                        {customer.latest_deposit_waiver_log.created_by?.name || 'System'} · {formatDate(customer.latest_deposit_waiver_log.created_at || null)}
+                      </p>
+                      {customer.latest_deposit_waiver_log.remark ? (
+                        <p className="text-xs text-gray-700 mt-1">{customer.latest_deposit_waiver_log.remark}</p>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div>
                     <p className="text-xs text-gray-500">Tier</p>
                     <p className="font-medium text-gray-900 capitalize">{customer.tier}</p>
@@ -355,4 +383,3 @@ export default function CustomerViewPanel({
     </div>
   )
 }
-

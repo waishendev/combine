@@ -13,6 +13,7 @@ export type CustomerApiItem = {
   is_active?: boolean | number | string | null
   last_login_at?: string | null
   last_login_ip?: string | null
+  allow_booking_without_deposit?: boolean | number | string | null
   created_at?: string | null
   updated_at?: string | null
   available_points?: number | null
@@ -43,8 +44,12 @@ export const mapCustomerApiItemToRow = (item: CustomerApiItem): CustomerRowData 
     tier: item.tier ?? '-',
     type: item.type ?? '-',
     isActive,
+    allowBookingWithoutDeposit:
+      item.allow_booking_without_deposit === true ||
+      item.allow_booking_without_deposit === 'true' ||
+      item.allow_booking_without_deposit === '1' ||
+      item.allow_booking_without_deposit === 1,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
   }
 }
-

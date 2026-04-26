@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\Customer;
+use App\Models\Ecommerce\CustomerDepositWaiverLog;
 use App\Models\Ecommerce\LoyaltySetting;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
@@ -15,6 +16,7 @@ use App\Models\Ecommerce\Voucher;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -111,6 +113,51 @@ class CustomerController extends Controller
         $customer->delete();
 
         return $this->respond(null, __('Customer deleted successfully.'));
+    }
+
+    public function toggleDepositWaiver(Request $request, Customer $customer)
+    {
+        $validated = $request->validate([
+            'allow_booking_without_deposit' => ['required', 'boolean'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $nextValue = (bool) $validated['allow_booking_without_deposit'];
+        $beforeValue = (bool) ($customer->allow_booking_without_deposit ?? false);
+        $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
+
+        if ($beforeValue === $nextValue) {
+            return $this->respond($customer, __('Deposit waiver setting unchanged.'));
+        }
+
+        DB::transaction(function () use ($customer, $beforeValue, $nextValue, $remark, $request) {
+            $customer->forceFill([
+                'allow_booking_without_deposit' => $nextValue,
+            ])->save();
+
+            CustomerDepositWaiverLog::query()->create([
+                'customer_id' => (int) $customer->id,
+                'action_type' => $nextValue ? 'enable_deposit_waiver' : 'disable_deposit_waiver',
+                'before_value' => [
+                    'allow_booking_without_deposit' => $beforeValue,
+                ],
+                'after_value' => [
+                    'allow_booking_without_deposit' => $nextValue,
+                ],
+                'remark' => $remark !== '' ? $remark : null,
+                'created_by' => $request->user()?->id,
+            ]);
+        });
+
+        return $this->respond(
+            $this->formatCustomerWithDetails(
+                $customer->fresh(),
+                $this->getActiveLoyaltySetting(),
+                $this->getActiveTierRules(),
+                $this->getWindowDates($this->getActiveLoyaltySetting()?->evaluation_cycle_months ?? 6),
+            ),
+            __('Deposit waiver setting updated successfully.'),
+        );
     }
 
     public function exportCsv(Request $request)
@@ -615,8 +662,23 @@ class CustomerController extends Controller
         $availablePoints = $this->getAvailablePoints($customer);
         $spentInWindow = $this->getSpentInWindow($customer, $window['start'], $window['end']);
         $nextTierData = $this->calculateNextTier($customer, $tierRules, $spentInWindow);
+        $latestDepositWaiverLog = CustomerDepositWaiverLog::query()
+            ->with('creator:id,name')
+            ->where('customer_id', $customer->id)
+            ->latest('id')
+            ->first();
 
         return $customer->toArray() + [
+            'latest_deposit_waiver_log' => $latestDepositWaiverLog ? [
+                'id' => (int) $latestDepositWaiverLog->id,
+                'action_type' => (string) $latestDepositWaiverLog->action_type,
+                'remark' => $latestDepositWaiverLog->remark,
+                'created_at' => optional($latestDepositWaiverLog->created_at)?->toDateTimeString(),
+                'created_by' => $latestDepositWaiverLog->creator ? [
+                    'id' => (int) $latestDepositWaiverLog->creator->id,
+                    'name' => (string) $latestDepositWaiverLog->creator->name,
+                ] : null,
+            ] : null,
             'loyalty_summary' => [
                 'available_points' => $availablePoints,
                 'total_earned' => $this->getTotalEarnedPoints($customer),
