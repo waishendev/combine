@@ -1458,6 +1458,9 @@ class PosController extends Controller
                 'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
             ]]);
         }
+        if ($mainServicePayload->count() !== $mainServicePayload->pluck('booking_service_id')->unique()->count()) {
+            return $this->respondError(__('Duplicate main services are not allowed in the same booking.'), 422);
+        }
 
         $serviceIds = $mainServicePayload->pluck('booking_service_id')->unique()->values();
         $servicesById = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->whereIn('id', $serviceIds->all())->get()->keyBy('id');
@@ -1825,6 +1828,9 @@ class PosController extends Controller
                 'booking_service_id' => (int) $validated['booking_service_id'],
                 'selected_option_ids' => collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all(),
             ]]);
+        }
+        if ($mainServicePayload->count() !== $mainServicePayload->pluck('booking_service_id')->unique()->count()) {
+            return $this->respondError(__('Duplicate main services are not allowed in the same booking.'), 422);
         }
 
         $serviceIds = $mainServicePayload->pluck('booking_service_id')->unique()->values();

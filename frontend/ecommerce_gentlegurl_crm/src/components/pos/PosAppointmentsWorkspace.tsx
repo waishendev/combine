@@ -593,6 +593,13 @@ export default function PosAppointmentsWorkspace({
     }
     return allowed
   }, [createAppointmentExtraServiceBlocks, createAppointmentServiceDraft])
+  const createAppointmentSelectedServiceIds = useMemo(
+    () => [
+      ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
+      ...createAppointmentExtraServiceBlocks.map((block) => Number(block.service?.id ?? 0)).filter((id) => id > 0),
+    ],
+    [createAppointmentExtraServiceBlocks, createAppointmentServiceDraft?.id],
+  )
 
   const submitCreateAppointment = useCallback(async () => {
     if (!createAppointmentServiceDraft) {
@@ -632,6 +639,10 @@ export default function PosAppointmentsWorkspace({
     }
     if (!createAppointmentSlotValue) {
       setCreateAppointmentError('Please select appointment slot/time.')
+      return
+    }
+    if (new Set(createAppointmentSelectedServiceIds).size !== createAppointmentSelectedServiceIds.length) {
+      setCreateAppointmentError('Duplicate main services are not allowed in the same appointment.')
       return
     }
     for (const question of createAppointmentQuestions) {
@@ -725,6 +736,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentNotes,
     createAppointmentQuestions,
     createAppointmentSelectedOptionIds,
+    createAppointmentSelectedServiceIds,
     createAppointmentServiceDraft,
     createAppointmentSlotValue,
     fetchAppointments,
@@ -2550,11 +2562,22 @@ export default function PosAppointmentsWorkspace({
                           className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
                         >
                           <option value="">Select main service</option>
-                          {createAppointmentServices.map((service) => (
+                          {createAppointmentServices
+                            .filter((service) => {
+                              const takenByOthers = new Set<number>([
+                                ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
+                                ...createAppointmentExtraServiceBlocks
+                                  .filter((row) => row.id !== block.id)
+                                  .map((row) => Number(row.service?.id ?? 0))
+                                  .filter((id) => id > 0),
+                              ])
+                              return !takenByOthers.has(service.id)
+                            })
+                            .map((service) => (
                             <option key={`create-extra-service-${block.id}-${service.id}`} value={service.id}>
                               {service.name}
                             </option>
-                          ))}
+                            ))}
                         </select>
                         <button
                           type="button"

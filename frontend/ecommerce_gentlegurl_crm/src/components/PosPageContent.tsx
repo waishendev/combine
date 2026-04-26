@@ -2043,6 +2043,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     return allowed
   }, [bookingExtraServiceBlocks, bookingServiceDraft])
+  const bookingSelectedServiceIds = useMemo(
+    () => [
+      ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
+      ...bookingExtraServiceBlocks.map((block) => Number(block.service?.id ?? 0)).filter((id) => id > 0),
+    ],
+    [bookingExtraServiceBlocks, bookingServiceDraft?.id],
+  )
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
@@ -2090,6 +2097,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     if (!bookingSlotValue) {
       setBookingModalError('Please select appointment slot/time.')
+      return
+    }
+    if (new Set(bookingSelectedServiceIds).size !== bookingSelectedServiceIds.length) {
+      setBookingModalError('Duplicate main services are not allowed in the same booking.')
       return
     }
     for (const question of bookingQuestions) {
@@ -2177,6 +2188,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     bookingSelectedOptionIds,
     bookingServiceDraft,
     bookingSlotValue,
+    bookingSelectedServiceIds,
     selectedMember?.id,
     showMsg,
   ])
@@ -7606,11 +7618,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
                       >
                         <option value="">Select main service</option>
-                        {services.map((service) => (
+                        {services
+                          .filter((service) => {
+                            const takenByOthers = new Set<number>([
+                              ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
+                              ...bookingExtraServiceBlocks
+                                .filter((row) => row.id !== block.id)
+                                .map((row) => Number(row.service?.id ?? 0))
+                                .filter((id) => id > 0),
+                            ])
+                            return !takenByOthers.has(service.id)
+                          })
+                          .map((service) => (
                           <option key={`booking-extra-service-${block.id}-${service.id}`} value={service.id}>
                             {service.name}
                           </option>
-                        ))}
+                          ))}
                       </select>
                       <button
                         type="button"
