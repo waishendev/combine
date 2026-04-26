@@ -690,6 +690,12 @@ class OrderController extends Controller
                 ->values()
                 ->all();
 
+            $widget = SettingService::get('shop_contact_widget', null, 'booking');
+            $phone = data_get($widget, 'whatsapp.phone');
+            $contactPhone = ($phone && is_string($phone) && trim($phone) !== '')
+                ? trim($phone)
+                : '010-387 0881';
+
             Mail::to($recipientEmail)->queue(new BookingConfirmationMail(
                 bookingCode: (string) ($booking->booking_code ?? ''),
                 customerName: $customerName,
@@ -702,6 +708,7 @@ class OrderController extends Controller
                 depositAmount: (float) ($booking->deposit_amount ?? 0),
                 source: (string) ($booking->source ?? 'ONLINE'),
                 addonItems: $addonItems,
+                contactPhone: $contactPhone,
             ));
         } catch (\Throwable $e) {
             Log::error('Failed to queue booking confirmation email (admin confirm).', [

@@ -10,6 +10,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\PaymentGateway;
+use App\Services\SettingService;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\BillplzBaseUrl;
 use App\Support\WorkspaceType;
@@ -523,6 +524,12 @@ class PaymentController extends Controller
             ?: 'Customer';
 
         try {
+            $widget = SettingService::get('shop_contact_widget', null, 'booking');
+            $phone = data_get($widget, 'whatsapp.phone');
+            $contactPhone = ($phone && is_string($phone) && trim($phone) !== '')
+                ? trim($phone)
+                : '010-387 0881';
+
             $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
                 ->map(fn ($item) => is_array($item) ? [
                     'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
@@ -545,6 +552,7 @@ class PaymentController extends Controller
                 depositAmount: (float) ($booking->deposit_amount ?? 0),
                 source: (string) ($booking->source ?? 'ONLINE'),
                 addonItems: $addonItems,
+                contactPhone: $contactPhone,
             ));
 
             Log::info('Booking confirmation email queued.', [

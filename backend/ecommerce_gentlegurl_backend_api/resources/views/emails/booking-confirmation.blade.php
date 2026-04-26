@@ -32,9 +32,13 @@
                 <tr>
                     <td style="padding: 8px 4px; color: #666; vertical-align: top;">Add-Ons:</td>
                     <td style="padding: 8px 4px;">
-                        @foreach ($addonItems as $addon)
-                            <span style="display: inline-block; background-color: #f3f4f6; border-radius: 4px; padding: 2px 8px; margin: 2px 0; font-size: 13px;">{{ $addon['name'] }}</span><br>
-                        @endforeach
+                        <ul style="margin: 0; padding: 0 0 0 16px;">
+                            @foreach ($addonItems as $addon)
+                                <li style="margin: 0; padding: 0;">
+                                    <span style="display: inline-block; background-color: #f3f4f6; border-radius: 4px; padding: 2px 8px; margin: 2px 0; font-size: 13px;">{{ $addon['name'] }}</span>
+                                </li>
+                            @endforeach
+                        </ul>
                     </td>
                 </tr>
                 @else
@@ -76,7 +80,10 @@
             <p style="margin: 0; font-weight: 600; color: #854d0e;">&#128197; Reminder</p>
             <p style="margin: 8px 0 0; color: #854d0e;">
                 Please arrive on time for your appointment on <strong>{{ $appointmentDate }}</strong> at <strong>{{ $appointmentStartTime }}</strong>.
-                If you need to reschedule or cancel, please contact us as soon as possible.
+                If you need to reschedule or cancel, please contact us directly.
+            </p>
+            <p style="margin: 10px 0 0; font-size: 14px; color: #854d0e;">
+                &#128242; Gentlegurls Nail Salon @ {{ $contactPhone }}
             </p>
         </div>
 

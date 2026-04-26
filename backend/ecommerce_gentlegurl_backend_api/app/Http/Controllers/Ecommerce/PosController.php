@@ -521,6 +521,8 @@ class PosController extends Controller
             ?: $booking->customer?->name
             ?: 'Customer';
 
+        $contactPhone = $this->resolveContactPhoneForEmail();
+
         Mail::to($validated['email'])->queue(new BookingConfirmationMail(
             bookingCode: (string) ($booking->booking_code ?? ''),
             customerName: $customerName,
@@ -533,6 +535,7 @@ class PosController extends Controller
             depositAmount: (float) ($booking->deposit_amount ?? 0),
             source: (string) ($booking->source ?? 'STAFF'),
             addonItems: $addonItems,
+            contactPhone: $contactPhone,
         ));
 
         return $this->respond(['ok' => true]);
@@ -4005,6 +4008,7 @@ class PosController extends Controller
                 ?: 'Customer';
 
             try {
+                $contactPhone = $this->resolveContactPhoneForEmail();
                 $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
                     ->map(fn ($item) => is_array($item) ? [
                         'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
@@ -4027,6 +4031,7 @@ class PosController extends Controller
                     depositAmount: (float) ($booking->deposit_amount ?? 0),
                     source: (string) ($booking->source ?? 'STAFF'),
                     addonItems: $addonItems,
+                    contactPhone: $contactPhone,
                 ));
 
                 Log::info('Booking confirmation email queued.', [

@@ -7,11 +7,11 @@
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px; margin: 0 auto; padding: 20px;">
     <div style="background-color: #f9f9f9; padding: 30px; border-radius: 8px;">
-        <div style="text-align: center; margin-bottom: 24px;">
+        <!-- <div style="text-align: center; margin-bottom: 24px;">
             <div style="display: inline-block; background-color: #fef3c7; border-radius: 50%; width: 56px; height: 56px; line-height: 56px; text-align: center; font-size: 28px;">
                 &#128197;
             </div>
-        </div>
+        </div> -->
 
         <h1 style="color: #92400e; margin-top: 0; text-align: center;">Booking Rescheduled</h1>
         <p style="margin: 0 0 24px; text-align: center; color: #555;">

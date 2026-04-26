@@ -10,6 +10,7 @@ use App\Models\Booking\BookingLog;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\Cart;
 use App\Services\Payments\BillplzConfigResolver;
+use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -386,6 +387,12 @@ class BillplzCallbackController extends Controller
             ?: 'Customer';
 
         try {
+            $widget = SettingService::get('shop_contact_widget', null, 'booking');
+            $phone = data_get($widget, 'whatsapp.phone');
+            $contactPhone = ($phone && is_string($phone) && trim($phone) !== '')
+                ? trim($phone)
+                : '010-387 0881';
+
             $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
                 ->map(fn ($item) => is_array($item) ? [
                     'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
@@ -408,6 +415,7 @@ class BillplzCallbackController extends Controller
                 depositAmount: (float) ($booking->deposit_amount ?? 0),
                 source: (string) ($booking->source ?? 'ONLINE'),
                 addonItems: $addonItems,
+                contactPhone: $contactPhone,
             ));
 
             Log::info('Booking confirmation email queued (order callback).', [

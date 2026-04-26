@@ -27,6 +27,7 @@ class BookingConfirmationMail extends Mailable implements ShouldQueue
         private float $depositAmount,
         private string $source,
         private array $addonItems = [],
+        private string $contactPhone,
     ) {
         $this->bookingCode = mb_scrub($this->bookingCode, 'UTF-8');
         $this->customerName = mb_scrub($this->customerName, 'UTF-8');
@@ -36,6 +37,7 @@ class BookingConfirmationMail extends Mailable implements ShouldQueue
         $this->appointmentStartTime = mb_scrub($this->appointmentStartTime, 'UTF-8');
         $this->appointmentEndTime = mb_scrub($this->appointmentEndTime, 'UTF-8');
         $this->source = mb_scrub($this->source, 'UTF-8');
+        $this->contactPhone = mb_scrub($this->contactPhone, 'UTF-8');
         $this->addonItems = array_map(
             fn (array $item): array => [
                 'name' => mb_scrub((string) ($item['name'] ?? ''), 'UTF-8'),
@@ -61,6 +63,7 @@ class BookingConfirmationMail extends Mailable implements ShouldQueue
                 'depositAmount' => $this->depositAmount,
                 'source' => $this->source,
                 'addonItems' => $this->addonItems,
+                'contactPhone' => $this->contactPhone,
             ]);
     }
 }
