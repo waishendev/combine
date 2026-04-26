@@ -654,7 +654,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
   const [cartEditMainServiceQuery, setCartEditMainServiceQuery] = useState('')
+  const [cartEditMainServicePickerOpen, setCartEditMainServicePickerOpen] = useState(false)
   const [cartEditAddedMainBlocks, setCartEditAddedMainBlocks] = useState<Array<{
+    tmp_id: string
     service_id: number
     service_name: string
     price: number
@@ -662,6 +664,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     addon_questions: Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>
     selected_addon_ids: Set<number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
+    auto_balance: boolean
   }>>([])
   const [cartEditSettledAmount, setCartEditSettledAmount] = useState('')
   const [cartEditStaffSplits, setCartEditStaffSplits] = useState<Array<{ staff_id: number | null; share_percent: string }>>([])
@@ -2587,6 +2590,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const addedMainBlocksSeed = (settlement.main_services ?? [])
       .filter((service) => !service.is_original)
       .map((service) => ({
+        tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
         service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
         service_name: String(service.name ?? 'Service'),
         price: Number(service.extra_price ?? 0),
@@ -2597,10 +2601,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
           share_percent: String(split.share_percent ?? ''),
         })),
+        auto_balance: true,
       }))
       .filter((block) => block.service_id > 0)
     setCartEditAddedMainBlocks(addedMainBlocksSeed)
     setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerOpen(false)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
     setCartEditStaffSplitAutoBalance(true)
     const initialSplits = (settlement.staff_splits ?? [])
@@ -2673,6 +2679,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     })
   }
 
+  const openCartEditMainServicePicker = () => {
+    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerOpen(true)
+  }
+
   const addCartEditMainServiceBlock = async (service: BookingServiceOption) => {
     if (!service?.id) return
     if (cartEditAddedMainBlocks.some((block) => block.service_id === service.id)) return
@@ -2685,6 +2696,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       questions = []
     }
     setCartEditAddedMainBlocks((prev) => [...prev, {
+      tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
       price: Number(service.service_price ?? service.price ?? 0),
@@ -2692,7 +2704,34 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       addon_questions: questions,
       selected_addon_ids: new Set<number>(),
       staff_splits: [{ staff_id: null, share_percent: '100' }],
+      auto_balance: true,
     }])
+  }
+
+  const updateCartEditAddedMainSplitStaff = (tmpId: string, index: number, staffId: number | null) => {
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => {
+      if (block.tmp_id !== tmpId) return block
+      const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, staff_id: staffId } : row))
+      const rebalanced = block.auto_balance ? rebalanceSettlementPrimaryShare(next) : next
+      return { ...block, staff_splits: rebalanced }
+    }))
+  }
+
+  const updateCartEditAddedMainSplitShare = (tmpId: string, index: number, value: string) => {
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => {
+      if (block.tmp_id !== tmpId) return block
+      const next = block.staff_splits.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
+      if (!block.auto_balance || index === 0) return { ...block, staff_splits: next }
+      return { ...block, staff_splits: rebalanceSettlementPrimaryShare(next) }
+    }))
+  }
+
+  const toggleCartEditAddedMainAutoBalance = (tmpId: string, enabled: boolean) => {
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => {
+      if (block.tmp_id !== tmpId) return block
+      const nextSplits = enabled ? rebalanceSettlementPrimaryShare(block.staff_splits) : block.staff_splits
+      return { ...block, auto_balance: enabled, staff_splits: nextSplits }
+    }))
   }
 
   const saveCartEditSettlement = async () => {
@@ -4706,8 +4745,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-gray-900">
                               {String(appt.booking_code ?? `BOOKING-${appt.id}`)}
-                              {serviceLabel ? <span className="text-gray-400"> · </span> : null}
-                              {serviceLabel ? <span className="text-gray-700">{serviceLabel}</span> : null}
+                              {/* {serviceLabel ? <span className="text-gray-400"> · </span> : null}
+                              {serviceLabel ? <span className="text-gray-700">{serviceLabel}</span> : null} */}
                             </p>
                             <p className="mt-0.5 truncate text-xs text-gray-500">
                               {String(appt.customer_name ?? '-')}
@@ -5123,8 +5162,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="mt-1 flex flex-wrap items-baseline justify-between gap-2">
                         <h4 className="text-sm font-bold text-gray-900" title={settlement.booking_code}>
                           {settlement.booking_code}
-                          {settlement.service_name ? <span className="text-gray-400"> · </span> : null}
-                          {settlement.service_name ? <span className="font-semibold text-gray-900">{settlement.service_name}</span> : null}
+                          {/* {settlement.service_name ? <span className="text-gray-400"> · </span> : null}
+                          {settlement.service_name ? <span className="font-semibold text-gray-900">{settlement.service_name}</span> : null} */}
                         </h4>
                       </div>
 
@@ -5138,7 +5177,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           </>
                         ) : null}
                       </div>
-                      {(settlement.main_services ?? []).length > 0 ? (
+                      {/* {(settlement.main_services ?? []).length > 0 ? (
                         <div className="mt-2 rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-[11px] text-gray-700">
                           {(settlement.main_services ?? []).map((service, idx) => (
                             <div key={`cart-main-display-${settlement.id}-${service.id ?? service.name}-${idx}`} className="mb-1 last:mb-0">
@@ -5157,7 +5196,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </div>
                           ))}
                         </div>
-                      ) : null}
+                      ) : null} */}
                       {settlement.requires_settled_amount ? (
                         <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
                           <p className="text-[11px] font-semibold text-amber-900">
@@ -5187,7 +5226,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       return (
                         <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-cyan-200/80">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p>
+                          {/* <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p> */}
                           <div className="mt-2 space-y-2 text-[11px]">
                             {mainCoveredByPkg ? (
                               <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 pb-2">
@@ -5203,39 +5242,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
-                                <span className="text-gray-700">Service</span>
-                                <span className="font-semibold tabular-nums text-gray-900">{servicePriceLabel}</span>
+                              <div>
+                                
                               </div>
                             )}
 
-                            {!hasServiceBlocks && addonRows.length > 0 ? (
-                              <div className="space-y-1.5 border-b border-gray-200 pb-2">
-                                <div className="flex justify-between gap-2">
-                                  <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</span>
-                                  {/* <span className="font-semibold tabular-nums text-gray-900">RM {addonDueSum.toFixed(2)}</span> */}
-                                </div>
-                                <div className="space-y-1 pl-1">
-                                  {addonRows.map((addon, idx) => (
-                                    <div
-                                      key={`settlement-addon-${settlement.id}-${addon.id ?? addon.name}-${idx}`}
-                                      className="flex justify-between gap-2 tabular-nums text-gray-700"
-                                    >
-                                      <span className="min-w-0">
-                                        <span className="text-gray-500"> </span>+{addon.name}
-                                      </span>
-                                      <span className="shrink-0 font-semibold text-gray-900">
-                                        + RM {Number(addon.balance_due ?? addon.extra_price ?? 0).toFixed(2)}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            ) : null}
+                         
 
                             {hasServiceBlocks ? (
                               <div className="space-y-2 border-b border-gray-200 pb-2">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service Blocks</p>
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service</p>
                                 {(settlement.main_services ?? []).map((service, idx) => {
                                   const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
                                   const blockSubtotal = Number(service.extra_price ?? 0) + serviceAddonTotal
@@ -5251,10 +5267,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
                                         </div>
                                       ))}
-                                      <div className="mt-1 flex justify-between gap-2 border-t border-gray-200 pt-1 text-[10px] font-semibold text-gray-700">
+                                      {/* <div className="mt-1 flex justify-between gap-2 border-t border-gray-200 pt-1 text-[10px] font-semibold text-gray-700">
                                         <span>Subtotal</span>
                                         <span className="tabular-nums">RM {blockSubtotal.toFixed(2)}</span>
-                                      </div>
+                                      </div> */}
                                     </div>
                                   )
                                 })}
@@ -5690,7 +5706,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {cartEditSettlementOpen && cartEditSettlementItem && (
         <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
@@ -5705,7 +5721,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+                <div className="space-y-5">
               {cartEditSettlementItem.is_range_priced ? (
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-1">Service Amount</label>
@@ -5743,38 +5761,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </p>
                     </div>
                   ))}
-                    <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-600">+ Add Main Service</p>
-                      {cartEditMainServiceCatalogLoading ? <span className="text-[11px] text-gray-500">Loading…</span> : null}
-                    </div>
-                    <input
-                      type="text"
-                      value={cartEditMainServiceQuery}
-                      onChange={(e) => setCartEditMainServiceQuery(e.target.value)}
-                      placeholder="Search service..."
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                    />
-                    <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
-                      {cartEditMainServiceCatalog
-                        .filter((service) => service.id !== cartEditSettlementItem.booking_service_id)
-                        .filter((service) => !cartEditAddedMainBlocks.some((block) => block.service_id === service.id))
-                        .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
-                        .map((service) => {
-                          const price = Number(service.service_price ?? service.price ?? 0)
-                          const duration = Number(service.duration_min ?? 0)
-                          return (
-                            <button key={`cart-main-${service.id}`} type="button" onClick={() => void addCartEditMainServiceBlock(service)} className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-3 py-2 text-left hover:bg-gray-50">
-                              <span className="text-sm font-medium text-gray-900">{service.name}</span>
-                              <span className="text-xs font-semibold text-gray-600">
-                                + Add · RM {price.toFixed(2)}
-                                {duration > 0 ? ` · ${duration}min` : ''}
-                              </span>
-                            </button>
-                          )
-                        })}
-                    </div>
-                  </div>
                 </div>
               </div>
 
@@ -5867,9 +5853,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                       >
                         <option value="">Select staff</option>
-                        {activeStaffs.map((staff) => (
-                          <option key={staff.id} value={staff.id}>{staff.name}</option>
-                        ))}
+                        {activeStaffs
+                          .filter((staff) => {
+                            const selected = new Set(
+                              cartEditStaffSplits
+                                .map((row, rowIdx) => (rowIdx === idx ? null : row.staff_id))
+                                .filter((id): id is number => id != null),
+                            )
+                            return !selected.has(staff.id)
+                          })
+                          .map((staff) => (
+                            <option key={staff.id} value={staff.id}>{staff.name}</option>
+                          ))}
                       </select>
                       <div className="relative">
                         <input
@@ -5895,6 +5890,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ))}
                 </div>
               </div>
+                </div>
+
+                <div className="space-y-5">
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <button
+                      type="button"
+                      onClick={() => openCartEditMainServicePicker()}
+                      className="w-full rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 px-4 py-4 text-left transition hover:border-indigo-300 hover:bg-indigo-50/40"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-gray-900">+ Add Main Service</p>
+                          <p className="mt-0.5 text-xs text-gray-500">Add a service block, then configure its add-ons & staff split below</p>
+                        </div>
+                        <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-indigo-700 shadow-sm ring-1 ring-indigo-200">
+                          Add
+                        </span>
+                      </div>
+                    </button>
+                  </div>
 
               {cartEditAddedMainBlocks.map((block) => {
                 const addonOptions = block.addon_questions.flatMap((q) => q.options)
@@ -5902,7 +5917,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
                 const blockSubtotal = Number(block.price ?? 0) + addonTotal
                 return (
-                  <div key={`cart-added-main-block-${block.service_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
+                  <div key={`cart-added-main-block-${block.tmp_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
@@ -5911,7 +5926,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setCartEditAddedMainBlocks((prev) => prev.filter((item) => item.service_id !== block.service_id))}
+                        onClick={() => setCartEditAddedMainBlocks((prev) => prev.filter((item) => item.tmp_id !== block.tmp_id))}
                         className="rounded-md border border-rose-200 px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
                       >
                         Remove
@@ -5946,31 +5961,48 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </div>
                     ))}
                     <div className="space-y-2">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={block.auto_balance}
+                          onChange={(e) => toggleCartEditAddedMainAutoBalance(block.tmp_id, e.target.checked)}
+                          className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                        />
+                        Auto Balance (lock first row, auto adjust to 100%)
+                      </label>
                       {block.staff_splits.map((split, idx) => (
-                        <div key={`cart-added-split-${block.service_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                        <div key={`cart-added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
                           <select
                             value={split.staff_id ?? ''}
                             onChange={(e) => {
                               const value = e.target.value ? Number(e.target.value) : null
-                              setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
-                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, staff_id: value } : row) }
-                                : item))
+                              updateCartEditAddedMainSplitStaff(block.tmp_id, idx, value)
                             }}
                             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                           >
                             <option value="">Select staff</option>
-                            {activeStaffs.map((staff) => <option key={`cart-added-staff-${block.service_id}-${staff.id}`} value={staff.id}>{staff.name}</option>)}
+                            {activeStaffs
+                              .filter((staff) => {
+                                const selected = new Set(
+                                  block.staff_splits
+                                    .map((row, rowIdx) => (rowIdx === idx ? null : row.staff_id))
+                                    .filter((id): id is number => id != null),
+                                )
+                                return !selected.has(staff.id)
+                              })
+                              .map((staff) => (
+                                <option key={`cart-added-staff-${block.tmp_id}-${staff.id}`} value={staff.id}>{staff.name}</option>
+                              ))}
                           </select>
                           <input
                             type="number"
                             min={1}
                             max={100}
                             value={split.share_percent}
+                            disabled={block.auto_balance && idx === 0}
                             onChange={(e) => {
                               const value = e.target.value
-                              setCartEditAddedMainBlocks((prev) => prev.map((item) => item.service_id === block.service_id
-                                ? { ...item, staff_splits: item.staff_splits.map((row, rowIdx) => rowIdx === idx ? { ...row, share_percent: value } : row) }
-                                : item))
+                              updateCartEditAddedMainSplitShare(block.tmp_id, idx, value)
                             }}
                             className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
                           />
@@ -5997,6 +6029,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 )
               })}
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-gray-200 pt-5">
 
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
@@ -6023,7 +6059,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 const packageOffset = Number(cartEditSettlementItem.package_offset ?? 0)
                 const finalTotal = Math.max(0, serviceAmt + addonTotal - depositOffset - packageOffset)
                 return (
-                  <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Summary</p>
                     <div className="space-y-1.5 text-sm">
                       <div className="flex justify-between">
@@ -6066,6 +6102,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 )
               })()}
+              </div>
             </div>
 
             <div className="border-t border-gray-200 bg-gray-50 px-5 py-4">
@@ -6093,6 +6130,69 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </div>
         </div>
       )}
+
+      {cartEditMainServicePickerOpen && cartEditSettlementItem ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+              <div>
+                <h4 className="text-base font-bold text-gray-900">Choose Main Service</h4>
+                <p className="text-xs text-gray-500">Search and select a booking service.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setCartEditMainServicePickerOpen(false)
+                  setCartEditMainServiceQuery('')
+                }}
+                className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+            <div className="p-5">
+              <input
+                type="text"
+                value={cartEditMainServiceQuery}
+                onChange={(e) => setCartEditMainServiceQuery(e.target.value)}
+                placeholder="Search service name…"
+                className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+              />
+              <div className="mt-3 max-h-[50vh] overflow-y-auto space-y-1 pr-1">
+                {cartEditMainServiceCatalog
+                  .filter((service) => service.id !== cartEditSettlementItem.booking_service_id)
+                  .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
+                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
+                  .slice(0, 200)
+                  .map((service) => (
+                    <button
+                      key={`cart-pick-main-modal-${service.id}`}
+                      type="button"
+                      onClick={async () => {
+                        await addCartEditMainServiceBlock(service)
+                        setCartEditMainServicePickerOpen(false)
+                        setCartEditMainServiceQuery('')
+                      }}
+                      className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm hover:bg-gray-50"
+                    >
+                      <span className="font-semibold text-gray-900">{service.name}</span>
+                      <span className="text-xs font-semibold text-indigo-700">Select</span>
+                    </button>
+                  ))}
+                {cartEditMainServiceCatalog
+                  .filter((service) => service.id !== cartEditSettlementItem.booking_service_id)
+                  .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
+                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
+                  .length === 0 ? (
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+                    No services found.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {checkoutConfirmationOpen && hasCartItems ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
@@ -6428,9 +6528,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
                               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
                                 <span className="text-base font-bold leading-snug text-gray-900">{settlement.booking_code}</span>
-                                {settlement.service_name ? (
+                                {/* {settlement.service_name ? (
                                   <span className="text-sm font-semibold text-gray-800">· {settlement.service_name}</span>
-                                ) : null}
+                                ) : null} */}
                               </div>
                               <div className="mt-2 space-y-0.5 text-xs text-gray-600">
                                 <p>Name: {settlement.customer_name || '—'}</p>
@@ -6446,24 +6546,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
                               <div className="space-y-2">
                                 <p className="text-xs leading-relaxed text-gray-700">{getSettlementWorkerSummary(settlement)}</p>
-                                {(settlement.main_services ?? []).length > 0 ? (
-                                  <div className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
-                                    {(settlement.main_services ?? []).map((service, idx) => (
-                                      <div key={`checkout-main-display-${settlement.id}-${service.id ?? service.name}-${idx}`} className="mb-1 last:mb-0">
-                                        <div className="flex justify-between gap-2">
-                                          <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>
-                                          <span className="tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
-                                        </div>
-                                        {(service.add_ons ?? []).map((addon, addonIdx) => (
-                                          <div key={`checkout-main-addon-display-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
-                                            <span>+ {addon.name}</span>
-                                            <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : null}
+
                                 <button
                                   type="button"
                                   onClick={() => void openSettlementSplitEditor(settlement)}
@@ -6504,7 +6587,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
                                     <tr className={`${stRowClass} align-top`}>
                                       <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
-                                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement Block</p>
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Services Block</p>
                                         <p className="mt-1 text-xs text-gray-700">
                                           {service.name}{service.is_original ? ' (Original)' : ''}
                                         </p>
@@ -6530,14 +6613,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         </td>
                                       </tr>
                                     ))}
-                                    <tr className={`${stRowClass} align-top`}>
+                                    {/* <tr className={`${stRowClass} align-top`}>
                                       <td className="px-4 py-2 pl-8 text-xs font-semibold text-gray-700 sm:px-5 sm:pl-10">Block Subtotal</td>
                                       <td className="min-w-[260px] px-4 py-2" aria-hidden />
                                       <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
                                       <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
                                         <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceSubtotal.toFixed(2)}</p>
                                       </td>
-                                    </tr>
+                                    </tr> */}
                                   </Fragment>
                                 )
                               })}
