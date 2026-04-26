@@ -2629,18 +2629,34 @@ export default function PosAppointmentsWorkspace({
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
                   <div>
                     <label className="text-xs font-semibold text-gray-600">Customer</label>
-                    <div className="mt-1 inline-flex rounded-lg border border-gray-300 bg-gray-100 p-1">
+                    <div
+                      className="mt-1 flex w-full rounded-lg border border-gray-300 bg-gray-100 p-1"
+                      role="tablist"
+                      aria-label="Customer type"
+                    >
                       <button
                         type="button"
                         onClick={() => setCreateAppointmentIdentityMode('member')}
-                        className={`rounded-md px-3 py-1.5 text-xs font-semibold ${createAppointmentIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'}`}
+                        role="tab"
+                        aria-selected={createAppointmentIdentityMode === 'member'}
+                        className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition ${
+                          createAppointmentIdentityMode === 'member'
+                            ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
+                            : 'text-gray-600 hover:text-gray-800'
+                        }`}
                       >
                         Member
                       </button>
                       <button
                         type="button"
                         onClick={() => setCreateAppointmentIdentityMode('guest')}
-                        className={`rounded-md px-3 py-1.5 text-xs font-semibold ${createAppointmentIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600'}`}
+                        role="tab"
+                        aria-selected={createAppointmentIdentityMode === 'guest'}
+                        className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition ${
+                          createAppointmentIdentityMode === 'guest'
+                            ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
+                            : 'text-gray-600 hover:text-gray-800'
+                        }`}
                       >
                         Guest
                       </button>

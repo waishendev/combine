@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Appointment Reminder — Tomorrow</title>
+    <title>Appointment Reminder — {{ $appointmentDate }}</title>
 </head>
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px; margin: 0 auto; padding: 20px;">
     <div style="background-color: #f9f9f9; padding: 30px; border-radius: 8px;">
@@ -26,7 +26,7 @@
                     <td style="padding: 8px 4px; color: #666; vertical-align: top;">Add-Ons:</td>
                     <td style="padding: 8px 4px;">
                         @foreach ($addonItems as $addon)
-                            {{ $addon['name'] }}@if ($addon['extra_price'] > 0) (RM {{ number_format($addon['extra_price'], 2) }})@endif<br>
+                            {{ $addon['name'] }} <br>
                         @endforeach
                     </td>
                 </tr>

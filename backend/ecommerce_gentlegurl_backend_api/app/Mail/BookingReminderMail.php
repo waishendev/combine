@@ -44,7 +44,7 @@ class BookingReminderMail extends Mailable implements ShouldQueue
 
     public function build(): self
     {
-        return $this->subject('Appointment Reminder — Tomorrow')
+        return $this->subject('Appointment Reminder — ' . $this->appointmentDate)
             ->view('emails.booking-reminder', [
                 'customerName' => $this->customerName,
                 'serviceName' => $this->serviceName,

@@ -7690,29 +7690,53 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <div className="space-y-3">
                 <div>
                   <p className="text-xs font-semibold text-gray-600">Customer</p>
-                  <div className="mt-1 inline-flex rounded-lg border border-gray-200 bg-gray-100 p-0.5">
-                  <button
-                    type="button"
-                    disabled={Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member')}
-                    onClick={() => {
-                      setBookingIdentityMode('member')
-                      setBookingModalError(null)
-                    }}
-                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member' ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+                  <div
+                    className="mt-1 flex w-full rounded-lg border border-gray-200 bg-gray-100 p-1"
+                    role="tablist"
+                    aria-label="Customer type"
                   >
-                    Member
-                  </button>
-                  <button
-                    type="button"
-                    disabled={checkoutRequiresMemberOnly || Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')}
-                    onClick={() => {
-                      setBookingIdentityMode('guest')
-                      setBookingModalError(null)
-                    }}
-                    className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(checkoutRequiresMemberOnly || (settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')) ? 'cursor-not-allowed opacity-60' : ''} ${bookingIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
-                  >
-                    Guest details
-                  </button>
+                    <button
+                      type="button"
+                      disabled={Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member')}
+                      onClick={() => {
+                        setBookingIdentityMode('member')
+                        setBookingModalError(null)
+                      }}
+                      role="tab"
+                      aria-selected={bookingIdentityMode === 'member'}
+                      className={`flex-1 rounded-md px-3 py-2 text-[11px] font-semibold transition ${
+                        settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member'
+                          ? 'cursor-not-allowed opacity-60'
+                          : ''
+                      } ${
+                        bookingIdentityMode === 'member'
+                          ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Member
+                    </button>
+                    <button
+                      type="button"
+                      disabled={checkoutRequiresMemberOnly || Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')}
+                      onClick={() => {
+                        setBookingIdentityMode('guest')
+                        setBookingModalError(null)
+                      }}
+                      role="tab"
+                      aria-selected={bookingIdentityMode === 'guest'}
+                      className={`flex-1 rounded-md px-3 py-2 text-[11px] font-semibold transition ${
+                        checkoutRequiresMemberOnly || (settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')
+                          ? 'cursor-not-allowed opacity-60'
+                          : ''
+                      } ${
+                        bookingIdentityMode === 'guest'
+                          ? 'bg-white text-blue-700 shadow-sm ring-1 ring-blue-200'
+                          : 'text-gray-600 hover:text-gray-900'
+                      }`}
+                    >
+                      Guest details
+                    </button>
                   </div>
                   {hasCartAppointmentSettlements ? (
                     <p className="mt-2 text-[11px] text-amber-700">
