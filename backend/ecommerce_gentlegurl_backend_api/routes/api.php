@@ -338,6 +338,9 @@ $protectedRoutes = function () {
     Route::post('/customers', [CustomerController::class, 'store'])
         ->middleware('permission:customers.create');
 
+    Route::get('/customers/{customer}/history', [CustomerController::class, 'history'])
+        ->middleware('permission:customers.view');
+
     Route::get('/customers/{customer}', [CustomerController::class, 'show'])
         ->middleware('permission:customers.view');
 
