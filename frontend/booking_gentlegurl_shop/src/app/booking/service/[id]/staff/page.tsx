@@ -5,8 +5,9 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
-import { addCartItem, getBookingServiceDetail } from "@/lib/apiClient";
+import { addCartItem, getBookingServiceDetail, uploadBookingCartItemPhotos } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
+import { clearBookingPhotoDraft, loadBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
 import { Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
@@ -130,27 +131,51 @@ export default function ServiceStaffPage() {
     };
   }, [confirmStaff, cartAddSuccessOpen]);
 
+  const draftDataUrlToFile = useCallback(async (dataUrl: string, name: string, mimeType?: string) => {
+    const response = await fetch(dataUrl);
+    const blob = await response.blob();
+    return new File([blob], name, { type: mimeType || blob.type || "image/jpeg" });
+  }, []);
+
   const handleConfirmAdd = useCallback(async () => {
     if (!confirmStaff || !startAt) return;
     setAdding(true);
     setError(null);
     try {
-      const updatedCart = await addCartItem({
+      let updatedCart = await addCartItem({
         service_id: Number(id),
         staff_id: confirmStaff.id,
         start_at: startAt,
         selected_option_ids: selectedOptionIds,
       });
+
+      if (service?.allow_photo_upload) {
+        const draftPhotos = loadBookingPhotoDraft(id).slice(0, 3);
+        if (draftPhotos.length > 0) {
+          const matchedItem = [...(updatedCart.items ?? [])]
+            .filter((item) => item.service_id === Number(id) && item.staff_id === confirmStaff.id && item.start_at === startAt)
+            .sort((a, b) => b.id - a.id)[0];
+
+          if (matchedItem) {
+            const files = await Promise.all(
+              draftPhotos.map((photo) => draftDataUrlToFile(photo.data_url, photo.name, photo.type))
+            );
+            updatedCart = await uploadBookingCartItemPhotos(matchedItem.id, files);
+            clearBookingPhotoDraft(id);
+          }
+        }
+      }
+
       setConfirmStaff(null);
       const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
       setCartAddSuccessOpen(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add to cart");
+      setError(err instanceof Error ? err.message : "Failed to add to cart (or upload service photos).");
     } finally {
       setAdding(false);
     }
-  }, [confirmStaff, id, router, selectedOptionIds, startAt]);
+  }, [confirmStaff, draftDataUrlToFile, id, selectedOptionIds, service?.allow_photo_upload, startAt]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 pb-24">

@@ -7,6 +7,7 @@ import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
 import { getBookingServiceDepositNote, getBookingServiceDetail } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
+import { loadBookingPhotoDraft, saveBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
 import { BookingServiceQuestion, BookingServiceQuestionOption, Service } from "@/lib/types";
 
 export default function ServiceAddonsPage() {
@@ -20,7 +21,14 @@ export default function ServiceAddonsPage() {
   const [error, setError] = useState<string | null>(null);
   const [depositNote, setDepositNote] = useState<string | null>(null);
   const [selectedOptionIds, setSelectedOptionIds] = useState<number[]>([]);
-  const [photoPreviews, setPhotoPreviews] = useState<Array<{ id: string; url: string; name: string }>>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<Array<{ id: string; url: string; name: string; type: string }>>(() =>
+    loadBookingPhotoDraft(id).map((item) => ({
+      id: item.id,
+      url: item.data_url,
+      name: item.name,
+      type: item.type,
+    }))
+  );
   const [photoError, setPhotoError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,6 +44,19 @@ export default function ServiceAddonsPage() {
 
     run();
   }, [id]);
+
+  useEffect(() => {
+    if (!service?.allow_photo_upload) return;
+    saveBookingPhotoDraft(
+      id,
+      photoPreviews.map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        data_url: item.url,
+      }))
+    );
+  }, [id, photoPreviews, service?.allow_photo_upload]);
 
   const selectedOptions = useMemo(
     () => (service?.questions ?? []).flatMap((q) => q.options).filter((o) => selectedOptionIds.includes(o.id)),
@@ -127,9 +148,15 @@ export default function ServiceAddonsPage() {
 
     Promise.all(
       accepted.map((file) =>
-        new Promise<{ id: string; url: string; name: string }>((resolve) => {
+        new Promise<{ id: string; url: string; name: string; type: string }>((resolve) => {
           const reader = new FileReader();
-          reader.onload = () => resolve({ id: `${file.name}-${file.size}-${Math.random()}`, url: String(reader.result ?? ''), name: file.name });
+          reader.onload = () =>
+            resolve({
+              id: `${file.name}-${file.size}-${Math.random()}`,
+              url: String(reader.result ?? ''),
+              name: file.name,
+              type: file.type || "image/jpeg",
+            });
           reader.readAsDataURL(file);
         })
       )
