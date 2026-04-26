@@ -421,6 +421,30 @@ class PublicOrderHistoryController extends Controller
             return $this->respondError(__('Order cannot be paid.'), 422);
         }
 
+        if ((float) $order->grand_total <= 0) {
+            DB::transaction(function () use ($order) {
+                $order->status = 'confirmed';
+                $order->payment_status = 'paid';
+                $order->paid_at = now();
+                $order->payment_method = 'no_payment_required';
+                $order->payment_provider = 'none';
+                $order->payment_reference = null;
+                $order->payment_url = null;
+                $order->save();
+            });
+
+            return $this->respond([
+                'redirect_url' => '/payment-result?' . http_build_query([
+                    'order_id' => (int) $order->id,
+                    'order_no' => (string) $order->order_number,
+                    'payment_method' => 'no_payment_required',
+                    'provider' => 'none',
+                ]),
+                'payment_status' => 'paid',
+                'status' => 'confirmed',
+            ]);
+        }
+
         if ($this->orderReserveService->isExpired($order)) {
             return $this->respondError(__('Order reservation has expired.'), 422);
         }

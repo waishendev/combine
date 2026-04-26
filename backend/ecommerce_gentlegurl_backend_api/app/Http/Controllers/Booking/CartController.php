@@ -625,9 +625,10 @@ class CartController extends Controller
             $cart->update(['status' => 'converted']);
 
             if ($order && (float) $order->grand_total <= 0) {
-                $order->status = 'processing';
+                $order->status = 'confirmed';
                 $order->payment_status = 'paid';
                 $order->paid_at = now();
+                $order->payment_method = 'no_payment_required';
                 $order->payment_provider = 'none';
                 $order->payment_reference = null;
                 $order->payment_url = null;
@@ -704,7 +705,7 @@ class CartController extends Controller
             ]);
 
             return $this->respond([
-                'status' => 'success',
+                'status' => $order && (float) $order->grand_total <= 0 ? 'confirmed' : 'success',
                 'booking_ids' => $bookingIds,
                 'owned_package_ids' => $ownedPackageIds,
                 'deposit_total' => $depositTotal,
@@ -714,9 +715,15 @@ class CartController extends Controller
                 'order_id' => $order?->id,
                 'order_no' => $order?->order_number,
                 'payment_method' => $order?->payment_method,
+                'payment_status' => $order?->payment_status,
                 'payment_url' => $billplzPaymentUrl,
+                'redirect_url' => $order
+                    ? '/payment-result?' . http_build_query(['order_id' => (int) $order->id, 'order_no' => (string) $order->order_number])
+                    : null,
                 'payment_expires_at' => $activeItems->min('expires_at')?->toIso8601String(),
-                'payment_instruction' => 'Complete payment before hold expires to confirm booking.',
+                'payment_instruction' => $order && (float) $order->grand_total <= 0
+                    ? 'No payment required for this booking.'
+                    : 'Complete payment before hold expires to confirm booking.',
             ]);
         });
     }
