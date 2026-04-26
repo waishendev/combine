@@ -188,6 +188,7 @@ export default function SalesChannelReportPage({
   defaultDatePreset = 'month',
   paramPrefix,
   isAllWorkspace = false,
+  showDateInputsInFilterModal = true,
 }: {
   mode: Mode
   canExport?: boolean
@@ -196,6 +197,8 @@ export default function SalesChannelReportPage({
   paramPrefix?: string
   /** When true with `paramPrefix`, filter apply/reset also resets the sibling table pages (`ec_page` / `bk_page`). */
   isAllWorkspace?: boolean
+  /** Sales Visual manages date elsewhere; hide date inputs in modal. */
+  showDateInputsInFilterModal?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -376,18 +379,22 @@ export default function SalesChannelReportPage({
               </button>
             </div>
             <div className="p-5 grid gap-4 sm:grid-cols-2">
-              {/* <input
-                type="date"
-                value={inputs.dateFrom}
-                onChange={(e) => setInputs((p) => ({ ...p, dateFrom: e.target.value }))}
-                className="h-10 rounded border border-slate-200 px-3 text-sm"
-              />
-              <input
-                type="date"
-                value={inputs.dateTo}
-                onChange={(e) => setInputs((p) => ({ ...p, dateTo: e.target.value }))}
-                className="h-10 rounded border border-slate-200 px-3 text-sm"
-              /> */}
+              {showDateInputsInFilterModal ? (
+                <>
+                  <input
+                    type="date"
+                    value={inputs.dateFrom}
+                    onChange={(e) => setInputs((p) => ({ ...p, dateFrom: e.target.value }))}
+                    className="h-10 rounded border border-slate-200 px-3 text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={inputs.dateTo}
+                    onChange={(e) => setInputs((p) => ({ ...p, dateTo: e.target.value }))}
+                    className="h-10 rounded border border-slate-200 px-3 text-sm"
+                  />
+                </>
+              ) : null}
               <select
                 value={inputs.channel}
                 onChange={(e) => setInputs((p) => ({ ...p, channel: e.target.value }))}

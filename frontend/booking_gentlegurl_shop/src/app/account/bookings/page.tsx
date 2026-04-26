@@ -225,7 +225,51 @@ export default function MyBookingsPage() {
     try {
       setPhotoBusyBookingId(booking.id);
       setError(null);
-      await uploadMyBookingItemPhotos(booking.id, filesToUpload);
+      const compressImageToFile = async (file: File) => {
+        const sourceBitmap = await createImageBitmap(file);
+        const srcW = sourceBitmap.width;
+        const srcH = sourceBitmap.height;
+        const maxLongEdge = 1600;
+        const longEdge = Math.max(srcW, srcH);
+        const scale = longEdge > maxLongEdge ? maxLongEdge / longEdge : 1;
+        const targetW = Math.max(1, Math.round(srcW * scale));
+        const targetH = Math.max(1, Math.round(srcH * scale));
+
+        const canvas = document.createElement("canvas");
+        canvas.width = targetW;
+        canvas.height = targetH;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          sourceBitmap.close();
+          return file;
+        }
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(sourceBitmap, 0, 0, targetW, targetH);
+        sourceBitmap.close();
+
+        const preferWebp = (() => {
+          try {
+            return canvas.toDataURL("image/webp").startsWith("data:image/webp");
+          } catch {
+            return false;
+          }
+        })();
+        const outType = preferWebp ? "image/webp" : "image/jpeg";
+        const quality = 0.78;
+
+        const blob: Blob | null = await new Promise((resolve) => {
+          canvas.toBlob((b) => resolve(b), outType, quality);
+        });
+        if (!blob) return file;
+
+        const ext = outType === "image/webp" ? "webp" : "jpg";
+        const nextName = file.name.replace(/\.[^/.]+$/, "") + `.${ext}`;
+        return new File([blob], nextName, { type: outType, lastModified: Date.now() });
+      };
+
+      const processedFiles = await Promise.all(filesToUpload.map((file) => compressImageToFile(file)));
+      await uploadMyBookingItemPhotos(booking.id, processedFiles);
       await reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to upload booking photos.");
@@ -261,17 +305,17 @@ export default function MyBookingsPage() {
             <div key={booking.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5">
               <p className="font-semibold">{booking.service_name}</p>
               {(booking.add_ons?.length ?? 0) > 0 ? (
-                <div className="mt-2 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
-                  <p className="text-sm font-semibold">Selected Add-ons</p>
+                <div className="mt-2 mb-2 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                  <p className="text-sm font-semibold">Add-ons</p>
                   <div className="mt-1 space-y-1">
                     {booking.add_ons?.map((addon, index) => (
                       <p key={`${addon.id ?? addon.name}-${index}`} className="text-sm text-[var(--text-muted)]">
                         {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(Number(addon.extra_price ?? 0))})
                       </p>
                     ))}
-                    <p className="pt-1 text-sm font-medium text-[var(--foreground)]">
+                    {/* <p className="pt-1 text-sm font-medium text-[var(--foreground)]">
                       Summary: +{Number(booking.addon_total_duration_min ?? 0)} mins, +{formatCurrency(booking.addon_total_price)}
-                    </p>
+                    </p> */}
                   </div>
                 </div>
               ) : null}
@@ -284,69 +328,126 @@ export default function MyBookingsPage() {
               </p>
               <p className="mt-1 text-sm">Status: {booking.status}</p>
               <p className="mt-1 text-sm">Rescheduled: {state.currentCount} / {policy.reschedule.max_changes}</p>
-              {booking.customer_remarks ? (
-                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
-                  <p className="text-sm font-semibold">Customer Remarks</p>
-                  <p className="mt-1 text-sm text-[var(--text-muted)] whitespace-pre-wrap">{booking.customer_remarks}</p>
-                </div>
-              ) : null}
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Reschedule is only allowed more than {policy.reschedule.cutoff_hours} hours before the booking time.
+              </p>
+
 
               {(booking.service?.allow_photo_upload ?? false) || (booking.uploaded_item_photos?.length ?? 0) > 0 ? (
-                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
+                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-sm font-semibold">Reference Photos</p>
-                    <label className="inline-flex cursor-pointer items-center rounded-full border px-3 py-1 text-xs font-medium">
-                      {(booking.uploaded_item_photos?.length ?? 0) > 0 ? "Upload More" : "Upload Photos"}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        className="hidden"
-                        disabled={
-                          photoBusyBookingId === booking.id ||
-                          !BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ||
-                          !(booking.service?.allow_photo_upload ?? false) ||
-                          (booking.uploaded_item_photos?.length ?? 0) >= 3
-                        }
-                        onChange={(event) => {
-                          void handleBookingPhotoUpload(booking, event.target.files);
-                          event.currentTarget.value = "";
-                        }}
-                      />
-                    </label>
+                    <span className="text-xs font-semibold text-[var(--text-muted)]">
+                      {(booking.uploaded_item_photos?.length ?? 0)}/3
+                    </span>
                   </div>
                   <p className="mt-1 text-xs text-[var(--text-muted)]">
                     You can upload up to 3 photos. Upload is available only for HOLD or CONFIRMED bookings.
                   </p>
 
-                  {(booking.uploaded_item_photos?.length ?? 0) > 0 ? (
-                    <div className="mt-2 grid grid-cols-3 gap-2">
-                      {booking.uploaded_item_photos?.map((photo) => (
-                        <div key={photo.id} className="relative overflow-hidden rounded border border-[var(--card-border)]">
-                          <a href={photo.file_url} target="_blank" rel="noreferrer" className="block">
-                            <img src={photo.file_url} alt={photo.original_name || "Booking photo"} className="h-20 w-full object-cover" />
-                          </a>
-                          {BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ? (
-                            <button
-                              type="button"
-                              className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
-                              disabled={photoBusyBookingId === booking.id}
-                              onClick={() => void handleRemoveBookingPhoto(booking.id, photo.id)}
-                            >
-                              <i className="fa-solid fa-xmark text-[10px]" />
-                            </button>
-                          ) : null}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-2 text-xs text-[var(--text-muted)]">No photos uploaded yet.</p>
-                  )}
+                  <input
+                    id={`booking-photo-input-${booking.id}`}
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    disabled={
+                      photoBusyBookingId === booking.id ||
+                      !BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ||
+                      !(booking.service?.allow_photo_upload ?? false) ||
+                      (booking.uploaded_item_photos?.length ?? 0) >= 3
+                    }
+                    onChange={(event) => {
+                      void handleBookingPhotoUpload(booking, event.target.files);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {Array.from({ length: 3 }).map((_, index) => {
+                      const photo = booking.uploaded_item_photos?.[index] ?? null;
+                      const isEmpty = !photo;
+                      const canUpload =
+                        BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) &&
+                        (booking.service?.allow_photo_upload ?? false) &&
+                        (booking.uploaded_item_photos?.length ?? 0) < 3 &&
+                        photoBusyBookingId !== booking.id;
+
+                      return (
+                        <button
+                          key={index}
+                          type="button"
+                          className={[
+                            "group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200",
+                            isEmpty
+                              ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
+                              : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
+                          ].join(" ")}
+                          onClick={() => {
+                            if (isEmpty && canUpload) {
+                              const input = document.getElementById(
+                                `booking-photo-input-${booking.id}`
+                              ) as HTMLInputElement | null;
+                              input?.click();
+                            }
+                          }}
+                          disabled={photoBusyBookingId === booking.id || (isEmpty && !canUpload)}
+                          aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
+                        >
+                          {isEmpty ? (
+                            <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
+                              <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--muted)]/40 group-hover:bg-[var(--muted)]/60 transition">
+                                <i className="fa-solid fa-cloud-arrow-up text-[var(--text-muted)] text-sm" aria-hidden />
+                              </div>
+                              <span className="text-[10px] font-medium text-[var(--text-muted)]">Click to upload</span>
+                            </div>
+                          ) : (
+                            <>
+                              <a
+                                href={photo.file_url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="block h-full w-full"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
+                                  <img
+                                    src={photo.file_url}
+                                    alt={photo.original_name || "Booking photo"}
+                                    className="h-full w-full object-contain"
+                                  />
+                                </div>
+                              </a>
+                              {BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ? (
+                                <button
+                                  type="button"
+                                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
+                                  disabled={photoBusyBookingId === booking.id}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    void handleRemoveBookingPhoto(booking.id, photo.id);
+                                  }}
+                                  aria-label={`Remove ${photo.original_name || "photo"}`}
+                                >
+                                  <i className="fa-solid fa-xmark text-[10px]" />
+                                </button>
+                              ) : null}
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
               ) : null}
-
-              {(booking.receipts?.length ?? 0) > 0 ? (
-                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/60 p-3">
+              {booking.customer_remarks ? (
+                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                  <p className="text-sm font-semibold">Remarks</p>
+                  <p className="mt-1 text-sm text-[var(--text-muted)] whitespace-pre-wrap">{booking.customer_remarks}</p>
+                </div>
+              ) : null}
+              {/* {(booking.receipts?.length ?? 0) > 0 ? (
+                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                   <p className="text-sm font-semibold">Receipts</p>
                   <div className="mt-2 space-y-2">
                     {booking.receipts?.map((receipt, index) => (
@@ -369,7 +470,7 @@ export default function MyBookingsPage() {
                     ))}
                   </div>
                 </div>
-              ) : null}
+              ) : null} */}
 
               {state.hasPendingCancellation ? (
                 <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
@@ -378,7 +479,7 @@ export default function MyBookingsPage() {
               ) : null}
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <button
+                {/* <button
                   onClick={() => {
                     const nextParams = new URLSearchParams({
                       order_id: String(booking.id),
@@ -393,7 +494,7 @@ export default function MyBookingsPage() {
                   className="rounded-full border px-4 py-2 text-sm"
                 >
                   View
-                </button>
+                </button> */}
 
                 {booking.payment_status !== "PAID" ? (
                   <button
@@ -524,6 +625,9 @@ export default function MyBookingsPage() {
               {new Date(rescheduleBookingModal.starts_at).toLocaleString("en-MY")}
             </p>
             <p className="mt-2 text-sm text-slate-600">Pick a new date and time. We’ll confirm availability after you submit.</p>
+            <p className="mt-2 text-xs text-slate-500">
+              Note: Reschedule is only allowed more than {policy.reschedule.cutoff_hours} hours before the booking time.
+            </p>
 
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1 text-sm">

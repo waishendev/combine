@@ -316,7 +316,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           //   href: '/reports/sales/booking',
           //   requiredPermission: 'ecommerce.reports.sales.view',
           // },
-          
+
           // {
           //   key: 'sales-daily',
           //   label: 'Daily Sales',
@@ -348,6 +348,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           //   href: '/reports/staff-commission',
           //   requiredPermission: 'ecommerce.reports.sales.view',
           // },
+          {
+            key: 'sales-daily',
+            label: 'Daily Sales',
+            href: '/reports/sales',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
           {
             key: 'staff-commission',
             label: 'Staff Product Commissions',

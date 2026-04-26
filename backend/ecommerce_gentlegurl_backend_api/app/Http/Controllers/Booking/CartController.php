@@ -586,8 +586,11 @@ class CartController extends Controller
                 $addonDepositItems = collect($addonDepositItemsByCartItemId[(int) $item->id] ?? []);
 
                 if ($order && ($mainDepositAmount > 0 || $isDepositWaivedForCustomer)) {
+                    // $depositLineName = $isDepositWaivedForCustomer
+                    //     ? 'Booking Deposit (Waived) - ' . (string) ($service->name ?? 'Service')
+                    //     : 'Booking Deposit - ' . (string) ($service->name ?? 'Service');
                     $depositLineName = $isDepositWaivedForCustomer
-                        ? 'Booking Deposit (Waived) - ' . (string) ($service->name ?? 'Service')
+                        ? 'Booking Deposit - ' . (string) ($service->name ?? 'Service')
                         : 'Booking Deposit - ' . (string) ($service->name ?? 'Service');
                     OrderItem::query()->create([
                         'order_id' => (int) $order->id,

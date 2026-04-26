@@ -153,7 +153,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 </span>
               </div>
             </div>
-            {order.receipt_public_url ? (
+            {/* {order.receipt_public_url ? (
               <a
                 href={order.receipt_public_url}
                 target="_blank"
@@ -163,14 +163,14 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                 <i className="fa-solid fa-receipt text-xs" />
                 View Receipt
               </a>
-            ) : null}
+            ) : null} */}
           </div>
 
-          {isZeroAmountOrder ? (
+          {/* {isZeroAmountOrder ? (
             <p className="text-center text-sm text-[var(--status-success)]">
               This booking is confirmed. No payment was required.
             </p>
-          ) : null}
+          ) : null} */}
 
           {isManualTransfer && !isZeroAmountOrder && (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">

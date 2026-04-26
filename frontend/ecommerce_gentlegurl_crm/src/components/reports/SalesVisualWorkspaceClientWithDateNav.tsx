@@ -132,16 +132,16 @@ export default function SalesVisualWorkspaceClientWithDateNav({ canExport }: { c
               Product-line orders only. Booking deposits and other booking lines appear under Booking below (same as POS rows with booking
               line types).
             </p>
-            <SalesChannelReportPage mode="ecommerce" canExport={canExport} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace />
+            <SalesChannelReportPage mode="ecommerce" canExport={canExport} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} />
           </section>
           <section>
             <h4 className="text-base font-semibold text-slate-800">Booking</h4>
             <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — one row per booking line.</p>
-            <SalesChannelReportPage mode="booking" canExport={canExport} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace />
+            <SalesChannelReportPage mode="booking" canExport={canExport} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} />
           </section>
         </div>
       ) : (
-        <SalesChannelReportPage mode={mode} canExport={canExport} defaultDatePreset="today" />
+        <SalesChannelReportPage mode={mode} canExport={canExport} defaultDatePreset="today" showDateInputsInFilterModal={false} />
       )}
     </div>
   )
