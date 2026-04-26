@@ -26,6 +26,7 @@ export type Service = {
   image_url?: string | null;
   primary_slots?: Array<{ id: number; start_time: string; sort_order: number; is_active: boolean }>;
   questions?: BookingServiceQuestion[];
+  allow_photo_upload?: boolean;
 };
 export type BookingServiceQuestion = {
   id: number;
@@ -85,6 +86,14 @@ export type BookingSlot = {
   available_staff_ids?: number[];
 };
 
+export type BookingCartItemPhoto = {
+  id: number;
+  file_url: string;
+  original_name?: string;
+  mime_type?: string;
+  size?: number;
+};
+
 export type BookingCartItem = {
   id: number;
   service_id: number;
@@ -102,6 +111,8 @@ export type BookingCartItem = {
   /** Main service menu price (before add-ons). */
   listed_service_price?: number;
   selected_options?: BookingServiceQuestionOption[];
+  allow_photo_upload?: boolean;
+  photos?: BookingCartItemPhoto[];
   expires_at: string;
   status: string;
   deposit_amount?: number | null;
@@ -191,6 +202,15 @@ export type BookingRecord = {
     paid_at?: string | null;
     receipt_public_url?: string | null;
   }>;
+  uploaded_item_photos?: BookingCartItemPhoto[];
+  service?: {
+    id: number;
+    name: string;
+    duration_min: number;
+    deposit_amount: number;
+    buffer_min: number;
+    allow_photo_upload?: boolean;
+  } | null;
 };
 
 export type AuthUser = {

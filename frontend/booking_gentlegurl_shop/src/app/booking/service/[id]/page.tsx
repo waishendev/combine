@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
 import { getBookingServiceDepositNote, getBookingServiceDetail } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
+import { loadBookingPhotoDraft, saveBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
 import { BookingServiceQuestion, BookingServiceQuestionOption, Service } from "@/lib/types";
 
 export default function ServiceAddonsPage() {
@@ -20,6 +21,15 @@ export default function ServiceAddonsPage() {
   const [error, setError] = useState<string | null>(null);
   const [depositNote, setDepositNote] = useState<string | null>(null);
   const [selectedOptionIds, setSelectedOptionIds] = useState<number[]>([]);
+  const [photoPreviews, setPhotoPreviews] = useState<Array<{ id: string; url: string; name: string; type: string }>>(() =>
+    loadBookingPhotoDraft(id).map((item) => ({
+      id: item.id,
+      url: item.data_url,
+      name: item.name,
+      type: item.type,
+    }))
+  );
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   useEffect(() => {
     const run = async () => {
@@ -34,6 +44,19 @@ export default function ServiceAddonsPage() {
 
     run();
   }, [id]);
+
+  useEffect(() => {
+    if (!service?.allow_photo_upload) return;
+    saveBookingPhotoDraft(
+      id,
+      photoPreviews.map((item) => ({
+        id: item.id,
+        name: item.name,
+        type: item.type,
+        data_url: item.url,
+      }))
+    );
+  }, [id, photoPreviews, service?.allow_photo_upload]);
 
   const selectedOptions = useMemo(
     () => (service?.questions ?? []).flatMap((q) => q.options).filter((o) => selectedOptionIds.includes(o.id)),
@@ -101,6 +124,56 @@ export default function ServiceAddonsPage() {
     const q = qs.toString();
     router.push(`/booking/service/${id}/slots${q ? `?${q}` : ""}`);
   }, [categoryId, id, router, selectedOptionIds]);
+
+
+  const onPhotoSelect = useCallback((event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    if (!files.length) return;
+
+    setPhotoError(null);
+    const remaining = 3 - photoPreviews.length;
+    if (remaining <= 0) {
+      setPhotoError('You can upload up to 3 photos only.');
+      event.target.value = '';
+      return;
+    }
+
+    const accepted = files.slice(0, remaining);
+    const invalid = accepted.find((file) => !file.type.startsWith('image/'));
+    if (invalid) {
+      setPhotoError('Only image files are allowed.');
+      event.target.value = '';
+      return;
+    }
+
+    Promise.all(
+      accepted.map((file) =>
+        new Promise<{ id: string; url: string; name: string; type: string }>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () =>
+            resolve({
+              id: `${file.name}-${file.size}-${Math.random()}`,
+              url: String(reader.result ?? ''),
+              name: file.name,
+              type: file.type || "image/jpeg",
+            });
+          reader.readAsDataURL(file);
+        })
+      )
+    ).then((next) => {
+      setPhotoPreviews((prev) => [...prev, ...next].slice(0, 3));
+      if (files.length > accepted.length) {
+        setPhotoError('Only first 3 photos were kept.');
+      }
+    });
+
+    event.target.value = '';
+  }, [photoPreviews.length]);
+
+  const removePhoto = useCallback((id: string) => {
+    setPhotoPreviews((prev) => prev.filter((photo) => photo.id !== id));
+    setPhotoError(null);
+  }, []);
 
   const toggleOption = useCallback((q: BookingServiceQuestion, opt: BookingServiceQuestionOption) => {
     setSelectedOptionIds((prev) => {
@@ -236,6 +309,42 @@ export default function ServiceAddonsPage() {
                 ))
               )}
             </section>
+
+            {service.allow_photo_upload ? (
+              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
+                <h2 className="font-[var(--font-heading)] text-lg font-semibold">Reference Photos (Optional)</h2>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">
+                  If you have a preferred design or would like to share your nail condition, feel free to upload it here.
+                </p>
+                <div className="mt-4">
+                  <label className="inline-flex cursor-pointer items-center rounded-lg border border-[var(--card-border)] px-4 py-2 text-sm font-medium hover:bg-[var(--muted)]/50">
+                    <i className="fa-solid fa-upload mr-2" aria-hidden />
+                    Upload Photos
+                    <input type="file" accept="image/*" multiple className="hidden" onChange={onPhotoSelect} />
+                  </label>
+                  <p className="mt-2 text-xs text-[var(--text-muted)]">Up to 3 image files.</p>
+                  {photoError ? <p className="mt-2 text-sm text-[var(--status-error)]">{photoError}</p> : null}
+                </div>
+
+                {photoPreviews.length > 0 ? (
+                  <div className="mt-4 grid grid-cols-3 gap-3">
+                    {photoPreviews.map((photo) => (
+                      <div key={photo.id} className="relative overflow-hidden rounded-xl border border-[var(--card-border)]">
+                        <img src={photo.url} alt={photo.name} className="h-24 w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => removePhoto(photo.id)}
+                          className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white"
+                          aria-label={`Remove ${photo.name}`}
+                        >
+                          <i className="fa-solid fa-xmark" aria-hidden />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
               <h2 className="font-[var(--font-heading)] text-lg font-semibold">Booking Summary</h2>

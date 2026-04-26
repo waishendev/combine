@@ -15,8 +15,10 @@ import {
   payPublicOrder,
   redeemServicePackage,
   releaseBookingCartPackageClaim,
+  removeBookingCartItemPhoto,
   removeCartItem,
   removePackageCartItem,
+  uploadBookingCartItemPhotos,
   updateBookingPackageCartItemQty,
   type PublicBookingBankAccount,
   type PublicBookingPaymentGateway,
@@ -83,6 +85,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [selectedBillplzGatewayOptionId, setSelectedBillplzGatewayOptionId] = useState<number | null>(null);
   const [packageActionItemId, setPackageActionItemId] = useState<number | null>(null);
   const [packageQtyBusyId, setPackageQtyBusyId] = useState<number | null>(null);
+  const [photoBusyItemId, setPhotoBusyItemId] = useState<number | null>(null);
 
   const loadCart = useCallback(async () => {
     try {
@@ -442,6 +445,40 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     }, 0);
   }, [cart?.items, depositDisplay]);
 
+  const handlePhotoUpload = async (itemId: number, files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const arr = Array.from(files);
+    if (arr.some((file) => !file.type.startsWith("image/"))) {
+      setMessage("Only image files are allowed.");
+      return;
+    }
+    if (arr.some((file) => file.size > 5 * 1024 * 1024)) {
+      setMessage("Each photo must be 5MB or smaller.");
+      return;
+    }
+    setPhotoBusyItemId(itemId);
+    try {
+      const updatedCart = await uploadBookingCartItemPhotos(itemId, arr);
+      setCart(updatedCart);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to upload photos.");
+    } finally {
+      setPhotoBusyItemId(null);
+    }
+  };
+
+  const handlePhotoRemove = async (itemId: number, photoId: number) => {
+    setPhotoBusyItemId(itemId);
+    try {
+      const updatedCart = await removeBookingCartItemPhoto(itemId, photoId);
+      setCart(updatedCart);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to remove photo.");
+    } finally {
+      setPhotoBusyItemId(null);
+    }
+  };
+
   return (
     <>
       {isOpen ? (
@@ -650,6 +687,49 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       ) : null} */}
                     </div>
                   </div>
+
+                  {item.allow_photo_upload ? (
+                    <div className="mt-2 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/30 p-2.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Reference photos</p>
+                        <label className="inline-flex cursor-pointer items-center rounded-full border border-[var(--card-border)] px-2.5 py-1 text-[10px] font-semibold text-[var(--foreground)]">
+                          {item.photos && item.photos.length > 0 ? "View Photos" : "Upload Photos"}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            className="hidden"
+                            disabled={photoBusyItemId === item.id || (item.photos?.length ?? 0) >= 3}
+                            onChange={(event) => {
+                              void handlePhotoUpload(item.id, event.target.files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                        </label>
+                      </div>
+                      {item.photos && item.photos.length > 0 ? (
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                          {item.photos.map((photo) => (
+                            <div key={photo.id} className="relative overflow-hidden rounded-md border border-[var(--card-border)]">
+                              <a href={photo.file_url} target="_blank" rel="noreferrer" className="block">
+                                <img src={photo.file_url} alt={photo.original_name || "Reference photo"} className="h-16 w-full object-cover" />
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => void handlePhotoRemove(item.id, photo.id)}
+                                disabled={photoBusyItemId === item.id}
+                                className="absolute right-1 top-1 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
+                              >
+                                <i className="fa-solid fa-xmark text-[10px]" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-[10px] text-[var(--text-muted)]">No photos uploaded yet.</p>
+                      )}
+                    </div>
+                  ) : null}
 
                   {isLoggedIn ? (
                     <div className="mt-2 flex flex-wrap gap-1.5">

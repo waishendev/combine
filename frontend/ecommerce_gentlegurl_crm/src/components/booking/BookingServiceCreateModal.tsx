@@ -36,6 +36,7 @@ interface FormState {
   deposit_amount: string
   buffer_min: string
   is_active: boolean
+  allow_photo_upload: boolean
   imageFile: File | null
   allowed_staff_ids: number[]
   primary_slots: string
@@ -55,6 +56,7 @@ const initialFormState: FormState = {
   deposit_amount: '0',
   buffer_min: '15',
   is_active: true,
+  allow_photo_upload: false,
   imageFile: null,
   allowed_staff_ids: [],
   primary_slots: '',
@@ -198,6 +200,10 @@ export default function BookingServiceCreateModal({
       setForm((prev) => ({ ...prev, is_active: value === 'true' }))
       return
     }
+    if (name === 'allow_photo_upload') {
+      setForm((prev) => ({ ...prev, allow_photo_upload: value === 'true' }))
+      return
+    }
     setForm((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -299,6 +305,7 @@ export default function BookingServiceCreateModal({
       fd.append('deposit_amount', String(deposit))
       fd.append('buffer_min', String(buffer))
       fd.append('is_active', form.is_active ? '1' : '0')
+      fd.append('allow_photo_upload', form.allow_photo_upload ? '1' : '0')
       form.allowed_staff_ids.forEach((staffId) => fd.append('allowed_staff_ids[]', String(staffId)))
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
@@ -650,6 +657,22 @@ export default function BookingServiceCreateModal({
               >
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="create-allowPhotoUpload" className="block text-sm font-medium text-gray-700 mb-1">
+                Allow Photo Upload
+              </label>
+              <select
+                id="create-allowPhotoUpload"
+                name="allow_photo_upload"
+                value={form.allow_photo_upload ? 'true' : 'false'}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                disabled={submitting}
+              >
+                <option value="false">Disabled</option>
+                <option value="true">Enabled</option>
               </select>
             </div>
           </div>

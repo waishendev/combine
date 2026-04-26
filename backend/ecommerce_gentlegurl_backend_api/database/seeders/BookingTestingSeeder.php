@@ -61,6 +61,7 @@ class BookingTestingSeeder extends Seeder
             'booking_logs',
             'booking_payments',
             'booking_photos',
+            'booking_item_photos',
             'bookings',
             'booking_blocks',
             'booking_staff_timeoffs',
@@ -220,6 +221,11 @@ class BookingTestingSeeder extends Seeder
                 $payload['price_mode'] = $spec['price_mode'] ?? 'fixed';
                 $payload['price_range_min'] = $spec['price_range_min'] ?? null;
                 $payload['price_range_max'] = $spec['price_range_max'] ?? null;
+            }
+
+            if (Schema::hasColumn('booking_services', 'allow_photo_upload')) {
+                // Keep at least one seeded service enabled for QA verification flow.
+                $payload['allow_photo_upload'] = $spec['name'] === 'Haircut';
             }
 
             $services[$spec['name']] = BookingService::query()->create($payload);

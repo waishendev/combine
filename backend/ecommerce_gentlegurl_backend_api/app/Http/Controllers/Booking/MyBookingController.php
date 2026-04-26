@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
+use App\Models\Booking\BookingItemPhoto;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderServiceItem;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class MyBookingController extends Controller
 {
@@ -20,8 +23,9 @@ class MyBookingController extends Controller
 
         $bookings = Booking::query()
             ->with([
-                'service:id,name,duration_min,deposit_amount,buffer_min',
+                'service:id,name,duration_min,deposit_amount,buffer_min,allow_photo_upload',
                 'staff:id,name',
+                'itemPhotos',
             ])
             ->where('customer_id', $customer->id)
             ->orderByDesc('start_at')
@@ -97,11 +101,19 @@ class MyBookingController extends Controller
                     'duration_min' => (int) $booking->service->duration_min,
                     'deposit_amount' => (float) $booking->service->deposit_amount,
                     'buffer_min' => (int) $booking->service->buffer_min,
+                    'allow_photo_upload' => (bool) ($booking->service->allow_photo_upload ?? false),
                 ] : null,
                 'staff' => $booking->staff ? [
                     'id' => (int) $booking->staff->id,
                     'name' => $booking->staff->name,
                 ] : null,
+                'uploaded_item_photos' => $booking->itemPhotos->map(fn (BookingItemPhoto $photo) => [
+                    'id' => (int) $photo->id,
+                    'file_url' => $photo->file_url,
+                    'original_name' => (string) $photo->original_name,
+                    'mime_type' => (string) $photo->mime_type,
+                    'size' => (int) $photo->size,
+                ])->values(),
                 'latest_payment' => (function () use ($latestPaymentsByBooking, $booking) {
                     $payment = $latestPaymentsByBooking->get($booking->id);
                     if (! $payment) {
@@ -128,6 +140,77 @@ class MyBookingController extends Controller
         })->values();
 
         return $this->respond($payload);
+    }
+
+    public function uploadItemPhotos(Request $request, int $id)
+    {
+        $customer = $request->user('customer');
+        $booking = Booking::query()->with('service')->where('customer_id', $customer->id)->findOrFail($id);
+
+        if (! $this->canManagePhotos($booking)) {
+            return $this->respondError('Photos can only be uploaded while booking is HOLD or CONFIRMED.', 422);
+        }
+
+        if (! (bool) ($booking->service?->allow_photo_upload ?? false)) {
+            return $this->respondError('This service does not allow photo uploads.', 422);
+        }
+
+        $validated = $request->validate([
+            'photos' => ['required', 'array', 'min:1', 'max:3'],
+            'photos.*' => ['required', 'image', 'mimes:jpg,jpeg,png,webp,gif', 'max:5120'],
+        ]);
+
+        $existingCount = BookingItemPhoto::query()->where('booking_id', (int) $booking->id)->count();
+        $incoming = count($validated['photos']);
+        if (($existingCount + $incoming) > 3) {
+            return $this->respondError('Maximum 3 photos are allowed per booking item.', 422);
+        }
+
+        $sortOrder = BookingItemPhoto::query()->where('booking_id', (int) $booking->id)->max('sort_order');
+        $nextSort = is_numeric($sortOrder) ? ((int) $sortOrder + 1) : 0;
+
+        foreach ($validated['photos'] as $photo) {
+            $ext = strtolower((string) $photo->getClientOriginalExtension());
+            $filename = sprintf('%s-%s.%s', now()->format('YmdHis'), Str::uuid(), $ext);
+            $path = $photo->storeAs('booking/item-photos', $filename, 'public');
+
+            BookingItemPhoto::query()->create([
+                'booking_id' => (int) $booking->id,
+                'file_path' => $path,
+                'original_name' => (string) $photo->getClientOriginalName(),
+                'mime_type' => (string) $photo->getClientMimeType(),
+                'size' => (int) $photo->getSize(),
+                'sort_order' => $nextSort++,
+            ]);
+        }
+
+        return $this->respond(['uploaded_item_photos' => $booking->fresh('itemPhotos')->itemPhotos->values()]);
+    }
+
+    public function removeItemPhoto(Request $request, int $id, int $photoId)
+    {
+        $customer = $request->user('customer');
+        $booking = Booking::query()->where('customer_id', $customer->id)->findOrFail($id);
+
+        if (! $this->canManagePhotos($booking)) {
+            return $this->respondError('Photos can only be managed while booking is HOLD or CONFIRMED.', 422);
+        }
+
+        $photo = BookingItemPhoto::query()
+            ->where('booking_id', (int) $booking->id)
+            ->findOrFail($photoId);
+
+        if ($photo->file_path && Storage::disk('public')->exists($photo->file_path)) {
+            Storage::disk('public')->delete($photo->file_path);
+        }
+        $photo->delete();
+
+        return $this->respond(['uploaded_item_photos' => $booking->fresh('itemPhotos')->itemPhotos->values()]);
+    }
+
+    private function canManagePhotos(Booking $booking): bool
+    {
+        return in_array((string) $booking->status, ['CONFIRMED', 'HOLD'], true);
     }
 
     private function mapAddonItems($rawItems): array

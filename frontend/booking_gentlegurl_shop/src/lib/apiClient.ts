@@ -4,7 +4,7 @@ import {
   AuthUser, 
   BookingLandingPage,
   BookingServiceCategory,
-  BookingCart, 
+  BookingCart,
   BookingPolicy,
   BookingRecord, 
   BookingSlot, 
@@ -205,6 +205,25 @@ export async function addPackageCartItem(payload: {
 
 export async function getBookingCart() {
   const response = await request<{ data: BookingCart } | BookingCart>("/booking/cart");
+  return unwrapData<BookingCart>(response);
+}
+
+
+export async function uploadBookingCartItemPhotos(itemId: number, files: File[]) {
+  const fd = new FormData();
+  files.forEach((file) => fd.append('photos[]', file));
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/photos`, {
+    method: 'POST',
+    body: fd,
+  });
+  return unwrapData<BookingCart>(response);
+}
+
+export async function removeBookingCartItemPhoto(itemId: number, photoId: number) {
+  const response = await request<{ data: BookingCart } | BookingCart>(`/booking/cart/item/${itemId}/photos/${photoId}`, {
+    method: 'DELETE',
+    body: JSON.stringify({}),
+  });
   return unwrapData<BookingCart>(response);
 }
 
@@ -483,6 +502,24 @@ export async function uploadPublicOrderSlip(orderId: number, file: File, note?: 
 export async function getMyBookings() {
   const response = await request<{ data: BookingRecord[] } | BookingRecord[]>("/public/shop/bookings");
   return unwrapData<BookingRecord[]>(response);
+}
+
+export async function uploadMyBookingItemPhotos(bookingId: number, files: File[]) {
+  const fd = new FormData();
+  files.forEach((file) => fd.append("photos[]", file));
+  const response = await request<{ data?: { uploaded_item_photos?: unknown[] } } | { uploaded_item_photos?: unknown[] }>(
+    `/booking/my/${bookingId}/item-photos`,
+    { method: "POST", body: fd },
+  );
+  return unwrapData<{ uploaded_item_photos?: unknown[] }>(response);
+}
+
+export async function removeMyBookingItemPhoto(bookingId: number, photoId: number) {
+  const response = await request<{ data?: { uploaded_item_photos?: unknown[] } } | { uploaded_item_photos?: unknown[] }>(
+    `/booking/my/${bookingId}/item-photos/${photoId}`,
+    { method: "DELETE", body: JSON.stringify({}) },
+  );
+  return unwrapData<{ uploaded_item_photos?: unknown[] }>(response);
 }
 
 export { ApiError };

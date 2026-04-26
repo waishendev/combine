@@ -67,6 +67,7 @@ class ServiceController extends Controller
             'deposit_amount' => ['required', 'numeric', 'min:0'],
             'buffer_min' => ['nullable', 'integer', 'min:0'],
             'is_active' => ['nullable', 'boolean'],
+            'allow_photo_upload' => ['nullable', 'boolean'],
             'rules_json' => ['nullable', 'array'],
             'allowed_staff_ids' => ['required', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
@@ -147,6 +148,7 @@ class ServiceController extends Controller
             'deposit_amount' => ['sometimes', 'numeric', 'min:0'],
             'buffer_min' => ['sometimes', 'integer', 'min:0'],
             'is_active' => ['sometimes', 'boolean'],
+            'allow_photo_upload' => ['sometimes', 'boolean'],
             'rules_json' => ['nullable', 'array'],
             'allowed_staff_ids' => ['required', 'array', 'min:1'],
             'allowed_staff_ids.*' => ['integer', 'distinct'],
@@ -236,7 +238,7 @@ class ServiceController extends Controller
 
         $headers = [
             'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
-            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
+            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
         ];
         fputcsv($stream, $headers);
 
@@ -254,6 +256,7 @@ class ServiceController extends Controller
                 $service->price_range_min,
                 $service->price_range_max,
                 $service->is_package_eligible ? 'true' : 'false',
+                $service->allow_photo_upload ? 'true' : 'false',
                 $service->is_active ? 'true' : 'false',
                 $service->allowedStaffs->pluck('id')->join('|'),
                 $service->primarySlots->pluck('start_time')->map(fn ($time) => substr((string) $time, 0, 5))->join('|'),
@@ -316,7 +319,7 @@ class ServiceController extends Controller
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
         $allowedHeaders = [
             'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
-            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
+            'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
         ];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
         if (! empty($unknownHeaders)) {
@@ -382,6 +385,7 @@ class ServiceController extends Controller
                 'price_range_min' => $payload['price_range_min'] ?: null,
                 'price_range_max' => $payload['price_range_max'] ?: null,
                 'is_package_eligible' => $payload['is_package_eligible'] ?? 'true',
+                'allow_photo_upload' => $payload['allow_photo_upload'] ?? 'false',
                 'is_active' => $payload['is_active'] ?? 'true',
                 'allowed_staff_ids' => $allowedStaffIds,
                 'primary_slots' => $primarySlots,
@@ -390,6 +394,7 @@ class ServiceController extends Controller
 
             $raw['is_active'] = filter_var((string) $raw['is_active'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             $raw['is_package_eligible'] = filter_var((string) $raw['is_package_eligible'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            $raw['allow_photo_upload'] = filter_var((string) $raw['allow_photo_upload'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
 
             $validator = Validator::make($raw, [
                 'name' => ['required', 'string', 'max:255'],
@@ -403,6 +408,7 @@ class ServiceController extends Controller
                 'price_range_min' => ['nullable', 'numeric', 'min:0'],
                 'price_range_max' => ['nullable', 'numeric', 'min:0'],
                 'is_package_eligible' => ['required', 'boolean'],
+                'allow_photo_upload' => ['required', 'boolean'],
                 'is_active' => ['required', 'boolean'],
                 'allowed_staff_ids' => ['required', 'array', 'min:1'],
                 'allowed_staff_ids.*' => ['integer', 'exists:staffs,id'],
@@ -445,6 +451,7 @@ class ServiceController extends Controller
                             'price_range_min' => $validated['price_mode'] === 'range' ? ($validated['price_range_min'] ?? 0) : null,
                             'price_range_max' => $validated['price_mode'] === 'range' ? ($validated['price_range_max'] ?? 0) : null,
                             'is_package_eligible' => $validated['is_package_eligible'],
+                            'allow_photo_upload' => $validated['allow_photo_upload'],
                             'duration_min' => $validated['duration_min'],
                             'deposit_amount' => $validated['deposit_amount'],
                             'buffer_min' => $validated['buffer_min'] ?? 0,
@@ -516,6 +523,7 @@ class ServiceController extends Controller
                             ((int) $service->buffer_min === (int) ($validated['buffer_min'] ?? 0)) &&
                             ((bool) $service->is_active === (bool) $validated['is_active']) &&
                             ((bool) $service->is_package_eligible === (bool) $validated['is_package_eligible']) &&
+                            ((bool) $service->allow_photo_upload === (bool) $validated['allow_photo_upload']) &&
                             ($service->price_mode === $validated['price_mode']) &&
                             ((float) ($service->price_range_min ?? 0) === (float) ($validated['price_range_min'] ?? 0)) &&
                             ((float) ($service->price_range_max ?? 0) === (float) ($validated['price_range_max'] ?? 0)) &&
@@ -536,6 +544,7 @@ class ServiceController extends Controller
                             'price_range_min' => $validated['price_mode'] === 'range' ? ($validated['price_range_min'] ?? 0) : null,
                             'price_range_max' => $validated['price_mode'] === 'range' ? ($validated['price_range_max'] ?? 0) : null,
                             'is_package_eligible' => $validated['is_package_eligible'],
+                            'allow_photo_upload' => $validated['allow_photo_upload'],
                             'duration_min' => $validated['duration_min'],
                             'deposit_amount' => $validated['deposit_amount'],
                             'buffer_min' => $validated['buffer_min'] ?? 0,

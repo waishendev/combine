@@ -18,6 +18,7 @@ export interface BookingServiceRowData {
   deposit_amount: string | number
   buffer_min: number
   isActive: boolean
+  allowPhotoUpload?: boolean
   imagePath?: string
   imageUrl?: string
   createdAt?: string
