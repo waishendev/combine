@@ -5,6 +5,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\CustomerController;
 use App\Http\Controllers\CustomerTypeController;
+use App\Http\Controllers\CustomerDepositWaiverLogController;
 use App\Http\Controllers\Ecommerce\AnnouncementController;
 use App\Http\Controllers\Ecommerce\BankAccountController;
 use App\Http\Controllers\Ecommerce\CustomerController as EcommerceCustomerController;
@@ -343,6 +344,8 @@ $protectedRoutes = function () {
         ->middleware('permission:customers.update');
     Route::patch('/customers/{customer}/deposit-waiver', [CustomerController::class, 'toggleDepositWaiver'])
         ->middleware('permission:customers.update');
+    Route::get('/customer-deposit-waiver-logs', [CustomerDepositWaiverLogController::class, 'index'])
+        ->middleware('permission:customers.deposit_waiver_logs.view');
 
     Route::delete('/customers/{customer}', [CustomerController::class, 'destroy'])
         ->middleware('permission:customers.delete');

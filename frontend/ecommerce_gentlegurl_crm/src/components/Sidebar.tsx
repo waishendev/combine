@@ -425,6 +425,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             href: '/booking/commissions/logs',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
+          {
+            key: 'customer-deposit-waiver-logs',
+            label: 'Deposit Waiver Logs',
+            href: '/customers/deposit-waiver-logs',
+            requiredPermission: 'customers.deposit_waiver_logs.view',
+          },
         ],
       },
 
