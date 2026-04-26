@@ -257,6 +257,12 @@ type BookingServiceQuestion = {
   is_required?: boolean
   options: BookingServiceQuestionOption[]
 }
+type BookingExtraServiceBlock = {
+  id: string
+  service: BookingServiceOption | null
+  questions: BookingServiceQuestion[]
+  selectedOptionIds: number[]
+}
 
 type ServicePackageOption = {
   id: number
@@ -620,6 +626,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingNotes, setBookingNotes] = useState('')
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
   const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
+  const [bookingExtraServiceBlocks, setBookingExtraServiceBlocks] = useState<BookingExtraServiceBlock[]>([])
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [bookingIdentityMode, setBookingIdentityMode] = useState<'member' | 'guest'>('member')
@@ -1920,6 +1927,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingNotes('')
     setBookingQuestions([])
     setBookingSelectedOptionIds([])
+    setBookingExtraServiceBlocks([])
     setBookingModalError(null)
     if (selectedMember?.id) {
       setBookingIdentityMode('member')
@@ -1966,6 +1974,42 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [currentUser.staff_id, guestContactCache.email, guestContactCache.name, guestContactCache.phone, selectedMember?.id])
 
+  const fetchBookingQuestions = useCallback(async (serviceId: number): Promise<BookingServiceQuestion[]> => {
+    try {
+      const res = await fetch(`/api/proxy/booking/services/${serviceId}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
+      return questionsRaw
+        .map((raw) => {
+          if (!raw || typeof raw !== 'object') return null
+          const record = raw as Record<string, unknown>
+          const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
+          return {
+            id: Number(record.id ?? 0),
+            title: String(record.title ?? 'Question'),
+            description: typeof record.description === 'string' ? record.description : null,
+            question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
+            is_required: Boolean(record.is_required),
+            options: optionsRaw
+              .map((optionRaw) => {
+                if (!optionRaw || typeof optionRaw !== 'object') return null
+                const option = optionRaw as Record<string, unknown>
+                return {
+                  id: Number(option.id ?? 0),
+                  label: String(option.label ?? 'Add-on'),
+                  extra_duration_min: Number(option.extra_duration_min ?? 0),
+                  extra_price: Number(option.extra_price ?? 0),
+                }
+              })
+              .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
+          } as BookingServiceQuestion
+        })
+        .filter((question): question is BookingServiceQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
+    } catch {
+      return []
+    }
+  }, [])
+
   const bookingSelectedOptions = useMemo(() => {
     const selected = new Set(bookingSelectedOptionIds)
     return bookingQuestions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
@@ -1977,6 +2021,34 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const bookingAddonPriceTotal = useMemo(
     () => bookingSelectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0),
     [bookingSelectedOptions],
+  )
+  const bookingExtraTotals = useMemo(() => {
+    return bookingExtraServiceBlocks.reduce((acc, block) => {
+      if (!block.service) return acc
+      acc.baseDuration += Number(block.service.duration_min ?? 0)
+      acc.basePrice += Number(block.service.price ?? block.service.service_price ?? 0)
+      const selected = new Set(block.selectedOptionIds)
+      const selectedOptions = block.questions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
+      acc.addonDuration += selectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0)
+      acc.addonPrice += selectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0)
+      return acc
+    }, { baseDuration: 0, addonDuration: 0, basePrice: 0, addonPrice: 0 })
+  }, [bookingExtraServiceBlocks])
+  const bookingAllowedStaffs = useMemo(() => {
+    if (!bookingServiceDraft) return []
+    let allowed = bookingServiceDraft.allowed_staffs ?? []
+    for (const block of bookingExtraServiceBlocks) {
+      const ids = new Set((block.service?.allowed_staffs ?? []).map((staff) => staff.id))
+      allowed = allowed.filter((staff) => ids.has(staff.id))
+    }
+    return allowed
+  }, [bookingExtraServiceBlocks, bookingServiceDraft])
+  const bookingSelectedServiceIds = useMemo(
+    () => [
+      ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
+      ...bookingExtraServiceBlocks.map((block) => Number(block.service?.id ?? 0)).filter((id) => id > 0),
+    ],
+    [bookingExtraServiceBlocks, bookingServiceDraft?.id],
   )
 
   const submitBooking = useCallback(async () => {
@@ -2027,6 +2099,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setBookingModalError('Please select appointment slot/time.')
       return
     }
+    if (new Set(bookingSelectedServiceIds).size !== bookingSelectedServiceIds.length) {
+      setBookingModalError('Duplicate main services are not allowed in the same booking.')
+      return
+    }
     for (const question of bookingQuestions) {
       if (!question.is_required) continue
       const hasSelection = question.options.some((option) => bookingSelectedOptionIds.includes(option.id))
@@ -2035,12 +2111,36 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         return
       }
     }
+    for (const block of bookingExtraServiceBlocks) {
+      if (!block.service) {
+        setBookingModalError('Please select service for every added main service block.')
+        return
+      }
+      for (const question of block.questions) {
+        if (!question.is_required) continue
+        const hasSelection = question.options.some((option) => block.selectedOptionIds.includes(option.id))
+        if (!hasSelection) {
+          setBookingModalError(`Please answer required question: ${question.title}`)
+          return
+        }
+      }
+    }
 
     setBookingSubmitting(true)
     const payload: Record<string, unknown> = {
       booking_service_id: bookingServiceDraft.id,
       assigned_staff_id: bookingAssignedStaffId,
       selected_option_ids: bookingSelectedOptionIds,
+      main_service_items: [
+        { booking_service_id: bookingServiceDraft.id, selected_option_ids: bookingSelectedOptionIds, staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] },
+        ...bookingExtraServiceBlocks
+          .filter((block) => block.service?.id)
+          .map((block) => ({
+            booking_service_id: Number(block.service?.id),
+            selected_option_ids: block.selectedOptionIds,
+            staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+          })),
+      ],
       start_at: bookingSlotValue,
       notes: bookingNotes || null,
       staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
@@ -2084,9 +2184,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     bookingIdentityMode,
     bookingNotes,
     bookingQuestions,
+    bookingExtraServiceBlocks,
     bookingSelectedOptionIds,
     bookingServiceDraft,
     bookingSlotValue,
+    bookingSelectedServiceIds,
     selectedMember?.id,
     showMsg,
   ])
@@ -2105,7 +2207,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         const params = new URLSearchParams({
           service_id: String(bookingServiceDraft.id),
           date: bookingDate,
-          extra_duration_min: String(bookingAddonDurationTotal || 0),
+          extra_duration_min: String(
+            (bookingAddonDurationTotal || 0) +
+            bookingExtraTotals.baseDuration +
+            bookingExtraTotals.addonDuration,
+          ),
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
@@ -2136,7 +2242,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     void loadSlots()
-  }, [bookingAddonDurationTotal, bookingDate, bookingModalOpen, bookingServiceDraft?.id])
+  }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.id])
 
   const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
     let staffs = activeStaffs
@@ -7416,6 +7522,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             ) : null}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-semibold text-gray-800">Main Services</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBookingExtraServiceBlocks((prev) => [
+                        ...prev,
+                        { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
+                      ])
+                    }}
+                    className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700"
+                  >
+                    + Add Main Service
+                  </button>
+                </div>
                 {bookingQuestions.length > 0 ? (
                   <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
                     <p className="text-sm font-semibold text-gray-800">Add-ons / Questions</p>
@@ -7466,12 +7587,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <p className="text-[11px] font-bold uppercase tracking-wide text-gray-600">Total</p>
                       <div className="mt-2 space-y-1">
                         <p className="font-medium">
-                          Duration: {Number(bookingServiceDraft.duration_min ?? 0) + bookingAddonDurationTotal} min
+                          Duration: {Number(bookingServiceDraft.duration_min ?? 0) + bookingAddonDurationTotal + bookingExtraTotals.baseDuration + bookingExtraTotals.addonDuration} min
                         </p>
                         <p className="font-medium">
                           Total price: {bookingServiceDraft.price_mode === 'range' && bookingServiceDraft.price_range_min != null && bookingServiceDraft.price_range_max != null
-                            ? `RM${(Number(bookingServiceDraft.price_range_min) + bookingAddonPriceTotal).toFixed(2)} - RM${(Number(bookingServiceDraft.price_range_max) + bookingAddonPriceTotal).toFixed(2)}`
-                            : `RM${(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0) + bookingAddonPriceTotal).toFixed(2)}`}
+                            ? `RM${(Number(bookingServiceDraft.price_range_min) + bookingAddonPriceTotal + bookingExtraTotals.basePrice + bookingExtraTotals.addonPrice).toFixed(2)} - RM${(Number(bookingServiceDraft.price_range_max) + bookingAddonPriceTotal + bookingExtraTotals.basePrice + bookingExtraTotals.addonPrice).toFixed(2)}`
+                            : `RM${(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0) + bookingAddonPriceTotal + bookingExtraTotals.basePrice + bookingExtraTotals.addonPrice).toFixed(2)}`}
                         </p>
                       </div>
                     </div>
@@ -7481,6 +7602,89 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     No add-ons for this service.
                   </div>
                 )}
+                {bookingExtraServiceBlocks.map((block) => (
+                  <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <select
+                        value={block.service?.id ?? ''}
+                        onChange={async (e) => {
+                          const nextId = Number(e.target.value) || null
+                          const selected = services.find((row) => row.id === nextId) ?? null
+                          const questions = nextId ? await fetchBookingQuestions(nextId) : []
+                          setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? {
+                            ...row, service: selected, questions, selectedOptionIds: [],
+                          } : row))
+                        }}
+                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
+                      >
+                        <option value="">Select main service</option>
+                        {services
+                          .filter((service) => {
+                            const takenByOthers = new Set<number>([
+                              ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
+                              ...bookingExtraServiceBlocks
+                                .filter((row) => row.id !== block.id)
+                                .map((row) => Number(row.service?.id ?? 0))
+                                .filter((id) => id > 0),
+                            ])
+                            return !takenByOthers.has(service.id)
+                          })
+                          .map((service) => (
+                          <option key={`booking-extra-service-${block.id}-${service.id}`} value={service.id}>
+                            {service.name}
+                          </option>
+                          ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setBookingExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))}
+                        className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {block.service ? (
+                      <p className="text-xs font-semibold text-gray-600">
+                        {block.service.name} · {Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}
+                      </p>
+                    ) : null}
+                    {block.questions.map((question) => (
+                      <div key={`${block.id}-${question.id}`} className="rounded border border-gray-200 bg-white p-2">
+                        <p className="text-xs font-semibold text-gray-800">
+                          {question.title}
+                          {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
+                        </p>
+                        <div className="mt-1 space-y-1">
+                          {question.options.map((option) => {
+                            const checked = block.selectedOptionIds.includes(option.id)
+                            return (
+                              <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs text-gray-700">
+                                <span className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => {
+                                      setBookingExtraServiceBlocks((prev) => prev.map((row) => {
+                                        if (row.id !== block.id) return row
+                                        if (question.question_type === 'single_choice') {
+                                          const withoutQuestion = row.selectedOptionIds.filter((id) => !question.options.some((opt) => opt.id === id))
+                                          return { ...row, selectedOptionIds: checked ? withoutQuestion : [...withoutQuestion, option.id] }
+                                        }
+                                        return { ...row, selectedOptionIds: checked ? row.selectedOptionIds.filter((id) => id !== option.id) : [...row.selectedOptionIds, option.id] }
+                                      }))
+                                    }}
+                                  />
+                                  <span>{option.label}</span>
+                                </span>
+                                <span className="font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ))}
               </div>
 
               <div className="space-y-3">
@@ -7573,7 +7777,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 )}
 
-                {(!bookingServiceDraft.allowed_staffs || bookingServiceDraft.allowed_staffs.length === 0) ? (
+                {(bookingAllowedStaffs.length === 0) ? (
                   <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                     This service is temporarily unavailable because no eligible staff is assigned.
                   </div>
@@ -7590,7 +7794,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     {(() => {
                       const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
                       const allowedIds = slot?.available_staff_ids ?? null
-                      const base = bookingServiceDraft.allowed_staffs ?? []
+                      const base = bookingAllowedStaffs
                       const filtered = Array.isArray(allowedIds) && allowedIds.length > 0
                         ? base.filter((s) => allowedIds.includes(s.id))
                         : base
@@ -7663,7 +7867,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
               <button
                 type="button"
-                disabled={bookingSubmitting || (bookingServiceDraft.allowed_staffs?.length ?? 0) === 0}
+                disabled={bookingSubmitting || bookingAllowedStaffs.length === 0}
                 onClick={() => void submitBooking()}
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >

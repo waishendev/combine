@@ -39,6 +39,12 @@ type BookingServiceOption = {
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
 }
+type CreateExtraServiceBlock = {
+  id: string
+  service: BookingServiceOption | null
+  questions: ServiceAddonQuestion[]
+  selectedOptionIds: number[]
+}
 
 type PosCancellationRequestRow = {
   id: number
@@ -168,6 +174,7 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
   const [createAppointmentQuestions, setCreateAppointmentQuestions] = useState<ServiceAddonQuestion[]>([])
   const [createAppointmentSelectedOptionIds, setCreateAppointmentSelectedOptionIds] = useState<number[]>([])
+  const [createAppointmentExtraServiceBlocks, setCreateAppointmentExtraServiceBlocks] = useState<CreateExtraServiceBlock[]>([])
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
@@ -533,6 +540,7 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentSubmitting(false)
     setCreateAppointmentServiceDraft(null)
     setCreateAppointmentSelectedOptionIds([])
+    setCreateAppointmentExtraServiceBlocks([])
     setCreateAppointmentQuestions([])
     setCreateAppointmentAssignedStaffId(currentUser.staff_id ?? null)
     setCreateAppointmentDate(appointmentDateFilter || '')
@@ -563,6 +571,34 @@ export default function PosAppointmentsWorkspace({
   const createAppointmentAddonPriceTotal = useMemo(
     () => createAppointmentSelectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0),
     [createAppointmentSelectedOptions],
+  )
+  const createAppointmentExtraTotals = useMemo(() => {
+    return createAppointmentExtraServiceBlocks.reduce((acc, block) => {
+      if (!block.service) return acc
+      acc.baseDuration += Number(block.service.duration_min ?? 0)
+      acc.basePrice += Number(block.service.price ?? block.service.service_price ?? 0)
+      const selected = new Set(block.selectedOptionIds)
+      const selectedOptions = block.questions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
+      acc.addonDuration += selectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0)
+      acc.addonPrice += selectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0)
+      return acc
+    }, { baseDuration: 0, addonDuration: 0, basePrice: 0, addonPrice: 0 })
+  }, [createAppointmentExtraServiceBlocks])
+  const createAppointmentAllowedStaffs = useMemo(() => {
+    if (!createAppointmentServiceDraft) return []
+    let allowed = createAppointmentServiceDraft.allowed_staffs ?? []
+    for (const block of createAppointmentExtraServiceBlocks) {
+      const ids = new Set((block.service?.allowed_staffs ?? []).map((staff) => staff.id))
+      allowed = allowed.filter((staff) => ids.has(staff.id))
+    }
+    return allowed
+  }, [createAppointmentExtraServiceBlocks, createAppointmentServiceDraft])
+  const createAppointmentSelectedServiceIds = useMemo(
+    () => [
+      ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
+      ...createAppointmentExtraServiceBlocks.map((block) => Number(block.service?.id ?? 0)).filter((id) => id > 0),
+    ],
+    [createAppointmentExtraServiceBlocks, createAppointmentServiceDraft?.id],
   )
 
   const submitCreateAppointment = useCallback(async () => {
@@ -605,12 +641,30 @@ export default function PosAppointmentsWorkspace({
       setCreateAppointmentError('Please select appointment slot/time.')
       return
     }
+    if (new Set(createAppointmentSelectedServiceIds).size !== createAppointmentSelectedServiceIds.length) {
+      setCreateAppointmentError('Duplicate main services are not allowed in the same appointment.')
+      return
+    }
     for (const question of createAppointmentQuestions) {
       if (!question.is_required) continue
       const hasSelection = question.options.some((option) => createAppointmentSelectedOptionIds.includes(option.id))
       if (!hasSelection) {
         setCreateAppointmentError(`Please answer required question: ${question.title}`)
         return
+      }
+    }
+    for (const block of createAppointmentExtraServiceBlocks) {
+      if (!block.service) {
+        setCreateAppointmentError('Please select service for every added main service block.')
+        return
+      }
+      for (const question of block.questions) {
+        if (!question.is_required) continue
+        const hasSelection = question.options.some((option) => block.selectedOptionIds.includes(option.id))
+        if (!hasSelection) {
+          setCreateAppointmentError(`Please answer required question: ${question.title}`)
+          return
+        }
       }
     }
 
@@ -621,6 +675,16 @@ export default function PosAppointmentsWorkspace({
         booking_service_id: createAppointmentServiceDraft.id,
         assigned_staff_id: createAppointmentAssignedStaffId,
         selected_option_ids: createAppointmentSelectedOptionIds,
+        main_service_items: [
+          { booking_service_id: createAppointmentServiceDraft.id, selected_option_ids: createAppointmentSelectedOptionIds, staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }] },
+          ...createAppointmentExtraServiceBlocks
+            .filter((block) => block.service?.id)
+            .map((block) => ({
+              booking_service_id: Number(block.service?.id),
+              selected_option_ids: block.selectedOptionIds,
+              staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
+            })),
+        ],
         start_at: createAppointmentSlotValue,
         notes: createAppointmentNotes.trim() ? createAppointmentNotes.trim() : null,
         staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
@@ -664,6 +728,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentAssignedStaffId,
     createAppointmentCustomerId,
     createAppointmentDate,
+    createAppointmentExtraServiceBlocks,
     createAppointmentGuestEmail,
     createAppointmentGuestName,
     createAppointmentGuestPhone,
@@ -671,6 +736,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentNotes,
     createAppointmentQuestions,
     createAppointmentSelectedOptionIds,
+    createAppointmentSelectedServiceIds,
     createAppointmentServiceDraft,
     createAppointmentSlotValue,
     fetchAppointments,
@@ -1379,7 +1445,11 @@ export default function PosAppointmentsWorkspace({
         const params = new URLSearchParams({
           service_id: String(createAppointmentServiceDraft.id),
           date: createAppointmentDate,
-          extra_duration_min: String(createAppointmentAddonDurationTotal || 0),
+          extra_duration_min: String(
+            (createAppointmentAddonDurationTotal || 0) +
+            createAppointmentExtraTotals.baseDuration +
+            createAppointmentExtraTotals.addonDuration,
+          ),
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
@@ -1413,6 +1483,8 @@ export default function PosAppointmentsWorkspace({
   }, [
     createAppointmentAddonDurationTotal,
     createAppointmentDate,
+    createAppointmentExtraTotals.addonDuration,
+    createAppointmentExtraTotals.baseDuration,
     createAppointmentModalOpen,
     createAppointmentServiceDraft?.id,
   ])
@@ -2338,8 +2410,23 @@ export default function PosAppointmentsWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-semibold text-gray-600">Main Services</label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateAppointmentExtraServiceBlocks((prev) => [
+                          ...prev,
+                          { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
+                        ])
+                      }}
+                      className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700"
+                    >
+                      + Add Main Service
+                    </button>
+                  </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-600">Service</label>
+                    <label className="text-xs font-semibold text-gray-600">Primary Service</label>
                     <select
                       value={createAppointmentServiceDraft?.id ?? ''}
                       onChange={(e) => {
@@ -2415,17 +2502,128 @@ export default function PosAppointmentsWorkspace({
 
                   {createAppointmentServiceDraft ? (
                     <div className="rounded-lg border border-gray-200 bg-white p-3 text-sm text-gray-700">
-                      <p>Duration: {Number(createAppointmentServiceDraft.duration_min ?? 0) + createAppointmentAddonDurationTotal} min</p>
+                      <p>Duration: {Number(createAppointmentServiceDraft.duration_min ?? 0) + createAppointmentAddonDurationTotal + createAppointmentExtraTotals.baseDuration + createAppointmentExtraTotals.addonDuration} min</p>
                       <p>
                         Total price:{' '}
                         {createAppointmentServiceDraft.price_mode === 'range' &&
                         createAppointmentServiceDraft.price_range_min != null &&
                         createAppointmentServiceDraft.price_range_max != null
-                          ? `RM${(Number(createAppointmentServiceDraft.price_range_min) + createAppointmentAddonPriceTotal).toFixed(2)} - RM${(Number(createAppointmentServiceDraft.price_range_max) + createAppointmentAddonPriceTotal).toFixed(2)}`
-                          : `RM${(Number(createAppointmentServiceDraft.price ?? createAppointmentServiceDraft.service_price ?? 0) + createAppointmentAddonPriceTotal).toFixed(2)}`}
+                          ? `RM${(Number(createAppointmentServiceDraft.price_range_min) + createAppointmentAddonPriceTotal + createAppointmentExtraTotals.basePrice + createAppointmentExtraTotals.addonPrice).toFixed(2)} - RM${(Number(createAppointmentServiceDraft.price_range_max) + createAppointmentAddonPriceTotal + createAppointmentExtraTotals.basePrice + createAppointmentExtraTotals.addonPrice).toFixed(2)}`
+                          : `RM${(Number(createAppointmentServiceDraft.price ?? createAppointmentServiceDraft.service_price ?? 0) + createAppointmentAddonPriceTotal + createAppointmentExtraTotals.basePrice + createAppointmentExtraTotals.addonPrice).toFixed(2)}`}
                       </p>
                     </div>
                   ) : null}
+                  {createAppointmentExtraServiceBlocks.map((block) => (
+                    <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
+                      <div className="flex items-center gap-2">
+                        <select
+                          value={block.service?.id ?? ''}
+                          onChange={async (e) => {
+                            const nextId = Number(e.target.value) || 0
+                            const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
+                            let questions: ServiceAddonQuestion[] = []
+                            if (service?.id) {
+                              const res = await fetch(`/api/proxy/booking/services/${service.id}`, { cache: 'no-store' })
+                              const json = await res.json().catch(() => null)
+                              const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
+                              questions = questionsRaw
+                                .map((raw) => {
+                                  if (!raw || typeof raw !== 'object') return null
+                                  const record = raw as Record<string, unknown>
+                                  const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
+                                  return {
+                                    id: Number(record.id ?? 0),
+                                    title: String(record.title ?? 'Question'),
+                                    question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
+                                    is_required: Boolean(record.is_required),
+                                    options: optionsRaw
+                                      .map((optionRaw) => {
+                                        if (!optionRaw || typeof optionRaw !== 'object') return null
+                                        const option = optionRaw as Record<string, unknown>
+                                        return {
+                                          id: Number(option.id ?? 0),
+                                          label: String(option.label ?? 'Add-on'),
+                                          extra_duration_min: Number(option.extra_duration_min ?? 0),
+                                          extra_price: Number(option.extra_price ?? 0),
+                                        } as ServiceAddonOption
+                                      })
+                                      .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
+                                  } as ServiceAddonQuestion
+                                })
+                                .filter((question): question is ServiceAddonQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
+                            }
+                            setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? {
+                              ...row,
+                              service,
+                              questions,
+                              selectedOptionIds: [],
+                            } : row))
+                          }}
+                          className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
+                        >
+                          <option value="">Select main service</option>
+                          {createAppointmentServices
+                            .filter((service) => {
+                              const takenByOthers = new Set<number>([
+                                ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
+                                ...createAppointmentExtraServiceBlocks
+                                  .filter((row) => row.id !== block.id)
+                                  .map((row) => Number(row.service?.id ?? 0))
+                                  .filter((id) => id > 0),
+                              ])
+                              return !takenByOthers.has(service.id)
+                            })
+                            .map((service) => (
+                            <option key={`create-extra-service-${block.id}-${service.id}`} value={service.id}>
+                              {service.name}
+                            </option>
+                            ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => setCreateAppointmentExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))}
+                          className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      {block.questions.map((question) => (
+                        <div key={`${block.id}-${question.id}`} className="rounded border border-gray-200 p-2">
+                          <p className="text-xs font-semibold text-gray-800">
+                            {question.title}
+                            {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
+                          </p>
+                          <div className="mt-1 space-y-1">
+                            {question.options.map((option) => {
+                              const checked = block.selectedOptionIds.includes(option.id)
+                              return (
+                                <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs">
+                                  <span className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={checked}
+                                      onChange={() => {
+                                        setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => {
+                                          if (row.id !== block.id) return row
+                                          if (question.question_type === 'single_choice') {
+                                            const withoutQuestion = row.selectedOptionIds.filter((id) => !question.options.some((opt) => opt.id === id))
+                                            return { ...row, selectedOptionIds: checked ? withoutQuestion : [...withoutQuestion, option.id] }
+                                          }
+                                          return { ...row, selectedOptionIds: checked ? row.selectedOptionIds.filter((id) => id !== option.id) : [...row.selectedOptionIds, option.id] }
+                                        }))
+                                      }}
+                                    />
+                                    <span>{option.label}</span>
+                                  </span>
+                                  <span className="font-semibold text-gray-700">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
                 </div>
 
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
@@ -2497,7 +2695,7 @@ export default function PosAppointmentsWorkspace({
                       disabled={!createAppointmentServiceDraft}
                     >
                       <option value="">Select staff</option>
-                      {(createAppointmentServiceDraft?.allowed_staffs ?? []).map((staff) => {
+                      {createAppointmentAllowedStaffs.map((staff) => {
                         const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
                         const staffIds = slot?.available_staff_ids
                         const available = !staffIds || staffIds.includes(staff.id)
