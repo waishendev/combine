@@ -42,3 +42,12 @@ Schedule::job(new SendDailyOrderSummaryEmailJob())
     ->dailyAt('10:00')
     ->onOneServer()
     ->withoutOverlapping();
+
+// =========================
+// Booking reminder emails
+// =========================
+
+Schedule::command('booking:send-reminder-emails')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping();

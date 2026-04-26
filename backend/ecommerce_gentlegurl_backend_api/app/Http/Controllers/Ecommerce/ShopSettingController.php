@@ -33,6 +33,7 @@ class ShopSettingController extends Controller
                 'booking_policy' => SettingService::get('booking_policy', $this->defaultBookingPolicySetting(), $type),
                 'booking_hold_minutes' => (int) SettingService::get('BOOKING_HOLD_MINUTES', 10, $type),
                 'booking_service_deposit_note' => SettingService::get('booking_service_deposit_note', null, $type),
+                'booking_reminder_email' => SettingService::get('booking_reminder_email', ['enabled' => true, 'send_at' => '10:00'], $type),
             ];
 
             return response()->json([
@@ -123,6 +124,7 @@ class ShopSettingController extends Controller
             'booking_policy' => $this->defaultBookingPolicySetting(),
             'BOOKING_HOLD_MINUTES' => 10,
             'booking_service_deposit_note' => null,
+            'booking_reminder_email' => ['enabled' => true, 'send_at' => '10:00'],
         ];
 
         $settingKey = $this->resolveSettingKey($key);
@@ -201,6 +203,10 @@ class ShopSettingController extends Controller
                 break;
             case 'booking_service_deposit_note':
                 $data = $this->validateBookingServiceDepositNote($request);
+                break;
+
+            case 'booking_reminder_email':
+                $data = $this->validateBookingReminderEmail($request);
                 break;
 
             default:
@@ -495,6 +501,19 @@ class ShopSettingController extends Controller
         return $trimmed === '' ? null : $trimmed;
     }
 
+    protected function validateBookingReminderEmail(Request $request): array
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'send_at' => ['required', 'string', 'date_format:H:i'],
+        ]);
+
+        return [
+            'enabled' => (bool) $validated['enabled'],
+            'send_at' => $validated['send_at'],
+        ];
+    }
+
     protected function defaultBookingPolicySetting(): array
     {
         return [
@@ -620,6 +639,7 @@ class ShopSettingController extends Controller
                 'booking_policy',
                 'BOOKING_HOLD_MINUTES',
                 'booking_service_deposit_note',
+                'booking_reminder_email',
             ];
         }
 
