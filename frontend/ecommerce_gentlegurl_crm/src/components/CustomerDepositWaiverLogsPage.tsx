@@ -196,6 +196,7 @@ export default function CustomerDepositWaiverLogsPage() {
         <PaginationControls
           currentPage={currentPage}
           totalPages={totalPages}
+          pageSize={pagination.per_page}
           onPageChange={(page) => setPagination((prev) => ({ ...prev, current_page: page }))}
           disabled={loading}
         />
