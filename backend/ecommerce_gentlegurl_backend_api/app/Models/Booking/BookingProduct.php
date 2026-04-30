@@ -15,9 +15,14 @@ class BookingProduct extends Model
         'barcode',
         'description',
         'image_path',
-        'category',
+        'category_id',
         'is_active',
     ];
+
+    public function category()
+    {
+        return $this->belongsTo(BookingProductCategory::class, 'category_id');
+    }
 
     protected $casts = [
         'price' => 'decimal:2',

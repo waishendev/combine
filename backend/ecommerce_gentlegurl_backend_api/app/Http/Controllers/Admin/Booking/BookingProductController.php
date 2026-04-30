@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingProduct;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
+use App\Models\Booking\BookingProductCategory;
 use Illuminate\Support\Str;
 
 class BookingProductController extends Controller
@@ -14,14 +15,14 @@ class BookingProductController extends Controller
     {
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
 
-        $query = BookingProduct::query()->latest();
+        $query = BookingProduct::query()->with('category')->leftJoin('booking_product_categories as bpc','booking_products.category_id','=','bpc.id')->orderByRaw('COALESCE(bpc.sort_order, 999999) asc')->orderBy('booking_products.id');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                   ->orWhere('barcode', 'like', "%{$search}%")
-                  ->orWhere('category', 'like', "%{$search}%");
+                  ->orWhereHas('category', fn($cq) => $cq->where('name', 'like', "%{$search}%"));
             });
         }
 
@@ -29,11 +30,11 @@ class BookingProductController extends Controller
             $query->where('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOL));
         }
 
-        if ($request->filled('category')) {
-            $query->where('category', $request->input('category'));
+        if ($request->filled('category_id')) {
+            $query->where('booking_products.category_id', (int) $request->input('category_id'));
         }
 
-        return $this->respond($query->paginate($perPage));
+        return $this->respond($query->select('booking_products.*')->paginate($perPage));
     }
 
     public function store(Request $request)
@@ -43,7 +44,7 @@ class BookingProductController extends Controller
             'price' => ['required', 'numeric', 'min:0'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category' => ['nullable', 'string', 'max:255'],
+            'category_id' => ['nullable', 'integer', 'exists:booking_product_categories,id'],
             'is_active' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
         ]);
@@ -75,7 +76,7 @@ class BookingProductController extends Controller
             'price' => ['sometimes', 'numeric', 'min:0'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category' => ['nullable', 'string', 'max:255'],
+            'category_id' => ['nullable', 'integer', 'exists:booking_product_categories,id'],
             'is_active' => ['sometimes', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
         ]);

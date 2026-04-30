@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+type Cat = { id:number; name:string; sort_order:number; is_active:boolean }
+
 type BookingProduct = {
   id: number
   name: string
   price: number
   barcode?: string | null
   description?: string | null
-  category?: string | null
+  category_id?: number | null
+  category?: Cat | null
   is_active: boolean
 }
 
@@ -16,8 +19,9 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   const [items, setItems] = useState<BookingProduct[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [form, setForm] = useState({ name: '', price: '', barcode: '', description: '', category: '', is_active: true })
+  const [form, setForm] = useState({ name: '', price: '', barcode: '', description: '', category_id: '', is_active: true })
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [categories, setCategories] = useState<Cat[]>([])
 
   const canWrite = permissions.includes('booking.services.create') || permissions.includes('booking.services.update')
 
@@ -32,15 +36,16 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   }, [search])
 
   useEffect(() => { fetchItems() }, [fetchItems])
+  useEffect(() => { (async () => { const res = await fetch('/api/proxy/admin/booking/product-categories', { cache:'no-store' }); const json = await res.json(); setCategories((Array.isArray(json?.data)?json.data:[]).filter((c:Cat)=>c.is_active).sort((a:Cat,b:Cat)=>a.sort_order-b.sort_order||a.id-b.id)) })() }, [])
 
   const submit = async () => {
-    const payload = { ...form, price: Number(form.price) }
+    const payload = { ...form, price: Number(form.price), category_id: form.category_id ? Number(form.category_id) : null }
     await fetch(`/api/proxy/admin/booking/products${editingId ? `/${editingId}` : ''}`, {
       method: editingId ? 'PUT' : 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    setForm({ name: '', price: '', barcode: '', description: '', category: '', is_active: true })
+    setForm({ name: '', price: '', barcode: '', description: '', category_id: '', is_active: true })
     setEditingId(null)
     await fetchItems()
   }
@@ -55,7 +60,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
       <input className="border px-2 py-1 rounded" placeholder="Name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       <input className="border px-2 py-1 rounded" placeholder="Price" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} />
       <input className="border px-2 py-1 rounded" placeholder="Barcode" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
-      <input className="border px-2 py-1 rounded" placeholder="Category" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} />
+      <select className="border px-2 py-1 rounded" value={form.category_id} onChange={(e) => setForm({ ...form, category_id: e.target.value })}><option value=''>No category</option>{categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
       <input className="border px-2 py-1 rounded col-span-2" placeholder="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
       <label><input type="checkbox" checked={form.is_active} onChange={(e) => setForm({ ...form, is_active: e.target.checked })} /> Active</label>
       <button className="bg-blue-600 text-white px-3 py-1 rounded" onClick={submit}>{editingId ? 'Update' : 'Create'}</button>
@@ -64,7 +69,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
     <div className="bg-white rounded border overflow-hidden">
       <table className="min-w-full text-sm"><thead className="bg-slate-100"><tr><th className="p-2 text-left">Name</th><th className="p-2 text-left">Price</th><th className="p-2 text-left">Category</th><th className="p-2 text-left">Status</th><th className="p-2">Actions</th></tr></thead>
       <tbody>
-        {loading ? <tr><td className="p-3" colSpan={5}>Loading...</td></tr> : items.map((it) => <tr key={it.id} className="border-t"><td className="p-2">{it.name}</td><td className="p-2">{Number(it.price).toFixed(2)}</td><td className="p-2">{it.category || '-'}</td><td className="p-2">{it.is_active ? 'Active' : 'Inactive'}</td><td className="p-2 space-x-2">{canWrite && <><button className="px-2 py-1 bg-blue-500 text-white rounded" onClick={() => {setEditingId(it.id); setForm({name:it.name,price:String(it.price),barcode:it.barcode||'',description:it.description||'',category:it.category||'',is_active:it.is_active})}}>Edit</button><button className="px-2 py-1 bg-red-500 text-white rounded" onClick={async () => { await fetch(`/api/proxy/admin/booking/products/${it.id}`,{method:'DELETE'}); await fetchItems() }}>Delete</button></>}</td></tr>)}
+        {loading ? <tr><td className="p-3" colSpan={5}>Loading...</td></tr> : items.map((it) => <tr key={it.id} className="border-t"><td className="p-2">{it.name}</td><td className="p-2">{Number(it.price).toFixed(2)}</td><td className="p-2">{it.category?.name || '-'}</td><td className="p-2">{it.is_active ? 'Active' : 'Inactive'}</td><td className="p-2 space-x-2">{canWrite && <><button className="px-2 py-1 bg-blue-500 text-white rounded" onClick={() => {setEditingId(it.id); setForm({name:it.name,price:String(it.price),barcode:it.barcode||'',description:it.description||'',category_id:it.category_id?String(it.category_id):'',is_active:it.is_active})}}>Edit</button><button className="px-2 py-1 bg-red-500 text-white rounded" onClick={async () => { await fetch(`/api/proxy/admin/booking/products/${it.id}`,{method:'DELETE'}); await fetchItems() }}>Delete</button></>}</td></tr>)}
       </tbody></table>
     </div>
   </div>
