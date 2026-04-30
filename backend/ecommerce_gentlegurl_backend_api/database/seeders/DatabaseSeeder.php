@@ -41,6 +41,7 @@ class DatabaseSeeder extends Seeder
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
             BookingLandingPageSeeder::class,
+            BookingProductSeeder::class,
 
             
             // upper all should open , no command to avoid error seed
