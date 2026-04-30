@@ -4,6 +4,7 @@ namespace App\Models\Booking;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Storage;
 
 class BookingProduct extends Model
 {
@@ -19,13 +20,30 @@ class BookingProduct extends Model
         'is_active',
     ];
 
-    public function category()
-    {
-        return $this->belongsTo(BookingProductCategory::class, 'category_id');
-    }
+    protected $appends = [
+        'image_url',
+    ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'is_active' => 'boolean',
     ];
+
+    public function category()
+    {
+        return $this->belongsTo(BookingProductCategory::class, 'category_id');
+    }
+
+    public function getImageUrlAttribute(): ?string
+    {
+        if (! $this->image_path) {
+            return null;
+        }
+
+        if (filter_var($this->image_path, FILTER_VALIDATE_URL)) {
+            return $this->image_path;
+        }
+
+        return Storage::disk('public')->url(ltrim($this->image_path, '/'));
+    }
 }
