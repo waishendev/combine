@@ -16,6 +16,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   const [search,setSearch]=useState('')
   const [editingId,setEditingId]=useState<number|null>(null)
   const [previewUrl,setPreviewUrl]=useState<string | null>(null)
+  const [error,setError]=useState<string | null>(null)
   const [form,setForm]=useState({name:'',price:'',barcode:'',description:'',category_id:'',is_active:true,image:null as File|null,image_url:''})
 
   const categoryOptions = useMemo(()=>categories.filter(c=>c.is_active).sort((a,b)=>a.sort_order-b.sort_order||a.id-b.id),[categories])
@@ -30,15 +31,24 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   useEffect(()=>{(async()=>{const r=await fetch('/api/proxy/admin/booking/product-categories',{cache:'no-store'});const j=await r.json();setCategories(Array.isArray(j?.data)?j.data:[])})()},[])
 
   const submit=async()=>{
-    const fd=new FormData(); fd.append('name',form.name); fd.append('price',String(Number(form.price||0))); fd.append('barcode',form.barcode); fd.append('description',form.description); fd.append('is_active',form.is_active?'1':'0');
+    setError(null)
+    const fd=new FormData(); fd.append('name',form.name.trim()); fd.append('price',String(Number(form.price||0))); fd.append('barcode',form.barcode.trim()); fd.append('description',form.description.trim()); fd.append('is_active',form.is_active?'1':'0');
     if(form.category_id) fd.append('category_id',form.category_id); if(form.image) fd.append('image',form.image)
-    await fetch(`/api/proxy/admin/booking/products${editingId?`/${editingId}`:''}`,{method:editingId?'POST':'POST',headers:editingId?{'X-HTTP-Method-Override':'PUT'}:undefined,body:fd})
+    if (editingId) fd.append('_method', 'PUT')
+    const res = await fetch(`/api/proxy/admin/booking/products${editingId?`/${editingId}`:''}`,{method:'POST',headers:{Accept:'application/json'},body:fd})
+    const json = await res.json().catch(() => null as any)
+    if (!res.ok) {
+      const msg = (json && (json.message || (json.errors && Object.values(json.errors)[0]?.[0]))) || 'Failed to save booking product.'
+      setError(typeof msg === 'string' ? msg : 'Failed to save booking product.')
+      return
+    }
     setEditingId(null); setPreviewUrl(null); setForm({name:'',price:'',barcode:'',description:'',category_id:'',is_active:true,image:null,image_url:''}); await fetchItems()
   }
 
   return <div className='space-y-4'>
     <div className='flex gap-2'><input className='border px-3 py-2 rounded' value={search} onChange={e=>setSearch(e.target.value)} placeholder='Search'/><button className='bg-gray-700 text-white px-3 py-2 rounded' onClick={()=>void fetchItems()}>Search</button></div>
     {canWrite && <div className='grid grid-cols-2 gap-2 bg-white p-3 rounded border'>
+      {error && <p className='col-span-2 text-sm text-red-600'>{error}</p>}
       <input className='border px-2 py-1 rounded' value={form.name} onChange={e=>setForm({...form,name:e.target.value})} placeholder='Name'/>
       <input className='border px-2 py-1 rounded' value={form.price} onChange={e=>setForm({...form,price:e.target.value})} placeholder='Price'/>
       <input className='border px-2 py-1 rounded' value={form.barcode} onChange={e=>setForm({...form,barcode:e.target.value})} placeholder='Barcode'/>
