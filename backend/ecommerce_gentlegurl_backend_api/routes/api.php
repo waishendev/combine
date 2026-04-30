@@ -1165,6 +1165,7 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::post('/services/import', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'importCsv'])
         ->middleware('permission:booking.services.create|booking.services.update');
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
+    Route::apiResource('/products', \App\Http\Controllers\Admin\Booking\BookingProductController::class);
     Route::get('/categories/export', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'exportCsv'])
         ->middleware('permission:booking.services.view');
     Route::post('/categories/import', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'importCsv'])
