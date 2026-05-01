@@ -155,6 +155,7 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
     void loadStaffs()
   }, [loadStaffs])
 
+
   useEffect(() => {
     setInputs({
       staff_id: resolvedParams.staffId,
@@ -234,6 +235,25 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       if (!silent) setLoading(false)
     }
   }, [fetchCommissions])
+
+  useEffect(() => {
+    const refreshFromServer = () => {
+      void refetchTable({ silent: true })
+    }
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        refreshFromServer()
+      }
+    }
+    window.addEventListener('pageshow', refreshFromServer)
+    window.addEventListener('focus', refreshFromServer)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('pageshow', refreshFromServer)
+      window.removeEventListener('focus', refreshFromServer)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [refetchTable])
 
   const waitForLatestCalculation = useCallback(async ({
     targetRowIds,
