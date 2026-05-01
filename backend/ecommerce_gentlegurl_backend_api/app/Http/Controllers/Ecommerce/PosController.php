@@ -24,6 +24,7 @@ use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingProduct;
 use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingSetting;
@@ -55,6 +56,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -1341,6 +1343,40 @@ class PosController extends Controller
         return $this->addResolvedToCart($request, $variant, $product, $qty, 'manual');
     }
 
+    public function addBookingProduct(Request $request)
+    {
+        $validated = $request->validate([
+            'booking_product_id' => ['required', 'integer', 'exists:booking_products,id'],
+            'qty' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $qty = (int) ($validated['qty'] ?? 1);
+        $hasItemType = Schema::hasColumn('pos_cart_items', 'item_type');
+        $hasBookingProductId = Schema::hasColumn('pos_cart_items', 'booking_product_id');
+        if (! $hasItemType || ! $hasBookingProductId) {
+            return $this->respondError(__('POS booking product fields are not ready. Please run latest migrations.'), 422);
+        }
+        $bookingProduct = BookingProduct::query()->where('is_active', true)->findOrFail((int) $validated['booking_product_id']);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = PosCartItem::query()->firstOrNew([
+            'pos_cart_id' => $cart->id,
+            'item_type' => 'booking_product',
+            'booking_product_id' => (int) $bookingProduct->id,
+            'variant_id' => null,
+            'product_id' => null,
+        ]);
+        $item->qty = (int) ($item->exists ? $item->qty : 0) + $qty;
+        $item->price_snapshot = (float) $bookingProduct->price;
+        $item->item_type = 'booking_product';
+        $item->booking_product_id = (int) $bookingProduct->id;
+        $item->variant_id = null;
+        $item->product_id = null;
+        $item->save();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.category', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+        ]);
+    }
+
     /**
      * POS pooled availability: pick time first (no staff_id required).
      * This is a POS-only endpoint so we can iterate UI safely without impacting public booking flows.
@@ -2534,7 +2570,7 @@ class PosController extends Controller
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id);
-        $item = $cart->items()->with(['variant', 'product'])->findOrFail($itemId);
+        $item = $cart->items()->with(['variant', 'product', 'bookingProduct'])->findOrFail($itemId);
 
         $qty = (int) $validated['qty'];
         $targetVariantId = isset($validated['variant_id']) ? (int) $validated['variant_id'] : null;
@@ -2576,6 +2612,14 @@ class PosController extends Controller
 
             return $this->respond([
                 'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            ]);
+        }
+
+        if (($item->item_type ?? 'product') === 'booking_product') {
+            $item->qty = $qty;
+            $item->save();
+            return $this->respond([
+                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.category', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
             ]);
         }
 
@@ -3287,6 +3331,54 @@ class PosController extends Controller
                 ->all();
 
             foreach ($cart->items as $item) {
+                $itemType = strtoupper((string) ($item->item_type ?? 'product'));
+                if ($itemType === 'BOOKING_PRODUCT' || $itemType === 'booking_product') {
+                    $bookingProduct = BookingProduct::query()
+                        ->where('is_active', true)
+                        ->find((int) ($item->booking_product_id ?? 0));
+                    if (! $bookingProduct) {
+                        abort(422, __('Booking product is not available for checkout.'));
+                    }
+
+                    $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
+                    $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+                    $orderItem = OrderItem::create([
+                        'order_id' => $order->id,
+                        'line_type' => 'booking_product',
+                        'product_id' => null,
+                        'product_variant_id' => null,
+                        'product_name_snapshot' => (string) $bookingProduct->name,
+                        'display_name_snapshot' => (string) $bookingProduct->name,
+                        'price_snapshot' => (float) $item->price_snapshot,
+                        'unit_price_snapshot' => (float) $item->price_snapshot,
+                        'quantity' => (int) $item->qty,
+                        'line_total' => (float) $lineTotal,
+                        'line_total_snapshot' => (float) $lineTotal,
+                        'effective_unit_price' => (float) $item->price_snapshot,
+                        'effective_line_total' => (float) $lineTotal,
+                        'staff_id' => $itemSplits->first()['staff_id'] ?? null,
+                        'locked' => true,
+                    ]);
+
+                    if ($itemSplits->isNotEmpty()) {
+                        $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+                        $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
+                        if ($sum !== 100 || $uniqueCount !== $itemSplits->count()) {
+                            abort(422, __('Invalid staff split.'));
+                        }
+
+                        foreach ($itemSplits as $split) {
+                            OrderItemStaffSplit::create([
+                                'order_item_id' => $orderItem->id,
+                                'staff_id' => (int) $split['staff_id'],
+                                'share_percent' => (int) $split['share_percent'],
+                                'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                            ]);
+                        }
+                    }
+
+                    continue;
+                }
                 $variant = $item->variant;
                 $product = $variant?->product ?? $item->product;
                 if (! $product) {
@@ -4129,6 +4221,29 @@ class PosController extends Controller
         $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
 
         $items = $cart->items->map(function (PosCartItem $item) use ($isStaffUser, $cartPricing) {
+            if ((string) ($item->item_type ?? 'product') === 'booking_product') {
+                $unit = (float) $item->price_snapshot;
+                $line = round($unit * (int) $item->qty, 2);
+                return [
+                    'id' => $item->id,
+                    'item_type' => 'BOOKING_PRODUCT',
+                    'booking_product_id' => (int) ($item->booking_product_id ?? 0),
+                    'booking_product_category' => $item->bookingProduct?->category?->name,
+                    'qty' => (int) $item->qty,
+                    'unit_price' => $unit,
+                    'line_total' => $line,
+                    'unit_price_snapshot' => $unit,
+                    'line_total_snapshot' => $line,
+                    'product_name' => (string) ($item->bookingProduct?->name ?? 'Booking Product'),
+                    'discount_type' => null,
+                    'discount_value' => 0,
+                    'discount_remark' => null,
+                    'discount_amount' => 0,
+                    'line_total_after_discount' => $line,
+                    'promotion_applied' => false,
+                    'manual_discount_allowed' => true,
+                ];
+            }
             $variant = $item->variant;
             $product = $variant?->product ?? $item->product;
             $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);

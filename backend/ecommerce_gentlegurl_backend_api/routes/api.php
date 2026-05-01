@@ -450,6 +450,7 @@ $protectedRoutes = function () {
         Route::post('/book-service', [PosController::class, 'bookService']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
+        Route::post('/cart/add-booking-product', [PosController::class, 'addBookingProduct']);
         Route::post('/cart/add-package', [PosController::class, 'addPackageToCart']);
         Route::post('/cart/add-appointment-settlement', [PosController::class, 'addAppointmentSettlementToCart']);
         Route::delete('/cart/appointment-settlements/{itemId}', [PosController::class, 'removeAppointmentSettlementCartItem']);
@@ -1165,6 +1166,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
     Route::post('/services/import', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'importCsv'])
         ->middleware('permission:booking.services.create|booking.services.update');
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
+    Route::apiResource('/products', \App\Http\Controllers\Admin\Booking\BookingProductController::class);
+    Route::apiResource('/product-categories', \App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class)->only(['index','store','update','destroy']);
     Route::get('/categories/export', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'exportCsv'])
         ->middleware('permission:booking.services.view');
     Route::post('/categories/import', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'importCsv'])

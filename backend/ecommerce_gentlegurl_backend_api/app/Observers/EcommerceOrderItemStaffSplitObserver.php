@@ -11,52 +11,61 @@ class EcommerceOrderItemStaffSplitObserver
 {
     public function saved(OrderItemStaffSplit $split): void
     {
-        $date = $this->resolveOrderCreatedAt((int) $split->order_item_id);
+        [$date, $lineType] = $this->resolveOrderContext((int) $split->order_item_id);
         if (! $date) {
             return;
         }
 
-        $this->recalculateForStaff((int) $split->staff_id, $date);
+        $this->recalculateForStaff((int) $split->staff_id, $date, $lineType);
 
         if ($split->wasChanged('staff_id')) {
             $originalStaffId = (int) $split->getOriginal('staff_id');
             if ($originalStaffId > 0 && $originalStaffId !== (int) $split->staff_id) {
-                $this->recalculateForStaff($originalStaffId, $date);
+                $this->recalculateForStaff($originalStaffId, $date, $lineType);
             }
         }
     }
 
     public function deleted(OrderItemStaffSplit $split): void
     {
-        $date = $this->resolveOrderCreatedAt((int) $split->order_item_id);
+        [$date, $lineType] = $this->resolveOrderContext((int) $split->order_item_id);
         if (! $date) {
             return;
         }
 
-        $this->recalculateForStaff((int) $split->staff_id, $date);
+        $this->recalculateForStaff((int) $split->staff_id, $date, $lineType);
     }
 
-    private function resolveOrderCreatedAt(int $orderItemId): ?Carbon
+    private function resolveOrderContext(int $orderItemId): array
     {
-        $createdAt = DB::table('order_items')
+        $row = DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('order_items.id', $orderItemId)
-            ->value('orders.created_at');
+            ->select(['orders.created_at', 'order_items.line_type'])
+            ->first();
 
-        return $createdAt ? Carbon::parse($createdAt) : null;
+        if (! $row || ! $row->created_at) {
+            return [null, null];
+        }
+
+        return [Carbon::parse($row->created_at), strtoupper((string) ($row->line_type ?? ''))];
     }
 
-    private function recalculateForStaff(int $staffId, Carbon $date): void
+    private function recalculateForStaff(int $staffId, Carbon $date, ?string $lineType = null): void
     {
         if ($staffId <= 0) {
             return;
         }
 
+        $type = $lineType === 'BOOKING_PRODUCT'
+            ? StaffCommissionService::TYPE_BOOKING
+            : StaffCommissionService::TYPE_ECOMMERCE;
+
         app(StaffCommissionService::class)->recalculateForStaffMonth(
             $staffId,
             (int) $date->format('Y'),
             (int) $date->format('m'),
-            StaffCommissionService::TYPE_ECOMMERCE
+            $type
         );
     }
 }

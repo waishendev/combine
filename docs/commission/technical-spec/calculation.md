@@ -17,6 +17,32 @@ bookings = COMPLETED and PAID (payment_status = PAID) bookings of that staff wit
 total_sales   = sum(service.service_price)
 booking_count = count(bookings)
 ```
+### 1.1 Booking Product split additions (POS order lines)
+
+`BOOKING_PRODUCT` is part of Booking domain (not Ecommerce domain).
+
+For a target `staff_id + year + month`, Booking recalculation also includes paid/completed order splits where:
+
+- `order_items.line_type = booking_product`
+- split source table: `order_item_staff_splits`
+- month window based on `orders.created_at`
+
+Per split row:
+
+```text
+booking_product_component =
+  COALESCE(order_items.effective_line_total, order_items.line_total)
+  * (order_item_staff_splits.share_percent / 100)
+```
+
+Booking monthly totals become:
+
+```text
+total_sales   = booking_service_components + booking_product_components
+booking_count = booking_service_split_count + booking_product_split_count
+```
+
+So Booking Product contributes to Booking monthly sales/tier/commission together with Booking service/settlement-side totals.
 
 Then values are written into `staff_monthly_sales(type=BOOKING, staff_id, year, month)`.
 
