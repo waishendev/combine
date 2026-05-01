@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Slider from "@/components/home/Slider";
 import { Hero, DynamicSections } from "@/components/sections/LandingSections";
 import { getBookingLandingPage } from "@/lib/apiClient";
 import type { LandingSections } from "@/lib/types";
+import { getBookingHomepageSliders, type BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
 
 const defaultSections: LandingSections = {
   hero: {
@@ -40,11 +42,14 @@ const defaultSections: LandingSections = {
 export default function HomePage() {
   const [sections, setSections] = useState<LandingSections>(defaultSections);
   const [loaded, setLoaded] = useState(false);
+  const [sliders, setSliders] = useState<BookingHomepageSlider[]>([]);
 
   useEffect(() => {
     const load = async () => {
       try {
         const data = await getBookingLandingPage();
+        const sliderData = await getBookingHomepageSliders();
+        setSliders(sliderData);
         if (data?.sections) {
           setSections({ ...defaultSections, ...data.sections });
         }
@@ -59,6 +64,7 @@ export default function HomePage() {
 
   return (
     <>
+      {sliders.length > 0 && (<section className="px-4 pt-6 sm:px-6 lg:px-8"><Slider items={sliders} /></section>)}
       <Hero hero={sections.hero} />
       {loaded && <DynamicSections sections={sections} />}
     </>

@@ -12,7 +12,8 @@ class HomeSliderController extends Controller
 {
     public function index(Request $request)
     {
-        $query = HomeSlider::query();
+        $sliderType = $request->input('type', 'ecommerce');
+        $query = HomeSlider::query()->where('type', $sliderType);
 
         if ($request->filled('is_active')) {
             $query->where('is_active', $request->boolean('is_active'));
@@ -45,6 +46,7 @@ class HomeSliderController extends Controller
             'start_at' => ['nullable', 'date'],
             'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
             'is_active' => ['boolean'],
+            'type' => ['sometimes', 'in:ecommerce,booking'],
         ]);
 
         // Handle image file upload
@@ -67,7 +69,9 @@ class HomeSliderController extends Controller
         unset($data['image_file'], $data['mobile_image_file']);
 
         // Automatically set sort_order to the next available value
-        $sortOrder = (HomeSlider::max('sort_order') ?? 0) + 1;
+        $sliderType = $data['type'] ?? 'ecommerce';
+        $sortOrder = (HomeSlider::where('type', $sliderType)->max('sort_order') ?? 0) + 1;
+        $data['type'] = $sliderType;
         $data['sort_order'] = $sortOrder;
         $data['is_active'] = $data['is_active'] ?? true;
 
@@ -96,6 +100,7 @@ class HomeSliderController extends Controller
             'end_at' => ['sometimes', 'nullable', 'date', 'after_or_equal:start_at'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
+            'type' => ['sometimes', 'in:ecommerce,booking'],
         ]);
 
         // Handle image file upload - check hasFile first to ensure file was actually uploaded
@@ -168,7 +173,8 @@ class HomeSliderController extends Controller
             $oldPosition = $slider->sort_order;
 
             // Find the previous slider (lower sort_order)
-            $previousSlider = HomeSlider::where('sort_order', '<', $slider->sort_order)
+            $previousSlider = HomeSlider::where('type', $slider->type)
+                ->where('sort_order', '<', $slider->sort_order)
                 ->orderBy('sort_order', 'desc')
                 ->first();
 
@@ -201,7 +207,8 @@ class HomeSliderController extends Controller
             $oldPosition = $slider->sort_order;
 
             // Find the next slider (higher sort_order)
-            $nextSlider = HomeSlider::where('sort_order', '>', $slider->sort_order)
+            $nextSlider = HomeSlider::where('type', $slider->type)
+                ->where('sort_order', '>', $slider->sort_order)
                 ->orderBy('sort_order', 'asc')
                 ->first();
 

@@ -8,7 +8,7 @@ import { getCurrentUser } from '@/lib/auth'
 import { getTranslator } from '@/lib/i18n-server'
 import type { LangCode } from '@/lib/i18n'
 
-export default async function SlidesPage() {
+export default async function BookingSlidesPage() {
   const user = await getCurrentUser()
   
   if (!user) {
@@ -34,7 +34,7 @@ export default async function SlidesPage() {
         <span className="text-gray-500">Makrketing</span>
         <span className="mx-1">/</span>
         <Link
-          href="/slides"
+          href="/booking/slides"
           className="text-blue-600 hover:underline"
         >
           Slides
@@ -45,7 +45,7 @@ export default async function SlidesPage() {
       </h2>
       <SliderTable
         permissions={user.permissions}
-        sliderType="ecommerce"
+        sliderType="booking"
       />
     </div>
   )
