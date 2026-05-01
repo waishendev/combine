@@ -27,7 +27,7 @@ class BookingProductController extends Controller
         }
 
         if ($request->filled('is_active')) {
-            $query->where('is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOL));
+            $query->where('booking_products.is_active', filter_var($request->input('is_active'), FILTER_VALIDATE_BOOL));
         }
 
         if ($request->filled('category_id')) {
