@@ -1342,6 +1342,35 @@ class PosController extends Controller
         return $this->addResolvedToCart($request, $variant, $product, $qty, 'manual');
     }
 
+    public function addBookingProduct(Request $request)
+    {
+        $validated = $request->validate([
+            'booking_product_id' => ['required', 'integer', 'exists:booking_products,id'],
+            'qty' => ['nullable', 'integer', 'min:1'],
+        ]);
+        $qty = (int) ($validated['qty'] ?? 1);
+        $bookingProduct = BookingProduct::query()->where('is_active', true)->findOrFail((int) $validated['booking_product_id']);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = PosCartItem::query()->firstOrNew([
+            'pos_cart_id' => $cart->id,
+            'item_type' => 'booking_product',
+            'booking_product_id' => (int) $bookingProduct->id,
+            'variant_id' => null,
+            'product_id' => null,
+        ]);
+        $item->qty = (int) ($item->exists ? $item->qty : 0) + $qty;
+        $item->price_snapshot = (float) $bookingProduct->price;
+        $item->item_type = 'booking_product';
+        $item->booking_product_id = (int) $bookingProduct->id;
+        $item->variant_id = null;
+        $item->product_id = null;
+        $item->save();
+
+        return $this->respond([
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.category', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+        ]);
+    }
+
     /**
      * POS pooled availability: pick time first (no staff_id required).
      * This is a POS-only endpoint so we can iterate UI safely without impacting public booking flows.
@@ -2535,7 +2564,7 @@ class PosController extends Controller
         ]);
 
         $cart = $this->resolveCart((int) $request->user()->id);
-        $item = $cart->items()->with(['variant', 'product'])->findOrFail($itemId);
+        $item = $cart->items()->with(['variant', 'product', 'bookingProduct'])->findOrFail($itemId);
 
         $qty = (int) $validated['qty'];
         $targetVariantId = isset($validated['variant_id']) ? (int) $validated['variant_id'] : null;
@@ -2577,6 +2606,14 @@ class PosController extends Controller
 
             return $this->respond([
                 'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            ]);
+        }
+
+        if (($item->item_type ?? 'product') === 'booking_product') {
+            $item->qty = $qty;
+            $item->save();
+            return $this->respond([
+                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.category', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
             ]);
         }
 
@@ -4178,6 +4215,29 @@ class PosController extends Controller
         $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
 
         $items = $cart->items->map(function (PosCartItem $item) use ($isStaffUser, $cartPricing) {
+            if ((string) ($item->item_type ?? 'product') === 'booking_product') {
+                $unit = (float) $item->price_snapshot;
+                $line = round($unit * (int) $item->qty, 2);
+                return [
+                    'id' => $item->id,
+                    'item_type' => 'BOOKING_PRODUCT',
+                    'booking_product_id' => (int) ($item->booking_product_id ?? 0),
+                    'booking_product_category' => $item->bookingProduct?->category?->name,
+                    'qty' => (int) $item->qty,
+                    'unit_price' => $unit,
+                    'line_total' => $line,
+                    'unit_price_snapshot' => $unit,
+                    'line_total_snapshot' => $line,
+                    'product_name' => (string) ($item->bookingProduct?->name ?? 'Booking Product'),
+                    'discount_type' => null,
+                    'discount_value' => 0,
+                    'discount_remark' => null,
+                    'discount_amount' => 0,
+                    'line_total_after_discount' => $line,
+                    'promotion_applied' => false,
+                    'manual_discount_allowed' => true,
+                ];
+            }
             $variant = $item->variant;
             $product = $variant?->product ?? $item->product;
             $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);

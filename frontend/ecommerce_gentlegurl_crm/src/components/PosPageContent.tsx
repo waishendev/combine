@@ -1835,22 +1835,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
-  const addBookingProductToCart = useCallback((row: BookingProductOption) => {
-    setCart((prev) => {
-      const base = prev ?? { id: 0, items: [], service_items: [], package_items: [], appointment_settlement_items: [], subtotal: 0, grand_total: 0 }
-      const idx = base.items.findIndex((it) => it.item_type === 'BOOKING_PRODUCT' && Number(it.booking_product_id ?? 0) === row.id)
-      const nextItems = [...base.items]
-      if (idx >= 0) {
-        const old = nextItems[idx]
-        const qty = Number(old.qty ?? 0) + 1
-        const lineTotal = Number(row.price) * qty
-        nextItems[idx] = { ...old, qty, unit_price: Number(row.price), line_total: lineTotal }
-      } else {
-        nextItems.push({ id: -Date.now(), item_type: 'BOOKING_PRODUCT', booking_product_id: row.id, product_name: row.name, booking_product_category: row.category?.name ?? null, qty: 1, unit_price: Number(row.price), line_total: Number(row.price) })
-      }
-      const subtotal = nextItems.reduce((s, it) => s + Number(it.line_total ?? 0), 0) + Number(base.booking_deposit_total ?? 0)
-      return { ...base, items: nextItems, subtotal, grand_total: subtotal }
+  const addBookingProductToCart = useCallback(async (row: BookingProductOption) => {
+    const res = await fetch('/api/proxy/pos/cart/add-booking-product', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT' }),
     })
+    const json = await res.json().catch(() => null)
+    if (!res.ok) {
+      showMsg(json?.message ?? 'Unable to add booking product to cart.', 'error')
+      return
+    }
+    const next = json?.data?.cart ?? json?.cart ?? null
+    if (next) setCart(next)
   }, [])
 
   const fetchServicePackages = useCallback(async () => {

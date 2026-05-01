@@ -450,6 +450,7 @@ $protectedRoutes = function () {
         Route::post('/book-service', [PosController::class, 'bookService']);
         Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
         Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
+        Route::post('/cart/add-booking-product', [PosController::class, 'addBookingProduct']);
         Route::post('/cart/add-package', [PosController::class, 'addPackageToCart']);
         Route::post('/cart/add-appointment-settlement', [PosController::class, 'addAppointmentSettlementToCart']);
         Route::delete('/cart/appointment-settlements/{itemId}', [PosController::class, 'removeAppointmentSettlementCartItem']);
