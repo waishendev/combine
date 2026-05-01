@@ -24,6 +24,7 @@ use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingProduct;
 use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingSetting;
@@ -3287,6 +3288,54 @@ class PosController extends Controller
                 ->all();
 
             foreach ($cart->items as $item) {
+                $itemType = strtoupper((string) ($item->item_type ?? 'product'));
+                if ($itemType === 'BOOKING_PRODUCT' || $itemType === 'booking_product') {
+                    $bookingProduct = BookingProduct::query()
+                        ->where('is_active', true)
+                        ->find((int) ($item->booking_product_id ?? 0));
+                    if (! $bookingProduct) {
+                        abort(422, __('Booking product is not available for checkout.'));
+                    }
+
+                    $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
+                    $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+                    $orderItem = OrderItem::create([
+                        'order_id' => $order->id,
+                        'line_type' => 'booking_product',
+                        'product_id' => null,
+                        'product_variant_id' => null,
+                        'product_name_snapshot' => (string) $bookingProduct->name,
+                        'display_name_snapshot' => (string) $bookingProduct->name,
+                        'price_snapshot' => (float) $item->price_snapshot,
+                        'unit_price_snapshot' => (float) $item->price_snapshot,
+                        'quantity' => (int) $item->qty,
+                        'line_total' => (float) $lineTotal,
+                        'line_total_snapshot' => (float) $lineTotal,
+                        'effective_unit_price' => (float) $item->price_snapshot,
+                        'effective_line_total' => (float) $lineTotal,
+                        'staff_id' => $itemSplits->first()['staff_id'] ?? null,
+                        'locked' => true,
+                    ]);
+
+                    if ($itemSplits->isNotEmpty()) {
+                        $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+                        $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
+                        if ($sum !== 100 || $uniqueCount !== $itemSplits->count()) {
+                            abort(422, __('Invalid staff split.'));
+                        }
+
+                        foreach ($itemSplits as $split) {
+                            OrderItemStaffSplit::create([
+                                'order_item_id' => $orderItem->id,
+                                'staff_id' => (int) $split['staff_id'],
+                                'share_percent' => (int) $split['share_percent'],
+                                'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                            ]);
+                        }
+                    }
+
+                    continue;
+                }
                 $variant = $item->variant;
                 $product = $variant?->product ?? $item->product;
                 if (! $product) {

@@ -8,7 +8,9 @@ class PosCartItem extends Model
 {
     protected $fillable = [
         'pos_cart_id',
+        'item_type',
         'product_id',
+        'booking_product_id',
         'variant_id',
         'qty',
         'price_snapshot',
@@ -40,5 +42,10 @@ class PosCartItem extends Model
     public function product()
     {
         return $this->belongsTo(Product::class, 'product_id');
+    }
+
+    public function bookingProduct()
+    {
+        return $this->belongsTo(\App\Models\Booking\BookingProduct::class, 'booking_product_id');
     }
 }
