@@ -264,6 +264,29 @@ class StaffCommissionService
             $totalSales += round($servicePrice * (((float) $matched['share_percent']) / 100), 2);
             $bookingCount++;
         }
+        $bookingProductRows = DB::table('orders')
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->where('order_item_staff_splits.staff_id', $staffId)
+            ->where('order_items.line_type', 'booking_product')
+            ->where('orders.created_at', '>=', $start)
+            ->where('orders.created_at', '<', $nextMonthStart)
+            ->where(function ($query) {
+                $query->where('orders.status', 'completed')
+                    ->orWhere('orders.payment_status', 'paid');
+            })
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at')
+            ->selectRaw('COALESCE(SUM((COALESCE(order_items.effective_line_total, order_items.line_total)::numeric) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as total_sales')
+            ->selectRaw('COUNT(order_item_staff_splits.id) as row_count')
+            ->first();
+
+        $totalSales += (float) ($bookingProductRows->total_sales ?? 0);
+        $bookingCount += (int) ($bookingProductRows->row_count ?? 0);
         $totalSales = round($totalSales, 2);
 
         $monthly = StaffMonthlySale::query()->firstOrCreate(
@@ -320,6 +343,24 @@ class StaffCommissionService
                     ->where('year', $year)
                     ->where('month', $month)
                     ->pluck('staff_id')
+            )->concat(
+                DB::table('orders')
+                    ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+                    ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+                    ->where('order_items.line_type', 'booking_product')
+                    ->where('orders.created_at', '>=', $start)
+                    ->where('orders.created_at', '<', $nextMonthStart)
+                    ->where(function ($query) {
+                        $query->where('orders.status', 'completed')
+                            ->orWhere('orders.payment_status', 'paid');
+                    })
+                    ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+                    ->where(function ($query) {
+                        $query->where('orders.payment_status', '!=', 'refunded')
+                            ->orWhereNull('orders.payment_status');
+                    })
+                    ->whereNull('orders.refunded_at')
+                    ->pluck('order_item_staff_splits.staff_id')
             )
             ->filter()
             ->unique()
@@ -530,7 +571,7 @@ class StaffCommissionService
 
     private function resolveBookingMonths(?int $staffId = null): Collection
     {
-        return Booking::query()
+        $bookingMonths = Booking::query()
             ->where('status', 'COMPLETED')
             ->where('payment_status', 'PAID')
             ->when($staffId, function ($query) use ($staffId) {
@@ -555,6 +596,33 @@ class StaffCommissionService
                 'year' => (int) $row->year,
                 'month' => (int) $row->month,
             ]);
+
+        $bookingProductMonths = DB::table('orders')
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->when($staffId, fn ($query) => $query->where('order_item_staff_splits.staff_id', $staffId))
+            ->where('order_items.line_type', 'booking_product')
+            ->where(function ($query) {
+                $query->where('orders.status', 'completed')
+                    ->orWhere('orders.payment_status', 'paid');
+            })
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at')
+            ->whereNotNull('orders.created_at')
+            ->selectRaw('EXTRACT(YEAR FROM orders.created_at)::int AS year')
+            ->selectRaw('EXTRACT(MONTH FROM orders.created_at)::int AS month')
+            ->groupByRaw('EXTRACT(YEAR FROM orders.created_at), EXTRACT(MONTH FROM orders.created_at)')
+            ->get()
+            ->map(fn ($row) => ['year' => (int) $row->year, 'month' => (int) $row->month]);
+
+        return $bookingMonths->concat($bookingProductMonths)
+            ->unique(fn ($row) => $row['year'].'-'.$row['month'])
+            ->sortBy([['year', 'asc'], ['month', 'asc']])
+            ->values();
     }
 
     private function resolveBookingStaffSplits(Booking $booking): Collection
