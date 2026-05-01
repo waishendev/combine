@@ -15,6 +15,7 @@ import {
 } from '@/utils/printReceipt'
 type CartItem = {
   id: number
+  item_type?: 'PRODUCT' | 'BOOKING_PRODUCT'
   qty: number
   unit_price: number
   line_total: number
@@ -42,6 +43,8 @@ type CartItem = {
     } | null
   } | null
   manual_discount_allowed?: boolean
+  booking_product_id?: number | null
+  booking_product_category?: string | null
 }
 
 type AppliedPromotion = {
@@ -275,7 +278,8 @@ type ServicePackageOption = {
   allowed_staffs?: Array<{ id: number; name: string }>
 }
 
-type PosCatalogTab = 'products' | 'book-service' | 'service-packages' | 'settlement'
+type PosCatalogTab = 'products' | 'booking-products' | 'book-service' | 'service-packages' | 'settlement'
+type BookingProductOption = { id: number; name: string; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean }
 
 type ProductOption = {
   id: number
@@ -580,6 +584,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [fullProductData, setFullProductData] = useState<any>(null)
   const [serviceQuery, setServiceQuery] = useState('')
   const [services, setServices] = useState<BookingServiceOption[]>([])
+  const [bookingProducts, setBookingProducts] = useState<BookingProductOption[]>([])
+  const [bookingProductsLoading, setBookingProductsLoading] = useState(false)
   const [servicesLoading, setServicesLoading] = useState(false)
   const [servicePackages, setServicePackages] = useState<ServicePackageOption[]>([])
   const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
@@ -1815,6 +1821,38 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
+  const fetchBookingProducts = useCallback(async () => {
+    setBookingProductsLoading(true)
+    try {
+      const res = await fetch('/api/proxy/admin/booking/products?is_active=1&per_page=200', { cache: 'no-store' })
+      if (!res.ok) return setBookingProducts([])
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
+      const rows = Array.isArray(payload) ? payload : Array.isArray((payload as any)?.data) ? (payload as any).data : []
+      setBookingProducts(rows.map((r: any) => ({ id: Number(r.id), name: String(r.name ?? ''), price: Number(r.price ?? 0), image_url: r.image_url ?? null, category: r.category ?? null, is_active: Boolean(r.is_active ?? true) })).filter((r) => r.id > 0 && r.is_active))
+    } finally {
+      setBookingProductsLoading(false)
+    }
+  }, [])
+
+  const addBookingProductToCart = useCallback((row: BookingProductOption) => {
+    setCart((prev) => {
+      const base = prev ?? { id: 0, items: [], service_items: [], package_items: [], appointment_settlement_items: [], subtotal: 0, grand_total: 0 }
+      const idx = base.items.findIndex((it) => it.item_type === 'BOOKING_PRODUCT' && Number(it.booking_product_id ?? 0) === row.id)
+      const nextItems = [...base.items]
+      if (idx >= 0) {
+        const old = nextItems[idx]
+        const qty = Number(old.qty ?? 0) + 1
+        const lineTotal = Number(row.price) * qty
+        nextItems[idx] = { ...old, qty, unit_price: Number(row.price), line_total: lineTotal }
+      } else {
+        nextItems.push({ id: -Date.now(), item_type: 'BOOKING_PRODUCT', booking_product_id: row.id, product_name: row.name, booking_product_category: row.category?.name ?? null, qty: 1, unit_price: Number(row.price), line_total: Number(row.price) })
+      }
+      const subtotal = nextItems.reduce((s, it) => s + Number(it.line_total ?? 0), 0) + Number(base.booking_deposit_total ?? 0)
+      return { ...base, items: nextItems, subtotal, grand_total: subtotal }
+    })
+  }, [])
+
   const fetchServicePackages = useCallback(async () => {
     setServicePackagesLoading(true)
     try {
@@ -2887,9 +2925,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void loadCategories()
     void fetchActiveStaffs()
     void fetchServices()
+    void fetchBookingProducts()
     void fetchServicePackages()
     void fetchUnpaidCompletedAppointments('')
-  }, [fetchActiveStaffs, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
+  }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
 
   const filteredServices = useMemo(() => {
     const keyword = serviceQuery.trim().toLowerCase()
@@ -4397,6 +4436,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
               <button
                 type="button"
+                onClick={() => setCatalogTab('booking-products')}
+                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'booking-products' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
+              >
+                BOOKING PRODUCTS
+              </button>
+              <button
+                type="button"
                 onClick={() => setCatalogTab('book-service')}
                 className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${catalogTab === 'book-service' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
               >
@@ -4584,6 +4630,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
             )}
               </>
+            ) : catalogTab === 'booking-products' ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-xs text-gray-500">Active booking products from Booking module.</p>
+                  {bookingProductsLoading && <span className="text-xs text-blue-600">Loading...</span>}
+                </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {bookingProducts.map((item) => (
+                    <button key={item.id} type="button" onClick={() => addBookingProductToCart(item)} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
+                      <div className="flex items-start gap-3">
+                        {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-gray-900">{item.name}</p>
+                          <p className="text-xs text-gray-500">{item.category?.name ?? '-'}</p>
+                          <p className="mt-1 text-sm font-bold text-blue-700">RM {Number(item.price ?? 0).toFixed(2)}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
             ) : catalogTab === 'book-service' ? (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="mb-4">
