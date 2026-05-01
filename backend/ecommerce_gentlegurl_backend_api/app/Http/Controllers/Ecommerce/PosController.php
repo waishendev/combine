@@ -56,6 +56,7 @@ use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -1349,6 +1350,11 @@ class PosController extends Controller
             'qty' => ['nullable', 'integer', 'min:1'],
         ]);
         $qty = (int) ($validated['qty'] ?? 1);
+        $hasItemType = Schema::hasColumn('pos_cart_items', 'item_type');
+        $hasBookingProductId = Schema::hasColumn('pos_cart_items', 'booking_product_id');
+        if (! $hasItemType || ! $hasBookingProductId) {
+            return $this->respondError(__('POS booking product fields are not ready. Please run latest migrations.'), 422);
+        }
         $bookingProduct = BookingProduct::query()->where('is_active', true)->findOrFail((int) $validated['booking_product_id']);
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = PosCartItem::query()->firstOrNew([
