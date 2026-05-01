@@ -42,6 +42,12 @@ So booking and ecommerce are logically separate ledgers but share the same stora
   - `EcommerceOrderItemStaffSplitObserver`
   - `EcommerceServicePackageStaffSplitObserver`
 
+Booking Product routing note:
+
+- For `order_items.line_type = booking_product`, split-trigger recalculation is routed to `type=BOOKING`.
+- For normal product/package ecommerce lines, recalculation remains `type=ECOMMERCE`.
+
+
 Realtime updates are blocked by freeze rule (unless force path is used by manual/command recalc).
 
 ### Manual recalculate
