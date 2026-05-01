@@ -460,6 +460,7 @@ class StaffCommissionService
         return DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->where('order_items.line_type', 'product')
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
             ->where(function ($query) {
@@ -676,6 +677,7 @@ class StaffCommissionService
         $productMonths = DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->where('order_items.line_type', 'product')
             ->when($staffId, fn ($query) => $query->where('order_item_staff_splits.staff_id', $staffId))
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
