@@ -2927,6 +2927,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void fetchUnpaidCompletedAppointments('')
   }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
 
+  useEffect(() => {
+    const onPageShow = () => { void loadCart() }
+    const onVisible = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        void loadCart()
+      }
+    }
+    window.addEventListener('pageshow', onPageShow)
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      window.removeEventListener('pageshow', onPageShow)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [])
+
   const filteredServices = useMemo(() => {
     const keyword = serviceQuery.trim().toLowerCase()
     if (!keyword) return services
