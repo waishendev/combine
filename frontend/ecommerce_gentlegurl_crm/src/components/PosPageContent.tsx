@@ -2929,15 +2929,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   useEffect(() => {
     const onPageShow = () => { void loadCart() }
+    const onFocus = () => { void loadCart() }
     const onVisible = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
         void loadCart()
       }
     }
     window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('focus', onFocus)
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('focus', onFocus)
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [])

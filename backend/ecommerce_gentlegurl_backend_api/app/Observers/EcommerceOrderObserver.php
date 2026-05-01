@@ -3,6 +3,7 @@
 namespace App\Observers;
 
 use App\Models\Ecommerce\Order;
+use Illuminate\Support\Facades\DB;
 use App\Services\Booking\StaffCommissionService;
 use Carbon\Carbon;
 
@@ -14,29 +15,45 @@ class EcommerceOrderObserver
             return;
         }
 
-        $this->recalculateMonthFromDate($order->created_at ? Carbon::parse($order->created_at) : null);
+        $this->recalculateMonthFromOrder($order, $order->created_at ? Carbon::parse($order->created_at) : null);
 
         if ($order->wasChanged('created_at')) {
             $originalCreatedAt = $order->getOriginal('created_at');
-            $this->recalculateMonthFromDate($originalCreatedAt ? Carbon::parse($originalCreatedAt) : null);
+            $this->recalculateMonthFromOrder($order, $originalCreatedAt ? Carbon::parse($originalCreatedAt) : null);
         }
     }
 
     public function deleted(Order $order): void
     {
-        $this->recalculateMonthFromDate($order->created_at ? Carbon::parse($order->created_at) : null);
+        $this->recalculateMonthFromOrder($order, $order->created_at ? Carbon::parse($order->created_at) : null);
     }
 
-    private function recalculateMonthFromDate(?Carbon $date): void
+    private function recalculateMonthFromOrder(Order $order, ?Carbon $date): void
     {
         if (! $date) {
             return;
         }
+        $year = (int) $date->format('Y');
+        $month = (int) $date->format('m');
 
-        app(StaffCommissionService::class)->recalculateForMonthAll(
-            (int) $date->format('Y'),
-            (int) $date->format('m'),
-            StaffCommissionService::TYPE_ECOMMERCE
-        );
+        $orderId = (int) ($order->id ?? 0);
+        if ($orderId > 0) {
+            $lineTypes = DB::table('order_items')
+                ->where('order_id', $orderId)
+                ->pluck('line_type')
+                ->map(fn ($v) => strtoupper((string) $v))
+                ->unique()
+                ->values();
+
+            if ($lineTypes->contains('BOOKING_PRODUCT')) {
+                app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_BOOKING);
+            }
+            if ($lineTypes->contains(fn ($t) => $t !== 'BOOKING_PRODUCT')) {
+                app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_ECOMMERCE);
+            }
+            return;
+        }
+
+        app(StaffCommissionService::class)->recalculateForMonthAll($year, $month, StaffCommissionService::TYPE_ECOMMERCE);
     }
 }
