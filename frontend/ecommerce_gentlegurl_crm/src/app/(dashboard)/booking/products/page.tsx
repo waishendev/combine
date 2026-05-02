@@ -13,7 +13,11 @@ export default async function Page() {
 
   if (!user) redirect('/login')
 
-  if (!user.permissions.includes('booking.services.view')) {
+  const canView = user.permissions.includes('booking.services.view')
+  const canCreate = user.permissions.includes('booking.services.create')
+  const canEdit = user.permissions.includes('booking.services.update')
+
+  if (!canView && !canCreate && !canEdit) {
     redirect('/dashboard')
   }
 

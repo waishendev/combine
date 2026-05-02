@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingProduct;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 
 class BookingProductController extends Controller
 {
@@ -17,16 +17,15 @@ class BookingProductController extends Controller
 
         $query = BookingProduct::query()
             ->with('categories')
-                        ->orderByRaw("COALESCE(booking_products.name, '') asc")
+            ->orderByRaw("COALESCE(booking_products.name, '') asc")
             ->orderBy('booking_products.id');
 
         if ($request->filled('search')) {
-            $search = trim((string) $request->input('search'));
-            $keyword = mb_strtolower($search);
+            $keyword = mb_strtolower(trim((string) $request->input('search')));
             $query->where(function ($q) use ($keyword) {
                 $q->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"])
-                  ->orWhereRaw('LOWER(COALESCE(barcode, \'\')) like ?', ["%{$keyword}%"])
-                  ->orWhereHas('categories', fn($cq) => $cq->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"]));
+                    ->orWhereRaw('LOWER(COALESCE(barcode, \'\')) like ?', ["%{$keyword}%"])
+                    ->orWhereHas('categories', fn ($cq) => $cq->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"]));
             });
         }
 
@@ -35,10 +34,10 @@ class BookingProductController extends Controller
         }
 
         if ($request->filled('category_id')) {
-            $query->whereHas('categories', fn($q) => $q->where('booking_product_categories.id', (int) $request->input('category_id')));
+            $query->whereHas('categories', fn ($q) => $q->where('booking_product_categories.id', (int) $request->input('category_id')));
         }
 
-        return $this->respond($query->select('booking_products.*')->paginate($perPage));
+        return $this->respond($query->paginate($perPage));
     }
 
     public function store(Request $request)
@@ -48,7 +47,8 @@ class BookingProductController extends Controller
             'price' => ['required', 'numeric', 'min:0'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category_id' => ['nullable', 'integer', 'exists:booking_product_categories,id'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:booking_product_categories,id'],
             'is_active' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
         ]);
@@ -84,7 +84,8 @@ class BookingProductController extends Controller
             'price' => ['sometimes', 'numeric', 'min:0'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
-            'category_id' => ['nullable', 'integer', 'exists:booking_product_categories,id'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:booking_product_categories,id'],
             'is_active' => ['sometimes', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
         ]);
@@ -116,8 +117,7 @@ class BookingProductController extends Controller
 
     public function destroy(int $id)
     {
-        $product = BookingProduct::findOrFail($id);
-        $product->delete();
+        BookingProduct::findOrFail($id)->delete();
 
         return $this->respond(null);
     }
@@ -129,7 +129,8 @@ class BookingProductController extends Controller
             'ids.*' => ['integer', 'exists:booking_products,id'],
             'name' => ['nullable', 'string', 'max:255'],
             'price' => ['nullable', 'numeric', 'min:0'],
-            'category_id' => ['nullable', 'integer', 'exists:booking_product_categories,id'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:booking_product_categories,id'],
             'is_active' => ['nullable', 'boolean'],
         ]);
 
@@ -140,8 +141,7 @@ class BookingProductController extends Controller
             $categoryIds = $payload['category_ids'] ?? null;
             $fillPayload = collect($payload)->except('category_ids')->toArray();
             if (! empty($fillPayload)) {
-                $product->fill($fillPayload);
-                $product->save();
+                $product->fill($fillPayload)->save();
             }
             if ($categoryIds !== null) {
                 $product->categories()->sync($categoryIds);
@@ -153,17 +153,13 @@ class BookingProductController extends Controller
 
     public function exportCsv(Request $request)
     {
-        $rows = BookingProduct::query()
-            ->orderBy('id')
-            ->get();
-
+        $rows = BookingProduct::query()->with('categories')->orderBy('id')->get();
         $stream = fopen('php://temp', 'r+');
         if (! $stream) {
             return response()->json(['message' => 'Unable to build booking products CSV export.'], 500);
         }
 
-        $headers = ['id', 'name', 'price', 'barcode', 'description', 'category_id', 'is_active'];
-        fputcsv($stream, $headers);
+        fputcsv($stream, ['id', 'name', 'price', 'barcode', 'description', 'category_ids', 'is_active']);
 
         foreach ($rows as $p) {
             fputcsv($stream, [
@@ -172,7 +168,7 @@ class BookingProductController extends Controller
                 $p->price,
                 $p->barcode,
                 $p->description,
-                $p->category_id,
+                $p->categories->pluck('id')->implode('|'),
                 $p->is_active ? 'true' : 'false',
             ]);
         }
@@ -181,11 +177,9 @@ class BookingProductController extends Controller
         $csv = stream_get_contents($stream);
         fclose($stream);
 
-        $filename = 'booking_products_export_' . now()->format('Y-m-d_H-i-s') . '.csv';
-
         return response($csv, 200, [
             'Content-Type' => 'text/csv',
-            'Content-Disposition' => "attachment; filename=\"{$filename}\"",
+            'Content-Disposition' => 'attachment; filename="booking_products_export_' . now()->format('Y-m-d_H-i-s') . '.csv"',
         ]);
     }
 
@@ -212,100 +206,61 @@ class BookingProductController extends Controller
         }
 
         $headers = array_map(fn ($h) => strtolower(trim((string) $h)), $headers);
-        $allowed = ['id', 'name', 'price', 'barcode', 'description', 'category_id', 'is_active'];
+        $allowed = ['id', 'name', 'price', 'barcode', 'description', 'category_ids', 'is_active'];
         $unknown = array_values(array_diff(array_filter($headers), $allowed));
         if (! empty($unknown)) {
             fclose($handle);
             return response()->json(['message' => 'Unknown headers: ' . implode(', ', $unknown)], 422);
         }
 
-        $summary = [
-            'totalRows' => 0,
-            'created' => 0,
-            'updated' => 0,
-            'skipped' => 0,
-            'failed' => 0,
-            'failedRows' => [],
-        ];
-
-        $rowNumber = 1;
         while (($row = fgetcsv($handle)) !== false) {
-            $rowNumber++;
-            if (! is_array($row) || count(array_filter($row, fn ($v) => trim((string) $v) !== '')) === 0) {
-                continue;
-            }
-
-            $summary['totalRows']++;
             $payload = [];
             foreach ($headers as $idx => $key) {
                 $payload[$key] = $row[$idx] ?? null;
             }
 
-            try {
-                $data = [
-                    'id' => isset($payload['id']) && trim((string) $payload['id']) !== '' ? (int) $payload['id'] : null,
-                    'name' => trim((string) ($payload['name'] ?? '')),
-                    'price' => $payload['price'],
-                    'barcode' => isset($payload['barcode']) ? trim((string) $payload['barcode']) : null,
-                    'description' => isset($payload['description']) ? trim((string) $payload['description']) : null,
-                    'category_id' => isset($payload['category_id']) && trim((string) $payload['category_id']) !== '' ? (int) $payload['category_id'] : null,
-                    'is_active' => isset($payload['is_active']) ? filter_var($payload['is_active'], FILTER_VALIDATE_BOOLEAN) : null,
-                ];
+            $categoryIds = collect(explode('|', (string) ($payload['category_ids'] ?? '')))
+                ->map(fn ($v) => (int) trim($v))
+                ->filter(fn ($v) => $v > 0)
+                ->values()
+                ->all();
 
-                $validator = Validator::make($data, [
-                    'name' => ['required', 'string', 'max:255'],
-                    'price' => ['required', 'numeric', 'min:0'],
-                    'barcode' => ['nullable', 'string', 'max:255'],
-                    'description' => ['nullable', 'string'],
-                    'category_id' => ['nullable', 'integer', 'exists:booking_product_categories,id'],
-                    'is_active' => ['nullable', 'boolean'],
-                ]);
+            $data = [
+                'name' => trim((string) ($payload['name'] ?? '')),
+                'price' => $payload['price'],
+                'barcode' => isset($payload['barcode']) ? trim((string) $payload['barcode']) : null,
+                'description' => isset($payload['description']) ? trim((string) $payload['description']) : null,
+                'is_active' => isset($payload['is_active']) ? filter_var($payload['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
+                'category_ids' => $categoryIds,
+            ];
 
-                if ($validator->fails()) {
-                    $summary['failed']++;
-                    $summary['failedRows'][] = [
-                        'row' => $rowNumber,
-                        'reason' => implode(' ', $validator->errors()->all()),
-                    ];
-                    continue;
-                }
+            $validator = Validator::make($data, [
+                'name' => ['required', 'string', 'max:255'],
+                'price' => ['required', 'numeric', 'min:0'],
+                'barcode' => ['nullable', 'string', 'max:255'],
+                'description' => ['nullable', 'string'],
+                'is_active' => ['nullable', 'boolean'],
+                'category_ids' => ['nullable', 'array'],
+                'category_ids.*' => ['integer', 'exists:booking_product_categories,id'],
+            ]);
 
-                $valid = $validator->validated();
-                $categoryId = $data['category_id'];
-                unset($valid['category_id']);
-
-                if ($data['id']) {
-                    $product = BookingProduct::query()->find($data['id']);
-                    if ($product) {
-                        $product->fill($valid);
-                        if ($data['is_active'] !== null) {
-                            $product->is_active = (bool) $data['is_active'];
-                        }
-                        $product->save();
-                        $product->categories()->sync($categoryId ? [$categoryId] : []);
-                        $summary['updated']++;
-                        continue;
-                    }
-                }
-
-                $create = $valid;
-                if ($data['is_active'] !== null) {
-                    $create['is_active'] = (bool) $data['is_active'];
-                }
-                $product = BookingProduct::create($create);
-                $product->categories()->sync($categoryId ? [$categoryId] : []);
-                $summary['created']++;
-            } catch (\Throwable $e) {
-                $summary['failed']++;
-                $summary['failedRows'][] = [
-                    'row' => $rowNumber,
-                    'reason' => $e->getMessage(),
-                ];
+            if ($validator->fails()) {
+                continue;
             }
+
+            $valid = $validator->validated();
+            $syncIds = $valid['category_ids'] ?? [];
+            unset($valid['category_ids']);
+
+            $product = BookingProduct::query()->updateOrCreate(
+                ['name' => $valid['name']],
+                $valid
+            );
+            $product->categories()->sync($syncIds);
         }
 
         fclose($handle);
 
-        return $this->respond($summary, __('Booking products import completed.'));
+        return $this->respond(['ok' => true], __('Booking products import completed.'));
     }
 }
