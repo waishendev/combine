@@ -1827,15 +1827,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
-  const fetchBookingProducts = useCallback(async (search = '', categoryId: number | null = null) => {
+  const fetchBookingProducts = useCallback(async (categoryId: number | null = null) => {
     setBookingProductsLoading(true)
     try {
       const params = new URLSearchParams({
         is_active: '1',
         per_page: '200',
       })
-      const keyword = search.trim()
-      if (keyword) params.set('search', keyword)
       if (categoryId != null) params.set('category_id', String(categoryId))
       const res = await fetch(`/api/proxy/admin/booking/products?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) return setBookingProducts([])
@@ -2973,7 +2971,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     void loadBookingProductCategories()
-    void fetchBookingProducts('', null)
+    void fetchBookingProducts(null)
     void fetchServicePackages()
     void fetchUnpaidCompletedAppointments('')
   }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
@@ -2986,8 +2984,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [bookingProductQuery])
 
   useEffect(() => {
-    void fetchBookingProducts(debouncedBookingProductQuery, selectedBookingProductCategoryId)
-  }, [debouncedBookingProductQuery, fetchBookingProducts, selectedBookingProductCategoryId])
+    void fetchBookingProducts(selectedBookingProductCategoryId)
+  }, [fetchBookingProducts, selectedBookingProductCategoryId])
+
+  const filteredBookingProducts = useMemo(() => {
+    const keyword = debouncedBookingProductQuery.trim().toLowerCase()
+    if (!keyword) return bookingProducts
+    return bookingProducts.filter((item) => item.name.toLowerCase().includes(keyword))
+  }, [bookingProducts, debouncedBookingProductQuery])
 
   useEffect(() => {
     const onPageShow = () => { void loadCart() }
@@ -4748,7 +4752,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {bookingProducts.map((item) => (
+                  {filteredBookingProducts.map((item) => (
                     <button key={item.id} type="button" onClick={() => addBookingProductToCart(item)} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
@@ -4761,7 +4765,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </button>
                   ))}
                 </div>
-                {!bookingProductsLoading && bookingProducts.length === 0 && (
+                {!bookingProductsLoading && filteredBookingProducts.length === 0 && (
                   <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
                     No booking products found.
                   </div>
