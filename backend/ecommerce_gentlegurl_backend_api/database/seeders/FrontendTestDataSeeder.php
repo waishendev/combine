@@ -1335,6 +1335,7 @@ class FrontendTestDataSeeder extends Seeder
     {
         $sliders = [
             [
+                'type' => 'ecommerce',
                 'title' => '春季新品上市',
                 'subtitle' => '探索最新时尚趋势',
                 'image_path' => '/images/sliders/spring-collection-desktop.jpg',
@@ -1347,6 +1348,7 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 1,
             ],
             [
+                'type' => 'ecommerce',
                 'title' => '电子产品特惠',
                 'subtitle' => 'iPhone 15 Pro Max - 最新科技，超值价格',
                 'image_path' => '/images/sliders/electronics-sale-desktop.jpg',
@@ -1359,6 +1361,7 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 2,
             ],
             [
+                'type' => 'ecommerce',
                 'title' => '家居用品精选',
                 'subtitle' => '打造舒适生活空间',
                 'image_path' => '/images/sliders/home-living-desktop.jpg',
@@ -1371,6 +1374,7 @@ class FrontendTestDataSeeder extends Seeder
                 'sort_order' => 3,
             ],
             [
+                'type' => 'ecommerce',
                 'title' => '会员专享优惠',
                 'subtitle' => '注册即送RM10优惠券',
                 'image_path' => '/images/sliders/membership-desktop.jpg',
@@ -1382,10 +1386,42 @@ class FrontendTestDataSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 4,
             ],
+            [
+                'type' => 'booking',
+                'title' => '本月热门护理',
+                'subtitle' => '立即预约，享受专业美容护理服务',
+                'image_path' => '/images/sliders/booking-featured-desktop.jpg',
+                'mobile_image_path' => '/images/sliders/booking-featured-mobile.jpg',
+                'button_label' => '立即预约',
+                'button_link' => '/booking',
+                'start_at' => now()->subDays(2),
+                'end_at' => now()->addDays(45),
+                'is_active' => true,
+                'sort_order' => 1,
+            ],
+            [
+                'type' => 'booking',
+                'title' => '新客首单礼遇',
+                'subtitle' => '首次线上预约可享专属折扣',
+                'image_path' => '/images/sliders/booking-new-customer-desktop.jpg',
+                'mobile_image_path' => '/images/sliders/booking-new-customer-mobile.jpg',
+                'button_label' => '查看优惠',
+                'button_link' => '/booking',
+                'start_at' => now()->subDays(1),
+                'end_at' => now()->addDays(30),
+                'is_active' => true,
+                'sort_order' => 2,
+            ],
         ];
 
         foreach ($sliders as $slider) {
-            HomeSlider::create($slider);
+            HomeSlider::updateOrCreate(
+                [
+                    'type' => $slider['type'],
+                    'sort_order' => $slider['sort_order'],
+                ],
+                $slider
+            );
         }
     }
 }
