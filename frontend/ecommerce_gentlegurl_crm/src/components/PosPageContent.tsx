@@ -281,6 +281,7 @@ type ServicePackageOption = {
 
 type PosCatalogTab = 'products' | 'booking-products' | 'book-service' | 'service-packages' | 'settlement'
 type BookingProductOption = { id: number; name: string; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean }
+type BookingProductCategoryOption = { id: number; name: string; sort_order?: number; is_active?: boolean }
 
 type ProductOption = {
   id: number
@@ -587,6 +588,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [services, setServices] = useState<BookingServiceOption[]>([])
   const [bookingProducts, setBookingProducts] = useState<BookingProductOption[]>([])
   const [bookingProductsLoading, setBookingProductsLoading] = useState(false)
+  const [bookingProductCategories, setBookingProductCategories] = useState<BookingProductCategoryOption[]>([])
+  const [bookingProductQuery, setBookingProductQuery] = useState('')
+  const [debouncedBookingProductQuery, setDebouncedBookingProductQuery] = useState('')
+  const [selectedBookingProductCategoryId, setSelectedBookingProductCategoryId] = useState<number | null>(null)
   const [servicesLoading, setServicesLoading] = useState(false)
   const [servicePackages, setServicePackages] = useState<ServicePackageOption[]>([])
   const [servicePackagesLoading, setServicePackagesLoading] = useState(false)
@@ -1822,10 +1827,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
-  const fetchBookingProducts = useCallback(async () => {
+  const fetchBookingProducts = useCallback(async (categoryId: number | null = null) => {
     setBookingProductsLoading(true)
     try {
-      const res = await fetch('/api/proxy/admin/booking/products?is_active=1&per_page=200', { cache: 'no-store' })
+      const params = new URLSearchParams({
+        is_active: '1',
+        per_page: '200',
+      })
+      if (categoryId != null) params.set('category_id', String(categoryId))
+      const res = await fetch(`/api/proxy/admin/booking/products?${params.toString()}`, { cache: 'no-store' })
       if (!res.ok) return setBookingProducts([])
       const json = await res.json().catch(() => null)
       const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
@@ -2933,10 +2943,55 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void loadCategories()
     void fetchActiveStaffs()
     void fetchServices()
-    void fetchBookingProducts()
+    const loadBookingProductCategories = async () => {
+      try {
+        const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
+        if (!res.ok) {
+          setBookingProductCategories([])
+          return
+        }
+        const json = await res.json().catch(() => null)
+        const payload = (json && typeof json === 'object' && 'data' in json)
+          ? (json as { data?: unknown }).data
+          : json
+        const rows = Array.isArray(payload) ? payload : []
+        const mapped = rows
+          .map((row: any) => ({
+            id: Number(row?.id),
+            name: String(row?.name ?? '').trim(),
+            sort_order: Number(row?.sort_order ?? 0),
+            is_active: Boolean(row?.is_active ?? true),
+          }))
+          .filter((row) => row.id > 0 && row.name && row.is_active)
+          .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name))
+        setBookingProductCategories(mapped)
+      } catch {
+        setBookingProductCategories([])
+      }
+    }
+
+    void loadBookingProductCategories()
+    void fetchBookingProducts(null)
     void fetchServicePackages()
     void fetchUnpaidCompletedAppointments('')
   }, [fetchActiveStaffs, fetchBookingProducts, fetchServicePackages, fetchServices, fetchUnpaidCompletedAppointments])
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setDebouncedBookingProductQuery(bookingProductQuery)
+    }, 220)
+    return () => window.clearTimeout(handle)
+  }, [bookingProductQuery])
+
+  useEffect(() => {
+    void fetchBookingProducts(selectedBookingProductCategoryId)
+  }, [fetchBookingProducts, selectedBookingProductCategoryId])
+
+  const filteredBookingProducts = useMemo(() => {
+    const keyword = debouncedBookingProductQuery.trim().toLowerCase()
+    if (!keyword) return bookingProducts
+    return bookingProducts.filter((item) => item.name.toLowerCase().includes(keyword))
+  }, [bookingProducts, debouncedBookingProductQuery])
 
   useEffect(() => {
     const onPageShow = () => { void loadCart() }
@@ -4662,8 +4717,42 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <p className="text-xs text-gray-500">Active booking products from Booking module.</p>
                   {bookingProductsLoading && <span className="text-xs text-blue-600">Loading...</span>}
                 </div>
+                <div className="mb-5 space-y-3">
+                  <div className="relative">
+                    <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                    </svg>
+                    <input
+                      value={bookingProductQuery}
+                      onChange={(e) => setBookingProductQuery(e.target.value)}
+                      className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                      placeholder="Search by booking product name"
+                    />
+                  </div>
+                  <div className="border-b border-gray-200 pb-2">
+                    <div className="flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:thin]">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBookingProductCategoryId(null)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${selectedBookingProductCategoryId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                      >
+                        All
+                      </button>
+                      {bookingProductCategories.map((category) => (
+                        <button
+                          key={category.id}
+                          type="button"
+                          onClick={() => setSelectedBookingProductCategoryId(category.id)}
+                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${selectedBookingProductCategoryId === category.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        >
+                          {category.name}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {bookingProducts.map((item) => (
+                  {filteredBookingProducts.map((item) => (
                     <button key={item.id} type="button" onClick={() => addBookingProductToCart(item)} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
@@ -4676,6 +4765,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </button>
                   ))}
                 </div>
+                {!bookingProductsLoading && filteredBookingProducts.length === 0 && (
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
+                    No booking products found.
+                  </div>
+                )}
               </div>
             ) : catalogTab === 'book-service' ? (
               <div className="flex min-h-0 flex-1 flex-col">

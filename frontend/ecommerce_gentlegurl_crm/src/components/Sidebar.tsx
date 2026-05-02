@@ -577,6 +577,18 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             requiredPermission: 'booking.services.view',
           },
           {
+            key: 'booking-products',
+            label: 'Products',
+            href: '/booking/products',
+            requiredPermission: 'booking.services.view',
+          },
+          {
+            key: 'booking-product-categories',
+            label: 'Product Categories',
+            href: '/booking/product-categories',
+            requiredPermission: 'booking.services.view',
+          },
+          {
             key: 'booking-service-packages',
             label: 'Service Packages',
             href: '/booking/service-packages',

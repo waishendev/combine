@@ -15,14 +15,20 @@ class BookingProductController extends Controller
     {
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
 
-        $query = BookingProduct::query()->with('category')->leftJoin('booking_product_categories as bpc','booking_products.category_id','=','bpc.id')->orderByRaw('COALESCE(bpc.sort_order, 999999) asc')->orderBy('booking_products.id');
+        $query = BookingProduct::query()
+            ->with('category')
+            ->leftJoin('booking_product_categories as bpc', 'booking_products.category_id', '=', 'bpc.id')
+            ->orderByRaw('COALESCE(bpc.sort_order, 999999) asc')
+            ->orderByRaw("COALESCE(booking_products.name, '') asc")
+            ->orderBy('booking_products.id');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('barcode', 'like', "%{$search}%")
-                  ->orWhereHas('category', fn($cq) => $cq->where('name', 'like', "%{$search}%"));
+            $keyword = mb_strtolower($search);
+            $query->where(function ($q) use ($keyword) {
+                $q->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"])
+                  ->orWhereRaw('LOWER(COALESCE(barcode, \'\')) like ?', ["%{$keyword}%"])
+                  ->orWhereHas('category', fn($cq) => $cq->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"]));
             });
         }
 
