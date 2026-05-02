@@ -6,10 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingProduct;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
-use App\Models\Booking\BookingProductCategory;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Validation\ValidationException;
 
 class BookingProductController extends Controller
 {
@@ -18,10 +16,8 @@ class BookingProductController extends Controller
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
 
         $query = BookingProduct::query()
-            ->with('category')
-            ->leftJoin('booking_product_categories as bpc', 'booking_products.category_id', '=', 'bpc.id')
-            ->orderByRaw('COALESCE(bpc.sort_order, 999999) asc')
-            ->orderByRaw("COALESCE(booking_products.name, '') asc")
+            ->with('categories')
+                        ->orderByRaw("COALESCE(booking_products.name, '') asc")
             ->orderBy('booking_products.id');
 
         if ($request->filled('search')) {
@@ -30,7 +26,7 @@ class BookingProductController extends Controller
             $query->where(function ($q) use ($keyword) {
                 $q->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"])
                   ->orWhereRaw('LOWER(COALESCE(barcode, \'\')) like ?', ["%{$keyword}%"])
-                  ->orWhereHas('category', fn($cq) => $cq->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"]));
+                  ->orWhereHas('categories', fn($cq) => $cq->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"]));
             });
         }
 
@@ -39,7 +35,7 @@ class BookingProductController extends Controller
         }
 
         if ($request->filled('category_id')) {
-            $query->where('booking_products.category_id', (int) $request->input('category_id'));
+            $query->whereHas('categories', fn($q) => $q->where('booking_product_categories.id', (int) $request->input('category_id')));
         }
 
         return $this->respond($query->select('booking_products.*')->paginate($perPage));
@@ -65,14 +61,18 @@ class BookingProductController extends Controller
             );
         }
 
-        $product = BookingProduct::create($data);
+        $categoryIds = $data['category_ids'] ?? [];
+        unset($data['category_ids']);
 
-        return $this->respond($product, 'Created', true, 201);
+        $product = BookingProduct::create($data);
+        $product->categories()->sync($categoryIds);
+
+        return $this->respond($product->load('categories'), 'Created', true, 201);
     }
 
     public function show(int $id)
     {
-        return $this->respond(BookingProduct::findOrFail($id));
+        return $this->respond(BookingProduct::query()->with('categories')->findOrFail($id));
     }
 
     public function update(Request $request, int $id)
@@ -98,13 +98,20 @@ class BookingProductController extends Controller
             );
         }
 
+        $categoryIds = $data['category_ids'] ?? null;
+        unset($data['category_ids']);
+
         $product->update($data);
+
+        if ($categoryIds !== null) {
+            $product->categories()->sync($categoryIds);
+        }
 
         if (isset($data['image_path']) && $oldImagePath && $oldImagePath !== $data['image_path'] && Storage::disk('public')->exists($oldImagePath)) {
             Storage::disk('public')->delete($oldImagePath);
         }
 
-        return $this->respond($product->fresh());
+        return $this->respond($product->fresh()->load('categories'));
     }
 
     public function destroy(int $id)
@@ -130,13 +137,18 @@ class BookingProductController extends Controller
         $payload = collect($validated)->except('ids')->toArray();
 
         foreach ($products as $product) {
-            if (! empty($payload)) {
-                $product->fill($payload);
+            $categoryIds = $payload['category_ids'] ?? null;
+            $fillPayload = collect($payload)->except('category_ids')->toArray();
+            if (! empty($fillPayload)) {
+                $product->fill($fillPayload);
                 $product->save();
+            }
+            if ($categoryIds !== null) {
+                $product->categories()->sync($categoryIds);
             }
         }
 
-        return $this->respond($products->load('category'), __('Booking products updated successfully.'));
+        return $this->respond($products->load('categories'), __('Booking products updated successfully.'));
     }
 
     public function exportCsv(Request $request)
@@ -259,6 +271,8 @@ class BookingProductController extends Controller
                 }
 
                 $valid = $validator->validated();
+                $categoryId = $data['category_id'];
+                unset($valid['category_id']);
 
                 if ($data['id']) {
                     $product = BookingProduct::query()->find($data['id']);
@@ -268,6 +282,7 @@ class BookingProductController extends Controller
                             $product->is_active = (bool) $data['is_active'];
                         }
                         $product->save();
+                        $product->categories()->sync($categoryId ? [$categoryId] : []);
                         $summary['updated']++;
                         continue;
                     }
@@ -277,7 +292,8 @@ class BookingProductController extends Controller
                 if ($data['is_active'] !== null) {
                     $create['is_active'] = (bool) $data['is_active'];
                 }
-                BookingProduct::create($create);
+                $product = BookingProduct::create($create);
+                $product->categories()->sync($categoryId ? [$categoryId] : []);
                 $summary['created']++;
             } catch (\Throwable $e) {
                 $summary['failed']++;

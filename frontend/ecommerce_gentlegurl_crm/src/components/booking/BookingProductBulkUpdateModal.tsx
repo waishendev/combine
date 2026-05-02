@@ -74,7 +74,7 @@ export default function BookingProductBulkUpdateModal({
 
       if (selectedFields.includes('name')) payload.name = name.trim()
       if (selectedFields.includes('price')) payload.price = Number(price)
-      if (selectedFields.includes('category_id')) payload.category_id = categoryId ? Number(categoryId) : null
+      if (selectedFields.includes('category_id')) payload.category_ids = categoryId ? [Number(categoryId)] : []
       if (selectedFields.includes('is_active')) payload.is_active = isActive === 'true'
 
       const res = await fetch('/api/proxy/admin/booking/products/bulk', {
@@ -130,7 +130,7 @@ export default function BookingProductBulkUpdateModal({
             {selectedProducts.map((p) => (
               <div key={p.id} className="mb-3 border-b border-gray-200 pb-2 last:border-none last:pb-0">
                 <div className="font-medium text-gray-800">{p.name}</div>
-                <div className="text-xs text-gray-500">#{p.id} • RM {Number(p.price || 0).toFixed(2)} • {p.category?.name ?? '-'}</div>
+                <div className="text-xs text-gray-500">#{p.id} • RM {Number(p.price || 0).toFixed(2)} • {(p.categories ?? []).map((c) => c.name).join(', ') || '-'}</div>
               </div>
             ))}
           </div>

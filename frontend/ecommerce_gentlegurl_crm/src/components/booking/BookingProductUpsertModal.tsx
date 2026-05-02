@@ -2,7 +2,6 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from 'react'
 
-import BookingProductCategoryPicker from './BookingProductCategoryPicker'
 import type { BookingProductCategory, BookingProductRowData } from './bookingProductTypes'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 
@@ -26,7 +25,7 @@ export default function BookingProductUpsertModal({
   const [price, setPrice] = useState('0')
   const [barcode, setBarcode] = useState('')
   const [description, setDescription] = useState('')
-  const [categoryId, setCategoryId] = useState('')
+  const [categoryIds, setCategoryIds] = useState<string[]>([])
   const [isActive, setIsActive] = useState(true)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -41,7 +40,7 @@ export default function BookingProductUpsertModal({
     setPrice(String(product?.price ?? 0))
     setBarcode(product?.barcode ?? '')
     setDescription(product?.description ?? '')
-    setCategoryId(product?.category_id ? String(product.category_id) : '')
+    setCategoryIds(Array.isArray(product?.categories) ? product.categories.map((c) => String(c.id)) : [])
     setIsActive(Boolean(product?.is_active ?? true))
     setImageFile(null)
     setPreviewUrl(null)
@@ -96,7 +95,7 @@ export default function BookingProductUpsertModal({
       if (barcode.trim()) fd.append('barcode', barcode.trim())
       if (description.trim()) fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
-      if (categoryId) fd.append('category_id', categoryId)
+      categoryIds.forEach((id) => fd.append('category_ids[]', id))
       if (imageFile) fd.append('image', imageFile)
       if (isEditing && product?.id) fd.append('_method', 'PUT')
 
@@ -291,13 +290,9 @@ export default function BookingProductUpsertModal({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <BookingProductCategoryPicker
-                  categories={categories}
-                  value={categoryId}
-                  onChange={setCategoryId}
-                  disabled={submitting}
-                  emptyLabel="No category"
-                />
+                <select multiple value={categoryIds} onChange={(e) => setCategoryIds(Array.from(e.target.selectedOptions).map((opt) => opt.value))} className="w-full rounded border border-gray-300 px-3 py-2 text-sm min-h-28" disabled={submitting}>
+                  {categories.map((c) => (<option key={c.id} value={String(c.id)}>{c.name}</option>))}
+                </select>
               </div>
 
               <div>

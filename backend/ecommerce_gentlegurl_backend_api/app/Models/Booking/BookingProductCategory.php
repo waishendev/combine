@@ -15,4 +15,10 @@ class BookingProductCategory extends Model
         'sort_order' => 'integer',
         'is_active' => 'boolean',
     ];
+
+    public function products()
+    {
+        return $this->belongsToMany(BookingProduct::class, 'booking_product_category_product')
+            ->withTimestamps();
+    }
 }
