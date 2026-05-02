@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 
 import type { BookingServiceOption, ServicePackage } from './servicePackageTypes'
+import BookingPackageItemServicePicker from './BookingPackageItemServicePicker'
 import { useI18n } from '@/lib/i18n'
 
 type FormItem = {
@@ -416,19 +417,12 @@ export default function ServicePackageFormModal({
 
             {form.items.map((item, index) => (
               <div key={`${index}-${item.booking_service_id}`} className="grid gap-2 rounded-md border border-gray-200 p-3 md:grid-cols-[1fr_120px_auto]">
-                <select
+                <BookingPackageItemServicePicker
+                  options={services}
                   value={item.booking_service_id}
-                  onChange={(e) => setItem(index, 'booking_service_id', e.target.value)}
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                  onChange={(next) => setItem(index, 'booking_service_id', next)}
                   disabled={disableForm}
-                >
-                  <option value="">Select service</option>
-                  {services.map((service) => (
-                    <option key={service.id} value={service.id}>
-                      {service.name}
-                    </option>
-                  ))}
-                </select>
+                />
 
                 <input
                   type="number"

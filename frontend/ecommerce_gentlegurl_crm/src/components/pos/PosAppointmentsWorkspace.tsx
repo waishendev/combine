@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
@@ -44,6 +45,15 @@ type CreateExtraServiceBlock = {
   service: BookingServiceOption | null
   questions: ServiceAddonQuestion[]
   selectedOptionIds: number[]
+}
+
+/** POS member search row (`/api/proxy/pos/members/search`) */
+type PosMemberSearchRow = {
+  id: number
+  name: string
+  phone?: string | null
+  phone_masked?: string | null
+  avatar_url?: string | null
 }
 
 type PosCancellationRequestRow = {
@@ -162,6 +172,15 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentError, setCreateAppointmentError] = useState<string | null>(null)
   const [createAppointmentServiceDraft, setCreateAppointmentServiceDraft] = useState<BookingServiceOption | null>(null)
   const [createAppointmentCustomerId, setCreateAppointmentCustomerId] = useState<number | null>(null)
+  const [createAppointmentMemberSummary, setCreateAppointmentMemberSummary] = useState<{
+    id: number
+    name: string
+    phone?: string | null
+  } | null>(null)
+  const [createAppointmentMemberPickerOpen, setCreateAppointmentMemberPickerOpen] = useState(false)
+  const [createAppointmentMemberQuery, setCreateAppointmentMemberQuery] = useState('')
+  const [createAppointmentMemberResults, setCreateAppointmentMemberResults] = useState<PosMemberSearchRow[]>([])
+  const [createAppointmentMemberSearchLoading, setCreateAppointmentMemberSearchLoading] = useState(false)
   const [createAppointmentIdentityMode, setCreateAppointmentIdentityMode] = useState<'member' | 'guest'>('member')
   const [createAppointmentGuestName, setCreateAppointmentGuestName] = useState('')
   const [createAppointmentGuestPhone, setCreateAppointmentGuestPhone] = useState('')
@@ -552,6 +571,10 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentNotes('')
     setCreateAppointmentIdentityMode('member')
     setCreateAppointmentCustomerId(null)
+    setCreateAppointmentMemberSummary(null)
+    setCreateAppointmentMemberPickerOpen(false)
+    setCreateAppointmentMemberQuery('')
+    setCreateAppointmentMemberResults([])
     setCreateAppointmentGuestName('')
     setCreateAppointmentGuestPhone('')
     setCreateAppointmentGuestEmail('')
@@ -560,6 +583,38 @@ export default function PosAppointmentsWorkspace({
       void fetchCreateAppointmentServices()
     }
   }, [appointmentDateFilter, createAppointmentServices.length, currentUser.staff_id, fetchCreateAppointmentServices])
+
+  const closeCreateAppointmentMemberPicker = useCallback(() => {
+    setCreateAppointmentMemberPickerOpen(false)
+    setCreateAppointmentMemberQuery('')
+    setCreateAppointmentMemberResults([])
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (!createAppointmentMemberPickerOpen) return
+      if (createAppointmentMemberQuery.trim().length < 3) {
+        setCreateAppointmentMemberResults([])
+        setCreateAppointmentMemberSearchLoading(false)
+        return
+      }
+      setCreateAppointmentMemberSearchLoading(true)
+      try {
+        const params = new URLSearchParams({ page: '1', per_page: '20', q: createAppointmentMemberQuery.trim() })
+        const res = await fetch(`/api/proxy/pos/members/search?${params.toString()}`)
+        const json = await res.json().catch(() => null)
+        const paged = extractPaged<PosMemberSearchRow>(json)
+        if (!cancelled) setCreateAppointmentMemberResults(paged.data)
+      } finally {
+        if (!cancelled) setCreateAppointmentMemberSearchLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [createAppointmentMemberPickerOpen, createAppointmentMemberQuery])
 
   const createAppointmentSelectedOptions = useMemo(() => {
     const selected = new Set(createAppointmentSelectedOptionIds)
@@ -596,6 +651,17 @@ export default function PosAppointmentsWorkspace({
     }
     return allowed
   }, [createAppointmentExtraServiceBlocks, createAppointmentServiceDraft])
+
+  const createAppointmentStaffPickerOptions = useMemo(() => {
+    const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
+    const staffIds = slot?.available_staff_ids
+    const base = createAppointmentAllowedStaffs
+    if (Array.isArray(staffIds) && staffIds.length > 0) {
+      return base.filter((s) => staffIds.includes(s.id))
+    }
+    return base
+  }, [createAppointmentSlots, createAppointmentSlotValue, createAppointmentAllowedStaffs])
+
   const createAppointmentSelectedServiceIds = useMemo(
     () => [
       ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
@@ -713,6 +779,7 @@ export default function PosAppointmentsWorkspace({
       }
 
       showMsg('Appointment created successfully. No deposit collected in this flow.', 'success')
+      closeCreateAppointmentMemberPicker()
       setCreateAppointmentModalOpen(false)
       await fetchAppointments()
 
@@ -742,6 +809,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentSelectedServiceIds,
     createAppointmentServiceDraft,
     createAppointmentSlotValue,
+    closeCreateAppointmentMemberPicker,
     fetchAppointments,
     showMsg,
   ])
@@ -2448,7 +2516,10 @@ export default function PosAppointmentsWorkspace({
               </div>
               <button
                 type="button"
-                onClick={() => setCreateAppointmentModalOpen(false)}
+                onClick={() => {
+                  closeCreateAppointmentMemberPicker()
+                  setCreateAppointmentModalOpen(false)
+                }}
                 className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
                 aria-label="Close"
               >
@@ -2478,35 +2549,37 @@ export default function PosAppointmentsWorkspace({
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-600">Primary Service</label>
-                    <select
-                      value={createAppointmentServiceDraft?.id ?? ''}
-                      onChange={(e) => {
-                        const nextId = Number(e.target.value) || 0
-                        const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
-                        setCreateAppointmentServiceDraft(service)
-                        setCreateAppointmentSelectedOptionIds([])
-                        setCreateAppointmentAssignedStaffId(
-                          service?.allowed_staffs?.some((staff) => staff.id === currentUser.staff_id)
-                            ? (currentUser.staff_id ?? null)
-                            : (service?.allowed_staffs?.[0]?.id ?? currentUser.staff_id ?? null),
-                        )
-                        setCreateAppointmentSlotValue('')
-                        setCreateAppointmentSlots([])
-                        if (service?.id) {
-                          void loadCreateAppointmentQuestions(service.id)
-                        } else {
-                          setCreateAppointmentQuestions([])
-                        }
-                      }}
-                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                    >
-                      <option value="">{createAppointmentServicesLoading ? 'Loading services...' : 'Select service'}</option>
-                      {createAppointmentServices.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {service.name} {service.service_type ? `(${service.service_type})` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="mt-1">
+                      <BookingPackageItemServicePicker
+                        options={createAppointmentServices.map((service) => ({
+                          id: service.id,
+                          name: `${service.name}${service.service_type ? ` (${service.service_type})` : ''}`,
+                        }))}
+                        value={createAppointmentServiceDraft?.id ? String(createAppointmentServiceDraft.id) : ''}
+                        onChange={(next) => {
+                          const nextId = Number(next) || 0
+                          const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
+                          setCreateAppointmentServiceDraft(service)
+                          setCreateAppointmentSelectedOptionIds([])
+                          setCreateAppointmentAssignedStaffId(
+                            service?.allowed_staffs?.some((staff) => staff.id === currentUser.staff_id)
+                              ? (currentUser.staff_id ?? null)
+                              : (service?.allowed_staffs?.[0]?.id ?? currentUser.staff_id ?? null),
+                          )
+                          setCreateAppointmentSlotValue('')
+                          setCreateAppointmentSlots([])
+                          if (service?.id) {
+                            void loadCreateAppointmentQuestions(service.id)
+                          } else {
+                            setCreateAppointmentQuestions([])
+                          }
+                        }}
+                        disabled={createAppointmentServicesLoading}
+                        placeholder={createAppointmentServicesLoading ? 'Loading services...' : 'Select service'}
+                        searchPlaceholder="Search services…"
+                        ariaLabel="Select primary service"
+                      />
+                    </div>
                   </div>
 
                   {createAppointmentServiceDraft ? (
@@ -2567,54 +2640,9 @@ export default function PosAppointmentsWorkspace({
                   {createAppointmentExtraServiceBlocks.map((block) => (
                     <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
                       <div className="flex items-center gap-2">
-                        <select
-                          value={block.service?.id ?? ''}
-                          onChange={async (e) => {
-                            const nextId = Number(e.target.value) || 0
-                            const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
-                            let questions: ServiceAddonQuestion[] = []
-                            if (service?.id) {
-                              const res = await fetch(`/api/proxy/booking/services/${service.id}`, { cache: 'no-store' })
-                              const json = await res.json().catch(() => null)
-                              const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
-                              questions = questionsRaw
-                                .map((raw) => {
-                                  if (!raw || typeof raw !== 'object') return null
-                                  const record = raw as Record<string, unknown>
-                                  const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
-                                  return {
-                                    id: Number(record.id ?? 0),
-                                    title: String(record.title ?? 'Question'),
-                                    question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
-                                    is_required: Boolean(record.is_required),
-                                    options: optionsRaw
-                                      .map((optionRaw) => {
-                                        if (!optionRaw || typeof optionRaw !== 'object') return null
-                                        const option = optionRaw as Record<string, unknown>
-                                        return {
-                                          id: Number(option.id ?? 0),
-                                          label: String(option.label ?? 'Add-on'),
-                                          extra_duration_min: Number(option.extra_duration_min ?? 0),
-                                          extra_price: Number(option.extra_price ?? 0),
-                                        } as ServiceAddonOption
-                                      })
-                                      .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
-                                  } as ServiceAddonQuestion
-                                })
-                                .filter((question): question is ServiceAddonQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
-                            }
-                            setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? {
-                              ...row,
-                              service,
-                              questions,
-                              selectedOptionIds: [],
-                            } : row))
-                          }}
-                          className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
-                        >
-                          <option value="">Select main service</option>
-                          {createAppointmentServices
-                            .filter((service) => {
+                        <div className="min-w-0 flex-1">
+                          <BookingPackageItemServicePicker
+                            options={(() => {
                               const takenByOthers = new Set<number>([
                                 ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
                                 ...createAppointmentExtraServiceBlocks
@@ -2622,14 +2650,59 @@ export default function PosAppointmentsWorkspace({
                                   .map((row) => Number(row.service?.id ?? 0))
                                   .filter((id) => id > 0),
                               ])
-                              return !takenByOthers.has(service.id)
-                            })
-                            .map((service) => (
-                            <option key={`create-extra-service-${block.id}-${service.id}`} value={service.id}>
-                              {service.name}
-                            </option>
-                            ))}
-                        </select>
+                              return createAppointmentServices
+                                .filter((service) => !takenByOthers.has(service.id))
+                                .map((service) => ({ id: service.id, name: service.name }))
+                            })()}
+                            value={block.service?.id ? String(block.service.id) : ''}
+                            onChange={async (next) => {
+                              const nextId = Number(next) || 0
+                              const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
+                              let questions: ServiceAddonQuestion[] = []
+                              if (service?.id) {
+                                const res = await fetch(`/api/proxy/booking/services/${service.id}`, { cache: 'no-store' })
+                                const json = await res.json().catch(() => null)
+                                const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
+                                questions = questionsRaw
+                                  .map((raw) => {
+                                    if (!raw || typeof raw !== 'object') return null
+                                    const record = raw as Record<string, unknown>
+                                    const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
+                                    return {
+                                      id: Number(record.id ?? 0),
+                                      title: String(record.title ?? 'Question'),
+                                      question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
+                                      is_required: Boolean(record.is_required),
+                                      options: optionsRaw
+                                        .map((optionRaw) => {
+                                          if (!optionRaw || typeof optionRaw !== 'object') return null
+                                          const option = optionRaw as Record<string, unknown>
+                                          return {
+                                            id: Number(option.id ?? 0),
+                                            label: String(option.label ?? 'Add-on'),
+                                            extra_duration_min: Number(option.extra_duration_min ?? 0),
+                                            extra_price: Number(option.extra_price ?? 0),
+                                          } as ServiceAddonOption
+                                        })
+                                        .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
+                                    } as ServiceAddonQuestion
+                                  })
+                                  .filter((question): question is ServiceAddonQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
+                              }
+                              setCreateAppointmentExtraServiceBlocks((prev) =>
+                                prev.map((row) =>
+                                  row.id === block.id
+                                    ? { ...row, service, questions, selectedOptionIds: [] }
+                                    : row,
+                                ),
+                              )
+                            }}
+                            disabled={createAppointmentSubmitting}
+                            placeholder="Select main service"
+                            searchPlaceholder="Search services…"
+                            ariaLabel="Select main service"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => setCreateAppointmentExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))}
@@ -2700,7 +2773,12 @@ export default function PosAppointmentsWorkspace({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCreateAppointmentIdentityMode('guest')}
+                        onClick={() => {
+                          setCreateAppointmentIdentityMode('guest')
+                          setCreateAppointmentCustomerId(null)
+                          setCreateAppointmentMemberSummary(null)
+                          closeCreateAppointmentMemberPicker()
+                        }}
                         role="tab"
                         aria-selected={createAppointmentIdentityMode === 'guest'}
                         className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition ${
@@ -2716,19 +2794,27 @@ export default function PosAppointmentsWorkspace({
 
                   {createAppointmentIdentityMode === 'member' ? (
                     <div>
-                      <label className="text-xs font-semibold text-gray-600">Member</label>
-                      <select
-                        value={createAppointmentCustomerId ?? ''}
-                        onChange={(e) => setCreateAppointmentCustomerId(Number(e.target.value) || null)}
-                        className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                      >
-                        <option value="">{appointmentCustomerLoading ? 'Loading members...' : 'Select member'}</option>
-                        {appointmentCustomerOptions.map((customer) => (
-                          <option key={`create-member-${customer.id}`} value={customer.id}>
-                            {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
-                          </option>
-                        ))}
-                      </select>
+                      <div className="flex items-center justify-between gap-2">
+                        <label className="text-xs font-semibold text-gray-600">Member</label>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateAppointmentMemberQuery('')
+                            setCreateAppointmentMemberResults([])
+                            setCreateAppointmentMemberPickerOpen(true)
+                          }}
+                          className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
+                        >
+                          {createAppointmentMemberSummary ? 'Change Member' : 'Assign Member'}
+                        </button>
+                      </div>
+                      <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                        {createAppointmentMemberSummary
+                          ? `${createAppointmentMemberSummary.name}${
+                              createAppointmentMemberSummary.phone ? ` (${createAppointmentMemberSummary.phone})` : ''
+                            }`
+                          : 'No member selected'}
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -2755,24 +2841,24 @@ export default function PosAppointmentsWorkspace({
 
                   <div>
                     <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
-                    <select
-                      value={createAppointmentAssignedStaffId ?? ''}
-                      onChange={(e) => setCreateAppointmentAssignedStaffId(Number(e.target.value) || null)}
-                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                      disabled={!createAppointmentServiceDraft}
-                    >
-                      <option value="">Select staff</option>
-                      {createAppointmentAllowedStaffs.map((staff) => {
-                        const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
-                        const staffIds = slot?.available_staff_ids
-                        const available = !staffIds || staffIds.includes(staff.id)
-                        return (
-                          <option key={`create-staff-${staff.id}`} value={staff.id} disabled={!available}>
-                            {staff.name}{available ? '' : ' (Unavailable)'}
-                          </option>
-                        )
-                      })}
-                    </select>
+                    <div className="mt-1">
+                      <BookingPackageItemServicePicker
+                        options={createAppointmentStaffPickerOptions.map((s) => ({ id: s.id, name: s.name }))}
+                        value={createAppointmentAssignedStaffId != null ? String(createAppointmentAssignedStaffId) : ''}
+                        onChange={(next) => setCreateAppointmentAssignedStaffId(Number(next) || null)}
+                        disabled={
+                          createAppointmentSubmitting ||
+                          !createAppointmentServiceDraft ||
+                          createAppointmentStaffPickerOptions.length === 0
+                        }
+                        placeholder="Select staff"
+                        searchPlaceholder="Search staff…"
+                        unknownEntityLabel="Staff"
+                        ariaLabel="Select staff"
+                        emptySearchMessage="No staff match your search."
+                        emptyListMessage="No staff available."
+                      />
+                    </div>
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -2833,7 +2919,10 @@ export default function PosAppointmentsWorkspace({
             <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
               <button
                 type="button"
-                onClick={() => setCreateAppointmentModalOpen(false)}
+                onClick={() => {
+                  closeCreateAppointmentMemberPicker()
+                  setCreateAppointmentModalOpen(false)
+                }}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
               >
                 Cancel
@@ -2846,6 +2935,107 @@ export default function PosAppointmentsWorkspace({
               >
                 {createAppointmentSubmitting ? 'Creating...' : 'Confirm'}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {createAppointmentMemberPickerOpen ? (
+        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full cursor-default"
+            onClick={closeCreateAppointmentMemberPicker}
+            aria-label="Close assign member"
+          />
+          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
+              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
+              <button
+                type="button"
+                onClick={closeCreateAppointmentMemberPicker}
+                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+              >
+                <span className="text-2xl leading-none">×</span>
+              </button>
+            </div>
+
+            <div className="border-b-2 border-gray-200 bg-white p-5">
+              <div className="relative">
+                <svg
+                  className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                </svg>
+                <input
+                  value={createAppointmentMemberQuery}
+                  onChange={(e) => setCreateAppointmentMemberQuery(e.target.value)}
+                  className="w-full rounded-lg border-2 border-gray-200 bg-gray-50 py-3 pl-10 pr-4 text-sm transition-all focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  placeholder="Search by name or phone"
+                  autoFocus
+                />
+              </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Search member by name or phone. Type at least 3 characters to search.
+              </p>
+            </div>
+
+            <div className="max-h-[65vh] overflow-auto">
+              {createAppointmentMemberQuery.trim().length < 3 ? (
+                <div className="p-8 text-center text-sm text-gray-500">Type at least 3 characters to search.</div>
+              ) : createAppointmentMemberSearchLoading ? (
+                <div className="p-6 text-sm text-gray-500">Loading members...</div>
+              ) : (
+                createAppointmentMemberResults.map((member) => (
+                  <button
+                    key={`create-appt-member-${member.id}`}
+                    type="button"
+                    className="block w-full border-b border-gray-100 p-4 text-left transition-all last:border-b-0 hover:bg-gradient-to-r hover:from-blue-50 hover:to-white active:bg-blue-100"
+                    onClick={() => {
+                      const phone =
+                        (member.phone && member.phone.trim()) || member.phone_masked?.trim() || null
+                      setCreateAppointmentCustomerId(member.id)
+                      setCreateAppointmentMemberSummary({
+                        id: member.id,
+                        name: member.name,
+                        phone,
+                      })
+                      showMsg('Member assigned.', 'success')
+                      closeCreateAppointmentMemberPicker()
+                    }}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full border-2 border-blue-300">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={member.avatar_url || '/images/default_user_image.jpg'}
+                          alt={member.name}
+                          className="h-full w-full object-cover"
+                        />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-base font-semibold leading-tight text-gray-900">{member.name}</p>
+                        <p className="mt-1 text-xs text-gray-600">{member.phone_masked ?? '***'}</p>
+                      </div>
+                      <svg className="h-5 w-5 shrink-0 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))
+              )}
+
+              {!createAppointmentMemberSearchLoading &&
+              createAppointmentMemberQuery.trim().length >= 3 &&
+              createAppointmentMemberResults.length === 0 ? (
+                <div className="p-12 text-center">
+                  <p className="text-sm font-medium text-gray-600">No members found</p>
+                  <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
@@ -3280,29 +3470,33 @@ export default function PosAppointmentsWorkspace({
                 <div className="space-y-2">
                   {editStaffSplits.map((split, idx) => (
                     <div key={`split-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
-                      <select
-                        value={split.staff_id ?? ''}
-                        onChange={(e) => {
-                          const value = e.target.value ? Number(e.target.value) : null
-                          setEditSettlementError(null)
-                          setEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
-                        }}
-                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                      >
-                        <option value="">Select staff</option>
-                        {activeStaffs
-                          .filter((staff) => {
-                            const selected = new Set(
-                              editStaffSplits
-                                .map((row, rowIdx) => (rowIdx === idx ? null : row.staff_id))
-                                .filter((id): id is number => id != null),
-                            )
-                            return !selected.has(staff.id)
-                          })
-                          .map((staff) => (
-                            <option key={staff.id} value={staff.id}>{staff.name}</option>
-                          ))}
-                      </select>
+                      <div className="min-w-0">
+                        <BookingPackageItemServicePicker
+                          options={activeStaffs
+                            .filter((staff) => {
+                              const selected = new Set(
+                                editStaffSplits
+                                  .map((row, rowIdx) => (rowIdx === idx ? null : row.staff_id))
+                                  .filter((id): id is number => id != null),
+                              )
+                              return !selected.has(staff.id)
+                            })
+                            .map((staff) => ({ id: staff.id, name: staff.name }))}
+                          value={split.staff_id != null ? String(split.staff_id) : ''}
+                          onChange={(next) => {
+                            const value = next ? Number(next) : null
+                            setEditSettlementError(null)
+                            setEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
+                          }}
+                          disabled={editSettlementLoading}
+                          placeholder="Select staff"
+                          searchPlaceholder="Search staff…"
+                          unknownEntityLabel="Staff"
+                          ariaLabel="Select staff"
+                          emptySearchMessage="No staff match your search."
+                          emptyListMessage="No staff available."
+                        />
+                      </div>
                       <div className="relative">
                         <input
                           type="number"
@@ -3422,28 +3616,32 @@ export default function PosAppointmentsWorkspace({
                       </label>
                       {block.staff_splits.map((split, idx) => (
                         <div key={`added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
-                          <select
-                            value={split.staff_id ?? ''}
-                            onChange={(e) => {
-                              const value = e.target.value ? Number(e.target.value) : null
-                              updateEditAddedMainSplitStaff(block.tmp_id, idx, value)
-                            }}
-                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          >
-                            <option value="">Select staff</option>
-                            {activeStaffs
-                              .filter((staff) => {
-                                const selected = new Set(
-                                  block.staff_splits
-                                    .map((row, rowIdx) => (rowIdx === idx ? null : row.staff_id))
-                                    .filter((id): id is number => id != null),
-                                )
-                                return !selected.has(staff.id)
-                              })
-                              .map((staff) => (
-                                <option key={`added-staff-${block.tmp_id}-${staff.id}`} value={staff.id}>{staff.name}</option>
-                              ))}
-                          </select>
+                          <div className="min-w-0">
+                            <BookingPackageItemServicePicker
+                              options={activeStaffs
+                                .filter((staff) => {
+                                  const selected = new Set(
+                                    block.staff_splits
+                                      .map((row, rowIdx) => (rowIdx === idx ? null : row.staff_id))
+                                      .filter((id): id is number => id != null),
+                                  )
+                                  return !selected.has(staff.id)
+                                })
+                                .map((staff) => ({ id: staff.id, name: staff.name }))}
+                              value={split.staff_id != null ? String(split.staff_id) : ''}
+                              onChange={(next) => {
+                                const value = next ? Number(next) : null
+                                updateEditAddedMainSplitStaff(block.tmp_id, idx, value)
+                              }}
+                              disabled={editSettlementLoading}
+                              placeholder="Select staff"
+                              searchPlaceholder="Search staff…"
+                              unknownEntityLabel="Staff"
+                              ariaLabel="Select staff"
+                              emptySearchMessage="No staff match your search."
+                              emptyListMessage="No staff available."
+                            />
+                          </div>
                           <input
                             type="number"
                             min={1}

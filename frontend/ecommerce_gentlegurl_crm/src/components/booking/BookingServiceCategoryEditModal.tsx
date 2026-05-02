@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 
 import type { BookingServiceCategoryRowData } from './BookingServiceCategoryRow'
 import {
@@ -9,8 +9,9 @@ import {
 } from './bookingServiceCategoryUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '@/components/mediaAccept'
-
-type ServiceOption = { id: number; name: string }
+import BookingCategoryServicesSection, {
+  type BookingCategoryServiceOption,
+} from './BookingCategoryServicesSection'
 
 interface BookingServiceCategoryEditModalProps {
   categoryId: number
@@ -32,7 +33,7 @@ export default function BookingServiceCategoryEditModal({
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [serviceIds, setServiceIds] = useState<number[]>([])
-  const [services, setServices] = useState<ServiceOption[]>([])
+  const [services, setServices] = useState<BookingCategoryServiceOption[]>([])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
 
@@ -52,7 +53,7 @@ export default function BookingServiceCategoryEditModal({
                 id: Number(r?.id),
                 name: String(r?.name ?? ''),
               }))
-              .filter((r: ServiceOption) => r.id > 0 && r.name),
+              .filter((r: BookingCategoryServiceOption) => r.id > 0 && r.name),
           )
         }
       } catch {
@@ -117,11 +118,6 @@ export default function BookingServiceCategoryEditModal({
     void load()
     return () => controller.abort()
   }, [categoryId])
-
-  const selectedLabel = useMemo(
-    () => services.filter((s) => serviceIds.includes(s.id)).map((s) => s.name).join(', '),
-    [services, serviceIds],
-  )
 
   const toggleService = (id: number) => {
     setServiceIds((prev) =>
@@ -271,23 +267,12 @@ export default function BookingServiceCategoryEditModal({
                 />
                 Active
               </label>
-              <div className="rounded-lg border border-gray-200 p-3">
-                <p className="text-sm font-medium text-gray-900">Services</p>
-                <p className="text-xs text-gray-500 mb-2">{selectedLabel || 'No services selected'}</p>
-                <div className="grid max-h-40 grid-cols-2 gap-2 overflow-auto md:grid-cols-3">
-                  {services.map((svc) => (
-                    <label key={svc.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={serviceIds.includes(svc.id)}
-                        onChange={() => toggleService(svc.id)}
-                        disabled={disableForm}
-                      />
-                      {svc.name}
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <BookingCategoryServicesSection
+                services={services}
+                serviceIds={serviceIds}
+                onToggle={toggleService}
+                disabled={disableForm}
+              />
             </div>
 
             {error && (

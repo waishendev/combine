@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import Link from 'next/link'
+import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import OrderViewPanel from './OrderViewPanel'
 import {
   printReceipt,
@@ -2081,6 +2082,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     return allowed
   }, [bookingExtraServiceBlocks, bookingServiceDraft])
+
+  const bookingStaffPickerOptions = useMemo(() => {
+    const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
+    const allowedIds = slot?.available_staff_ids ?? null
+    const base = bookingAllowedStaffs
+    if (Array.isArray(allowedIds) && allowedIds.length > 0) {
+      return base.filter((s) => allowedIds.includes(s.id))
+    }
+    return base
+  }, [bookingSlots, bookingSlotValue, bookingAllowedStaffs])
   const bookingSelectedServiceIds = useMemo(
     () => [
       ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
@@ -7770,21 +7781,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 {bookingExtraServiceBlocks.map((block) => (
                   <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <select
-                        value={block.service?.id ?? ''}
-                        onChange={async (e) => {
-                          const nextId = Number(e.target.value) || null
-                          const selected = services.find((row) => row.id === nextId) ?? null
-                          const questions = nextId ? await fetchBookingQuestions(nextId) : []
-                          setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? {
-                            ...row, service: selected, questions, selectedOptionIds: [],
-                          } : row))
-                        }}
-                        className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs"
-                      >
-                        <option value="">Select main service</option>
-                        {services
-                          .filter((service) => {
+                      <div className="min-w-0 flex-1">
+                        <BookingPackageItemServicePicker
+                          options={(() => {
                             const takenByOthers = new Set<number>([
                               ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
                               ...bookingExtraServiceBlocks
@@ -7792,14 +7791,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 .map((row) => Number(row.service?.id ?? 0))
                                 .filter((id) => id > 0),
                             ])
-                            return !takenByOthers.has(service.id)
-                          })
-                          .map((service) => (
-                          <option key={`booking-extra-service-${block.id}-${service.id}`} value={service.id}>
-                            {service.name}
-                          </option>
-                          ))}
-                      </select>
+                            return services
+                              .filter((service) => !takenByOthers.has(service.id))
+                              .map((service) => ({ id: service.id, name: service.name }))
+                          })()}
+                          value={block.service?.id ? String(block.service.id) : ''}
+                          onChange={async (next) => {
+                            const nextId = Number(next) || null
+                            const selected = services.find((row) => row.id === nextId) ?? null
+                            const questions = nextId ? await fetchBookingQuestions(nextId) : []
+                            setBookingExtraServiceBlocks((prev) =>
+                              prev.map((row) =>
+                                row.id === block.id
+                                  ? { ...row, service: selected, questions, selectedOptionIds: [] }
+                                  : row,
+                              ),
+                            )
+                          }}
+                          disabled={bookingSubmitting}
+                          placeholder="Select main service"
+                          searchPlaceholder="Search services…"
+                          ariaLabel="Select main service"
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={() => setBookingExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))}
@@ -7974,24 +7988,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                 <div>
                   <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
-                  <select
-                    value={bookingAssignedStaffId ?? ''}
-                    onChange={(e) => setBookingAssignedStaffId(Number(e.target.value) || null)}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  >
-                    <option value="">Select staff</option>
-                    {(() => {
-                      const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
-                      const allowedIds = slot?.available_staff_ids ?? null
-                      const base = bookingAllowedStaffs
-                      const filtered = Array.isArray(allowedIds) && allowedIds.length > 0
-                        ? base.filter((s) => allowedIds.includes(s.id))
-                        : base
-                      return filtered.map((staff) => (
-                        <option key={staff.id} value={staff.id}>{staff.name}</option>
-                      ))
-                    })()}
-                  </select>
+                  <div className="mt-1">
+                    <BookingPackageItemServicePicker
+                      options={bookingStaffPickerOptions.map((s) => ({ id: s.id, name: s.name }))}
+                      value={bookingAssignedStaffId != null ? String(bookingAssignedStaffId) : ''}
+                      onChange={(next) => setBookingAssignedStaffId(Number(next) || null)}
+                      disabled={bookingSubmitting || bookingStaffPickerOptions.length === 0}
+                      placeholder="Select staff"
+                      searchPlaceholder="Search staff…"
+                      unknownEntityLabel="Staff"
+                      ariaLabel="Select staff"
+                      emptySearchMessage="No staff match your search."
+                      emptyListMessage="No staff available."
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
