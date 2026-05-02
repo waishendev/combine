@@ -2,6 +2,7 @@
 
 import { ChangeEvent, useEffect, useRef, useState } from 'react'
 
+import BookingProductCategoriesPicker from './BookingProductCategoriesPicker'
 import type { BookingProductCategory, BookingProductRowData } from './bookingProductTypes'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 
@@ -25,7 +26,7 @@ export default function BookingProductUpsertModal({
   const [price, setPrice] = useState('0')
   const [barcode, setBarcode] = useState('')
   const [description, setDescription] = useState('')
-  const [categoryIds, setCategoryIds] = useState<string[]>([])
+  const [categoryIds, setCategoryIds] = useState<number[]>([])
   const [isActive, setIsActive] = useState(true)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
@@ -40,7 +41,7 @@ export default function BookingProductUpsertModal({
     setPrice(String(product?.price ?? 0))
     setBarcode(product?.barcode ?? '')
     setDescription(product?.description ?? '')
-    setCategoryIds(Array.isArray(product?.categories) ? product.categories.map((c) => String(c.id)) : [])
+    setCategoryIds(Array.isArray(product?.categories) ? product.categories.map((c) => Number(c.id)) : [])
     setIsActive(Boolean(product?.is_active ?? true))
     setImageFile(null)
     setPreviewUrl(null)
@@ -95,7 +96,7 @@ export default function BookingProductUpsertModal({
       if (barcode.trim()) fd.append('barcode', barcode.trim())
       if (description.trim()) fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
-      categoryIds.forEach((id) => fd.append('category_ids[]', id))
+      categoryIds.forEach((id) => fd.append('category_ids[]', String(id)))
       if (imageFile) fd.append('image', imageFile)
       if (isEditing && product?.id) fd.append('_method', 'PUT')
 
@@ -111,10 +112,14 @@ export default function BookingProductUpsertModal({
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
+        const firstError =
+          json && typeof json === 'object' && 'errors' in json && json.errors && typeof json.errors === 'object'
+            ? Object.values(json.errors as Record<string, unknown[]>)[0]
+            : null
         const msg =
           (json &&
             (json.message ||
-              (json.errors && Object.values(json.errors)[0]?.[0]))) ||
+              (Array.isArray(firstError) ? firstError[0] : null))) ||
           'Failed to save booking product.'
         setError(typeof msg === 'string' ? msg : 'Failed to save booking product.')
         return
@@ -289,10 +294,13 @@ export default function BookingProductUpsertModal({
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
-                <select multiple value={categoryIds} onChange={(e) => setCategoryIds(Array.from(e.target.selectedOptions).map((opt) => opt.value))} className="w-full rounded border border-gray-300 px-3 py-2 text-sm min-h-28" disabled={submitting}>
-                  {categories.map((c) => (<option key={c.id} value={String(c.id)}>{c.name}</option>))}
-                </select>
+                <BookingProductCategoriesPicker
+                  categories={categories}
+                  value={categoryIds}
+                  onChange={setCategoryIds}
+                  disabled={submitting}
+                  label="Categories"
+                />
               </div>
 
               <div>
