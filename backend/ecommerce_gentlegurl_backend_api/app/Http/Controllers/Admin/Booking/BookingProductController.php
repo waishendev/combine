@@ -24,10 +24,11 @@ class BookingProductController extends Controller
 
         if ($request->filled('search')) {
             $search = trim((string) $request->input('search'));
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                  ->orWhere('barcode', 'like', "%{$search}%")
-                  ->orWhereHas('category', fn($cq) => $cq->where('name', 'like', "%{$search}%"));
+            $keyword = mb_strtolower($search);
+            $query->where(function ($q) use ($keyword) {
+                $q->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"])
+                  ->orWhereRaw('LOWER(COALESCE(barcode, \'\')) like ?', ["%{$keyword}%"])
+                  ->orWhereHas('category', fn($cq) => $cq->whereRaw('LOWER(COALESCE(name, \'\')) like ?', ["%{$keyword}%"]));
             });
         }
 
