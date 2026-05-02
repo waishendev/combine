@@ -122,15 +122,16 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
                         'mailgun_message' => $result['message'] ?? null,
                     ]);
                 } else {
+                    $error = is_array($result) ? ($result['error'] ?? 'Unknown error') : 'MailgunService returned no result';
                     Log::error('Failed to send email verification via MailgunService', [
                         'customer_id' => $this->id,
                         'email' => $this->getEmailForVerification(),
-                        'error' => $result['error'] ?? 'Unknown error',
+                        'error' => $error,
                     ]);
                     // 回退到默认通知
-                    $this->notify(new CustomerVerifyEmail());
+                    $this->notifyNow(new CustomerVerifyEmail());
                 }
-            } catch (\Exception $e) {
+            } catch (\Throwable $e) {
                 Log::error('Exception in sendEmailVerificationNotification with MailgunService', [
                     'customer_id' => $this->id,
                     'email' => $this->getEmailForVerification(),
@@ -138,11 +139,11 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
                     'trace' => $e->getTraceAsString(),
                 ]);
                 // 回退到默认通知
-                $this->notify(new CustomerVerifyEmail());
+                $this->notifyNow(new CustomerVerifyEmail());
             }
         } else {
             // 使用默认的通知系统
-            $this->notify(new CustomerVerifyEmail());
+            $this->notifyNow(new CustomerVerifyEmail());
         }
     }
 

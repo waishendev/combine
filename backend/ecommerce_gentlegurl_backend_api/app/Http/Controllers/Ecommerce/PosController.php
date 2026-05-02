@@ -4015,7 +4015,7 @@ class PosController extends Controller
         $booking = $this->resolveBookingForReceiptEmail($order);
 
         if ($booking) {
-            Mail::to($validated['email'])->queue(new BookingSettlementReceiptMail(
+            Mail::to($validated['email'])->send(new BookingSettlementReceiptMail(
                 bookingReference: (string) ($booking->booking_code ?? ''),
                 appointmentAt: $booking->start_at?->format('Y-m-d H:i') ?? '—',
                 orderNumber: $orderNumber,
@@ -4029,7 +4029,7 @@ class PosController extends Controller
                 items: $itemsPayload,
             ));
         } else {
-            Mail::to($validated['email'])->queue(new PosOrderReceiptMail(
+            Mail::to($validated['email'])->send(new PosOrderReceiptMail(
                 orderNumber: $orderNumber,
                 placedAt: $placedAt,
                 totalAmount: (float) ($order->grand_total ?? 0),

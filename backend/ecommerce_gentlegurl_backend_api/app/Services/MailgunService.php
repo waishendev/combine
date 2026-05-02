@@ -8,11 +8,13 @@ use Mailgun\Mailgun;
 class MailgunService
 {
     private ?Mailgun $mg = null;
+    private ?string $configuredDomain = null;
 
     public function __construct()
     {
         $apiKey = config('services.mailgun.secret');
         $domain = config('services.mailgun.domain');
+        $this->configuredDomain = $domain ? (string) $domain : null;
         
         if (!$apiKey || !$domain) {
             Log::error('MailgunService: Missing API key or domain', [
@@ -52,7 +54,7 @@ class MailgunService
             return null;
         }
 
-        $domain = config('services.mailgun.domain');
+        $domain = (string) config('services.mailgun.domain');
         $fromAddress = config('mail.from.address', 'no-reply@' . $domain);
         $fromName = config('mail.from.name', 'Gentlegurls');
 
@@ -98,6 +100,52 @@ class MailgunService
                 'message' => $responseMessage,
             ];
         } catch (\Exception $e) {
+            // Common pitfall: Mailgun sandbox domains only deliver to authorized recipients.
+            // If we detect a sandbox domain and a non-sandbox "from" domain, retry once with the from-domain.
+            $fromDomain = null;
+            if (is_string($fromAddress) && str_contains($fromAddress, '@')) {
+                $fromDomain = trim((string) substr(strrchr($fromAddress, '@') ?: '', 1));
+            }
+            $isSandbox = str_starts_with(strtolower(trim($domain)), 'sandbox');
+            $canRetry = $isSandbox && $fromDomain && $fromDomain !== $domain && !str_starts_with(strtolower($fromDomain), 'sandbox');
+
+            if ($canRetry) {
+                try {
+                    Log::warning('MailgunService: Primary domain appears sandbox; retrying with from-domain', [
+                        'to' => $to,
+                        'subject' => $subject,
+                        'primary_domain' => $domain,
+                        'retry_domain' => $fromDomain,
+                    ]);
+
+                    $retryResult = $this->mg->messages()->send($fromDomain, $params);
+                    $responseMessage = $retryResult->getMessage();
+                    $responseId = $retryResult->getId();
+
+                    Log::info('✅ MailgunService: Email sent successfully via retry domain', [
+                        'to' => $to,
+                        'subject' => $subject,
+                        'mailgun_message_id' => $responseId,
+                        'mailgun_response' => $responseMessage,
+                        'domain' => $fromDomain,
+                    ]);
+
+                    return [
+                        'success' => true,
+                        'id' => $responseId,
+                        'message' => $responseMessage,
+                    ];
+                } catch (\Exception $retryException) {
+                    Log::error('MailgunService: Retry send failed', [
+                        'to' => $to,
+                        'subject' => $subject,
+                        'primary_domain' => $domain,
+                        'retry_domain' => $fromDomain,
+                        'error' => $retryException->getMessage(),
+                    ]);
+                }
+            }
+
             Log::error('MailgunService: Failed to send email', [
                 'to' => $to,
                 'subject' => $subject,
