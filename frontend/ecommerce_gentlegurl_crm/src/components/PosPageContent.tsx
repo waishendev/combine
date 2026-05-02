@@ -736,7 +736,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [discountRemarkDraft, setDiscountRemarkDraft] = useState('')
   const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('cash')
   const [cashReceived, setCashReceived] = useState('')
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
@@ -750,7 +750,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     order_number: string
     receipt_public_url: string | null
     total: number
-    payment_method: 'cash' | 'qrpay'
+    payment_method: 'cash' | 'qrpay' | 'billplz_credit_card'
     paid_amount: number
     change_amount: number
   }>(null)
@@ -1840,7 +1840,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const json = await res.json().catch(() => null)
       const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
       const rows = Array.isArray(payload) ? payload : Array.isArray((payload as any)?.data) ? (payload as any).data : []
-      setBookingProducts(rows.map((r: any) => ({ id: Number(r.id), name: String(r.name ?? ''), price: Number(r.price ?? 0), image_url: r.image_url ?? null, category: r.category ?? null, is_active: Boolean(r.is_active ?? true) })).filter((r) => r.id > 0 && r.is_active))
+      setBookingProducts(
+        rows
+          .map((row: any) => ({
+            id: Number(row.id),
+            name: String(row.name ?? ''),
+            price: Number(row.price ?? 0),
+            image_url: row.image_url ?? null,
+            category: row.category ?? null,
+            is_active: Boolean(row.is_active ?? true),
+          }))
+          .filter((row: { id: number; is_active: boolean }) => row.id > 0 && row.is_active),
+      )
     } finally {
       setBookingProductsLoading(false)
     }
@@ -3872,7 +3883,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     }
 
-    if (paymentMethod === 'qrpay') {
+    if (paymentMethod === 'qrpay' || paymentMethod === 'billplz_credit_card') {
       await finalizeCheckout({ paid_amount: cartTotal, change_amount: 0 })
       return
     }
@@ -7147,7 +7158,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                 <p className="mb-4 text-sm font-bold text-gray-800">Payment Method</p>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
                     <div className="flex items-center gap-2">
                       <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -7165,6 +7176,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
                     </div>
                     <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-5 w-5 text-blue-600" />
+                  </label>
+                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all ${paymentMethod === 'billplz_credit_card' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
+                    <div className="flex items-center gap-2">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V9a2 2 0 012-2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 10h20" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 15h4" />
+                      </svg>
+                      <span className={paymentMethod === 'billplz_credit_card' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Credit Card</span>
+                    </div>
+                    <input type="radio" checked={paymentMethod === 'billplz_credit_card'} onChange={() => setPaymentMethod('billplz_credit_card')} className="h-5 w-5 text-blue-600" />
                   </label>
                 </div>
               </div>

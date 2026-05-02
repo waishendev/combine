@@ -588,7 +588,7 @@ class PosController extends Controller
     public function collectAppointmentPayment(Request $request, int $id)
     {
         $validated = $request->validate([
-            'payment_method' => ['required', 'in:cash,qrpay'],
+            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card'],
             'discount_type' => ['nullable', 'in:percentage,fixed'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'discount_remark' => ['nullable', 'string', 'max:255'],
@@ -769,7 +769,7 @@ class PosController extends Controller
     public function finalizeAppointmentZeroSettlement(Request $request, int $id, OrderPaymentService $orderPaymentService)
     {
         $validated = $request->validate([
-            'payment_method' => ['required', 'in:cash,qrpay'],
+            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card'],
         ]);
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
@@ -2968,7 +2968,7 @@ class PosController extends Controller
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
     {
         $validated = $request->validate([
-            'payment_method' => ['required', 'in:cash,qrpay'],
+            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:32'],
