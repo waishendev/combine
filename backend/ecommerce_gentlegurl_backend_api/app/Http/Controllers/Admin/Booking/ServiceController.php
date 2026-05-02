@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ServiceController extends Controller
 {
@@ -222,6 +223,116 @@ class ServiceController extends Controller
         $service->delete();
     
         return $this->respond(null);
+    }
+
+    public function bulkUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:booking_services,id'],
+
+            'service_type' => ['nullable', 'in:premium,standard'],
+            'duration_min' => ['nullable', 'integer', 'min:1'],
+            'service_price' => ['nullable', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+            'price_mode' => ['nullable', 'in:fixed,range'],
+            'price_range_min' => ['nullable', 'numeric', 'min:0'],
+            'price_range_max' => ['nullable', 'numeric', 'min:0'],
+            'is_active' => ['nullable', 'boolean'],
+            'allow_photo_upload' => ['nullable', 'boolean'],
+
+            'allowed_staff_ids' => ['nullable', 'array', 'min:1'],
+            'allowed_staff_ids.*' => ['integer', 'distinct'],
+            'primary_slots' => ['nullable', 'array'],
+            'primary_slots.*' => ['date_format:H:i'],
+
+            'questions' => ['nullable', 'array'],
+            'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+            'questions.*.description' => ['nullable', 'string'],
+            'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
+            'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
+            'questions.*.is_required' => ['nullable', 'boolean'],
+            'questions.*.is_active' => ['nullable', 'boolean'],
+            'questions.*.options' => ['nullable', 'array'],
+            'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+            'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
+            'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
+            'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
+            'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
+            'questions.*.options.*.is_active' => ['nullable', 'boolean'],
+        ]);
+
+        $services = BookingService::query()
+            ->whereIn('id', $validated['ids'])
+            ->get();
+
+        $payload = collect($validated)->except('ids')->toArray();
+
+        // Normalize payload bits
+        $hasAllowedStaff = array_key_exists('allowed_staff_ids', $payload);
+        $hasPrimarySlots = array_key_exists('primary_slots', $payload);
+        $hasQuestions = array_key_exists('questions', $payload);
+        $allowedStaffIds = $hasAllowedStaff ? $this->resolveAllowedStaffIds($payload['allowed_staff_ids'] ?? []) : null;
+        $primarySlots = $hasPrimarySlots ? ($payload['primary_slots'] ?? []) : null;
+        $questions = $hasQuestions ? ($payload['questions'] ?? []) : null;
+        unset($payload['allowed_staff_ids'], $payload['primary_slots'], $payload['questions']);
+
+        foreach ($services as $service) {
+            // Validate range mode constraints if present
+            $nextPriceMode = array_key_exists('price_mode', $payload)
+                ? ($payload['price_mode'] ?? null)
+                : ($service->price_mode ?? 'fixed');
+
+            if ($nextPriceMode === 'range') {
+                $min = array_key_exists('price_range_min', $payload) ? $payload['price_range_min'] : $service->price_range_min;
+                $max = array_key_exists('price_range_max', $payload) ? $payload['price_range_max'] : $service->price_range_max;
+                $min = (float) ($min ?? 0);
+                $max = (float) ($max ?? 0);
+
+                if ($min > $max) {
+                    throw ValidationException::withMessages([
+                        'price_range_min' => 'Range min must be less than or equal to range max.',
+                    ])->status(422);
+                }
+            }
+
+            $next = $payload;
+
+            // Keep legacy price field in sync where applicable.
+            if (array_key_exists('service_price', $payload) && ! array_key_exists('price', $payload)) {
+                $next['price'] = $payload['service_price'];
+            }
+
+            if (array_key_exists('price_mode', $payload)) {
+                if ($payload['price_mode'] === 'range') {
+                    $next['price_range_min'] = $next['price_range_min'] ?? 0;
+                    $next['price_range_max'] = $next['price_range_max'] ?? 0;
+                } else {
+                    $next['price_range_min'] = null;
+                    $next['price_range_max'] = null;
+                }
+            }
+
+            if (! empty($next)) {
+                $service->fill($next);
+                $service->save();
+            }
+
+            if ($hasAllowedStaff && $allowedStaffIds !== null) {
+                $this->syncAllowedStaffs($service, $allowedStaffIds);
+            }
+            if ($hasPrimarySlots && $primarySlots !== null) {
+                $this->syncPrimarySlots($service, $primarySlots);
+            }
+            if ($hasQuestions && $questions !== null) {
+                $this->syncQuestions($service, $questions);
+            }
+        }
+
+        return $this->respond(
+            $services->load(['allowedStaffs:id,name', 'primarySlots']),
+            __('Services updated successfully.')
+        );
     }
 
     public function exportCsv(Request $request)

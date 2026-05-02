@@ -33,6 +33,9 @@ interface BookingServiceRowProps {
   canUpdate?: boolean
   canDelete?: boolean
   canViewAllowedStaff?: boolean
+  showSelection?: boolean
+  isSelected?: boolean
+  onToggleSelect?: (service: BookingServiceRowData, selected: boolean) => void
   onEdit?: (service: BookingServiceRowData) => void
   onDelete?: (service: BookingServiceRowData) => void
   onViewAllowedStaff?: (service: BookingServiceRowData) => void
@@ -44,6 +47,9 @@ export default function BookingServiceRow({
   canUpdate = false,
   canDelete = false,
   canViewAllowedStaff = false,
+  showSelection = false,
+  isSelected = false,
+  onToggleSelect,
   onEdit,
   onDelete,
   onViewAllowedStaff,
@@ -93,6 +99,17 @@ export default function BookingServiceRow({
 
   return (
     <tr className="text-sm">
+      {showSelection && (
+        <td className="px-4 py-2 border border-gray-200">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600"
+            checked={isSelected}
+            onChange={(event) => onToggleSelect?.(service, event.target.checked)}
+            aria-label={`Select ${service.name}`}
+          />
+        </td>
+      )}
       <td className="px-4 py-2 border border-gray-200">{service.imageUrl ? <img src={service.imageUrl} alt={service.name} className="h-10 w-10 rounded object-cover" /> : <div className="h-10 w-10 rounded bg-gray-200" />}</td>
       <td className="px-4 py-2 border border-gray-200">{service.name}</td>
       <td className="px-4 py-2 border border-gray-200">{service.serviceType || '-'}</td>

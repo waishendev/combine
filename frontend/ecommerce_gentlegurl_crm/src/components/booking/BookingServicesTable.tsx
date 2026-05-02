@@ -15,6 +15,7 @@ import BookingServiceCreateModal from './BookingServiceCreateModal'
 import BookingServiceEditModal from './BookingServiceEditModal'
 import BookingServiceDeleteModal from './BookingServiceDeleteModal'
 import BookingServiceAllowedStaffPanel from './BookingServiceAllowedStaffPanel'
+import BookingServiceBulkUpdateModal from './BookingServiceBulkUpdateModal'
 import {
   type BookingServiceApiItem,
   mapBookingServiceApiItemToRow,
@@ -75,6 +76,8 @@ export default function BookingServicesTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<keyof BookingServiceRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false)
   const [editingServiceId, setEditingServiceId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BookingServiceRowData | null>(null)
   const [viewingAllowedStaffService, setViewingAllowedStaffService] =
@@ -90,6 +93,7 @@ export default function BookingServicesTable({
   const canDelete = permissions.includes('booking.services.delete')
   const canViewAllowedStaff = permissions.includes('booking.services.view')
   const showActions = canUpdate || canDelete
+  const showSelection = canUpdate
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -216,6 +220,16 @@ export default function BookingServicesTable({
     return () => controller.abort()
   }, [fetchServices])
 
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set<number>()
+      rows.forEach((row) => {
+        if (prev.has(row.id)) next.add(row.id)
+      })
+      return next
+    })
+  }, [rows])
+
   const handleSort = (column: keyof BookingServiceRowData) => {
     if (sortColumn === column) {
       if (sortDirection === 'asc') {
@@ -295,9 +309,40 @@ export default function BookingServicesTable({
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 11 : 10
+  const colCount = 10 + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
 
   const totalPages = meta.last_page || 1
+
+  const visibleRowIds = useMemo(() => sortedRows.map((row) => row.id), [sortedRows])
+  const allVisibleSelected =
+    visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedIds.has(id))
+  const hasSelection = selectedIds.size > 0
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) {
+        visibleRowIds.forEach((id) => next.add(id))
+      } else {
+        visibleRowIds.forEach((id) => next.delete(id))
+      }
+      return next
+    })
+  }
+
+  const handleToggleSelect = (service: BookingServiceRowData, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(service.id)
+      else next.delete(service.id)
+      return next
+    })
+  }
+
+  const selectedServices = useMemo(() => {
+    const selectedMap = new Set(selectedIds)
+    return rows.filter((row) => selectedMap.has(row.id))
+  }, [rows, selectedIds])
 
   const activeFilters = useMemo(() => {
     return (Object.entries(filters) as [keyof BookingServiceFilterValues, string][]) 
@@ -446,6 +491,16 @@ export default function BookingServicesTable({
 
   return (
     <div>
+      {isBulkUpdateOpen && (
+        <BookingServiceBulkUpdateModal
+          show={isBulkUpdateOpen}
+          selectedServices={selectedServices}
+          onClose={() => setIsBulkUpdateOpen(false)}
+          onSuccess={async () => {
+            await fetchServices()
+          }}
+        />
+      )}
       {isFilterModalOpen && (
         <BookingServiceFiltersWrapper
           inputs={inputs}
@@ -488,6 +543,18 @@ export default function BookingServicesTable({
             <i className="fa-solid fa-filter" />
             {t('common.filter')}
           </button>
+
+          {showSelection && (
+            <button
+              className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+              onClick={() => setIsBulkUpdateOpen(true)}
+              disabled={!hasSelection}
+              type="button"
+            >
+              <i className="fa-solid fa-pen-to-square" />
+              Bulk Update
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -586,6 +653,17 @@ export default function BookingServicesTable({
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {showSelection && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                    checked={allVisibleSelected}
+                    onChange={(event) => handleToggleSelectAll(event.target.checked)}
+                    aria-label="Select all services"
+                  />
+                </th>
+              )}
               {(
                 [
                   { key: 'imageUrl', label: 'Image' },
@@ -636,6 +714,9 @@ export default function BookingServicesTable({
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   canViewAllowedStaff={canViewAllowedStaff}
+                  showSelection={showSelection}
+                  isSelected={selectedIds.has(service.id)}
+                  onToggleSelect={handleToggleSelect}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingServiceId(service.id)

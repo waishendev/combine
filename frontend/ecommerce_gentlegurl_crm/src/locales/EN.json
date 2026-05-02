@@ -179,12 +179,15 @@
   "common.permissions": "Permissions",
 
   "booking.categoriesTitle": "Service Categories",
+  "booking.productCategoriesTitle": "Product Categories",
   "booking.allowedStaffDetailTitle": "Services",
   "booking.viewAllowedStaff": "View allowed staff",
   "booking.allowedStaffListHeading": "Staff",
   "booking.staffNamesUnavailable": "Names are not available for this list; the count above reflects how many staff can perform this service.",
   "booking.servicesSearchPlaceholder": "Search services...",
   "booking.servicesNoMatches": "No services match your search.",
+  "booking.breadcrumbSection": "Booking",
+  "booking.productsTitle": "Booking Products",
 
   "product.title": "Products",
   "product.back": "Back",
