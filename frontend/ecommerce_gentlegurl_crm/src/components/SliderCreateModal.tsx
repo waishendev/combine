@@ -8,6 +8,7 @@ import { mapSliderApiItemToRow, type SliderApiItem } from './sliderUtils'
 import { useI18n } from '@/lib/i18n'
 
 interface SliderCreateModalProps {
+  sliderType?: 'ecommerce' | 'booking'
   onClose: () => void
   onSuccess: (slider: SliderRowData) => void
 }
@@ -33,6 +34,7 @@ const initialFormState: FormState = {
 export default function SliderCreateModal({
   onClose,
   onSuccess,
+  sliderType = 'ecommerce',
 }: SliderCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -131,6 +133,7 @@ export default function SliderCreateModal({
       formData.append('start_at', trimmedStartAt)
       formData.append('end_at', trimmedEndAt)
       formData.append('is_active', '1')
+      formData.append('type', sliderType)
 
       const res = await fetch('/api/proxy/ecommerce/home-sliders', {
         method: 'POST',

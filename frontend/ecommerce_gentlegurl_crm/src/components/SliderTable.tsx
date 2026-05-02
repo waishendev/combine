@@ -17,6 +17,7 @@ import { useI18n } from '@/lib/i18n'
 
 interface SliderTableProps {
   permissions: string[]
+  sliderType?: 'ecommerce' | 'booking'
 }
 
 type Meta = {
@@ -44,6 +45,7 @@ type SliderApiResponse = {
 
 export default function SliderTable({
   permissions,
+  sliderType = 'ecommerce',
 }: SliderTableProps) {
   const { t } = useI18n()
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -108,6 +110,7 @@ export default function SliderTable({
         qs.set('page', String(currentPage))
         qs.set('per_page', String(pageSize))
 
+        qs.set('type', sliderType)
         const res = await fetch(`/api/proxy/ecommerce/home-sliders?${qs.toString()}`, {
           cache: 'no-store',
           signal: controller.signal,
@@ -182,7 +185,7 @@ export default function SliderTable({
 
     fetchSliders()
     return () => controller.abort()
-  }, [currentPage, pageSize])
+  }, [currentPage, pageSize, sliderType])
 
   const handleSort = (column: keyof SliderRowData) => {
     if (sortColumn === column) {
@@ -498,6 +501,7 @@ export default function SliderTable({
     <div>
       {isCreateModalOpen && (
         <SliderCreateModal
+          sliderType={sliderType}
           onClose={() => setIsCreateModalOpen(false)}
           onSuccess={(slider) => {
             setIsCreateModalOpen(false)
@@ -636,6 +640,7 @@ export default function SliderTable({
 
       {editingSliderId !== null && (
         <SliderEditModal
+          sliderType={sliderType}
           sliderId={editingSliderId}
           onClose={() => setEditingSliderId(null)}
           onSuccess={(slider) => {

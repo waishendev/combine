@@ -12,6 +12,7 @@ class HomeSlider extends Model
         'subtitle',
         'image_path',
         'mobile_image_path',
+        'type',
         'button_label',
         'button_link',
         'start_at',

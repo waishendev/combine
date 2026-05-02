@@ -32,6 +32,7 @@ class PublicHomepageController extends Controller
             $now = Carbon::now();
 
             $sliders = HomeSlider::query()
+                ->where('type', $type)
                 ->where('is_active', true)
                 ->where(function ($q) use ($now) {
                     $q->whereNull('start_at')->orWhere('start_at', '<=', $now);

@@ -280,6 +280,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             href: '/slides',
             requiredPermission: 'ecommerce.sliders.view',
           },
+          {
+            key: 'booking-slides',
+            label: 'Booking Slides',
+            href: '/booking/slides',
+            requiredPermission: 'ecommerce.sliders.view',
+          },
         ],
       },
   

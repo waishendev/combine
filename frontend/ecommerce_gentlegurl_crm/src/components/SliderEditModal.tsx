@@ -8,6 +8,7 @@ import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface SliderEditModalProps {
+  sliderType?: 'ecommerce' | 'booking'
   sliderId: number
   onClose: () => void
   onSuccess: (slider: SliderRowData) => void
@@ -37,6 +38,7 @@ export default function SliderEditModal({
   sliderId,
   onClose,
   onSuccess,
+  sliderType = 'ecommerce',
 }: SliderEditModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -246,6 +248,7 @@ export default function SliderEditModal({
       formData.append('start_at', trimmedStartAt)
       formData.append('end_at', trimmedEndAt)
       formData.append('is_active', form.isActive === 'active' ? '1' : '0')
+      formData.append('type', sliderType)
 
       const res = await fetch(`/api/proxy/ecommerce/home-sliders/${sliderId}`, {
         method: 'POST',
