@@ -19,7 +19,7 @@ class BookingProductController extends Controller
             ->with('category')
             ->leftJoin('booking_product_categories as bpc', 'booking_products.category_id', '=', 'bpc.id')
             ->orderByRaw('COALESCE(bpc.sort_order, 999999) asc')
-            ->orderByRaw('COALESCE(booking_products.name, "") asc')
+            ->orderByRaw("COALESCE(booking_products.name, '') asc")
             ->orderBy('booking_products.id');
 
         if ($request->filled('search')) {
