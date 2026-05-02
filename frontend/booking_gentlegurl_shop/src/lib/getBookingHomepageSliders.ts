@@ -11,11 +11,15 @@ export type BookingHomepageSlider = {
 };
 
 export async function getBookingHomepageSliders(): Promise<BookingHomepageSlider[]> {
-  const base = process.env.NEXT_PUBLIC_API_BASE_URL;
-  if (!base) return [];
-  const url = `${base}/public/shop/sliders?type=booking`;
-  const res = await fetch(url, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const params = new URLSearchParams({ type: 'booking' });
+  const res = await fetch(`/api/proxy/public/shop/sliders?${params.toString()}`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'X-Workspace': 'booking' },
+    credentials: 'include',
+  });
+
   if (!res.ok) return [];
-  const json = await res.json();
+
+  const json = await res.json().catch(() => null);
   return Array.isArray(json?.data) ? json.data : [];
 }
