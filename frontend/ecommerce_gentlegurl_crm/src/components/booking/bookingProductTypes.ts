@@ -11,8 +11,8 @@ export type BookingProductRowData = {
   price: number
   barcode?: string | null
   description?: string | null
-  category_id?: number | null
-  category?: BookingProductCategory | null
+  category_ids?: number[]
+  categories?: BookingProductCategory[]
   is_active: boolean
   image_path?: string | null
   image_url?: string | null

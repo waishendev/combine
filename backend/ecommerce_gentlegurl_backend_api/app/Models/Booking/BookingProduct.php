@@ -16,7 +16,6 @@ class BookingProduct extends Model
         'barcode',
         'description',
         'image_path',
-        'category_id',
         'is_active',
     ];
 
@@ -29,9 +28,10 @@ class BookingProduct extends Model
         'is_active' => 'boolean',
     ];
 
-    public function category()
+    public function categories()
     {
-        return $this->belongsTo(BookingProductCategory::class, 'category_id');
+        return $this->belongsToMany(BookingProductCategory::class, 'booking_product_category_product')
+            ->withTimestamps();
     }
 
     public function getImageUrlAttribute(): ?string

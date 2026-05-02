@@ -24,21 +24,28 @@ class BookingProductSeeder extends Seeder
         }
 
         $rows = [
-            ['name' => 'Hair Treatment Add-on', 'price' => 39.00, 'description' => 'Express treatment booster during appointment.', 'category' => 'Treatment'],
-            ['name' => 'Scalp Ampoule', 'price' => 25.00, 'description' => 'Scalp nourishing ampoule add-on.', 'category' => 'Scalp Care'],
-            ['name' => 'Premium Wash Add-on', 'price' => 18.00, 'description' => 'Premium wash and rinse upgrade.', 'category' => 'Wash'],
-            ['name' => 'Styling Add-on', 'price' => 22.00, 'description' => 'Quick styling finish add-on.', 'category' => 'Styling'],
+            ['name' => 'Hair Treatment Add-on', 'price' => 39.00, 'description' => 'Express treatment booster during appointment.', 'categories' => ['Treatment', 'Styling']],
+            ['name' => 'Scalp Ampoule', 'price' => 25.00, 'description' => 'Scalp nourishing ampoule add-on.', 'categories' => ['Scalp Care', 'Treatment']],
+            ['name' => 'Premium Wash Add-on', 'price' => 18.00, 'description' => 'Premium wash and rinse upgrade.', 'categories' => ['Wash']],
+            ['name' => 'Styling Add-on', 'price' => 22.00, 'description' => 'Quick styling finish add-on.', 'categories' => ['Styling']],
         ];
 
         foreach ($rows as $row) {
-            BookingProduct::query()->updateOrCreate(['name' => $row['name']], [
+            $product = BookingProduct::query()->updateOrCreate(['name' => $row['name']], [
                 'price' => $row['price'],
                 'barcode' => null,
                 'description' => $row['description'],
                 'image_path' => null,
-                'category_id' => $categoryMap[$row['category']] ?? null,
                 'is_active' => true,
             ]);
+
+            $product->categories()->sync(
+                collect($row['categories'])
+                    ->map(fn ($name) => $categoryMap[$name] ?? null)
+                    ->filter()
+                    ->values()
+                    ->all()
+            );
         }
     }
 }

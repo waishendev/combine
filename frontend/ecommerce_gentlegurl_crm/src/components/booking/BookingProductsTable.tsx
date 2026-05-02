@@ -210,7 +210,13 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
       const res = await fetch('/api/proxy/admin/booking/products/import', { method: 'POST', body: form })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        throw new Error((json && (json.message || (json.errors && Object.values(json.errors)[0]?.[0]))) || 'Import failed.')
+        const firstError =
+          json && typeof json === 'object' && 'errors' in json && json.errors && typeof json.errors === 'object'
+            ? Object.values(json.errors as Record<string, unknown[]>)[0]
+            : null
+        throw new Error(
+          (json && (json.message || (Array.isArray(firstError) ? firstError[0] : null))) || 'Import failed.',
+        )
       }
       await fetchProducts()
     } catch (e) {
@@ -428,7 +434,11 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                   </td>
                   <td className="px-4 py-2 border border-gray-200">{p.name}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {Number(p.price ?? 0).toFixed(2)}</td>
-                  <td className="px-4 py-2 border border-gray-200">{p.category?.name ?? '-'}</td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    {(p.categories ?? []).length > 0
+                      ? (p.categories ?? []).map((c) => c.name).join(', ')
+                      : '-'}
+                  </td>
                   <td className="px-4 py-2 border border-gray-200">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
                       {p.is_active ? 'Active' : 'Inactive'}
