@@ -11,7 +11,11 @@ class BookingProductCategoryController extends Controller
     public function index()
     {
         return $this->respond(
-            BookingProductCategory::query()->orderBy('sort_order')->orderBy('id')->get()
+            BookingProductCategory::query()
+                ->select(['id', 'name', 'sort_order', 'is_active'])
+                ->orderBy('sort_order')
+                ->orderBy('id')
+                ->get()
         );
     }
 
