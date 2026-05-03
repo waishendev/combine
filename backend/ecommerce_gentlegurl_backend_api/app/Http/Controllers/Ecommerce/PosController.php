@@ -348,7 +348,7 @@ class PosController extends Controller
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (strtoupper($guestName) === 'UNKNOWN'
+                'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
                 ? 'Walk-in / Unknown'
                 : (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-'))),
                 'guest_name' => $guestName !== '' ? $guestName : null,
@@ -609,7 +609,7 @@ class PosController extends Controller
             return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
         }
 
-        if (strtoupper(trim((string) ($booking->guest_name ?? ''))) === 'UNKNOWN') {
+        if (str_starts_with(strtoupper(trim((string) ($booking->guest_name ?? ''))), 'UNKNOWN')) {
             $booking->customer_id = null;
             $booking->guest_name = 'UNKNOWN';
             $booking->guest_phone = null;
@@ -796,7 +796,7 @@ class PosController extends Controller
             return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
         }
 
-        if (strtoupper(trim((string) ($booking->guest_name ?? ''))) === 'UNKNOWN') {
+        if (str_starts_with(strtoupper(trim((string) ($booking->guest_name ?? ''))), 'UNKNOWN')) {
             $booking->customer_id = null;
             $booking->guest_name = 'UNKNOWN';
             $booking->guest_phone = null;
@@ -1773,7 +1773,7 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+            $isUnknownGuest = str_starts_with(strtoupper($guestName), 'UNKNOWN');
 
             if (! $isUnknownGuest && ($guestName === '' || $guestPhone === '' || $guestEmail === '')) {
                 return $this->respondError(__('Guest name, phone, and email are required.'), 422);
@@ -2285,7 +2285,7 @@ class PosController extends Controller
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
         $guestEmail = trim((string) ($booking->guest_email ?? ''));
-        $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+        $isUnknownGuest = str_starts_with(strtoupper($guestName), 'UNKNOWN');
         $hasCompleteGuest = $guestName !== '' && ($guestPhone !== '' || $guestEmail !== '');
         if (! $hasMember && ! $isUnknownGuest && ! $hasCompleteGuest) {
             return $this->respondError(__('Settlement appointment must have a member or complete guest details.'), 422);
@@ -3149,7 +3149,7 @@ class PosController extends Controller
             $checkoutGuestName = trim((string) ($validated['guest_name'] ?? ''));
             $checkoutGuestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $checkoutGuestEmail = trim((string) ($validated['guest_email'] ?? ''));
-            $checkoutUnknownGuest = strtoupper($checkoutGuestName) === 'UNKNOWN';
+            $checkoutUnknownGuest = str_starts_with(strtoupper($checkoutGuestName), 'UNKNOWN');
             if ($checkoutUnknownGuest) {
                 $customerId = null;
                 $checkoutGuestPhone = '';
@@ -3210,7 +3210,7 @@ class PosController extends Controller
                             }
 
                             $guestName = strtoupper(trim((string) ($booking->guest_name ?? '')));
-                            if ($guestName === 'UNKNOWN') {
+                            if (str_starts_with($guestName, 'UNKNOWN')) {
                                 return 'unknown';
                             }
 
@@ -3302,7 +3302,7 @@ class PosController extends Controller
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
             $hasGuestPayload = $guestName !== '' || $guestPhone !== '' || $guestEmail !== '';
             if ($hasGuestPayload) {
-                $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+                $isUnknownGuest = str_starts_with(strtoupper($guestName), 'UNKNOWN');
                 if (! $isUnknownGuest && ($guestName === '' || $guestPhone === '' || $guestEmail === '')) {
                     abort(422, __('Guest name, phone, and email are all required when providing guest details.'));
                 }
@@ -3318,13 +3318,13 @@ class PosController extends Controller
             if (empty($customerId) && ! $hasGuestPayload) {
                 $guestLine = $cart->serviceItems->first(function (PosCartServiceItem $item) {
                     return empty($item->customer_id)
-                        && (trim((string) ($item->guest_email ?? '')) !== '' || strtoupper(trim((string) ($item->guest_name ?? ''))) === 'UNKNOWN');
+                        && (trim((string) ($item->guest_email ?? '')) !== '' || str_starts_with(strtoupper(trim((string) ($item->guest_name ?? ''))), 'UNKNOWN'));
                 });
                 if ($guestLine) {
                     $guestName = trim((string) ($guestLine->guest_name ?? ''));
                     $guestPhone = trim((string) ($guestLine->guest_phone ?? ''));
                     $guestEmail = trim((string) ($guestLine->guest_email ?? ''));
-                    if (strtoupper($guestName) === 'UNKNOWN') {
+                    if (str_starts_with(strtoupper($guestName), 'UNKNOWN')) {
                         $guestPhone = '';
                         $guestEmail = '';
                         $hasGuestPayload = true;
@@ -3339,13 +3339,13 @@ class PosController extends Controller
                     ->filter()
                     ->first(function (Booking $booking) {
                         return empty($booking->customer_id)
-                            && (trim((string) ($booking->guest_email ?? '')) !== '' || strtoupper(trim((string) ($booking->guest_name ?? ''))) === 'UNKNOWN');
+                            && (trim((string) ($booking->guest_email ?? '')) !== '' || str_starts_with(strtoupper(trim((string) ($booking->guest_name ?? ''))), 'UNKNOWN'));
                     });
                 if ($guestBooking) {
                     $guestName = trim((string) ($guestBooking->guest_name ?? ''));
                     $guestPhone = trim((string) ($guestBooking->guest_phone ?? ''));
                     $guestEmail = trim((string) ($guestBooking->guest_email ?? ''));
-                    if (strtoupper($guestName) === 'UNKNOWN') {
+                    if (str_starts_with(strtoupper($guestName), 'UNKNOWN')) {
                         $guestPhone = '';
                         $guestEmail = '';
                         $hasGuestPayload = true;
@@ -3566,7 +3566,7 @@ class PosController extends Controller
                 $guestName = trim((string) ($serviceItem->guest_name ?? ''));
                 $guestPhone = trim((string) ($serviceItem->guest_phone ?? ''));
                 $guestEmail = trim((string) ($serviceItem->guest_email ?? ''));
-                $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+                $isUnknownGuest = str_starts_with(strtoupper($guestName), 'UNKNOWN');
                 $hasGuestSnapshot = $guestName !== '' && $guestPhone !== '' && $guestEmail !== '';
 
                 if (! $serviceItem->customer_id && ! $isUnknownGuest && ! $hasGuestSnapshot) {
@@ -4201,7 +4201,7 @@ class PosController extends Controller
             }
 
             $bookingGuestName = trim((string) ($booking->guest_name ?? ''));
-            if (strtoupper($bookingGuestName) === 'UNKNOWN') {
+            if (str_starts_with(strtoupper($bookingGuestName), 'UNKNOWN')) {
                 Log::info('Booking confirmation email skipped — unknown guest.', ['booking_id' => $booking->id]);
                 continue;
             }
@@ -4263,7 +4263,7 @@ class PosController extends Controller
         }
 
         $bookingGuestName = trim((string) ($booking->guest_name ?? ''));
-        if (strtoupper($bookingGuestName) === 'UNKNOWN') {
+        if (str_starts_with(strtoupper($bookingGuestName), 'UNKNOWN')) {
             return;
         }
 
@@ -4506,7 +4506,7 @@ class PosController extends Controller
                 'booking_service_id' => (int) ($booking->service_id ?? 0),
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (strtoupper($guestName) === 'UNKNOWN'
+                'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
                 ? 'Walk-in / Unknown'
                 : (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-'))),
                 'guest_name' => $guestName !== '' ? $guestName : null,
@@ -4988,7 +4988,7 @@ class PosController extends Controller
         $name = trim((string) ($booking->guest_name ?? ''));
         $phone = trim((string) ($booking->guest_phone ?? ''));
         $email = trim((string) ($booking->guest_email ?? ''));
-        $isUnknownGuest = strtoupper($name) === 'UNKNOWN';
+        $isUnknownGuest = str_starts_with(strtoupper($name), 'UNKNOWN');
 
         return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
     }
@@ -5006,7 +5006,7 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
-            'customer_name' => (string) (strtoupper($guestName) === 'UNKNOWN'
+            'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
                 ? 'Walk-in / Unknown'
                 : (($booking->customer?->name ?? '') !== ''
                     ? $booking->customer?->name
