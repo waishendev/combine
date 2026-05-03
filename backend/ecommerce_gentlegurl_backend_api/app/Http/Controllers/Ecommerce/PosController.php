@@ -1534,15 +1534,13 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
-                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
-            }
-
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if ($guestPhone !== '' && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestName = $guestName !== '' ? $guestName : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
         }
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
 
@@ -1905,15 +1903,13 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
-                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
-            }
-
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if ($guestPhone !== '' && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestName = $guestName !== '' ? $guestName : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
         }
 
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
