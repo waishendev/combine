@@ -10,6 +10,8 @@ import BookingProductFiltersWrapper, { emptyBookingProductFilters, type BookingP
 import BookingProductUpsertModal from './BookingProductUpsertModal'
 import BookingProductDeleteModal from './BookingProductDeleteModal'
 import BookingProductBulkUpdateModal from './BookingProductBulkUpdateModal'
+import BookingProductCategoriesCell from './BookingProductCategoriesCell'
+import BookingProductCategoriesPanel from './BookingProductCategoriesPanel'
 import type { BookingProductCategory, BookingProductRowData } from './bookingProductTypes'
 
 type Meta = {
@@ -37,6 +39,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   const canCreate = permissions.includes('booking.services.create')
   const canUpdate = permissions.includes('booking.services.update')
   const canDelete = permissions.includes('booking.services.delete')
+  const canViewProductCategories = permissions.includes('booking.services.view')
   const showActions = canUpdate || canDelete
   const showSelection = canUpdate
 
@@ -56,6 +59,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   const [upsertOpen, setUpsertOpen] = useState(false)
   const [upsertTarget, setUpsertTarget] = useState<BookingProductRowData | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<BookingProductRowData | null>(null)
+  const [viewingCategoriesProduct, setViewingCategoriesProduct] = useState<BookingProductRowData | null>(null)
 
   const [isExporting, setIsExporting] = useState(false)
   const [isImporting, setIsImporting] = useState(false)
@@ -294,6 +298,13 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
         />
       )}
 
+      {viewingCategoriesProduct && (
+        <BookingProductCategoriesPanel
+          product={viewingCategoriesProduct}
+          onClose={() => setViewingCategoriesProduct(null)}
+        />
+      )}
+
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <div className="flex flex-wrap items-center gap-2">
           {canCreate && (
@@ -434,10 +445,14 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                   </td>
                   <td className="px-4 py-2 border border-gray-200">{p.name}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {Number(p.price ?? 0).toFixed(2)}</td>
-                  <td className="px-4 py-2 border border-gray-200">
-                    {(p.categories ?? []).length > 0
-                      ? (p.categories ?? []).map((c) => c.name).join(', ')
-                      : '-'}
+                  <td className="border border-gray-200 px-4 py-2">
+                    <BookingProductCategoriesCell
+                      product={p}
+                      canView={canViewProductCategories}
+                      onView={(row) => {
+                        if (canViewProductCategories) setViewingCategoriesProduct(row)
+                      }}
+                    />
                   </td>
                   <td className="px-4 py-2 border border-gray-200">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${p.is_active ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>

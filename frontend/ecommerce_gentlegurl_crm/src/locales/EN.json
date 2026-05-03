@@ -188,6 +188,9 @@
   "booking.servicesNoMatches": "No services match your search.",
   "booking.breadcrumbSection": "Booking",
   "booking.productsTitle": "Booking Products",
+  "booking.viewProductCategories": "View categories",
+  "booking.productCategoriesDetailTitle": "Booking product",
+  "booking.productCategoriesListHeading": "Categories",
 
   "product.title": "Products",
   "product.back": "Back",

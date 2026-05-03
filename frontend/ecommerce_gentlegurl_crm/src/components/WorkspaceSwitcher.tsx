@@ -16,7 +16,7 @@ type WorkspaceSwitcherProps = {
 }
 
 const segmentClass = (active: boolean) =>
-  `rounded-md px-3 py-1 text-xs font-semibold transition ${
+  `whitespace-nowrap rounded-md px-2 py-1 text-[10px] font-semibold transition sm:px-3 sm:text-xs ${
     active ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
   }`
 
@@ -66,7 +66,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   }
 
   return (
-    <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-1">
+    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 sm:gap-1 sm:p-1">
       {OPTIONS.map((option) => {
         const isActive = option.value === workspace && !isPosRoute
 
@@ -86,14 +86,16 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
           <Link href="/pos" className={segmentClass(isPosCheckout)}>
             POS
           </Link>
-          <Link href="/pos/appointments" className={segmentClass(isPosAppointments)}>
-            Appointments
+          <Link href="/pos/appointments" className={segmentClass(isPosAppointments)} title="Appointments">
+            <span className="xl:hidden">Apts</span>
+            <span className="hidden xl:inline">Appointments</span>
           </Link>
         </>
       )}
       {showSalesReport && (
-        <Link href="/reports/sales/visual" className={segmentClass(isSalesVisualRoute)}>
-          Daily Sales report
+        <Link href="/reports/sales/visual" className={segmentClass(isSalesVisualRoute)} title="Daily Sales report">
+          <span className="lg:hidden">Sales</span>
+          <span className="hidden lg:inline">Daily Sales report</span>
         </Link>
       )}
     </div>
