@@ -518,6 +518,20 @@ export default function SliderEditModal({
                       placeholder="Enter title"
                       disabled={disableForm}
                     />
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Title Alignment</label>
+                      <select
+                        name="content_align"
+                        value={form.content_align}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        disabled={disableForm}
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -537,6 +551,20 @@ export default function SliderEditModal({
                       placeholder="Enter subtitle"
                       disabled={disableForm}
                     />
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Subtitle Alignment</label>
+                      <select
+                        name="content_align"
+                        value={form.content_align}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        disabled={disableForm}
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -556,6 +584,20 @@ export default function SliderEditModal({
                       placeholder="Shop Now"
                       disabled={disableForm}
                     />
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Button Alignment</label>
+                      <select
+                        name="button_align"
+                        value={form.button_align}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        disabled={disableForm}
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -622,21 +664,6 @@ export default function SliderEditModal({
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Text Horizontal Position</label>
-                        <select
-                          name="content_align"
-                          value={form.content_align}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                          disabled={disableForm}
-                        >
-                          <option value="left">Left</option>
-                          <option value="center">Center</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </div>
-
-                      <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">Text Vertical Position</label>
                         <select
                           name="content_vertical"
@@ -651,20 +678,6 @@ export default function SliderEditModal({
                         </select>
                       </div>
 
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">Button Position</label>
-                        <select
-                          name="button_align"
-                          value={form.button_align}
-                          onChange={handleChange}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                          disabled={disableForm}
-                        >
-                          <option value="left">Left</option>
-                          <option value="center">Center</option>
-                          <option value="right">Right</option>
-                        </select>
-                      </div>
                     </div>
                   </div>
 

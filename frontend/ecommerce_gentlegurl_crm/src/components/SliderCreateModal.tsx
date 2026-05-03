@@ -387,6 +387,20 @@ export default function SliderCreateModal({
               placeholder="Enter title"
               disabled={submitting}
             />
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Title Alignment</label>
+              <select
+                name="content_align"
+                value={form.content_align}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2 text-sm"
+                disabled={submitting}
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
           </div>
 
           <div>
@@ -406,6 +420,20 @@ export default function SliderCreateModal({
               placeholder="Enter subtitle"
               disabled={submitting}
             />
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Subtitle Alignment</label>
+              <select
+                name="content_align"
+                value={form.content_align}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2 text-sm"
+                disabled={submitting}
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
           </div>
 
           <div>
@@ -425,6 +453,20 @@ export default function SliderCreateModal({
               placeholder="Shop Now"
               disabled={submitting}
             />
+            <div className="mt-2">
+              <label className="block text-xs font-medium text-gray-600 mb-1">Button Alignment</label>
+              <select
+                name="button_align"
+                value={form.button_align}
+                onChange={handleChange}
+                className="w-full border rounded px-3 py-2 text-sm"
+                disabled={submitting}
+              >
+                <option value="left">Left</option>
+                <option value="center">Center</option>
+                <option value="right">Right</option>
+              </select>
+            </div>
           </div>
 
           <div>
@@ -490,27 +532,11 @@ export default function SliderCreateModal({
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Text Horizontal Position</label>
-                  <select name="content_align" value={form.content_align} onChange={handleChange} className="w-full border rounded px-3 py-2" disabled={submitting}>
-                    <option value="left">Left</option>
-                    <option value="center">Center</option>
-                    <option value="right">Right</option>
-                  </select>
-                </div>
-                <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Text Vertical Position</label>
                   <select name="content_vertical" value={form.content_vertical} onChange={handleChange} className="w-full border rounded px-3 py-2" disabled={submitting}>
                     <option value="top">Top</option>
                     <option value="middle">Middle</option>
                     <option value="bottom">Bottom</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Button Position</label>
-                  <select name="button_align" value={form.button_align} onChange={handleChange} className="w-full border rounded px-3 py-2" disabled={submitting}>
-                    <option value="left">Left</option>
-                    <option value="center">Center</option>
-                    <option value="right">Right</option>
                   </select>
                 </div>
               </div>
