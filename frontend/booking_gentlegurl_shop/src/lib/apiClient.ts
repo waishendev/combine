@@ -702,7 +702,7 @@ export async function getBookingServiceDepositNote(): Promise<string | null> {
 
 export type BookingDepositTncSettings = {
   booking_deposit_tnc_enabled: boolean;
-  booking_deposit_tnc_text: string | null;
+  booking_deposit_tnc_text: string;
 };
 
 export async function getBookingDepositTncSettings(): Promise<BookingDepositTncSettings> {
@@ -712,7 +712,7 @@ export async function getBookingDepositTncSettings(): Promise<BookingDepositTncS
 
   const enabled = Boolean(response?.data?.settings?.booking_deposit_tnc_enabled);
   const rawText = response?.data?.settings?.booking_deposit_tnc_text;
-  const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : null;
+  const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : "";
 
   return {
     booking_deposit_tnc_enabled: enabled,

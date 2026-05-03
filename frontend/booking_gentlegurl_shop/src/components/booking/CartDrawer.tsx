@@ -89,7 +89,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [packageQtyBusyId, setPackageQtyBusyId] = useState<number | null>(null);
   const [photoBusyItemId, setPhotoBusyItemId] = useState<number | null>(null);
   const [depositTncEnabled, setDepositTncEnabled] = useState(false);
-  const [depositTncText, setDepositTncText] = useState<string | null>(null);
+  const [depositTncText, setDepositTncText] = useState("");
 
   const loadCart = useCallback(async () => {
     try {
@@ -164,7 +164,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           setGateways([]);
           setBankAccounts([]);
           setDepositTncEnabled(false);
-          setDepositTncText(null);
+          setDepositTncText("");
         });
     }
   }, [isOpen, loadCart]);
