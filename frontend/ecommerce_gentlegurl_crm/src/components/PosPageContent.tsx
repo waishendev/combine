@@ -3673,7 +3673,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         payment_method: paymentMethod,
-        member_id: selectedMember?.id ?? null,
+        member_id: checkoutGuestIsUnknown ? null : (selectedMember?.id ?? null),
         ...guestCheckoutPayload,
         items: cartItems.map((item) => ({
           cart_item_id: item.id,
@@ -3879,6 +3879,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           if (!synced) return
         }
       } else if (checkoutIdentityMode === 'guest' && (guestContactIsComplete || checkoutGuestIsUnknown)) {
+        setSelectedMember(null)
         const synced = await syncPosCartCustomerContext({ mode: 'guest' })
         if (!synced) return
       }

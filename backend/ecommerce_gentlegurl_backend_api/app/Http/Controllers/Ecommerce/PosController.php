@@ -3116,7 +3116,28 @@ class PosController extends Controller
             $packageCustomerId = $packageCustomerIds->first();
             $customerId = !empty($validated['member_id']) ? (int) $validated['member_id'] : ($packageCustomerId ?: null);
 
+            $checkoutGuestName = trim((string) ($validated['guest_name'] ?? ''));
+            $checkoutGuestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+            $checkoutGuestEmail = trim((string) ($validated['guest_email'] ?? ''));
+            $checkoutUnknownGuest = strtoupper($checkoutGuestName) === 'UNKNOWN';
+            if ($checkoutUnknownGuest) {
+                $customerId = null;
+                $checkoutGuestPhone = '';
+                $checkoutGuestEmail = '';
+                foreach ($cart->serviceItems as $row) {
+                    $row->update([
+                        'customer_id' => null,
+                        'guest_name' => 'UNKNOWN',
+                        'guest_phone' => null,
+                        'guest_email' => null,
+                    ]);
+                }
+            }
+
             if ($cart->packageItems->isNotEmpty() && empty($customerId)) {
+                if ($checkoutUnknownGuest) {
+                    abort(422, __('Unknown guest checkout cannot be used when a service package is in the cart. Assign a member first.'));
+                }
                 abort(422, __('Please assign member before purchasing service package.'));
             }
 
