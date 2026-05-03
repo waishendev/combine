@@ -1534,15 +1534,16 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
-                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
+            if ($guestName === '' && $guestPhone === '' && $guestEmail === '') {
+                $guestName = 'UNKNOWN';
             }
 
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if ($guestPhone !== '' && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
         }
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
 
@@ -1755,15 +1756,18 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+            $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+
+            if (! $isUnknownGuest && ($guestName === '' || $guestPhone === '' || $guestEmail === '')) {
                 return $this->respondError(__('Guest name, phone, and email are required.'), 422);
             }
 
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if (! $isUnknownGuest && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
 
             foreach ($cart->serviceItems as $row) {
                 $row->update([
@@ -1905,15 +1909,16 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
-                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
+            if ($guestName === '' && $guestPhone === '' && $guestEmail === '') {
+                $guestName = 'UNKNOWN';
             }
 
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if ($guestPhone !== '' && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
         }
 
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
@@ -2109,7 +2114,7 @@ class PosController extends Controller
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                 'source' => 'STAFF',
                 'customer_id' => $customer?->id,
-                'guest_name' => $customer ? null : $guestName,
+                'guest_name' => $customer ? null : ($guestName !== '' ? $guestName : 'UNKNOWN'),
                 'guest_phone' => $customer ? null : $guestPhone,
                 'guest_email' => $customer ? null : $guestEmail,
                 'staff_id' => $primaryStaffId,
@@ -3111,7 +3116,28 @@ class PosController extends Controller
             $packageCustomerId = $packageCustomerIds->first();
             $customerId = !empty($validated['member_id']) ? (int) $validated['member_id'] : ($packageCustomerId ?: null);
 
+            $checkoutGuestName = trim((string) ($validated['guest_name'] ?? ''));
+            $checkoutGuestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+            $checkoutGuestEmail = trim((string) ($validated['guest_email'] ?? ''));
+            $checkoutUnknownGuest = strtoupper($checkoutGuestName) === 'UNKNOWN';
+            if ($checkoutUnknownGuest) {
+                $customerId = null;
+                $checkoutGuestPhone = '';
+                $checkoutGuestEmail = '';
+                foreach ($cart->serviceItems as $row) {
+                    $row->update([
+                        'customer_id' => null,
+                        'guest_name' => 'UNKNOWN',
+                        'guest_phone' => null,
+                        'guest_email' => null,
+                    ]);
+                }
+            }
+
             if ($cart->packageItems->isNotEmpty() && empty($customerId)) {
+                if ($checkoutUnknownGuest) {
+                    abort(422, __('Unknown guest checkout cannot be used when a service package is in the cart. Assign a member first.'));
+                }
                 abort(422, __('Please assign member before purchasing service package.'));
             }
 
@@ -3224,23 +3250,33 @@ class PosController extends Controller
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
             $hasGuestPayload = $guestName !== '' || $guestPhone !== '' || $guestEmail !== '';
             if ($hasGuestPayload) {
-                if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+                $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+                if (! $isUnknownGuest && ($guestName === '' || $guestPhone === '' || $guestEmail === '')) {
                     abort(422, __('Guest name, phone, and email are all required when providing guest details.'));
                 }
-                if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                if (! $isUnknownGuest && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                     abort(422, __('Invalid guest phone.'));
+                }
+                if ($isUnknownGuest) {
+                    $guestPhone = '';
+                    $guestEmail = '';
                 }
             }
 
             if (empty($customerId) && ! $hasGuestPayload) {
                 $guestLine = $cart->serviceItems->first(function (PosCartServiceItem $item) {
-                    return empty($item->customer_id) && trim((string) ($item->guest_email ?? '')) !== '';
+                    return empty($item->customer_id)
+                        && (trim((string) ($item->guest_email ?? '')) !== '' || strtoupper(trim((string) ($item->guest_name ?? ''))) === 'UNKNOWN');
                 });
                 if ($guestLine) {
                     $guestName = trim((string) ($guestLine->guest_name ?? ''));
                     $guestPhone = trim((string) ($guestLine->guest_phone ?? ''));
                     $guestEmail = trim((string) ($guestLine->guest_email ?? ''));
-                    if ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                    if (strtoupper($guestName) === 'UNKNOWN') {
+                        $guestPhone = '';
+                        $guestEmail = '';
+                        $hasGuestPayload = true;
+                    } elseif ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                         $hasGuestPayload = true;
                     }
                 }
@@ -3250,13 +3286,18 @@ class PosController extends Controller
                     ->map(fn (PosCartAppointmentSettlementItem $row) => $row->booking)
                     ->filter()
                     ->first(function (Booking $booking) {
-                        return empty($booking->customer_id) && trim((string) ($booking->guest_email ?? '')) !== '';
+                        return empty($booking->customer_id)
+                            && (trim((string) ($booking->guest_email ?? '')) !== '' || strtoupper(trim((string) ($booking->guest_name ?? ''))) === 'UNKNOWN');
                     });
                 if ($guestBooking) {
                     $guestName = trim((string) ($guestBooking->guest_name ?? ''));
                     $guestPhone = trim((string) ($guestBooking->guest_phone ?? ''));
                     $guestEmail = trim((string) ($guestBooking->guest_email ?? ''));
-                    if ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                    if (strtoupper($guestName) === 'UNKNOWN') {
+                        $guestPhone = '';
+                        $guestEmail = '';
+                        $hasGuestPayload = true;
+                    } elseif ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                         $hasGuestPayload = true;
                     }
                 }
@@ -3470,11 +3511,13 @@ class PosController extends Controller
                     abort(422, __('Service is not available for checkout.'));
                 }
 
-                $hasGuestSnapshot = trim((string) ($serviceItem->guest_name ?? '')) !== ''
-                    && trim((string) ($serviceItem->guest_phone ?? '')) !== ''
-                    && trim((string) ($serviceItem->guest_email ?? '')) !== '';
+                $guestName = trim((string) ($serviceItem->guest_name ?? ''));
+                $guestPhone = trim((string) ($serviceItem->guest_phone ?? ''));
+                $guestEmail = trim((string) ($serviceItem->guest_email ?? ''));
+                $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+                $hasGuestSnapshot = $guestName !== '' && $guestPhone !== '' && $guestEmail !== '';
 
-                if (! $serviceItem->customer_id && ! $hasGuestSnapshot) {
+                if (! $serviceItem->customer_id && ! $isUnknownGuest && ! $hasGuestSnapshot) {
                     abort(422, __('Each booking service line must have a member or complete guest details.'));
                 }
 
@@ -3498,9 +3541,9 @@ class PosController extends Controller
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => 'STAFF',
                     'customer_id' => $serviceItem->customer_id ? (int) $serviceItem->customer_id : null,
-                    'guest_name' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_name ?? ''),
-                    'guest_phone' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_phone ?? ''),
-                    'guest_email' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_email ?? ''),
+                    'guest_name' => $serviceItem->customer_id ? null : ($guestName !== '' ? $guestName : 'UNKNOWN'),
+                    'guest_phone' => $serviceItem->customer_id ? null : ($guestPhone !== '' ? $guestPhone : null),
+                    'guest_email' => $serviceItem->customer_id ? null : ($guestEmail !== '' ? $guestEmail : null),
                     'staff_id' => $serviceItem->assigned_staff_id,
                     'service_id' => $serviceItem->booking_service_id,
                     'start_at' => $startAt,
@@ -4105,6 +4148,12 @@ class PosController extends Controller
                 continue;
             }
 
+            $bookingGuestName = trim((string) ($booking->guest_name ?? ''));
+            if (strtoupper($bookingGuestName) === 'UNKNOWN') {
+                Log::info('Booking confirmation email skipped — unknown guest.', ['booking_id' => $booking->id]);
+                continue;
+            }
+
             $customerName = $booking->billing_name
                 ?: $booking->guest_name
                 ?: $booking->customer?->name
@@ -4158,6 +4207,11 @@ class PosController extends Controller
             ?: $booking->customer?->email;
 
         if (! $recipientEmail || ! filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $bookingGuestName = trim((string) ($booking->guest_name ?? ''));
+        if (strtoupper($bookingGuestName) === 'UNKNOWN') {
             return;
         }
 
