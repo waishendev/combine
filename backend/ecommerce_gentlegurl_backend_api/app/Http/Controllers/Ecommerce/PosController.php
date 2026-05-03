@@ -3490,11 +3490,13 @@ class PosController extends Controller
                     abort(422, __('Service is not available for checkout.'));
                 }
 
-                $hasGuestSnapshot = trim((string) ($serviceItem->guest_name ?? '')) !== ''
-                    && trim((string) ($serviceItem->guest_phone ?? '')) !== ''
-                    && trim((string) ($serviceItem->guest_email ?? '')) !== '';
+                $guestName = trim((string) ($serviceItem->guest_name ?? ''));
+                $guestPhone = trim((string) ($serviceItem->guest_phone ?? ''));
+                $guestEmail = trim((string) ($serviceItem->guest_email ?? ''));
+                $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+                $hasGuestSnapshot = $guestName !== '' && $guestPhone !== '' && $guestEmail !== '';
 
-                if (! $serviceItem->customer_id && ! $hasGuestSnapshot) {
+                if (! $serviceItem->customer_id && ! $isUnknownGuest && ! $hasGuestSnapshot) {
                     abort(422, __('Each booking service line must have a member or complete guest details.'));
                 }
 
@@ -3518,9 +3520,9 @@ class PosController extends Controller
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => 'STAFF',
                     'customer_id' => $serviceItem->customer_id ? (int) $serviceItem->customer_id : null,
-                    'guest_name' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_name ?? ''),
-                    'guest_phone' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_phone ?? ''),
-                    'guest_email' => $serviceItem->customer_id ? null : (string) ($serviceItem->guest_email ?? ''),
+                    'guest_name' => $serviceItem->customer_id ? null : ($guestName !== '' ? $guestName : 'UNKNOWN'),
+                    'guest_phone' => $serviceItem->customer_id ? null : ($guestPhone !== '' ? $guestPhone : null),
+                    'guest_email' => $serviceItem->customer_id ? null : ($guestEmail !== '' ? $guestEmail : null),
                     'staff_id' => $serviceItem->assigned_staff_id,
                     'service_id' => $serviceItem->booking_service_id,
                     'start_at' => $startAt,
