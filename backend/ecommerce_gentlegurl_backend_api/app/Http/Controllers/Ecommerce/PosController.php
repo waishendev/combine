@@ -4917,7 +4917,8 @@ class PosController extends Controller
     }
 
     /**
-     * Member-linked booking, or guest with name plus phone or email; service required. Used for POS settlement orders.
+     * Member-linked booking, or guest with name plus phone/email, or UNKNOWN guest; service required.
+     * Used for POS settlement orders.
      */
     protected function bookingEligibleForPosSettlement(Booking $booking): bool
     {
@@ -4931,8 +4932,9 @@ class PosController extends Controller
         $name = trim((string) ($booking->guest_name ?? ''));
         $phone = trim((string) ($booking->guest_phone ?? ''));
         $email = trim((string) ($booking->guest_email ?? ''));
+        $isUnknownGuest = strtoupper($name) === 'UNKNOWN';
 
-        return $name !== '' && ($phone !== '' || $email !== '');
+        return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
     }
 
     protected function resolveAppointmentSnapshot(Booking $booking): array

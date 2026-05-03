@@ -972,6 +972,17 @@ export default function PosAppointmentsWorkspace({
 
   const settleAppointmentPayment = useCallback(async () => {
     if (!appointmentDetail?.id) return
+    const guestName = appointmentDetail.guest_name?.trim() ?? ''
+    const guestPhone = appointmentDetail.guest_phone?.trim() ?? ''
+    const guestEmail = appointmentDetail.guest_email?.trim() ?? ''
+    const isUnknownGuest = guestName.toUpperCase() === 'UNKNOWN'
+    const hasCustomer =
+      !!appointmentDetail.customer?.id || isUnknownGuest || (guestName.length > 0 && (guestPhone.length > 0 || guestEmail.length > 0))
+    const hasService = !!appointmentDetail.service?.id
+    if (!hasCustomer || !hasService) {
+      setAppointmentCheckoutError('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.')
+      return
+    }
     const grossDueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
     const discountDraftValue = Number(appointmentDiscountValueDraft || 0)
     if (!Number.isFinite(discountDraftValue) || discountDraftValue < 0) {
