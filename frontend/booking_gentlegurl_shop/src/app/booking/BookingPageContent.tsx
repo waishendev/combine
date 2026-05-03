@@ -7,11 +7,7 @@ import { getBookingServiceCategories, getBookingServices } from "@/lib/apiClient
 import { BookingServiceCategory, Service } from "@/lib/types";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 
-type BookingPageContentProps = {
-  headingFontFamily: string;
-};
-
-export default function BookingPageContent({ headingFontFamily }: BookingPageContentProps) {
+export default function BookingPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoryIdParam = searchParams.get("category_id");
@@ -71,8 +67,8 @@ export default function BookingPageContent({ headingFontFamily }: BookingPageCon
     <main className="mx-auto max-w-6xl px-4 py-10">
       <BookingProgress step={selectedCategory ? 2 : 1} loading={loading && categories.length === 0} />
       <div className="text-center space-y-2">
-        <h1 style={{ fontFamily: headingFontFamily }} className="text-3xl font-medium sm:text-4xl">{title}</h1>
-        <p style={{ fontFamily: headingFontFamily }} className="text-sm text-[var(--text-muted)]">
+        <h1 className="font-[var(--font-heading)] text-3xl font-medium sm:text-4xl">{title}</h1>
+        <p className="text-sm text-[var(--text-muted)]">
           {!selectedCategory ? "Select a category to continue" : "Select a service to begin your booking"}
         </p>
 
@@ -165,11 +161,7 @@ export default function BookingPageContent({ headingFontFamily }: BookingPageCon
                   </p>
                   <p className="flex justify-between gap-2">
                     <span className="text-[var(--text-muted)]">Price</span>
-                    <span className="font-medium tabular-nums">
-                      {service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
-                        ? `RM ${Number(service.price_range_min).toFixed(2)} - ${Number(service.price_range_max).toFixed(2)}`
-                        : `RM ${Number(service.price).toFixed(2)}`}
-                    </span>
+                    <span className="font-medium tabular-nums">RM {Number(service.price).toFixed(2)}</span>
                   </p>
                 </div>
               </div>
