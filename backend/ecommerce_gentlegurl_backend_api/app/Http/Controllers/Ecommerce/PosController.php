@@ -1401,7 +1401,7 @@ class PosController extends Controller
         $item->save();
 
         return $this->respond([
-            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.category', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+            'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
     }
 
@@ -2665,7 +2665,7 @@ class PosController extends Controller
             $item->qty = $qty;
             $item->save();
             return $this->respond([
-                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.category', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
+                'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
             ]);
         }
 
