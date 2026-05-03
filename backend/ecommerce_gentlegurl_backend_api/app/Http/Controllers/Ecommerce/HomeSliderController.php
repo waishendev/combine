@@ -47,6 +47,11 @@ class HomeSliderController extends Controller
             'end_at' => ['nullable', 'date', 'after_or_equal:start_at'],
             'is_active' => ['boolean'],
             'type' => ['sometimes', 'in:ecommerce,booking'],
+            'content_align' => ['sometimes', 'in:left,center,right'],
+            'content_vertical' => ['sometimes', 'in:top,middle,bottom'],
+            'button_align' => ['sometimes', 'in:left,center,right'],
+            'text_color' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'button_style' => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
 
         // Handle image file upload
@@ -101,6 +106,11 @@ class HomeSliderController extends Controller
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
             'type' => ['sometimes', 'in:ecommerce,booking'],
+            'content_align' => ['sometimes', 'in:left,center,right'],
+            'content_vertical' => ['sometimes', 'in:top,middle,bottom'],
+            'button_align' => ['sometimes', 'in:left,center,right'],
+            'text_color' => ['sometimes', 'nullable', 'string', 'max:50'],
+            'button_style' => ['sometimes', 'nullable', 'string', 'max:100'],
         ]);
 
         // Handle image file upload - check hasFile first to ensure file was actually uploaded

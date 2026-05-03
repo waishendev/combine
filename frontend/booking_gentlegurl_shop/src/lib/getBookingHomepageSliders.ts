@@ -8,6 +8,9 @@ export type BookingHomepageSlider = {
   button_link?: string | null;
   image_url?: string | null;
   mobile_image_url?: string | null;
+  content_align?: string | null;
+  content_vertical?: string | null;
+  button_align?: string | null;
 };
 
 export async function getBookingHomepageSliders(): Promise<BookingHomepageSlider[]> {

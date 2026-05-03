@@ -967,6 +967,9 @@ class PublicShopController extends Controller
                 'mobile_image_path',
                 'button_label',
                 'button_link',
+                'content_align',
+                'content_vertical',
+                'button_align',
                 'sort_order',
             ]);
 

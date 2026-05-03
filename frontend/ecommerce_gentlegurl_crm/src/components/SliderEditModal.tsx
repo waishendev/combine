@@ -22,6 +22,9 @@ interface FormState {
   start_at: string
   end_at: string
   isActive: 'active' | 'inactive'
+  content_align: 'left' | 'center' | 'right'
+  content_vertical: 'top' | 'middle' | 'bottom'
+  button_align: 'left' | 'center' | 'right'
 }
 
 const initialFormState: FormState = {
@@ -32,6 +35,9 @@ const initialFormState: FormState = {
   start_at: '',
   end_at: '',
   isActive: 'active',
+  content_align: 'left',
+  content_vertical: 'middle',
+  button_align: 'left',
 }
 
 export default function SliderEditModal({
@@ -134,6 +140,9 @@ export default function SliderEditModal({
             slider.is_active === true || slider.is_active === 'true' || slider.is_active === 1
               ? 'active'
               : 'inactive',
+          content_align: slider.content_align === 'center' || slider.content_align === 'right' ? slider.content_align : 'left',
+          content_vertical: slider.content_vertical === 'top' || slider.content_vertical === 'bottom' ? slider.content_vertical : 'middle',
+          button_align: slider.button_align === 'center' || slider.button_align === 'right' ? slider.button_align : 'left',
         })
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -247,6 +256,9 @@ export default function SliderEditModal({
       formData.append('button_link', trimmedButtonLink)
       formData.append('start_at', trimmedStartAt)
       formData.append('end_at', trimmedEndAt)
+      formData.append('content_align', form.content_align)
+      formData.append('content_vertical', form.content_vertical)
+      formData.append('button_align', form.button_align)
       formData.append('is_active', form.isActive === 'active' ? '1' : '0')
       formData.append('type', sliderType)
 
@@ -314,6 +326,9 @@ export default function SliderEditModal({
             sort_order: loadedSlider?.sort_order ?? null,
             createdAt: loadedSlider?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
+            content_align: form.content_align,
+            content_vertical: form.content_vertical,
+            button_align: form.button_align,
           }
 
       setLoadedSlider(sliderRow)
@@ -503,6 +518,20 @@ export default function SliderEditModal({
                       placeholder="Enter title"
                       disabled={disableForm}
                     />
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Title Alignment</label>
+                      <select
+                        name="content_align"
+                        value={form.content_align}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        disabled={disableForm}
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -522,6 +551,20 @@ export default function SliderEditModal({
                       placeholder="Enter subtitle"
                       disabled={disableForm}
                     />
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Subtitle Alignment</label>
+                      <select
+                        name="content_align"
+                        value={form.content_align}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        disabled={disableForm}
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -541,6 +584,20 @@ export default function SliderEditModal({
                       placeholder="Shop Now"
                       disabled={disableForm}
                     />
+                    <div className="mt-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Button Alignment</label>
+                      <select
+                        name="button_align"
+                        value={form.button_align}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                        disabled={disableForm}
+                      >
+                        <option value="left">Left</option>
+                        <option value="center">Center</option>
+                        <option value="right">Right</option>
+                      </select>
+                    </div>
                   </div>
 
                   <div>
@@ -596,6 +653,32 @@ export default function SliderEditModal({
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                       disabled={disableForm}
                     />
+                  </div>
+
+                  <div className="sm:col-span-2 lg:col-span-3 rounded-md border border-gray-200 bg-gray-50 p-4 space-y-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">Slider Content Position</h3>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Control where the slider title, subtitle, and button appear on the banner.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Text Vertical Position</label>
+                        <select
+                          name="content_vertical"
+                          value={form.content_vertical}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                          disabled={disableForm}
+                        >
+                          <option value="top">Top</option>
+                          <option value="middle">Middle</option>
+                          <option value="bottom">Bottom</option>
+                        </select>
+                      </div>
+
+                    </div>
                   </div>
 
                   <div>
