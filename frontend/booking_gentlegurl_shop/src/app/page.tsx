@@ -31,6 +31,17 @@ const defaultSections: LandingSections = {
     heading: { label: "Our Artists", title: "Meet our creative professionals", align: "center" },
     items: [],
   },
+  nail_academy: {
+    is_active: true,
+    heading: {
+      label: "EXCELLENCE IN JAPANESE NAIL ART EDUCATION",
+      title: "Nail Academy",
+      align: "center",
+    },
+    target_label: "面向对象",
+    curriculum_label: "教学核心",
+    items: [],
+  },
   faqs: {
     is_active: true,
     heading: { label: "FAQ", title: "You might be wondering", align: "left" },

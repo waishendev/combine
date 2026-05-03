@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Service } from "@/lib/types";
 import { SectionTitle } from "./SectionTitle";
 import { useEffect, useState } from "react";
-import type { LandingSections, LandingGalleryItem } from "@/lib/types";
+import type { LandingSections, LandingGalleryItem, LandingNailAcademyItem } from "@/lib/types";
 import Slider from "@/components/home/Slider";
 import type { BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
 
@@ -165,6 +165,17 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
 
   const faqItems = sections.faqs?.items ?? [];
   const noteItems = sections.notes?.items ?? [];
+  const nailAcademy = sections.nail_academy;
+  const nailItems: LandingNailAcademyItem[] = (nailAcademy?.items ?? []).map((raw) => ({
+    src: raw.src ?? "",
+    duration_badge: raw.duration_badge ?? "",
+    title: raw.title ?? "",
+    target_audience: raw.target_audience ?? "",
+    curriculum: normalizeCurriculumLines(raw.curriculum),
+    details_link: raw.details_link ?? "",
+    details_label: raw.details_label ?? "CLICK FOR MORE DETAILS →",
+    text_align: raw.text_align === "center" || raw.text_align === "right" ? raw.text_align : "left",
+  }));
 
   return (
     <div className="space-y-12 py-16">
@@ -210,7 +221,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {artistItems.map((artist, idx) => (
-              <div key={`artist-${idx}`} className="group flex flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3">
+              <div key={`artist-${idx}`} className="group flex flex-col gap-3">
                 <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
                   <Image src={artist.src || "/images/dummy.webp"} alt={artist.caption || `Artist ${idx + 1}`} fill className="object-cover" sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw" />
                 </div>
@@ -223,6 +234,83 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                   <p className={`text-sm text-[var(--foreground)]/80 ${getTextAlignClass(artist.text_align)}`}>{artist.text || ""}</p>
                 )}
               </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {nailAcademy?.is_active && nailItems.length > 0 && (
+        <section className="space-y-8">
+          <div className={`space-y-2 ${getTextAlignClass(nailAcademy.heading?.align)}`}>
+            <h2 className="font-serif text-3xl font-normal tracking-tight text-[var(--foreground)] sm:text-4xl md:text-[2.75rem]">
+              {nailAcademy.heading?.title ?? "Nail Academy"}
+            </h2>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.35em] text-[var(--text-muted)] sm:text-xs">
+              {nailAcademy.heading?.label ?? "EXCELLENCE IN JAPANESE NAIL ART EDUCATION"}
+            </p>
+          </div>
+
+          <div className="grid gap-6 md:grid-cols-3">
+            {nailItems.map((course, idx) => (
+              <article
+                key={`nail-academy-${idx}`}
+                className="flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-[0_16px_40px_-32px_rgba(17,24,39,0.45)]"
+              >
+                <div className="relative aspect-square w-full overflow-hidden bg-[var(--background-soft)]">
+                  <Image
+                    src={course.src || "/images/dummy.webp"}
+                    alt={course.title || `Course ${idx + 1}`}
+                    fill
+                    className="object-cover"
+                    sizes="(min-width: 1024px) 33vw, 100vw"
+                  />
+                  {course.duration_badge ? (
+                    <span className="absolute left-3 top-3 rounded-full bg-black/80 px-3 py-1 text-[11px] font-medium tracking-wide text-white">
+                      {course.duration_badge}
+                    </span>
+                  ) : null}
+                </div>
+
+                <div className={`flex flex-1 flex-col gap-4 p-5 pt-6 ${getTextAlignClass(course.text_align)}`}>
+                  <h3 className="font-serif text-xl font-semibold leading-snug text-[var(--foreground)]">{course.title}</h3>
+
+                  <div className="space-y-1">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                      {nailAcademy.target_label ?? "面向对象"}
+                    </p>
+                    <p className="text-sm leading-relaxed text-[var(--foreground)]/85">{course.target_audience}</p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                      {nailAcademy.curriculum_label ?? "教学核心"}
+                    </p>
+                    <ul className="space-y-2 text-sm leading-relaxed text-[var(--foreground)]/80">
+                      {course.curriculum.map((line, lineIdx) => (
+                        <li key={lineIdx} className="flex gap-2">
+                          <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]" />
+                          <span>{line}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="mt-auto border-t border-[var(--card-border)] pt-4">
+                    {course.details_link ? (
+                      <Link
+                        href={course.details_link}
+                        className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)] underline-offset-4 hover:underline"
+                      >
+                        {course.details_label || "CLICK FOR MORE DETAILS →"}
+                      </Link>
+                    ) : (
+                      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)]/50">
+                        {course.details_label || "CLICK FOR MORE DETAILS →"}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </article>
             ))}
           </div>
         </section>
@@ -385,3 +473,16 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
 
 /** @deprecated Use DynamicSections instead. Kept for backward compatibility. */
 export const StaticSections = DynamicSections;
+
+function normalizeCurriculumLines(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x).trim()).filter((x) => x.length > 0);
+  }
+  if (typeof raw === "string") {
+    return raw
+      .split("\n")
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+  return [];
+}

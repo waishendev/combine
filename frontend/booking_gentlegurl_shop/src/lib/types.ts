@@ -350,6 +350,17 @@ export type LandingFaqItem = {
   answer: string;
 };
 
+export type LandingNailAcademyItem = {
+  src: string;
+  duration_badge: string;
+  title: string;
+  target_audience: string;
+  curriculum: string[];
+  details_link: string;
+  details_label: string;
+  text_align: "left" | "center" | "right";
+};
+
 export type LandingSections = {
   hero: {
     is_active: boolean;
@@ -373,6 +384,13 @@ export type LandingSections = {
     is_active: boolean;
     heading: LandingHeading;
     items: LandingGalleryItem[];
+  };
+  nail_academy: {
+    is_active: boolean;
+    heading: LandingHeading;
+    target_label: string;
+    curriculum_label: string;
+    items: LandingNailAcademyItem[];
   };
   faqs: {
     is_active: boolean;

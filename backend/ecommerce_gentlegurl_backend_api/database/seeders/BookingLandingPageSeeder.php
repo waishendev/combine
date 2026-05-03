@@ -67,6 +67,63 @@ class BookingLandingPageSeeder extends Seeder
                             ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Makeup Artist — Bridal & events', 'text_align' => 'center', 'link_url' => ''],
                         ],
                     ],
+                    'nail_academy' => [
+                        'is_active' => true,
+                        'heading' => [
+                            'label' => 'EXCELLENCE IN JAPANESE NAIL ART EDUCATION',
+                            'title' => 'Nail Academy',
+                            'align' => 'center',
+                        ],
+                        'target_label' => '面向对象',
+                        'curriculum_label' => '教学核心',
+                        'items' => [
+                            [
+                                'src' => '/images/dummy.webp',
+                                'duration_badge' => '5 - 8 周',
+                                'title' => '基础入门班 (Fundamental)',
+                                'target_audience' => '零基础希望系统性入门美甲技艺的学员。',
+                                'curriculum' => [
+                                    '工具消毒与安全卫生流程',
+                                    '自然甲修护与甲型打磨',
+                                    '单色凝胶上色与基础彩绘',
+                                    '沙龙接待流程与客户沟通',
+                                ],
+                                'details_link' => '/booking',
+                                'details_label' => 'CLICK FOR MORE DETAILS →',
+                                'text_align' => 'left',
+                            ],
+                            [
+                                'src' => '/images/dummy.webp',
+                                'duration_badge' => '10 - 14 周',
+                                'title' => '全科创业班 (Professional)',
+                                'target_audience' => '计划开店或独立接单的专业进阶学员。',
+                                'curriculum' => [
+                                    '高级延长与矫正技法',
+                                    '日系晕染与立体饰品搭配',
+                                    '门店运营、定价与物料管理',
+                                    '作品集拍摄与社交媒体呈现',
+                                ],
+                                'details_link' => '/booking',
+                                'details_label' => 'CLICK FOR MORE DETAILS →',
+                                'text_align' => 'left',
+                            ],
+                            [
+                                'src' => '/images/dummy.webp',
+                                'duration_badge' => '7 天',
+                                'title' => '美甲师矫正班 (Refinement)',
+                                'target_audience' => '已有经验需纠正手势与提升精致度的美甲师。',
+                                'curriculum' => [
+                                    '常见手法误区一对一矫正',
+                                    '极致单色与高光圈技法',
+                                    '复杂款式拆解与提速训练',
+                                    '客户满意度与复购策略',
+                                ],
+                                'details_link' => '',
+                                'details_label' => 'CLICK FOR MORE DETAILS →',
+                                'text_align' => 'left',
+                            ],
+                        ],
+                    ],
                     'faqs' => [
                         'is_active' => true,
                         'heading' => [

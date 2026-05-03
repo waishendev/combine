@@ -6,6 +6,16 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 type HeadingConfig = { label: string; title: string; align: 'left' | 'center' | 'right' }
 type GalleryItem = { src: string; caption: string }
 type ArtistItem = { src: string; caption: string; text: string; text_align: 'left' | 'center' | 'right'; link_url: string }
+type NailAcademyItem = {
+  src: string
+  duration_badge: string
+  title: string
+  target_audience: string
+  curriculum: string[]
+  details_link: string
+  details_label: string
+  text_align: 'left' | 'center' | 'right'
+}
 type FaqItem = { question: string; answer: string }
 
 type Sections = {
@@ -20,6 +30,13 @@ type Sections = {
   gallery: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
   service_menu: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
   our_artists: { is_active: boolean; heading: HeadingConfig; items: ArtistItem[] }
+  nail_academy: {
+    is_active: boolean
+    heading: HeadingConfig
+    target_label: string
+    curriculum_label: string
+    items: NailAcademyItem[]
+  }
   faqs: { is_active: boolean; heading: HeadingConfig; items: FaqItem[] }
   notes: { is_active: boolean; heading: HeadingConfig; items: string[] }
 }
@@ -54,6 +71,17 @@ const defaultSections: Sections = {
     heading: { label: 'Our Artists', title: 'Meet our creative professionals', align: 'center' },
     items: [],
   },
+  nail_academy: {
+    is_active: true,
+    heading: {
+      label: 'EXCELLENCE IN JAPANESE NAIL ART EDUCATION',
+      title: 'Nail Academy',
+      align: 'center',
+    },
+    target_label: '面向对象',
+    curriculum_label: '教学核心',
+    items: [],
+  },
   faqs: {
     is_active: true,
     heading: { label: 'FAQ', title: 'You might be wondering', align: 'left' },
@@ -64,6 +92,46 @@ const defaultSections: Sections = {
     heading: { label: 'Notes', title: 'Policy & care', align: 'left' },
     items: [],
   },
+}
+
+function parseCurriculumFromUnknown(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return raw.map((x) => String(x).trim()).filter((x) => x.length > 0)
+  }
+  if (typeof raw === 'string') {
+    return raw
+      .split('\n')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+  }
+  return []
+}
+
+function normalizeNailAcademyItem(raw: Record<string, unknown>): NailAcademyItem {
+  const align = raw.text_align === 'center' || raw.text_align === 'right' ? raw.text_align : 'left'
+  return {
+    src: String(raw.src ?? ''),
+    duration_badge: String(raw.duration_badge ?? ''),
+    title: String(raw.title ?? ''),
+    target_audience: String(raw.target_audience ?? ''),
+    curriculum: parseCurriculumFromUnknown(raw.curriculum),
+    details_link: String(raw.details_link ?? ''),
+    details_label: String(raw.details_label ?? 'CLICK FOR MORE DETAILS →'),
+    text_align: align,
+  }
+}
+
+function mergeSectionsFromApi(raw: Partial<Sections> & Record<string, unknown>): Sections {
+  const merged = { ...defaultSections, ...raw } as Sections
+  const na = raw.nail_academy as Sections['nail_academy'] | undefined
+  if (na?.items && Array.isArray(na.items)) {
+    merged.nail_academy = {
+      ...defaultSections.nail_academy,
+      ...na,
+      items: na.items.map((it) => normalizeNailAcademyItem(it as Record<string, unknown>)),
+    }
+  }
+  return merged
 }
 
 export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean }) {
@@ -77,9 +145,11 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   const [galleryPreviews, setGalleryPreviews] = useState<(string | null)[]>([])
   const [serviceMenuPreviews, setServiceMenuPreviews] = useState<(string | null)[]>([])
   const [artistsPreviews, setArtistsPreviews] = useState<(string | null)[]>([])
+  const [nailAcademyPreviews, setNailAcademyPreviews] = useState<(string | null)[]>([])
   const galleryImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
   const serviceMenuImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
   const artistsImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
+  const nailAcademyImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -90,13 +160,15 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       const pageData = json?.data ?? json
       setData(pageData)
       if (pageData?.sections) {
-        setSections({ ...defaultSections, ...pageData.sections })
+        setSections(mergeSectionsFromApi(pageData.sections))
         const galleryCount = Array.isArray(pageData.sections?.gallery?.items) ? pageData.sections.gallery.items.length : 0
         const serviceMenuCount = Array.isArray(pageData.sections?.service_menu?.items) ? pageData.sections.service_menu.items.length : 0
         const artistsCount = Array.isArray(pageData.sections?.our_artists?.items) ? pageData.sections.our_artists.items.length : 0
+        const nailCount = Array.isArray(pageData.sections?.nail_academy?.items) ? pageData.sections.nail_academy.items.length : 0
         setGalleryPreviews(Array(galleryCount).fill(null))
         setServiceMenuPreviews(Array(serviceMenuCount).fill(null))
         setArtistsPreviews(Array(artistsCount).fill(null))
+        setNailAcademyPreviews(Array(nailCount).fill(null))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load landing page data')
@@ -124,13 +196,15 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       const pageData = json?.data ?? json
       setData(pageData)
       if (pageData?.sections) {
-        setSections({ ...defaultSections, ...pageData.sections })
+        setSections(mergeSectionsFromApi(pageData.sections))
         const galleryCount = Array.isArray(pageData.sections?.gallery?.items) ? pageData.sections.gallery.items.length : 0
         const serviceMenuCount = Array.isArray(pageData.sections?.service_menu?.items) ? pageData.sections.service_menu.items.length : 0
         const artistsCount = Array.isArray(pageData.sections?.our_artists?.items) ? pageData.sections.our_artists.items.length : 0
+        const nailCount = Array.isArray(pageData.sections?.nail_academy?.items) ? pageData.sections.nail_academy.items.length : 0
         setGalleryPreviews(Array(galleryCount).fill(null))
         setServiceMenuPreviews(Array(serviceMenuCount).fill(null))
         setArtistsPreviews(Array(artistsCount).fill(null))
+        setNailAcademyPreviews(Array(nailCount).fill(null))
       }
       setMessage('Landing page saved successfully!')
       setTimeout(() => setMessage(null), 3000)
@@ -319,6 +393,82 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       })
     }
   }, [reorder])
+
+  const handleNailAcademyImageUpload = async (index: number, file: File) => {
+    const previewUrl = URL.createObjectURL(file)
+    setNailAcademyPreviews((prev) => {
+      const next = ensureArrayLength(prev, index + 1)
+      next[index] = previewUrl
+      return next
+    })
+    const url = await uploadImage(file, 'nail_academy')
+    if (!url) return
+    setSections((prev) => {
+      const items = [...prev.nail_academy.items]
+      items[index] = { ...items[index], src: url }
+      return { ...prev, nail_academy: { ...prev.nail_academy, items } }
+    })
+  }
+
+  const updateNailAcademyItem = (index: number, partial: Partial<NailAcademyItem>) => {
+    setSections((prev) => {
+      const items = [...prev.nail_academy.items]
+      items[index] = { ...items[index], ...partial }
+      return { ...prev, nail_academy: { ...prev.nail_academy, items } }
+    })
+  }
+
+  const moveNailAcademyItem = useCallback(
+    (index: number, direction: -1 | 1) => {
+      setSections((prev) => {
+        const targetIndex = index + direction
+        const section = prev.nail_academy
+        if (targetIndex < 0 || targetIndex >= section.items.length) return prev
+        const items = reorder(section.items, index, targetIndex)
+        return { ...prev, nail_academy: { ...section, items } }
+      })
+      setNailAcademyPreviews((prev) => {
+        const targetIndex = index + direction
+        if (targetIndex < 0 || targetIndex >= prev.length) return prev
+        return reorder(prev, index, targetIndex)
+      })
+    },
+    [reorder],
+  )
+
+  const addNailAcademyItem = () => {
+    setSections((prev) => ({
+      ...prev,
+      nail_academy: {
+        ...prev.nail_academy,
+        items: [
+          ...prev.nail_academy.items,
+          {
+            src: '',
+            duration_badge: '',
+            title: '',
+            target_audience: '',
+            curriculum: [],
+            details_link: '',
+            details_label: 'CLICK FOR MORE DETAILS →',
+            text_align: 'left',
+          },
+        ],
+      },
+    }))
+    setNailAcademyPreviews((prev) => [...prev, null])
+  }
+
+  const removeNailAcademyItem = (index: number) => {
+    setSections((prev) => ({
+      ...prev,
+      nail_academy: {
+        ...prev.nail_academy,
+        items: prev.nail_academy.items.filter((_, i) => i !== index),
+      },
+    }))
+    setNailAcademyPreviews((prev) => prev.filter((_, i) => i !== index))
+  }
 
   const updateFaqItem = (index: number, field: keyof FaqItem, value: string) => {
     setSections((prev) => {
@@ -622,6 +772,227 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       {/* Service Menu */}
       {renderMediaSection('service_menu')}
       {renderMediaSection('our_artists')}
+
+      {/* Nail Academy (courses) */}
+      <SectionCard
+        sectionKey="nail_academy"
+        title="Nail Academy section"
+        description="Course cards with image, duration badge, audience, curriculum bullets, and optional details link. Use arrows to reorder (left to right on the site)."
+        active={sections.nail_academy.is_active}
+        onToggle={(value) => setSections((prev) => ({ ...prev, nail_academy: { ...prev.nail_academy, is_active: value } }))}
+        canUpdate={canEdit}
+        collapsed={collapsedSections.nail_academy ?? false}
+        onToggleCollapse={() => toggleSectionCollapsed('nail_academy')}
+      >
+        <div className="space-y-4">
+          <SectionHeadingFields
+            heading={sections.nail_academy.heading}
+            onChange={(heading) => setSections((prev) => ({ ...prev, nail_academy: { ...prev.nail_academy, heading } }))}
+            canUpdate={canEdit}
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+              <span className="font-medium">Target audience label</span>
+              <input
+                value={sections.nail_academy.target_label}
+                onChange={(e) =>
+                  setSections((prev) => ({
+                    ...prev,
+                    nail_academy: { ...prev.nail_academy, target_label: e.target.value },
+                  }))
+                }
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                disabled={!canEdit}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+              <span className="font-medium">Curriculum label</span>
+              <input
+                value={sections.nail_academy.curriculum_label}
+                onChange={(e) =>
+                  setSections((prev) => ({
+                    ...prev,
+                    nail_academy: { ...prev.nail_academy, curriculum_label: e.target.value },
+                  }))
+                }
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                disabled={!canEdit}
+              />
+            </label>
+          </div>
+
+          {sections.nail_academy.items.length === 0 ? (
+            <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+              No courses yet. Add a course card to show this block above FAQ on the booking site.
+            </div>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2">
+              {sections.nail_academy.items.map((item, index) => (
+                <div key={`nail-academy-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">Course {index + 1}</p>
+                      <p className="text-xs text-gray-500">Suggested image: square 1:1 (e.g. 900×900)</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveNailAcademyItem(index, -1)}
+                        disabled={!canEdit || index === 0}
+                        className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        aria-label="Move left"
+                        title="Move left"
+                      >
+                        <i className="fa-solid fa-arrow-left" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveNailAcademyItem(index, 1)}
+                        disabled={!canEdit || index === sections.nail_academy.items.length - 1}
+                        className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        aria-label="Move right"
+                        title="Move right"
+                      >
+                        <i className="fa-solid fa-arrow-right" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeNailAcademyItem(index)}
+                        disabled={!canEdit}
+                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <i className="fa-solid fa-trash" />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 space-y-3">
+                    <div
+                      onClick={() => canEdit && nailAcademyImageInputRefs.current.get(index)?.click()}
+                      className={`relative cursor-pointer rounded-lg border-2 border-dashed p-3 transition-colors ${
+                        (nailAcademyPreviews[index] ?? item.src) ? 'border-gray-300' : 'border-gray-300 hover:border-blue-400'
+                      } ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
+                    >
+                      <input
+                        ref={(el) => {
+                          if (el) nailAcademyImageInputRefs.current.set(index, el)
+                          else nailAcademyImageInputRefs.current.delete(index)
+                        }}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) void handleNailAcademyImageUpload(index, file)
+                        }}
+                        className="hidden"
+                        disabled={!canEdit}
+                      />
+                      {(nailAcademyPreviews[index] ?? item.src) ? (
+                        <div className="relative flex h-48 items-center justify-center rounded bg-gray-50">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={nailAcademyPreviews[index] ?? item.src}
+                            alt=""
+                            className="max-h-full max-w-full rounded object-contain"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex h-48 flex-col items-center justify-center">
+                          <i className="fa-solid fa-cloud-arrow-up mb-2 text-3xl text-gray-400" />
+                          <p className="text-sm text-gray-600">Click to upload</p>
+                        </div>
+                      )}
+                    </div>
+
+                    <input
+                      value={item.src}
+                      onChange={(e) => updateNailAcademyItem(index, { src: e.target.value })}
+                      placeholder="/images/example.webp"
+                      className={inputCls}
+                      disabled={!canEdit}
+                    />
+                    <input
+                      value={item.duration_badge}
+                      onChange={(e) => updateNailAcademyItem(index, { duration_badge: e.target.value })}
+                      placeholder="Duration badge (e.g. 5 - 8 周)"
+                      className={inputCls}
+                      disabled={!canEdit}
+                    />
+                    <input
+                      value={item.title}
+                      onChange={(e) => updateNailAcademyItem(index, { title: e.target.value })}
+                      placeholder="Course title"
+                      className={inputCls}
+                      disabled={!canEdit}
+                    />
+                    <textarea
+                      value={item.target_audience}
+                      onChange={(e) => updateNailAcademyItem(index, { target_audience: e.target.value })}
+                      placeholder="Target audience / 面向对象 copy"
+                      className={textareaCls}
+                      rows={2}
+                      disabled={!canEdit}
+                    />
+                    <label className="block space-y-1 text-xs uppercase tracking-wide text-gray-500">
+                      <span className="font-medium">Teaching points (one line each)</span>
+                      <textarea
+                        value={item.curriculum.join('\n')}
+                        onChange={(e) => {
+                          const lines = e.target.value.split('\n').map((s) => s.trim())
+                          updateNailAcademyItem(index, { curriculum: lines })
+                        }}
+                        placeholder={'Line 1\nLine 2\nLine 3'}
+                        className={textareaCls}
+                        rows={5}
+                        disabled={!canEdit}
+                      />
+                    </label>
+                    <input
+                      value={item.details_label}
+                      onChange={(e) => updateNailAcademyItem(index, { details_label: e.target.value })}
+                      placeholder="Link label (e.g. CLICK FOR MORE DETAILS →)"
+                      className={inputCls}
+                      disabled={!canEdit}
+                    />
+                    <input
+                      value={item.details_link}
+                      onChange={(e) => updateNailAcademyItem(index, { details_link: e.target.value })}
+                      placeholder="Details URL (optional)"
+                      className={inputCls}
+                      disabled={!canEdit}
+                    />
+                    <select
+                      value={item.text_align}
+                      onChange={(e) =>
+                        updateNailAcademyItem(index, { text_align: e.target.value as NailAcademyItem['text_align'] })
+                      }
+                      className={inputCls}
+                      disabled={!canEdit}
+                    >
+                      <option value="left">Text align: Left</option>
+                      <option value="center">Text align: Center</option>
+                      <option value="right">Text align: Right</option>
+                    </select>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center justify-between text-xs text-gray-500">
+            <span>{sections.nail_academy.items.length} courses</span>
+            <button
+              type="button"
+              onClick={addNailAcademyItem}
+              disabled={!canEdit}
+              className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <i className="fa-solid fa-plus" />
+              Add course
+            </button>
+          </div>
+        </div>
+      </SectionCard>
 
       {/* FAQ */}
       <SectionCard

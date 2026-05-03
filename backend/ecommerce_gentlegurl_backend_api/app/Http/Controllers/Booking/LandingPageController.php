@@ -53,7 +53,7 @@ class LandingPageController extends Controller
 
         $sections = $this->mergeWithDefaults($request->input('sections', []));
 
-        $sectionKeys = ['hero', 'gallery', 'service_menu', 'our_artists', 'faqs', 'notes'];
+        $sectionKeys = ['hero', 'gallery', 'service_menu', 'our_artists', 'nail_academy', 'faqs', 'notes'];
         foreach ($sectionKeys as $key) {
             if (isset($sections[$key]['items']) && is_array($sections[$key]['items'])) {
                 foreach ($sections[$key]['items'] as $idx => $item) {
@@ -125,6 +125,13 @@ class LandingPageController extends Controller
                     'heading' => ['label' => 'Our Artists', 'title' => 'Meet our creative professionals', 'align' => 'center'],
                     'items' => [],
                 ],
+                'nail_academy' => [
+                    'is_active' => true,
+                    'heading' => ['label' => 'EXCELLENCE IN JAPANESE NAIL ART EDUCATION', 'title' => 'Nail Academy', 'align' => 'center'],
+                    'target_label' => '面向对象',
+                    'curriculum_label' => '教学核心',
+                    'items' => [],
+                ],
                 'faqs' => [
                     'is_active' => true,
                     'heading' => ['label' => 'FAQ', 'title' => 'You might be wondering', 'align' => 'left'],
@@ -141,7 +148,7 @@ class LandingPageController extends Controller
 
     private function resolveImageUrls(array $sections): array
     {
-        $sectionKeys = ['gallery', 'service_menu', 'our_artists'];
+        $sectionKeys = ['gallery', 'service_menu', 'our_artists', 'nail_academy'];
         foreach ($sectionKeys as $key) {
             if (isset($sections[$key]['items']) && is_array($sections[$key]['items'])) {
                 foreach ($sections[$key]['items'] as $idx => $item) {
