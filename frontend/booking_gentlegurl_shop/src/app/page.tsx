@@ -26,6 +26,11 @@ const defaultSections: LandingSections = {
     heading: { label: "Service Menu", title: "Click to view services and pricing", align: "center" },
     items: [],
   },
+  our_artists: {
+    is_active: true,
+    heading: { label: "Our Artists", title: "Meet our creative professionals", align: "center" },
+    items: [],
+  },
   faqs: {
     is_active: true,
     heading: { label: "FAQ", title: "You might be wondering", align: "left" },

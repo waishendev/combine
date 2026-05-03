@@ -340,6 +340,9 @@ export type LandingHeading = {
 export type LandingGalleryItem = {
   src: string;
   caption: string;
+  text?: string;
+  text_align?: "left" | "center" | "right";
+  link_url?: string;
 };
 
 export type LandingFaqItem = {
@@ -362,6 +365,11 @@ export type LandingSections = {
     items: LandingGalleryItem[];
   };
   service_menu: {
+    is_active: boolean;
+    heading: LandingHeading;
+    items: LandingGalleryItem[];
+  };
+  our_artists: {
     is_active: boolean;
     heading: LandingHeading;
     items: LandingGalleryItem[];

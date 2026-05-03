@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 type HeadingConfig = { label: string; title: string; align: 'left' | 'center' | 'right' }
 type GalleryItem = { src: string; caption: string }
+type ArtistItem = { src: string; caption: string; text: string; text_align: 'left' | 'center' | 'right'; link_url: string }
 type FaqItem = { question: string; answer: string }
 
 type Sections = {
@@ -18,6 +19,7 @@ type Sections = {
   }
   gallery: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
   service_menu: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
+  our_artists: { is_active: boolean; heading: HeadingConfig; items: ArtistItem[] }
   faqs: { is_active: boolean; heading: HeadingConfig; items: FaqItem[] }
   notes: { is_active: boolean; heading: HeadingConfig; items: string[] }
 }
@@ -47,6 +49,11 @@ const defaultSections: Sections = {
     heading: { label: 'Service Menu', title: 'Click to view services and pricing', align: 'center' },
     items: [],
   },
+  our_artists: {
+    is_active: true,
+    heading: { label: 'Our Artists', title: 'Meet our creative professionals', align: 'center' },
+    items: [],
+  },
   faqs: {
     is_active: true,
     heading: { label: 'FAQ', title: 'You might be wondering', align: 'left' },
@@ -69,8 +76,10 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [galleryPreviews, setGalleryPreviews] = useState<(string | null)[]>([])
   const [serviceMenuPreviews, setServiceMenuPreviews] = useState<(string | null)[]>([])
+  const [artistsPreviews, setArtistsPreviews] = useState<(string | null)[]>([])
   const galleryImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
   const serviceMenuImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
+  const artistsImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
 
   const fetchData = useCallback(async () => {
     setLoading(true)
@@ -84,8 +93,10 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
         setSections({ ...defaultSections, ...pageData.sections })
         const galleryCount = Array.isArray(pageData.sections?.gallery?.items) ? pageData.sections.gallery.items.length : 0
         const serviceMenuCount = Array.isArray(pageData.sections?.service_menu?.items) ? pageData.sections.service_menu.items.length : 0
+        const artistsCount = Array.isArray(pageData.sections?.our_artists?.items) ? pageData.sections.our_artists.items.length : 0
         setGalleryPreviews(Array(galleryCount).fill(null))
         setServiceMenuPreviews(Array(serviceMenuCount).fill(null))
+        setArtistsPreviews(Array(artistsCount).fill(null))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load landing page data')
@@ -116,8 +127,10 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
         setSections({ ...defaultSections, ...pageData.sections })
         const galleryCount = Array.isArray(pageData.sections?.gallery?.items) ? pageData.sections.gallery.items.length : 0
         const serviceMenuCount = Array.isArray(pageData.sections?.service_menu?.items) ? pageData.sections.service_menu.items.length : 0
+        const artistsCount = Array.isArray(pageData.sections?.our_artists?.items) ? pageData.sections.our_artists.items.length : 0
         setGalleryPreviews(Array(galleryCount).fill(null))
         setServiceMenuPreviews(Array(serviceMenuCount).fill(null))
+        setArtistsPreviews(Array(artistsCount).fill(null))
       }
       setMessage('Landing page saved successfully!')
       setTimeout(() => setMessage(null), 3000)
@@ -152,7 +165,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   }, [])
 
   const handleImageUpload = useCallback(async (
-    sectionKey: 'gallery' | 'service_menu',
+    sectionKey: 'gallery' | 'service_menu' | 'our_artists',
     index: number,
     file: File,
   ) => {
@@ -216,9 +229,9 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   }
 
   const updateGalleryItem = (
-    sectionKey: 'gallery' | 'service_menu',
+    sectionKey: 'gallery' | 'service_menu' | 'our_artists',
     index: number,
-    field: keyof GalleryItem,
+    field: string,
     value: string,
   ) => {
     setSections((prev) => {
@@ -228,13 +241,15 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     })
   }
 
-  const addGalleryItem = (sectionKey: 'gallery' | 'service_menu') => {
+  const addGalleryItem = (sectionKey: 'gallery' | 'service_menu' | 'our_artists') => {
     setSections((prev) => {
       const next = {
         ...prev,
         [sectionKey]: {
           ...prev[sectionKey],
-          items: [...prev[sectionKey].items, { src: '', caption: '' }],
+          items: [...prev[sectionKey].items, sectionKey === 'our_artists'
+            ? { src: '', caption: '', text: '', text_align: 'center', link_url: '' }
+            : { src: '', caption: '' }],
         },
       }
       return next
@@ -244,9 +259,12 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     } else {
       setServiceMenuPreviews((prev) => [...prev, null])
     }
+    if (sectionKey === 'our_artists') {
+      setArtistsPreviews((prev) => [...prev, null])
+    }
   }
 
-  const removeGalleryItem = (sectionKey: 'gallery' | 'service_menu', index: number) => {
+  const removeGalleryItem = (sectionKey: 'gallery' | 'service_menu' | 'our_artists', index: number) => {
     setSections((prev) => ({
       ...prev,
       [sectionKey]: {
@@ -259,6 +277,9 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     } else {
       setServiceMenuPreviews((prev) => prev.filter((_, i) => i !== index))
     }
+    if (sectionKey === 'our_artists') {
+      setArtistsPreviews((prev) => prev.filter((_, i) => i !== index))
+    }
   }
 
   const reorder = useCallback(<T,>(items: T[], index: number, targetIndex: number) => {
@@ -268,7 +289,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     return next
   }, [])
 
-  const moveGalleryItem = useCallback((sectionKey: 'gallery' | 'service_menu', index: number, direction: -1 | 1) => {
+  const moveGalleryItem = useCallback((sectionKey: 'gallery' | 'service_menu' | 'our_artists', index: number, direction: -1 | 1) => {
     setSections((prev) => {
       const targetIndex = index + direction
       const section = prev[sectionKey]
@@ -285,6 +306,13 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       })
     } else {
       setServiceMenuPreviews((prev) => {
+        const targetIndex = index + direction
+        if (targetIndex < 0 || targetIndex >= prev.length) return prev
+        return reorder(prev, index, targetIndex)
+      })
+    }
+    if (sectionKey === 'our_artists') {
+      setArtistsPreviews((prev) => {
         const targetIndex = index + direction
         if (targetIndex < 0 || targetIndex >= prev.length) return prev
         return reorder(prev, index, targetIndex)
@@ -360,13 +388,20 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       previews: serviceMenuPreviews,
       setPreviews: setServiceMenuPreviews,
     },
-  }), [galleryPreviews, serviceMenuPreviews])
+    our_artists: {
+      title: 'Our Artists section',
+      description: 'Upload artist cards with optional CTA link.',
+      inputRefs: artistsImageInputRefs,
+      previews: artistsPreviews,
+      setPreviews: setArtistsPreviews,
+    },
+  }), [artistsPreviews, galleryPreviews, serviceMenuPreviews])
 
   if (loading) {
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading landing page...</div>
   }
 
-  const renderMediaSection = (sectionKey: 'gallery' | 'service_menu') => {
+  const renderMediaSection = (sectionKey: 'gallery' | 'service_menu' | 'our_artists') => {
     const section = sections[sectionKey]
     const meta = gallerySectionsMeta[sectionKey]
     const collapsed = collapsedSections[sectionKey] ?? false
@@ -501,13 +536,16 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
                         className={inputCls}
                         disabled={!canEdit}
                       />
-                      <input
-                        value={item.caption}
-                        onChange={(e) => updateGalleryItem(sectionKey, index, 'caption', e.target.value)}
-                        placeholder="Caption"
-                        className={inputCls}
-                        disabled={!canEdit}
-                      />
+                      <input value={item.caption} onChange={(e) => updateGalleryItem(sectionKey, index, 'caption', e.target.value)} placeholder="Alt text / Caption" className={inputCls} disabled={!canEdit} />
+                      {sectionKey === 'our_artists' && (
+                        <>
+                          <input value={(item as ArtistItem).text ?? ''} onChange={(e) => updateGalleryItem(sectionKey, index, 'text', e.target.value)} placeholder="Artist text / description" className={inputCls} disabled={!canEdit} />
+                          <select value={(item as ArtistItem).text_align ?? 'center'} onChange={(e) => updateGalleryItem(sectionKey, index, 'text_align', e.target.value)} className={inputCls} disabled={!canEdit}>
+                            <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                          </select>
+                          <input value={(item as ArtistItem).link_url ?? ''} onChange={(e) => updateGalleryItem(sectionKey, index, 'link_url', e.target.value)} placeholder="Optional text link URL" className={inputCls} disabled={!canEdit} />
+                        </>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -583,6 +621,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
 
       {/* Service Menu */}
       {renderMediaSection('service_menu')}
+      {renderMediaSection('our_artists')}
 
       {/* FAQ */}
       <SectionCard

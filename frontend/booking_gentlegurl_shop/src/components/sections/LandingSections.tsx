@@ -82,6 +82,7 @@ export function ServicesPreview({ services }: { services: Service[] }) {
 export function DynamicSections({ sections }: { sections: LandingSections }) {
   const galleryItems = sections.gallery?.items ?? [];
   const menuItems = sections.service_menu?.items ?? [];
+  const artistItems = sections.our_artists?.items ?? [];
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxSource, setLightboxSource] = useState<"gallery" | "menu">("gallery");
@@ -206,6 +207,36 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
             </h2>
           </div>
           {renderImageGrid(menuItems, "menu", "menu")}
+        </section>
+      )}
+
+      {sections.our_artists?.is_active && artistItems.length > 0 && (
+        <section className="space-y-6">
+          <div className={`mb-8 ${getTextAlignClass(sections.our_artists.heading?.align)}`}>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+              {sections.our_artists.heading?.label ?? "Our Artists"}
+            </p>
+            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+              {sections.our_artists.heading?.title ?? "Meet our creative professionals"}
+            </h2>
+          </div>
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {artistItems.map((artist, idx) => (
+              <div key={`artist-${idx}`} className="group flex flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3">
+                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
+                  <Image src={artist.src || "/images/dummy.webp"} alt={artist.caption || `Artist ${idx + 1}`} fill className="object-cover" sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw" />
+                </div>
+                <p className={`text-xs text-[var(--foreground)]/60 ${getTextAlignClass(artist.text_align)}`}>{artist.caption}</p>
+                {artist.link_url ? (
+                  <Link href={artist.link_url} className={`text-sm font-medium text-[var(--accent-strong)] hover:underline ${getTextAlignClass(artist.text_align)}`}>
+                    {artist.text || ""}
+                  </Link>
+                ) : (
+                  <p className={`text-sm text-[var(--foreground)]/80 ${getTextAlignClass(artist.text_align)}`}>{artist.text || ""}</p>
+                )}
+              </div>
+            ))}
+          </div>
         </section>
       )}
 

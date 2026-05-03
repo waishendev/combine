@@ -19,7 +19,7 @@ class LandingPageController extends Controller
             return $this->respond($this->defaultPage());
         }
 
-        $sections = $this->resolveImageUrls($page->sections ?? []);
+        $sections = $this->resolveImageUrls($this->mergeWithDefaults($page->sections ?? []));
 
         return $this->respond([
             'id' => $page->id,
@@ -36,7 +36,7 @@ class LandingPageController extends Controller
             return $this->respond($this->defaultPage());
         }
 
-        $sections = $this->resolveImageUrls($page->sections ?? []);
+        $sections = $this->resolveImageUrls($this->mergeWithDefaults($page->sections ?? []));
 
         return $this->respond([
             'id' => $page->id,
@@ -51,9 +51,9 @@ class LandingPageController extends Controller
             'sections' => 'required|array',
         ]);
 
-        $sections = $request->input('sections');
+        $sections = $this->mergeWithDefaults($request->input('sections', []));
 
-        $sectionKeys = ['hero', 'gallery', 'service_menu', 'faqs', 'notes'];
+        $sectionKeys = ['hero', 'gallery', 'service_menu', 'our_artists', 'faqs', 'notes'];
         foreach ($sectionKeys as $key) {
             if (isset($sections[$key]['items']) && is_array($sections[$key]['items'])) {
                 foreach ($sections[$key]['items'] as $idx => $item) {
@@ -120,6 +120,11 @@ class LandingPageController extends Controller
                     'heading' => ['label' => 'Service Menu', 'title' => 'Click to view services and pricing', 'align' => 'center'],
                     'items' => [],
                 ],
+                'our_artists' => [
+                    'is_active' => true,
+                    'heading' => ['label' => 'Our Artists', 'title' => 'Meet our creative professionals', 'align' => 'center'],
+                    'items' => [],
+                ],
                 'faqs' => [
                     'is_active' => true,
                     'heading' => ['label' => 'FAQ', 'title' => 'You might be wondering', 'align' => 'left'],
@@ -136,7 +141,7 @@ class LandingPageController extends Controller
 
     private function resolveImageUrls(array $sections): array
     {
-        $sectionKeys = ['gallery', 'service_menu'];
+        $sectionKeys = ['gallery', 'service_menu', 'our_artists'];
         foreach ($sectionKeys as $key) {
             if (isset($sections[$key]['items']) && is_array($sections[$key]['items'])) {
                 foreach ($sections[$key]['items'] as $idx => $item) {
@@ -186,5 +191,30 @@ class LandingPageController extends Controller
         }
 
         return Storage::disk('public')->url(ltrim($path, '/'));
+    }
+
+    private function mergeWithDefaults(array $sections): array
+    {
+        $defaults = $this->defaultPage()['sections'];
+        foreach ($defaults as $key => $value) {
+            if (! isset($sections[$key]) || ! is_array($sections[$key])) {
+                $sections[$key] = $value;
+                continue;
+            }
+            $sections[$key] = array_merge($value, $sections[$key]);
+            if (isset($value['heading']) && is_array($value['heading'])) {
+                $sections[$key]['heading'] = array_merge($value['heading'], is_array($sections[$key]['heading'] ?? null) ? $sections[$key]['heading'] : []);
+                $sections[$key]['heading']['align'] = $this->normalizeAlign($sections[$key]['heading']['align'] ?? $value['heading']['align']);
+            }
+            if (isset($value['items']) && is_array($value['items'])) {
+                $sections[$key]['items'] = array_values(is_array($sections[$key]['items'] ?? null) ? $sections[$key]['items'] : []);
+            }
+        }
+        return $sections;
+    }
+
+    private function normalizeAlign(?string $align): string
+    {
+        return in_array($align, ['left', 'center', 'right'], true) ? $align : 'center';
     }
 }
