@@ -699,12 +699,7 @@ export default function PosAppointmentsWorkspace({
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     const phonePattern = /^\+?[0-9]{8,15}$/
 
-    if (createAppointmentIdentityMode === 'member') {
-      if (!createAppointmentCustomerId) {
-        setCreateAppointmentError('Please assign member.')
-        return
-      }
-    } else {
+    if (createAppointmentIdentityMode === 'guest') {
       if (!createAppointmentGuestName.trim()) {
         setCreateAppointmentError('Guest name is required.')
         return
