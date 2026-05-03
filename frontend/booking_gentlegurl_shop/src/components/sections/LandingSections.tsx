@@ -13,9 +13,11 @@ type HeroProps = {
   hero: LandingSections["hero"];
   /** Sliders render first; headline + copy stay together below. */
   sliders?: BookingHomepageSlider[];
+  sliderTitleClassName?: string;
+  sliderSubtitleClassName?: string;
 };
 
-export function Hero({ hero, sliders }: HeroProps) {
+export function Hero({ hero, sliders, sliderTitleClassName, sliderSubtitleClassName }: HeroProps) {
   if (!hero.is_active) return null;
 
   const hasSliders = sliders && sliders.length > 0;
@@ -24,7 +26,11 @@ export function Hero({ hero, sliders }: HeroProps) {
     <section className="w-full text-center">
       {hasSliders ? (
         <div className="w-full">
-          <Slider items={sliders} />
+          <Slider
+            items={sliders}
+            titleClassName={sliderTitleClassName}
+            subtitleClassName={sliderSubtitleClassName}
+          />
         </div>
       ) : null}
 

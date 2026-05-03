@@ -21,9 +21,11 @@ type SliderItem = {
 
 interface SliderProps {
   items: SliderItem[];
+  titleClassName?: string;
+  subtitleClassName?: string;
 }
 
-export default function Slider({ items }: SliderProps) {
+export default function Slider({ items, titleClassName, subtitleClassName }: SliderProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [touchStart, setTouchStart] = useState<number | null>(null);
   const [touchEnd, setTouchEnd] = useState<number | null>(null);
@@ -192,13 +194,13 @@ export default function Slider({ items }: SliderProps) {
                   <div className="flex w-full max-w-md flex-col space-y-4 text-white sm:space-y-6">
 
                     {item.title && (
-                      <h2 className="text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl">
+                      <h2 className={`text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl ${titleClassName ?? ""}`} style={{ fontFamily: "'Just Breathe', serif" }}>
                         {item.title}
                       </h2>
                     )}
 
                     {item.subtitle && (
-                      <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/80">
+                      <p className={`text-sm font-medium uppercase tracking-[0.22em] text-white/80 ${subtitleClassName ?? ""}`} style={{ fontFamily: "'Just Breathe', serif" }}>
                         {item.subtitle}
                       </p>
                     )}
