@@ -699,6 +699,27 @@ export async function getBookingServiceDepositNote(): Promise<string | null> {
   return trimmed.length > 0 ? trimmed : null;
 }
 
+
+export type BookingDepositTncSettings = {
+  booking_deposit_tnc_enabled: boolean;
+  booking_deposit_tnc_text: string;
+};
+
+export async function getBookingDepositTncSettings(): Promise<BookingDepositTncSettings> {
+  const response = await request<{ data?: { settings?: { booking_deposit_tnc_enabled?: boolean; booking_deposit_tnc_text?: string | null } } }>(
+    "/public/shop/homepage?type=booking",
+  );
+
+  const enabled = Boolean(response?.data?.settings?.booking_deposit_tnc_enabled);
+  const rawText = response?.data?.settings?.booking_deposit_tnc_text;
+  const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : "";
+
+  return {
+    booking_deposit_tnc_enabled: enabled,
+    booking_deposit_tnc_text: text,
+  };
+}
+
 export async function rescheduleBooking(id: number, startAt: string, reason?: string) {
   return request<{ success: boolean; message?: string }>(`/booking/${id}/reschedule`, {
     method: "POST",
