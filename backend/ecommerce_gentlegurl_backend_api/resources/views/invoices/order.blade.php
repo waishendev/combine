@@ -314,15 +314,17 @@
   $customerName = $order->customer?->name;
   $customerPhone = $order->customer?->phone;
 
+  $isUnknownWalkIn = strtoupper(trim((string) ($billingName ?? ''))) === 'UNKNOWN';
+
   if (!$billingName && $customerName) {
     $billingName = $customerName;
   }
-  if (!$billingPhone && $customerPhone) {
+  if (!$billingPhone && $customerPhone && !$isUnknownWalkIn) {
     $billingPhone = $customerPhone;
   }
 
   /** POS in-store sale without a linked member: use configured walk-in bill-to if order row predates snapshot fields */
-  if ($order->pickup_or_shipping === 'in_store' && !$order->customer_id) {
+  if ($order->pickup_or_shipping === 'in_store' && !$order->customer_id && !$isUnknownWalkIn) {
     if (!trim((string) ($billingName ?? '')) || $billingName === '-') {
       $billingName = (string) (data_get($walkInBillTo, 'name') ?: 'Loyalty Tester');
     }
