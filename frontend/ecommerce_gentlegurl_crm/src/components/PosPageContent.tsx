@@ -4933,12 +4933,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const apptName = String((appt as any)?.customer_name ?? '').trim()
                       const isLockedMismatchByName = Boolean(lockedId && lockedName && apptName && lockedName !== apptName)
                       const isLockedMismatch = isLockedMismatchById || isLockedMismatchByName
-                      const cartHasGuestContext = Boolean(
-                        checkoutIdentityMode === 'guest' &&
-                          (cartServiceItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim() || row.guest_name?.trim())) ||
-                            Boolean(guestContactCache.email.trim()) ||
-                            Boolean(guestContactCache.name.trim())),
-                      )
+                      const cartHasGuestContext = cartServiceItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim() || row.guest_name?.trim()))
                       const disableSettlementAdd = isLockedMismatch || cartHasGuestContext
                       const disableReason = isLockedMismatch
                         ? 'Different member. Remove current settlement to change.'

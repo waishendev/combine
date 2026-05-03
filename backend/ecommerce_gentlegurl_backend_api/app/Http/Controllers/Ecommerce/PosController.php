@@ -3200,12 +3200,34 @@ class PosController extends Controller
                     if ($cart->packageItems->isNotEmpty()) {
                         abort(422, __('Cannot checkout guest settlement together with service packages.'));
                     }
-                    $guestEmails = $cart->appointmentSettlementItems
-                        ->map(fn (PosCartAppointmentSettlementItem $row) => strtolower(trim((string) ($row->booking?->guest_email ?? ''))))
-                        ->filter(fn (string $email) => $email !== '')
+                    $guestKeys = $cart->appointmentSettlementItems
+                        ->map(function (PosCartAppointmentSettlementItem $row) {
+                            $booking = $row->booking;
+                            if (! $booking || ! empty($booking->customer_id)) {
+                                return null;
+                            }
+
+                            $guestName = strtoupper(trim((string) ($booking->guest_name ?? '')));
+                            if ($guestName === 'UNKNOWN') {
+                                return 'unknown';
+                            }
+
+                            $guestEmail = strtolower(trim((string) ($booking->guest_email ?? '')));
+                            if ($guestEmail !== '') {
+                                return 'email:' . $guestEmail;
+                            }
+
+                            $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+                            if ($guestName !== '' && $guestPhone !== '') {
+                                return 'guest:' . $guestName . '|' . $guestPhone;
+                            }
+
+                            return null;
+                        })
+                        ->filter(fn (?string $key) => ! empty($key))
                         ->unique()
                         ->values();
-                    if ($guestEmails->count() !== 1) {
+                    if ($guestKeys->count() !== 1) {
                         abort(422, __('All appointment settlement items in one checkout must belong to the same guest.'));
                     }
                     // Force member to be null for guest settlement.
