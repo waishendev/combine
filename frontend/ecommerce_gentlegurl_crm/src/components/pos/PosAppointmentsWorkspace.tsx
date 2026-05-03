@@ -313,24 +313,6 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentReceiptCooldownActive = appointmentReceiptCooldownUntil > Date.now()
 
-  const checkoutCustomerDisplayName = useMemo(() => {
-    if (!appointmentDetail) return '—'
-
-    const primaryLabel = formatAppointmentCustomerDisplayName(appointmentDetail)
-    const normalizedPrimary = primaryLabel.trim().toUpperCase()
-    if (normalizedPrimary !== 'UNKNOWN (GUEST)' && normalizedPrimary !== 'UNKNOWN') {
-      return primaryLabel
-    }
-
-    const listRow = appointments.find((item) => item.id === appointmentDetail.id)
-    const listCustomerName = (listRow?.customer_name ?? '').trim()
-    if (listCustomerName && listCustomerName !== '-' && listCustomerName.toUpperCase() !== 'UNKNOWN') {
-      return listCustomerName
-    }
-
-    return primaryLabel
-  }, [appointmentDetail, appointments])
-
   const formatAppointmentStaffLabel = useCallback((detail: PosAppointmentDetail): string => {
     const splits = (detail.staff_splits ?? []).filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
     if (splits.length > 0) {
@@ -2148,7 +2130,7 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     </div>
                     <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">
-                      {checkoutCustomerDisplayName}
+                      {formatAppointmentCustomerDisplayName(appointmentDetail)}
                     </p>
 
                     {/* <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
