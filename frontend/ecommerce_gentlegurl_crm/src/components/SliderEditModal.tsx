@@ -613,6 +613,61 @@ export default function SliderEditModal({
                     />
                   </div>
 
+                  <div className="sm:col-span-2 lg:col-span-3 rounded-md border border-gray-200 bg-gray-50 p-4 space-y-4">
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-900">Slider Content Position</h3>
+                      <p className="text-xs text-gray-600 mt-1">
+                        Control where the slider title, subtitle, and button appear on the banner.
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Text Horizontal Position</label>
+                        <select
+                          name="content_align"
+                          value={form.content_align}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                          disabled={disableForm}
+                        >
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Text Vertical Position</label>
+                        <select
+                          name="content_vertical"
+                          value={form.content_vertical}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                          disabled={disableForm}
+                        >
+                          <option value="top">Top</option>
+                          <option value="middle">Middle</option>
+                          <option value="bottom">Bottom</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">Button Position</label>
+                        <select
+                          name="button_align"
+                          value={form.button_align}
+                          onChange={handleChange}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                          disabled={disableForm}
+                        >
+                          <option value="left">Left</option>
+                          <option value="center">Center</option>
+                          <option value="right">Right</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
                   <div>
                     <label
                       htmlFor="edit-isActive"
