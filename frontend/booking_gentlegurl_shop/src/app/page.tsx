@@ -1,10 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import localFont from "next/font/local";
 import { Hero, DynamicSections } from "@/components/sections/LandingSections";
 import { getBookingLandingPage } from "@/lib/apiClient";
 import type { LandingSections } from "@/lib/types";
 import { getBookingHomepageSliders, type BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
+
+const justBreathe = localFont({
+  src: [
+    {
+      path: "../../public/fonts/just_breathe/JustBreathe.otf",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  fallback: ["serif"],
+});
 
 const defaultSections: LandingSections = {
   hero: {
@@ -64,7 +76,12 @@ export default function HomePage() {
   return (
     <main className="bg-gradient-to-b from-transparent via-[var(--card)]/60 to-transparent pb-16">
       <div className="mx-auto max-w-6xl space-y-14 px-4 pt-8 sm:px-6 lg:px-8">
-        <Hero hero={sections.hero} sliders={sliders} />
+        <Hero
+          hero={sections.hero}
+          sliders={sliders}
+          sliderTitleClassName={justBreathe.className}
+          sliderSubtitleClassName={justBreathe.className}
+        />
         {loaded && <DynamicSections sections={sections} />}
       </div>
     </main>
