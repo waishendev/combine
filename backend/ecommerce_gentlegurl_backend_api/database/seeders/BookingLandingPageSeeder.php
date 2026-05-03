@@ -53,6 +53,20 @@ class BookingLandingPageSeeder extends Seeder
                             ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
                         ],
                     ],
+                    'our_artists' => [
+                        'is_active' => true,
+                        'heading' => [
+                            'label' => 'Our Artists',
+                            'title' => 'Meet our creative professionals',
+                            'align' => 'center',
+                        ],
+                        'items' => [
+                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Senior Stylist — 10 years experience', 'text_align' => 'center', 'link_url' => '/booking'],
+                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Color Specialist — Balayage & highlights', 'text_align' => 'center', 'link_url' => ''],
+                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Nail Artist — Gel and extensions', 'text_align' => 'center', 'link_url' => ''],
+                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Makeup Artist — Bridal & events', 'text_align' => 'center', 'link_url' => ''],
+                        ],
+                    ],
                     'faqs' => [
                         'is_active' => true,
                         'heading' => [
