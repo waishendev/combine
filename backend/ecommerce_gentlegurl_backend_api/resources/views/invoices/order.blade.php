@@ -301,9 +301,9 @@
   $billingEmail = $order->customer?->email ?? data_get($order->payment_meta, 'pos_billing_email');
 
   $walkInBillTo = data_get($profile, 'pos_walk_in_bill_to', [
-    'name' => 'Loyalty Tester',
-    'phone' => '0123456789',
-    'email' => 'loyalty.tester@example.com',
+    'name' => 'UNKNOWN',
+    'phone' => null,
+    'email' => null,
   ]);
   $billingLine1 = $useShippingForBilling ? $order->shipping_address_line1 : $order->billing_address_line1;
   $billingLine2 = $useShippingForBilling ? $order->shipping_address_line2 : $order->billing_address_line2;
@@ -323,16 +323,15 @@
     $billingPhone = $customerPhone;
   }
 
-  /** POS in-store sale without a linked member: use configured walk-in bill-to if order row predates snapshot fields */
-  if ($order->pickup_or_shipping === 'in_store' && !$order->customer_id && !$isUnknownWalkIn) {
+  /** POS in-store sale without a linked member must stay guest/unknown (never auto-assign a real member). */
+  if ($order->pickup_or_shipping === 'in_store' && !$order->customer_id) {
     if (!trim((string) ($billingName ?? '')) || $billingName === '-') {
-      $billingName = (string) (data_get($walkInBillTo, 'name') ?: 'Loyalty Tester');
+      $billingName = (string) (data_get($walkInBillTo, 'name') ?: 'UNKNOWN');
     }
-    if (!trim((string) ($billingPhone ?? ''))) {
-      $billingPhone = data_get($walkInBillTo, 'phone');
-    }
-    if (!trim((string) ($billingEmail ?? ''))) {
-      $billingEmail = data_get($walkInBillTo, 'email');
+
+    if (strtoupper(trim((string) $billingName)) === 'UNKNOWN') {
+      $billingPhone = null;
+      $billingEmail = null;
     }
   }
 
