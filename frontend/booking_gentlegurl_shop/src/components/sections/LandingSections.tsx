@@ -2,12 +2,24 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import localFont from "next/font/local";
 import { Service } from "@/lib/types";
 import { SectionTitle } from "./SectionTitle";
 import { useEffect, useState } from "react";
 import type { LandingSections, LandingGalleryItem } from "@/lib/types";
 import Slider from "@/components/home/Slider";
 import type { BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
+
+const justBreathe = localFont({
+  src: [
+    {
+      path: "../../../public/fonts/just_breathe/JustBreathe.otf",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  display: "swap",
+});
 
 type HeroProps = {
   hero: LandingSections["hero"];
@@ -34,10 +46,10 @@ export function Hero({ hero, sliders }: HeroProps) {
         }`}
       >
         <p className="text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]">{hero.label}</p>
-        <h1 className="text-3xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-4xl md:text-5xl">
+        <h1 className={`${justBreathe.className} text-3xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-4xl md:text-5xl`}>
           {hero.title}
         </h1>
-        <p className="max-w-2xl text-lg text-[var(--text-muted)]">{hero.subtitle}</p>
+        <p className={`${justBreathe.className} max-w-2xl text-lg text-[var(--text-muted)]`}>{hero.subtitle}</p>
         <Link
           href={hero.cta_link || "/booking"}
           className="mt-1 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-stronger)]"
