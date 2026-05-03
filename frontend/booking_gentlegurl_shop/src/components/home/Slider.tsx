@@ -124,8 +124,8 @@ export default function Slider({ items }: SliderProps) {
   };
 
   return (
-    <div className="relative overflow-hidden border rounded-md  border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
-      <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32  bg-[color:var(--accent)]/30 blur-3xl" />
+    <div className="relative overflow-hidden rounded-md border border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
+      <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32 bg-[color:var(--accent)]/30 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 bg-[color:var(--muted)]/70 blur-3xl" />
 
       <div
@@ -167,6 +167,7 @@ export default function Slider({ items }: SliderProps) {
                     alt={item.title ?? "slide"}
                     fill
                     priority={isActive}
+                    sizes="(max-width: 768px) 100vw, 80vw"
                     className="object-cover sm:hidden"
                   />
                 </div>

@@ -6,22 +6,45 @@ import { Service } from "@/lib/types";
 import { SectionTitle } from "./SectionTitle";
 import { useEffect, useState } from "react";
 import type { LandingSections, LandingGalleryItem } from "@/lib/types";
+import Slider from "@/components/home/Slider";
+import type { BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
 
 type HeroProps = {
   hero: LandingSections["hero"];
+  /** Sliders render first; headline + copy stay together below. */
+  sliders?: BookingHomepageSlider[];
 };
 
-export function Hero({ hero }: HeroProps) {
+export function Hero({ hero, sliders }: HeroProps) {
   if (!hero.is_active) return null;
 
+  const hasSliders = sliders && sliders.length > 0;
+
   return (
-    <section className="mx-auto max-w-6xl px-4 py-20 text-center">
-      <p className="text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]">{hero.label}</p>
-      <h1 className="mt-4 text-5xl font-semibold tracking-tight text-[var(--foreground)]">{hero.title}</h1>
-      <p className="mx-auto mt-6 max-w-2xl text-lg text-[var(--text-muted)]">{hero.subtitle}</p>
-      <Link href={hero.cta_link || "/booking"} className="mt-8 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white hover:bg-[var(--accent-stronger)] transition-colors">
-        {hero.cta_label}
-      </Link>
+    <section className="w-full text-center">
+      {hasSliders ? (
+        <div className="w-full">
+          <Slider items={sliders} />
+        </div>
+      ) : null}
+
+      <div
+        className={`mx-auto flex max-w-4xl flex-col items-center space-y-3 sm:space-y-4 ${
+          hasSliders ? "mt-8 sm:mt-10" : ""
+        }`}
+      >
+        <p className="text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]">{hero.label}</p>
+        <h1 className="text-3xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-4xl md:text-5xl">
+          {hero.title}
+        </h1>
+        <p className="max-w-2xl text-lg text-[var(--text-muted)]">{hero.subtitle}</p>
+        <Link
+          href={hero.cta_link || "/booking"}
+          className="mt-1 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-stronger)]"
+        >
+          {hero.cta_label}
+        </Link>
+      </div>
     </section>
   );
 }
@@ -143,7 +166,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
   const noteItems = sections.notes?.items ?? [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-12 px-4 py-16 sm:px-6 lg:px-8">
+    <div className="space-y-12 py-16">
       {/* Gallery Section */}
       {sections.gallery?.is_active && galleryItems.length > 0 && (
         <section className="space-y-6">

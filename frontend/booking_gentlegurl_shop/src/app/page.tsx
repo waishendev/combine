@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Slider from "@/components/home/Slider";
 import { Hero, DynamicSections } from "@/components/sections/LandingSections";
 import { getBookingLandingPage } from "@/lib/apiClient";
 import type { LandingSections } from "@/lib/types";
@@ -63,10 +62,11 @@ export default function HomePage() {
   }, []);
 
   return (
-    <>
-      {sliders.length > 0 && (<section className="px-4 pt-6 sm:px-6 lg:px-8"><Slider items={sliders} /></section>)}
-      <Hero hero={sections.hero} />
-      {loaded && <DynamicSections sections={sections} />}
-    </>
+    <main className="bg-gradient-to-b from-transparent via-[var(--card)]/60 to-transparent pb-16">
+      <div className="mx-auto max-w-6xl space-y-14 px-4 pt-8 sm:px-6 lg:px-8">
+        <Hero hero={sections.hero} sliders={sliders} />
+        {loaded && <DynamicSections sections={sections} />}
+      </div>
+    </main>
   );
 }
