@@ -17,6 +17,9 @@ export interface SliderRowData {
   sort_order: number | null
   createdAt: string
   updatedAt: string
+  content_align: string
+  content_vertical: string
+  button_align: string
 }
 
 interface SliderRowProps {

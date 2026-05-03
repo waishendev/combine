@@ -33,6 +33,11 @@ class PublicHomeSliderController extends Controller
                     'mobile_image_path',
                     'button_label',
                     'button_link',
+                    'content_align',
+                    'content_vertical',
+                    'button_align',
+                    'text_color',
+                    'button_style',
                 ]);
 
             return $this->respond($sliders);

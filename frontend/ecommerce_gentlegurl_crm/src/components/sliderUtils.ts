@@ -16,6 +16,11 @@ export type SliderApiItem = {
   sort_order?: number | string | null
   created_at?: string | null
   updated_at?: string | null
+  content_align?: string | null
+  content_vertical?: string | null
+  button_align?: string | null
+  text_color?: string | null
+  button_style?: string | null
 }
 
 export const mapSliderApiItemToRow = (item: SliderApiItem): SliderRowData => {
@@ -55,5 +60,8 @@ export const mapSliderApiItemToRow = (item: SliderApiItem): SliderRowData => {
     sort_order: normalizedSortOrder,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
+    content_align: item.content_align ?? 'left',
+    content_vertical: item.content_vertical ?? 'middle',
+    button_align: item.button_align ?? 'left',
   }
 }

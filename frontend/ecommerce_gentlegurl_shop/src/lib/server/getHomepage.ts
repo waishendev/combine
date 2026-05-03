@@ -11,6 +11,9 @@ export type HomepageSlider = {
   sort_order: number;
   image_url?: string | null;
   mobile_image_url?: string | null;
+  content_align?: string | null;
+  content_vertical?: string | null;
+  button_align?: string | null;
 };
 
 export type HomepageMarquee = {

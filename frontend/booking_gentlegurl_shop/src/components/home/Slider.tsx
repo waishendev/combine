@@ -14,6 +14,9 @@ type SliderItem = {
   button_link?: string | null;
   image_url?: string | null;
   mobile_image_url?: string | null;
+  content_align?: string | null;
+  content_vertical?: string | null;
+  button_align?: string | null;
 };
 
 interface SliderProps {
@@ -28,6 +31,12 @@ export default function Slider({ items }: SliderProps) {
   
   // Minimum swipe distance (in px)
   const minSwipeDistance = 50;
+  const getHAlign = (value?: string | null) =>
+    value === "center" ? "items-center text-center" : value === "right" ? "items-end text-right" : "items-start text-left";
+  const getVAlign = (value?: string | null) =>
+    value === "top" ? "items-start pt-10" : value === "bottom" ? "items-end pb-12" : "items-center";
+  const getButtonAlign = (value?: string | null) =>
+    value === "center" ? "justify-center" : value === "right" ? "justify-end" : "justify-start";
 
   useEffect(() => {
     if (!slides.length) return;
@@ -124,8 +133,8 @@ export default function Slider({ items }: SliderProps) {
   };
 
   return (
-    <div className="relative overflow-hidden rounded-md border border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
-      <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32 bg-[color:var(--accent)]/30 blur-3xl" />
+    <div className="relative overflow-hidden border rounded-md  border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
+      <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32  bg-[color:var(--accent)]/30 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 bg-[color:var(--muted)]/70 blur-3xl" />
 
       <div
@@ -167,7 +176,6 @@ export default function Slider({ items }: SliderProps) {
                     alt={item.title ?? "slide"}
                     fill
                     priority={isActive}
-                    sizes="(max-width: 768px) 100vw, 80vw"
                     className="object-cover sm:hidden"
                   />
                 </div>
@@ -180,8 +188,8 @@ export default function Slider({ items }: SliderProps) {
               </div>
 
               {hasContent && (
-                <div className="relative z-10 flex h-full items-center px-6 py-10 sm:px-10 lg:px-14">
-                  <div className="max-w-xl space-y-4 text-white sm:space-y-6">
+                <div className={`relative z-10 flex h-full px-6 py-10 sm:px-10 lg:px-14 ${getVAlign(item.content_vertical)}`}>
+                  <div className={`flex max-w-xl flex-col space-y-4 text-white sm:space-y-6 ${getHAlign(item.content_align)}`}>
 
                     {item.title && (
                       <h2 className="text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl">
@@ -196,8 +204,8 @@ export default function Slider({ items }: SliderProps) {
                     )}
                     
                     {hasCta && (
-                      <Link
-                        href={item.button_link as string}
+                      <div className={`flex w-full ${getButtonAlign(item.button_align)}`}>
+                      <Link href={item.button_link as string}
                         onClick={(e) => {
                           if (hasSwiped) {
                             e.preventDefault();
@@ -210,6 +218,7 @@ export default function Slider({ items }: SliderProps) {
                           →
                         </span>
                       </Link>
+                      </div>
                     )}
                   </div>
                 </div>

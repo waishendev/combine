@@ -20,6 +20,9 @@ interface FormState {
   button_link: string
   start_at: string
   end_at: string
+  content_align: 'left' | 'center' | 'right'
+  content_vertical: 'top' | 'middle' | 'bottom'
+  button_align: 'left' | 'center' | 'right'
 }
 
 const initialFormState: FormState = {
@@ -29,6 +32,9 @@ const initialFormState: FormState = {
   button_link: '',
   start_at: '',
   end_at: '',
+  content_align: 'left',
+  content_vertical: 'middle',
+  button_align: 'left',
 }
 
 export default function SliderCreateModal({
@@ -132,6 +138,9 @@ export default function SliderCreateModal({
       formData.append('button_link', trimmedButtonLink)
       formData.append('start_at', trimmedStartAt)
       formData.append('end_at', trimmedEndAt)
+      formData.append('content_align', form.content_align)
+      formData.append('content_vertical', form.content_vertical)
+      formData.append('button_align', form.button_align)
       formData.append('is_active', '1')
       formData.append('type', sliderType)
 
@@ -188,6 +197,9 @@ export default function SliderCreateModal({
             sort_order: null,
             createdAt: '',
             updatedAt: '',
+            content_align: form.content_align,
+            content_vertical: form.content_vertical,
+            button_align: form.button_align,
           }
 
       setForm({ ...initialFormState })
@@ -469,6 +481,25 @@ export default function SliderCreateModal({
               disabled={submitting}
             />
           </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Content Align</label>
+                <select name="content_align" value={form.content_align} onChange={handleChange} className="w-full border rounded px-3 py-2" disabled={submitting}>
+                  <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Content Vertical</label>
+                <select name="content_vertical" value={form.content_vertical} onChange={handleChange} className="w-full border rounded px-3 py-2" disabled={submitting}>
+                  <option value="top">Top</option><option value="middle">Middle</option><option value="bottom">Bottom</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Button Align</label>
+                <select name="button_align" value={form.button_align} onChange={handleChange} className="w-full border rounded px-3 py-2" disabled={submitting}>
+                  <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
+                </select>
+              </div>
             </div>
           </div>
 
