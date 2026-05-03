@@ -7,6 +7,7 @@ import {
   checkoutCart,
   getBookingBankAccounts,
   getBookingCart,
+  getBookingDepositTncSettings,
   getBookingPaymentGateways,
   getBillplzPaymentGatewayOptions,
   getMe,
@@ -87,6 +88,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [packageActionItemId, setPackageActionItemId] = useState<number | null>(null);
   const [packageQtyBusyId, setPackageQtyBusyId] = useState<number | null>(null);
   const [photoBusyItemId, setPhotoBusyItemId] = useState<number | null>(null);
+  const [depositTncEnabled, setDepositTncEnabled] = useState(false);
+  const [depositTncText, setDepositTncText] = useState<string | null>(null);
 
   const loadCart = useCallback(async () => {
     try {
@@ -129,8 +132,9 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
         getBookingBankAccounts(),
         getBillplzPaymentGatewayOptions({ type: "booking", gateway_group: "online_banking" }),
         getBillplzPaymentGatewayOptions({ type: "booking", gateway_group: "credit_card" }),
+        getBookingDepositTncSettings(),
       ])
-        .then(([gatewayData, bankData, onlineOptions, cardOptions]) => {
+        .then(([gatewayData, bankData, onlineOptions, cardOptions, depositTncSettings]) => {
           const activeGateways = gatewayData.filter((g) => g.is_active !== false);
           const normalizedGateways = activeGateways
             .map((gateway) => ({
@@ -153,10 +157,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
           const defaultBank = (bankData || []).find((b) => b.is_default) || (bankData || [])[0] || null;
           setSelectedBankAccountId(defaultBank?.id ?? null);
+          setDepositTncEnabled(Boolean(depositTncSettings.booking_deposit_tnc_enabled));
+          setDepositTncText(depositTncSettings.booking_deposit_tnc_text);
         })
         .catch(() => {
           setGateways([]);
           setBankAccounts([]);
+          setDepositTncEnabled(false);
+          setDepositTncText(null);
         });
     }
   }, [isOpen, loadCart]);
@@ -1347,6 +1355,10 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   ) : null}
                 </div>
               </div>
+
+              {depositTncEnabled && depositTncText ? (
+                <p className="text-sm text-[var(--text-muted)]">{depositTncText}</p>
+              ) : null}
 
               <button
                 type="button"

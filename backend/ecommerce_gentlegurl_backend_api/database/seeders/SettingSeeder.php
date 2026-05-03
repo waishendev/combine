@@ -57,6 +57,17 @@ class SettingSeeder extends Seeder
             ['value' => 10]
         );
 
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_deposit_tnc_enabled'],
+            ['value' => true]
+        );
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_deposit_tnc_text'],
+            ['value' => 'Deposit rules and confirmation become necessary to agree deposit T&C']
+        );
+
         Setting::updateOrCreate(
             ['type' => 'booking', 'key' => 'booking_service_deposit_note'],
             ['value' => 'Note: The deposit is typically credited toward your final bill. The balance above is an estimate (menu price + add-ons − deposit). Packages, vouchers, tips, or changes at the chair may adjust the final amount—confirmed at checkout and at the salon.']
