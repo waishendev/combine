@@ -2265,9 +2265,20 @@ class PosController extends Controller
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
         $guestEmail = trim((string) ($booking->guest_email ?? ''));
-        $hasGuestSnapshot = $guestName !== '' && $guestPhone !== '' && $guestEmail !== '';
-        if (! $hasMember && ! $hasGuestSnapshot) {
+        $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+        $hasCompleteGuest = $guestName !== '' && ($guestPhone !== '' || $guestEmail !== '');
+        if (! $hasMember && ! $isUnknownGuest && ! $hasCompleteGuest) {
             return $this->respondError(__('Settlement appointment must have a member or complete guest details.'), 422);
+        }
+
+        if ($isUnknownGuest) {
+            $booking->customer_id = null;
+            $booking->guest_name = 'UNKNOWN';
+            $booking->guest_phone = null;
+            $booking->guest_email = null;
+            $booking->save();
+            $guestPhone = '';
+            $guestEmail = '';
         }
 
         $cart = $this->resolveCart((int) $request->user()->id)->load([
@@ -4917,7 +4928,7 @@ class PosController extends Controller
     }
 
     /**
-     * Member-linked booking, or guest with name plus phone or email; service required. Used for POS settlement orders.
+     * Member-linked booking, UNKNOWN walk-in guest, or guest with name plus phone/email; service required.
      */
     protected function bookingEligibleForPosSettlement(Booking $booking): bool
     {
@@ -4931,8 +4942,9 @@ class PosController extends Controller
         $name = trim((string) ($booking->guest_name ?? ''));
         $phone = trim((string) ($booking->guest_phone ?? ''));
         $email = trim((string) ($booking->guest_email ?? ''));
+        $isUnknownGuest = strtoupper($name) === 'UNKNOWN';
 
-        return $name !== '' && ($phone !== '' || $email !== '');
+        return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
     }
 
     protected function resolveAppointmentSnapshot(Booking $booking): array
