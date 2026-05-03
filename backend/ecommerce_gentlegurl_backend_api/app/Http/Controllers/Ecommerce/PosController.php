@@ -348,7 +348,9 @@ class PosController extends Controller
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? (strtoupper($guestName) === 'UNKNOWN' ? 'Walk-in / Unknown' : $guestName . ' (GUEST)') : '-')),
+                'customer_name' => (string) (strtoupper($guestName) === 'UNKNOWN'
+                ? 'Walk-in / Unknown'
+                : (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-'))),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -4343,7 +4345,7 @@ class PosController extends Controller
                     'id' => $item->id,
                     'item_type' => 'BOOKING_PRODUCT',
                     'booking_product_id' => (int) ($item->booking_product_id ?? 0),
-                    'booking_product_category' => $item->bookingProduct?->category?->name,
+                    'booking_product_category' => $item->bookingProduct?->categories?->first()?->name,
                     'qty' => (int) $item->qty,
                     'unit_price' => $unit,
                     'line_total' => $line,
@@ -4504,7 +4506,9 @@ class PosController extends Controller
                 'booking_service_id' => (int) ($booking->service_id ?? 0),
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? (strtoupper($guestName) === 'UNKNOWN' ? 'Walk-in / Unknown' : $guestName . ' (GUEST)') : '-')),
+                'customer_name' => (string) (strtoupper($guestName) === 'UNKNOWN'
+                ? 'Walk-in / Unknown'
+                : (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-'))),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -5002,9 +5006,11 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
-            'customer_name' => (string) (($booking->customer?->name ?? '') !== ''
-                ? $booking->customer?->name
-                : ($guestName !== '' ? (strtoupper($guestName) === 'UNKNOWN' ? 'Walk-in / Unknown' : $guestName . ' (GUEST)') : '-')),
+            'customer_name' => (string) (strtoupper($guestName) === 'UNKNOWN'
+                ? 'Walk-in / Unknown'
+                : (($booking->customer?->name ?? '') !== ''
+                    ? $booking->customer?->name
+                    : ($guestName !== '' ? $guestName . ' (GUEST)' : '-'))),
             'service_name' => (string) ($booking->service?->name ?? '-'),
             'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
             'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
