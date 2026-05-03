@@ -51,6 +51,22 @@ const formatTimeLabel = (iso: string | null | undefined) => {
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+
+const pickRowStartIso = (row: PosAppointmentListItem): string | null => {
+  const maybe = row as PosAppointmentListItem & {
+    schedule_start_at?: string | null
+    start_at?: string | null
+  }
+  return maybe.appointment_start_at ?? maybe.schedule_start_at ?? maybe.start_at ?? null
+}
+
+const pickRowEndIso = (row: PosAppointmentListItem): string | null => {
+  const maybe = row as PosAppointmentListItem & {
+    schedule_end_at?: string | null
+    end_at?: string | null
+  }
+  return maybe.appointment_end_at ?? maybe.schedule_end_at ?? maybe.end_at ?? null
+}
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 
 type StaffColumnKey = string
@@ -117,7 +133,7 @@ export default function PosAppointmentsDayGrid({
   staffOffTodayIds,
 }: Props) {
   const dayRows = useMemo(() => {
-    return appointments.filter((row) => parseIsoToLocalYmd(row.appointment_start_at ?? null) === dayYmd)
+    return appointments.filter((row) => parseIsoToLocalYmd(pickRowStartIso(row)) === dayYmd)
   }, [appointments, dayYmd])
 
   const staffIdsFromSchedule = useMemo(() => new Set(scheduleStaff.map((s) => s.id)), [scheduleStaff])
@@ -186,9 +202,9 @@ export default function PosAppointmentsDayGrid({
   const dayEndMin = useMemo(() => {
     let maxEndMin = BASE_DAY_END_MIN
     for (const row of dayRows) {
-      const startDate = parseAppointmentDate(row.appointment_start_at)
+      const startDate = parseAppointmentDate(pickRowStartIso(row))
       if (!startDate) continue
-      const endDate = parseAppointmentDate(row.appointment_end_at ?? null)
+      const endDate = parseAppointmentDate(pickRowEndIso(row))
       const startMin = minutesFromMidnight(startDate)
       const fallbackDuration = Number(row.duration_min ?? 0)
       const computedEndMin = endDate && endDate > startDate
@@ -268,8 +284,8 @@ export default function PosAppointmentsDayGrid({
           const rows = blocksByStaff.get(col.key) ?? []
           const intervals = rows
             .map((row) => {
-              const startIso = row.appointment_start_at
-              const endIso = row.appointment_end_at ?? row.appointment_start_at
+              const startIso = pickRowStartIso(row)
+              const endIso = pickRowEndIso(row) ?? startIso
               if (!startIso) return null
               const startD = parseAppointmentDate(startIso)
               const endD = parseAppointmentDate(endIso)
@@ -333,7 +349,7 @@ export default function PosAppointmentsDayGrid({
                       width: `calc(${widthPct}% - 2px)`,
                     }}
                   >
-                    <span className="block truncate font-bold">{formatTimeLabel(row.appointment_start_at)}</span>
+                    <span className="block truncate font-bold">{formatTimeLabel(pickRowStartIso(row))}</span>
                     <span className={posAppointmentDayBlockSubtextClass(tone)}>
                       {truncate(row.customer_name, 14)} · {truncate(svc, 18)}
                     </span>
