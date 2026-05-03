@@ -17,6 +17,7 @@ type NailAcademyItem = {
   text_align: 'left' | 'center' | 'right'
 }
 type FaqItem = { question: string; answer: string }
+type OpeningHoursRow = { day_range: string; time_range: string }
 
 type Sections = {
   hero: {
@@ -39,6 +40,22 @@ type Sections = {
   }
   faqs: { is_active: boolean; heading: HeadingConfig; items: FaqItem[] }
   notes: { is_active: boolean; heading: HeadingConfig; items: string[] }
+  visit_studio: {
+    is_active: boolean
+    heading: HeadingConfig
+    studio_name: string
+    address: string
+    google_maps_url: string
+    waze_url: string
+    whatsapp_url: string
+    google_maps_label: string
+    waze_label: string
+    whatsapp_label: string
+    opening_hours_heading: string
+    opening_hours: OpeningHoursRow[]
+    bottom_label: string
+    column_order: 'contact_left' | 'hours_left'
+  }
 }
 
 type LandingPageData = {
@@ -92,6 +109,22 @@ const defaultSections: Sections = {
     heading: { label: 'Notes', title: 'Policy & care', align: 'left' },
     items: [],
   },
+  visit_studio: {
+    is_active: true,
+    heading: { label: '', title: 'Visit Our Studio', align: 'left' },
+    studio_name: '',
+    address: '',
+    google_maps_url: '',
+    waze_url: '',
+    whatsapp_url: '',
+    google_maps_label: 'GOOGLE MAPS',
+    waze_label: 'OPEN WAZE',
+    whatsapp_label: 'MESSAGE US ON WHATSAPP',
+    opening_hours_heading: 'Opening Hours',
+    opening_hours: [],
+    bottom_label: '',
+    column_order: 'contact_left',
+  },
 }
 
 function parseCurriculumFromUnknown(raw: unknown): string[] {
@@ -121,6 +154,64 @@ function normalizeNailAcademyItem(raw: Record<string, unknown>): NailAcademyItem
   }
 }
 
+/** Migrate older saves that used separate legal fields into one bottom_label. */
+function composeBottomLabelFromLegacyFields(o: Record<string, unknown>): string {
+  const ob = String(o.operated_by ?? '').trim()
+  const reg = String(o.registration_number ?? '').trim()
+  const cy = String(o.copyright_year ?? '').trim()
+  const cb = String(o.copyright_brand ?? '').trim()
+  const lines: string[] = []
+  if (ob || reg) {
+    let l = 'Operated by'
+    if (ob) l += ` ${ob}`
+    if (reg) l += ` (${reg})`
+    lines.push(l)
+  }
+  if (cy || cb) {
+    const y = cy || String(new Date().getFullYear())
+    lines.push(`© ${y}${cb ? ` ${cb}` : ''}`.trim())
+  }
+  return lines.join('\n')
+}
+
+function normalizeVisitStudioFromApi(raw: unknown): Sections['visit_studio'] {
+  const base = defaultSections.visit_studio
+  if (!raw || typeof raw !== 'object') return base
+  const o = raw as Record<string, unknown>
+  const oh = Array.isArray(o.opening_hours)
+    ? o.opening_hours.map((row) => ({
+        day_range: String((row as Record<string, unknown>).day_range ?? ''),
+        time_range: String((row as Record<string, unknown>).time_range ?? ''),
+      }))
+    : base.opening_hours
+  const heading =
+    o.heading && typeof o.heading === 'object'
+      ? { ...base.heading, ...(o.heading as HeadingConfig) }
+      : base.heading
+  const column_order = o.column_order === 'hours_left' ? 'hours_left' : 'contact_left'
+  let bottom_label = String(o.bottom_label ?? '').trim()
+  if (!bottom_label) {
+    bottom_label = composeBottomLabelFromLegacyFields(o)
+  }
+  return {
+    ...base,
+    heading,
+    opening_hours: oh,
+    column_order,
+    studio_name: String(o.studio_name ?? ''),
+    address: String(o.address ?? ''),
+    google_maps_url: String(o.google_maps_url ?? ''),
+    waze_url: String(o.waze_url ?? ''),
+    whatsapp_url: String(o.whatsapp_url ?? ''),
+    google_maps_label: String(o.google_maps_label ?? base.google_maps_label),
+    waze_label: String(o.waze_label ?? base.waze_label),
+    whatsapp_label: String(o.whatsapp_label ?? base.whatsapp_label),
+    opening_hours_heading: String(o.opening_hours_heading ?? base.opening_hours_heading),
+    bottom_label,
+    is_active: Boolean(o.is_active ?? base.is_active),
+  }
+}
+
 function mergeSectionsFromApi(raw: Partial<Sections> & Record<string, unknown>): Sections {
   const merged = { ...defaultSections, ...raw } as Sections
   const na = raw.nail_academy as Sections['nail_academy'] | undefined
@@ -130,6 +221,9 @@ function mergeSectionsFromApi(raw: Partial<Sections> & Record<string, unknown>):
       ...na,
       items: na.items.map((it) => normalizeNailAcademyItem(it as Record<string, unknown>)),
     }
+  }
+  if (raw.visit_studio !== undefined) {
+    merged.visit_studio = normalizeVisitStudioFromApi(raw.visit_studio)
   }
   return merged
 }
@@ -512,6 +606,53 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       ...prev,
       notes: { ...prev.notes, items: prev.notes.items.filter((_, i) => i !== index) },
     }))
+  }
+
+  const updateVisitStudio = (partial: Partial<Sections['visit_studio']>) => {
+    setSections((prev) => ({
+      ...prev,
+      visit_studio: { ...prev.visit_studio, ...partial },
+    }))
+  }
+
+  const updateOpeningHourRow = (index: number, field: keyof OpeningHoursRow, value: string) => {
+    setSections((prev) => {
+      const rows = [...prev.visit_studio.opening_hours]
+      rows[index] = { ...rows[index], [field]: value }
+      return { ...prev, visit_studio: { ...prev.visit_studio, opening_hours: rows } }
+    })
+  }
+
+  const addOpeningHourRow = () => {
+    setSections((prev) => ({
+      ...prev,
+      visit_studio: {
+        ...prev.visit_studio,
+        opening_hours: [...prev.visit_studio.opening_hours, { day_range: '', time_range: '' }],
+      },
+    }))
+  }
+
+  const removeOpeningHourRow = (index: number) => {
+    setSections((prev) => ({
+      ...prev,
+      visit_studio: {
+        ...prev.visit_studio,
+        opening_hours: prev.visit_studio.opening_hours.filter((_, i) => i !== index),
+      },
+    }))
+  }
+
+  const moveOpeningHourRow = (index: number, direction: -1 | 1) => {
+    setSections((prev) => {
+      const targetIndex = index + direction
+      const rows = prev.visit_studio.opening_hours
+      if (targetIndex < 0 || targetIndex >= rows.length) return prev
+      const next = [...rows]
+      const [moved] = next.splice(index, 1)
+      next.splice(targetIndex, 0, moved)
+      return { ...prev, visit_studio: { ...prev.visit_studio, opening_hours: next } }
+    })
   }
 
   const inputCls = useMemo(
@@ -1084,6 +1225,226 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
             <i className="fa-solid fa-plus" />
             Add item
           </button>
+        </div>
+      </SectionCard>
+
+      {/* Visit Our Studio — below Policy & care on the site */}
+      <SectionCard
+        sectionKey="visit_studio"
+        title="Visit Our Studio"
+        description="Location, maps links, WhatsApp, opening hours, and legal footer. Column order controls which block appears on the left (desktop) / first (mobile)."
+        active={sections.visit_studio.is_active}
+        onToggle={(value) => updateVisitStudio({ is_active: value })}
+        canUpdate={canEdit}
+        collapsed={collapsedSections.visit_studio ?? false}
+        onToggleCollapse={() => toggleSectionCollapsed('visit_studio')}
+      >
+        <div className="space-y-4">
+          <SectionHeadingFields
+            heading={sections.visit_studio.heading}
+            onChange={(heading) => updateVisitStudio({ heading })}
+            canUpdate={canEdit}
+          />
+          <div className="grid gap-3 md:grid-cols-2">
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+              <span className="font-medium">Studio name</span>
+              <input
+                value={sections.visit_studio.studio_name}
+                onChange={(e) => updateVisitStudio({ studio_name: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+                placeholder="NAILSBYLITTLEBOO SALON"
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+              <span className="font-medium">Address</span>
+              <textarea
+                value={sections.visit_studio.address}
+                onChange={(e) => updateVisitStudio({ address: e.target.value })}
+                className={textareaCls}
+                rows={4}
+                disabled={!canEdit}
+                placeholder={'Line 1\nCity\nCountry'}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+              <span className="font-medium">Google Maps URL</span>
+              <input
+                value={sections.visit_studio.google_maps_url}
+                onChange={(e) => updateVisitStudio({ google_maps_url: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+              <span className="font-medium">Waze URL</span>
+              <input
+                value={sections.visit_studio.waze_url}
+                onChange={(e) => updateVisitStudio({ waze_url: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+              <span className="font-medium">WhatsApp link</span>
+              <input
+                value={sections.visit_studio.whatsapp_url}
+                onChange={(e) => updateVisitStudio({ whatsapp_url: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+                placeholder="https://wa.me/60123456789"
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+              <span className="font-medium">Google Maps button label</span>
+              <input
+                value={sections.visit_studio.google_maps_label}
+                onChange={(e) => updateVisitStudio({ google_maps_label: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
+              <span className="font-medium">Waze button label</span>
+              <input
+                value={sections.visit_studio.waze_label}
+                onChange={(e) => updateVisitStudio({ waze_label: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+              <span className="font-medium">WhatsApp button label</span>
+              <input
+                value={sections.visit_studio.whatsapp_label}
+                onChange={(e) => updateVisitStudio({ whatsapp_label: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+              <span className="font-medium">Opening hours card title</span>
+              <input
+                value={sections.visit_studio.opening_hours_heading}
+                onChange={(e) => updateVisitStudio({ opening_hours_heading: e.target.value })}
+                className={inputCls}
+                disabled={!canEdit}
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+              <span className="font-medium">Column order</span>
+              <select
+                value={sections.visit_studio.column_order}
+                onChange={(e) =>
+                  updateVisitStudio({
+                    column_order: e.target.value as Sections['visit_studio']['column_order'],
+                  })
+                }
+                className={inputCls}
+                disabled={!canEdit}
+              >
+                <option value="contact_left">Location &amp; contact — left (opening hours right)</option>
+                <option value="hours_left">Opening hours — left (location right)</option>
+              </select>
+            </label>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-end justify-between gap-2">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Opening hours rows</p>
+                <p className="mt-0.5 text-[11px] text-gray-400">
+                  Two columns on desktop: row 1 left, row 2 right. Each card: label (days) left, hours right.
+                </p>
+              </div>
+            </div>
+            <div className="grid gap-4 md:grid-cols-2">
+              {sections.visit_studio.opening_hours.map((row, idx) => (
+                <div key={idx} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs font-semibold text-gray-500">Row {idx + 1}</span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => moveOpeningHourRow(idx, -1)}
+                        disabled={!canEdit || idx === 0}
+                        className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        aria-label="Move earlier in list"
+                        title="Move earlier"
+                      >
+                        <i className="fa-solid fa-arrow-up" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveOpeningHourRow(idx, 1)}
+                        disabled={!canEdit || idx === sections.visit_studio.opening_hours.length - 1}
+                        className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        aria-label="Move later in list"
+                        title="Move later"
+                      >
+                        <i className="fa-solid fa-arrow-down" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removeOpeningHourRow(idx)}
+                        disabled={!canEdit}
+                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        aria-label="Remove row"
+                      >
+                        <i className="fa-solid fa-trash" />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:gap-4">
+                    <label className="min-w-0 flex-1 space-y-1">
+                      <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Label</span>
+                      <input
+                        className={inputCls}
+                        value={row.day_range}
+                        onChange={(e) => updateOpeningHourRow(idx, 'day_range', e.target.value)}
+                        placeholder="Monday — Friday"
+                        disabled={!canEdit}
+                      />
+                    </label>
+                    <label className="min-w-0 flex-1 space-y-1">
+                      <span className="text-[11px] font-medium uppercase tracking-wide text-gray-500">Time</span>
+                      <input
+                        className={inputCls}
+                        value={row.time_range}
+                        onChange={(e) => updateOpeningHourRow(idx, 'time_range', e.target.value)}
+                        placeholder="11:00 AM — 6:30 PM"
+                        disabled={!canEdit}
+                      />
+                    </label>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={addOpeningHourRow}
+              disabled={!canEdit}
+              className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <i className="fa-solid fa-plus" />
+              Add hours row
+            </button>
+          </div>
+
+          <label className="block space-y-1 border-t border-gray-100 pt-4 text-xs uppercase tracking-wide text-gray-500">
+            <span className="font-medium">Bottom label</span>
+            <span className="block font-normal normal-case text-[11px] text-gray-400">
+              Two lines under opening hours (press Enter after the first line). Example: legal line, then © line.
+            </span>
+            <textarea
+              value={sections.visit_studio.bottom_label}
+              onChange={(e) => updateVisitStudio({ bottom_label: e.target.value })}
+              className={textareaCls}
+              rows={3}
+              disabled={!canEdit}
+              placeholder={'OPERATED BY COMPANY NAME (REG NO)\n© 2026 STUDIO NAME'}
+            />
+          </label>
         </div>
       </SectionCard>
 

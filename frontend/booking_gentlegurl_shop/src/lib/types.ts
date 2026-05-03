@@ -361,6 +361,29 @@ export type LandingNailAcademyItem = {
   text_align: "left" | "center" | "right";
 };
 
+export type LandingVisitStudioHoursRow = {
+  day_range: string;
+  time_range: string;
+};
+
+export type LandingVisitStudio = {
+  is_active: boolean;
+  heading: LandingHeading;
+  studio_name: string;
+  address: string;
+  google_maps_url: string;
+  waze_url: string;
+  whatsapp_url: string;
+  google_maps_label: string;
+  waze_label: string;
+  whatsapp_label: string;
+  opening_hours_heading: string;
+  opening_hours: LandingVisitStudioHoursRow[];
+  /** Two lines of small footer copy under opening hours (paste line break between lines). */
+  bottom_label: string;
+  column_order: "contact_left" | "hours_left";
+};
+
 export type LandingSections = {
   hero: {
     is_active: boolean;
@@ -402,6 +425,7 @@ export type LandingSections = {
     heading: LandingHeading;
     items: string[];
   };
+  visit_studio: LandingVisitStudio;
 };
 
 export type BookingLandingPage = {

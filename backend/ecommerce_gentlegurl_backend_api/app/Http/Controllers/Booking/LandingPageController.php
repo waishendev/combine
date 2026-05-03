@@ -142,6 +142,25 @@ class LandingPageController extends Controller
                     'heading' => ['label' => 'Notes', 'title' => 'Policy & care', 'align' => 'left'],
                     'items' => [],
                 ],
+                'visit_studio' => [
+                    'is_active' => true,
+                    'heading' => ['label' => '', 'title' => 'Visit Our Studio', 'align' => 'left'],
+                    'studio_name' => '',
+                    'address' => '',
+                    'google_maps_url' => '',
+                    'waze_url' => '',
+                    'whatsapp_url' => '',
+                    'google_maps_label' => 'GOOGLE MAPS',
+                    'waze_label' => 'OPEN WAZE',
+                    'whatsapp_label' => 'MESSAGE US ON WHATSAPP',
+                    'opening_hours_heading' => 'Opening Hours',
+                    'opening_hours' => [
+                        ['day_range' => 'Monday — Friday', 'time_range' => '11:00 AM — 6:30 PM'],
+                        ['day_range' => 'Saturday — Sunday', 'time_range' => '9:00 AM — 4:30 PM'],
+                    ],
+                    'bottom_label' => '',
+                    'column_order' => 'contact_left',
+                ],
             ],
         ];
     }
@@ -215,6 +234,13 @@ class LandingPageController extends Controller
             }
             if (isset($value['items']) && is_array($value['items'])) {
                 $sections[$key]['items'] = array_values(is_array($sections[$key]['items'] ?? null) ? $sections[$key]['items'] : []);
+            }
+            if ($key === 'visit_studio' && isset($sections[$key]['opening_hours']) && is_array($sections[$key]['opening_hours'])) {
+                $sections[$key]['opening_hours'] = array_values($sections[$key]['opening_hours']);
+            }
+            if ($key === 'visit_studio') {
+                $co = $sections[$key]['column_order'] ?? 'contact_left';
+                $sections[$key]['column_order'] = $co === 'hours_left' ? 'hours_left' : 'contact_left';
             }
         }
         return $sections;

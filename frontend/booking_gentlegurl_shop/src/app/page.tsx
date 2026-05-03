@@ -52,6 +52,22 @@ const defaultSections: LandingSections = {
     heading: { label: "Notes", title: "Policy & care", align: "left" },
     items: [],
   },
+  visit_studio: {
+    is_active: true,
+    heading: { label: "", title: "Visit Our Studio", align: "left" },
+    studio_name: "",
+    address: "",
+    google_maps_url: "",
+    waze_url: "",
+    whatsapp_url: "",
+    google_maps_label: "GOOGLE MAPS",
+    waze_label: "OPEN WAZE",
+    whatsapp_label: "MESSAGE US ON WHATSAPP",
+    opening_hours_heading: "Opening Hours",
+    opening_hours: [],
+    bottom_label: "",
+    column_order: "contact_left",
+  },
 };
 
 export default function HomePage() {
