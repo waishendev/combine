@@ -2064,9 +2064,6 @@ export default function PosAppointmentsWorkspace({
                     <option value="HOLD">HOLD</option>
                     <option value="CONFIRMED">CONFIRMED</option>
                     <option value="COMPLETED">COMPLETED</option>
-                    <option value="CANCELLED">CANCELLED</option>
-                    <option value="NO_SHOW">NO_SHOW</option>
-                    <option value="LATE_CANCELLATION">LATE_CANCELLATION</option>
                   </select>
                 </div>
               )}

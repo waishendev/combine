@@ -326,18 +326,15 @@ class PosController extends Controller
         if ($unpaidOnly) {
             $builder->where('status', 'COMPLETED')->where('payment_status', 'UNPAID');
         } elseif ($request->filled('status')) {
-            $builder->where('status', (string) $request->query('status'));
+            $status = strtoupper(trim((string) $request->query('status')));
+            if (in_array($status, ['HOLD', 'CONFIRMED', 'COMPLETED'], true)) {
+                $builder->where('status', $status);
+            } else {
+                $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'COMPLETED']);
+            }
         } else {
-            // POS appointments (no status filter / "ALL"): show staff-facing bookings only.
-            // Omit HOLD and EXPIRED (and other internal states) from the calendar list.
-            $builder->whereIn('status', [
-                'HOLD',
-                'CONFIRMED',
-                'COMPLETED',
-                'CANCELLED',
-                'NO_SHOW',
-                'LATE_CANCELLATION',
-            ]);
+            // POS appointments (no status filter / "ALL"): show only active staff-facing bookings.
+            $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'COMPLETED']);
         }
 
         $paginator = $builder->orderBy('start_at')->paginate($perPage, ['*'], 'page', $page);
