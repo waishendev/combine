@@ -1756,11 +1756,13 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+            $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+
+            if (! $isUnknownGuest && ($guestName === '' || $guestPhone === '' || $guestEmail === '')) {
                 return $this->respondError(__('Guest name, phone, and email are required.'), 422);
             }
 
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if (! $isUnknownGuest && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
@@ -3227,23 +3229,33 @@ class PosController extends Controller
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
             $hasGuestPayload = $guestName !== '' || $guestPhone !== '' || $guestEmail !== '';
             if ($hasGuestPayload) {
-                if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
+                $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+                if (! $isUnknownGuest && ($guestName === '' || $guestPhone === '' || $guestEmail === '')) {
                     abort(422, __('Guest name, phone, and email are all required when providing guest details.'));
                 }
-                if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                if (! $isUnknownGuest && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                     abort(422, __('Invalid guest phone.'));
+                }
+                if ($isUnknownGuest) {
+                    $guestPhone = '';
+                    $guestEmail = '';
                 }
             }
 
             if (empty($customerId) && ! $hasGuestPayload) {
                 $guestLine = $cart->serviceItems->first(function (PosCartServiceItem $item) {
-                    return empty($item->customer_id) && trim((string) ($item->guest_email ?? '')) !== '';
+                    return empty($item->customer_id)
+                        && (trim((string) ($item->guest_email ?? '')) !== '' || strtoupper(trim((string) ($item->guest_name ?? ''))) === 'UNKNOWN');
                 });
                 if ($guestLine) {
                     $guestName = trim((string) ($guestLine->guest_name ?? ''));
                     $guestPhone = trim((string) ($guestLine->guest_phone ?? ''));
                     $guestEmail = trim((string) ($guestLine->guest_email ?? ''));
-                    if ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                    if (strtoupper($guestName) === 'UNKNOWN') {
+                        $guestPhone = '';
+                        $guestEmail = '';
+                        $hasGuestPayload = true;
+                    } elseif ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                         $hasGuestPayload = true;
                     }
                 }
@@ -3253,13 +3265,18 @@ class PosController extends Controller
                     ->map(fn (PosCartAppointmentSettlementItem $row) => $row->booking)
                     ->filter()
                     ->first(function (Booking $booking) {
-                        return empty($booking->customer_id) && trim((string) ($booking->guest_email ?? '')) !== '';
+                        return empty($booking->customer_id)
+                            && (trim((string) ($booking->guest_email ?? '')) !== '' || strtoupper(trim((string) ($booking->guest_name ?? ''))) === 'UNKNOWN');
                     });
                 if ($guestBooking) {
                     $guestName = trim((string) ($guestBooking->guest_name ?? ''));
                     $guestPhone = trim((string) ($guestBooking->guest_phone ?? ''));
                     $guestEmail = trim((string) ($guestBooking->guest_email ?? ''));
-                    if ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                    if (strtoupper($guestName) === 'UNKNOWN') {
+                        $guestPhone = '';
+                        $guestEmail = '';
+                        $hasGuestPayload = true;
+                    } elseif ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                         $hasGuestPayload = true;
                     }
                 }
