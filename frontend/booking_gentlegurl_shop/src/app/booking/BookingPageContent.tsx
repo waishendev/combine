@@ -162,7 +162,7 @@ export default function BookingPageContent() {
                   <p className="flex justify-between gap-2">
                     <span className="text-[var(--text-muted)]">Price</span>
                     <span className="font-medium tabular-nums">
-                      {service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
+                      {service.price_mode === "range" && service.price_range_min != null && service.price_range_max != null
                         ? `RM ${Number(service.price_range_min).toFixed(2)} - ${Number(service.price_range_max).toFixed(2)}`
                         : `RM ${Number(service.price).toFixed(2)}`}
                     </span>
