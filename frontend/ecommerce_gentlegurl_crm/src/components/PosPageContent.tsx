@@ -892,7 +892,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const hasCartPackages = cartPackageItems.length > 0
   const hasCartAppointmentSettlements = cartAppointmentSettlementItems.length > 0
   const hasCartGuestSettlement = useMemo(() => {
-    return cartAppointmentSettlementItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim()))
+    return cartAppointmentSettlementItems.some((row) => {
+      if (row.customer_id) return false
+      const guestEmail = row.guest_email?.trim() ?? ''
+      const guestName = row.guest_name?.trim().toUpperCase() ?? ''
+      return Boolean(guestEmail) || guestName === 'UNKNOWN'
+    })
   }, [cartAppointmentSettlementItems])
   const settlementLockedIdentityMode = useMemo<'member' | 'guest' | null>(() => {
     if (!hasCartAppointmentSettlements) return null
@@ -4928,12 +4933,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const apptName = String((appt as any)?.customer_name ?? '').trim()
                       const isLockedMismatchByName = Boolean(lockedId && lockedName && apptName && lockedName !== apptName)
                       const isLockedMismatch = isLockedMismatchById || isLockedMismatchByName
-                      const cartHasGuestContext = Boolean(
-                        checkoutIdentityMode === 'guest' &&
-                          (cartServiceItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim() || row.guest_name?.trim())) ||
-                            Boolean(guestContactCache.email.trim()) ||
-                            Boolean(guestContactCache.name.trim())),
-                      )
+                      const cartHasGuestContext = cartServiceItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim() || row.guest_name?.trim()))
                       const disableSettlementAdd = isLockedMismatch || cartHasGuestContext
                       const disableReason = isLockedMismatch
                         ? 'Different member. Remove current settlement to change.'
