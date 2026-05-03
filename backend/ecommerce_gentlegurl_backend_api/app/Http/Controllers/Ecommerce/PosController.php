@@ -1534,15 +1534,16 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
-                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
+            if ($guestName === '' && $guestPhone === '' && $guestEmail === '') {
+                $guestName = 'UNKNOWN';
             }
 
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if ($guestPhone !== '' && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
         }
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
 
@@ -1763,7 +1764,8 @@ class PosController extends Controller
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
 
             foreach ($cart->serviceItems as $row) {
                 $row->update([
@@ -1905,15 +1907,16 @@ class PosController extends Controller
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
             $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
 
-            if ($guestName === '' || $guestPhone === '' || $guestEmail === '') {
-                return $this->respondError(__('Guest name, phone, and email are required when no member is selected.'), 422);
+            if ($guestName === '' && $guestPhone === '' && $guestEmail === '') {
+                $guestName = 'UNKNOWN';
             }
 
-            if (! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+            if ($guestPhone !== '' && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
                 return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
             }
 
-            $guestEmail = Str::lower($guestEmail);
+            $guestEmail = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            $guestPhone = $guestPhone !== '' ? $guestPhone : null;
         }
 
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
@@ -2109,7 +2112,7 @@ class PosController extends Controller
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                 'source' => 'STAFF',
                 'customer_id' => $customer?->id,
-                'guest_name' => $customer ? null : $guestName,
+                'guest_name' => $customer ? null : ($guestName !== '' ? $guestName : 'UNKNOWN'),
                 'guest_phone' => $customer ? null : $guestPhone,
                 'guest_email' => $customer ? null : $guestEmail,
                 'staff_id' => $primaryStaffId,
@@ -4105,6 +4108,12 @@ class PosController extends Controller
                 continue;
             }
 
+            $bookingGuestName = trim((string) ($booking->guest_name ?? ''));
+            if (strtoupper($bookingGuestName) === 'UNKNOWN') {
+                Log::info('Booking confirmation email skipped — unknown guest.', ['booking_id' => $booking->id]);
+                continue;
+            }
+
             $customerName = $booking->billing_name
                 ?: $booking->guest_name
                 ?: $booking->customer?->name
@@ -4158,6 +4167,11 @@ class PosController extends Controller
             ?: $booking->customer?->email;
 
         if (! $recipientEmail || ! filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $bookingGuestName = trim((string) ($booking->guest_name ?? ''));
+        if (strtoupper($bookingGuestName) === 'UNKNOWN') {
             return;
         }
 

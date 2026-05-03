@@ -49,6 +49,9 @@ class SendBookingReminderEmails extends Command
         $bookings = Booking::query()
             ->with(['service', 'staff', 'customer'])
             ->where('status', 'CONFIRMED')
+            ->where(function ($query) {
+                $query->whereNull('guest_name')->orWhereRaw("UPPER(TRIM(guest_name)) != 'UNKNOWN'");
+            })
             ->whereBetween('start_at', [$tomorrowStart, $tomorrowEnd])
             ->get();
 
@@ -65,7 +68,8 @@ class SendBookingReminderEmails extends Command
                 ?: $booking->guest_email
                 ?: $booking->customer?->email;
 
-            if (! $email || ! filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $guestName = trim((string) ($booking->guest_name ?? ''));
+            if (! $email || ! filter_var($email, FILTER_VALIDATE_EMAIL) || strtoupper($guestName) === 'UNKNOWN') {
                 continue;
             }
 

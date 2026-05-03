@@ -705,15 +705,11 @@ export default function PosAppointmentsWorkspace({
         return
       }
     } else {
-      if (!createAppointmentGuestName.trim()) {
-        setCreateAppointmentError('Guest name is required.')
-        return
-      }
-      if (!createAppointmentGuestPhone.trim() || !phonePattern.test(createAppointmentGuestPhone.trim())) {
+      if (createAppointmentGuestPhone.trim() && !phonePattern.test(createAppointmentGuestPhone.trim())) {
         setCreateAppointmentError('Please enter a valid guest phone (8-15 digits, optional +).')
         return
       }
-      if (!createAppointmentGuestEmail.trim() || !emailPattern.test(createAppointmentGuestEmail.trim())) {
+      if (createAppointmentGuestEmail.trim() && !emailPattern.test(createAppointmentGuestEmail.trim())) {
         setCreateAppointmentError('Please enter a valid guest email.')
         return
       }
@@ -783,9 +779,13 @@ export default function PosAppointmentsWorkspace({
       if (createAppointmentIdentityMode === 'member') {
         payload.customer_id = createAppointmentCustomerId
       } else {
-        payload.guest_name = createAppointmentGuestName.trim()
-        payload.guest_phone = createAppointmentGuestPhone.trim()
-        payload.guest_email = createAppointmentGuestEmail.trim()
+        const guestName = createAppointmentGuestName.trim()
+        const guestPhone = createAppointmentGuestPhone.trim()
+        const guestEmail = createAppointmentGuestEmail.trim()
+        payload.customer_id = null
+        payload.guest_name = guestName || 'UNKNOWN'
+        payload.guest_phone = guestPhone || null
+        payload.guest_email = guestEmail || null
       }
 
       const res = await fetch('/api/proxy/pos/appointments', {

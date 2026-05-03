@@ -2136,23 +2136,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const guestName = bookingGuestNameRef.current?.value ?? ''
       const guestPhone = bookingGuestPhoneRef.current?.value ?? ''
       const guestEmail = bookingGuestEmailRef.current?.value ?? ''
-      if (!guestName.trim()) {
-        setBookingModalError('Guest name is required.')
-        return
-      }
-      if (!guestPhone.trim()) {
-        setBookingModalError('Guest phone is required.')
-        return
-      }
-      if (!phonePattern.test(guestPhone.trim())) {
+      if (guestPhone.trim() && !phonePattern.test(guestPhone.trim())) {
         setBookingModalError('Please enter a valid phone number (8-15 digits, optional + prefix).')
         return
       }
-      if (!guestEmail.trim()) {
-        setBookingModalError('Guest email is required.')
-        return
-      }
-      if (!emailPattern.test(guestEmail.trim())) {
+      if (guestEmail.trim() && !emailPattern.test(guestEmail.trim())) {
         setBookingModalError('Please enter a valid email address.')
         return
       }
@@ -2219,9 +2207,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (bookingIdentityMode === 'member' && selectedMember?.id) {
       payload.customer_id = selectedMember.id
     } else {
-      payload.guest_name = (bookingGuestNameRef.current?.value ?? '').trim()
-      payload.guest_phone = (bookingGuestPhoneRef.current?.value ?? '').trim()
-      payload.guest_email = (bookingGuestEmailRef.current?.value ?? '').trim()
+      const guestName = (bookingGuestNameRef.current?.value ?? '').trim()
+      const guestPhone = (bookingGuestPhoneRef.current?.value ?? '').trim()
+      const guestEmail = (bookingGuestEmailRef.current?.value ?? '').trim()
+      payload.customer_id = null
+      payload.guest_name = guestName || 'UNKNOWN'
+      payload.guest_phone = guestPhone || null
+      payload.guest_email = guestEmail || null
     }
     const res = await fetch('/api/proxy/pos/cart/add-service', {
       method: 'POST',
