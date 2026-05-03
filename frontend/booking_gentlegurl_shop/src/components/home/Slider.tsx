@@ -32,7 +32,7 @@ export default function Slider({ items }: SliderProps) {
   // Minimum swipe distance (in px)
   const minSwipeDistance = 50;
   const getHAlign = (value?: string | null) =>
-    value === "center" ? "items-center text-center" : value === "right" ? "items-end text-right" : "items-start text-left";
+    value === "center" ? "justify-center text-center" : value === "right" ? "justify-end text-right" : "justify-start text-left";
   const getVAlign = (value?: string | null) =>
     value === "top" ? "items-start pt-10" : value === "bottom" ? "items-end pb-12" : "items-center";
   const getButtonAlign = (value?: string | null) =>
@@ -188,8 +188,8 @@ export default function Slider({ items }: SliderProps) {
               </div>
 
               {hasContent && (
-                <div className={`relative z-10 flex h-full px-6 py-10 sm:px-10 lg:px-14 ${getVAlign(item.content_vertical)}`}>
-                  <div className={`flex max-w-xl flex-col space-y-4 text-white sm:space-y-6 ${getHAlign(item.content_align)}`}>
+                <div className={`relative z-10 flex h-full px-6 py-10 sm:px-10 lg:px-14 ${getVAlign(item.content_vertical)} ${getHAlign(item.content_align)}`}>
+                  <div className="flex w-full max-w-md flex-col space-y-4 text-white sm:space-y-6">
 
                     {item.title && (
                       <h2 className="text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl">
