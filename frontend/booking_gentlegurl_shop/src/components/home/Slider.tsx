@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import localFont from "next/font/local";
 import { useEffect, useMemo, useState } from "react";
 
 type SliderItem = {
@@ -18,6 +19,17 @@ type SliderItem = {
   content_vertical?: string | null;
   button_align?: string | null;
 };
+
+const justBreathe = localFont({
+  src: [
+    {
+      path: "../../../public/fonts/just_breathe/JustBreathe.otf",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  display: "swap",
+});
 
 interface SliderProps {
   items: SliderItem[];
@@ -192,13 +204,13 @@ export default function Slider({ items }: SliderProps) {
                   <div className="flex w-full max-w-md flex-col space-y-4 text-white sm:space-y-6">
 
                     {item.title && (
-                      <h2 className="text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl">
+                      <h2 className={`${justBreathe.className} text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl`}>
                         {item.title}
                       </h2>
                     )}
 
                     {item.subtitle && (
-                      <p className="text-sm font-medium uppercase tracking-[0.22em] text-white/80">
+                      <p className={`${justBreathe.className} text-sm font-medium uppercase tracking-[0.22em] text-white/80`}>
                         {item.subtitle}
                       </p>
                     )}
