@@ -348,7 +348,7 @@ class PosController extends Controller
                 'id' => (int) $booking->id,
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? (strtoupper($guestName) === 'UNKNOWN' ? 'Walk-in / Unknown' : $guestName . ' (GUEST)') : '-')),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -607,6 +607,15 @@ class PosController extends Controller
             return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
         }
 
+        if (strtoupper(trim((string) ($booking->guest_name ?? ''))) === 'UNKNOWN') {
+            $booking->customer_id = null;
+            $booking->guest_name = 'UNKNOWN';
+            $booking->guest_phone = null;
+            $booking->guest_email = null;
+            $booking->save();
+            $booking->refresh();
+        }
+
         if (($booking->service?->price_mode ?? 'fixed') === 'range' && $booking->settled_service_amount === null) {
             return $this->respondError(__('Please set the service amount before collecting payment. This service uses range pricing.'), 422);
         }
@@ -783,6 +792,15 @@ class PosController extends Controller
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
             return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
+        }
+
+        if (strtoupper(trim((string) ($booking->guest_name ?? ''))) === 'UNKNOWN') {
+            $booking->customer_id = null;
+            $booking->guest_name = 'UNKNOWN';
+            $booking->guest_phone = null;
+            $booking->guest_email = null;
+            $booking->save();
+            $booking->refresh();
         }
 
         if ((string) $booking->status !== 'COMPLETED') {
@@ -2265,9 +2283,20 @@ class PosController extends Controller
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
         $guestEmail = trim((string) ($booking->guest_email ?? ''));
-        $hasGuestSnapshot = $guestName !== '' && $guestPhone !== '' && $guestEmail !== '';
-        if (! $hasMember && ! $hasGuestSnapshot) {
+        $isUnknownGuest = strtoupper($guestName) === 'UNKNOWN';
+        $hasCompleteGuest = $guestName !== '' && ($guestPhone !== '' || $guestEmail !== '');
+        if (! $hasMember && ! $isUnknownGuest && ! $hasCompleteGuest) {
             return $this->respondError(__('Settlement appointment must have a member or complete guest details.'), 422);
+        }
+
+        if ($isUnknownGuest) {
+            $booking->customer_id = null;
+            $booking->guest_name = 'UNKNOWN';
+            $booking->guest_phone = null;
+            $booking->guest_email = null;
+            $booking->save();
+            $guestPhone = '';
+            $guestEmail = '';
         }
 
         $cart = $this->resolveCart((int) $request->user()->id)->load([
@@ -2334,9 +2363,11 @@ class PosController extends Controller
             if ($hasMember) {
                 return $this->respondError(__('This cart already has guest settlement. Remove settlement to switch to member.'), 422);
             }
-            $lockedEmail = (string) $existingSettlementGuestEmails->first();
-            if ($lockedEmail !== strtolower($guestEmail)) {
-                return $this->respondError(__('This settlement belongs to a different guest. Remove the current settlement item(s) to change guest.'), 422);
+            if (! $isUnknownGuest) {
+                $lockedEmail = (string) $existingSettlementGuestEmails->first();
+                if ($lockedEmail !== strtolower($guestEmail)) {
+                    return $this->respondError(__('This settlement belongs to a different guest. Remove the current settlement item(s) to change guest.'), 422);
+                }
             }
         }
 
@@ -4451,7 +4482,7 @@ class PosController extends Controller
                 'booking_service_id' => (int) ($booking->service_id ?? 0),
                 'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
+                'customer_name' => (string) (($booking->customer?->name ?? '') !== '' ? $booking->customer?->name : ($guestName !== '' ? (strtoupper($guestName) === 'UNKNOWN' ? 'Walk-in / Unknown' : $guestName . ' (GUEST)') : '-')),
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
@@ -4931,8 +4962,9 @@ class PosController extends Controller
         $name = trim((string) ($booking->guest_name ?? ''));
         $phone = trim((string) ($booking->guest_phone ?? ''));
         $email = trim((string) ($booking->guest_email ?? ''));
+        $isUnknownGuest = strtoupper($name) === 'UNKNOWN';
 
-        return $name !== '' && ($phone !== '' || $email !== '');
+        return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
     }
 
     protected function resolveAppointmentSnapshot(Booking $booking): array
@@ -4950,7 +4982,7 @@ class PosController extends Controller
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'customer_name' => (string) (($booking->customer?->name ?? '') !== ''
                 ? $booking->customer?->name
-                : ($guestName !== '' ? $guestName . ' (GUEST)' : '-')),
+                : ($guestName !== '' ? (strtoupper($guestName) === 'UNKNOWN' ? 'Walk-in / Unknown' : $guestName . ' (GUEST)') : '-')),
             'service_name' => (string) ($booking->service?->name ?? '-'),
             'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
             'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
