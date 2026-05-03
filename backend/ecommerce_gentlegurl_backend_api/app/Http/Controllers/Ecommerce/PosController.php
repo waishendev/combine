@@ -424,7 +424,12 @@ class PosController extends Controller
     public function appointmentDetail(int $id)
     {
         $booking = Booking::query()
-            ->with(['customer:id,name,phone,email', 'service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'staff:id,name'])
+            ->with([
+                'customer:id,name,phone,email',
+                'service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'staff:id,name',
+                'itemPhotos:id,booking_id,file_path,created_at',
+            ])
             ->findOrFail($id);
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -491,6 +496,12 @@ class PosController extends Controller
             'package_status' => $summary['package_status'],
             'payment_history' => $history,
             'receipts' => $history,
+            'uploaded_item_photos' => $booking->itemPhotos->map(fn ($photo) => [
+                'id' => (int) $photo->id,
+                'image_path' => (string) ($photo->file_path ?? ''),
+                'image_url' => $photo->file_url,
+                'created_at' => optional($photo->created_at)?->toIso8601String(),
+            ])->values()->all(),
         ]);
     }
 
