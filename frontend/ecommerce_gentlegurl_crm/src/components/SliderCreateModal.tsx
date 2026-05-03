@@ -502,6 +502,7 @@ export default function SliderCreateModal({
               </div>
             </div>
           </div>
+        </div>
 
           {error && (
             <div className="text-sm text-red-600 mt-4" role="alert">
