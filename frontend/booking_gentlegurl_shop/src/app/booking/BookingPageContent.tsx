@@ -8,10 +8,10 @@ import { BookingServiceCategory, Service } from "@/lib/types";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 
 type BookingPageContentProps = {
-  headingFontClassName: string;
+  headingFontFamily: string;
 };
 
-export default function BookingPageContent({ headingFontClassName }: BookingPageContentProps) {
+export default function BookingPageContent({ headingFontFamily }: BookingPageContentProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const categoryIdParam = searchParams.get("category_id");
@@ -71,8 +71,8 @@ export default function BookingPageContent({ headingFontClassName }: BookingPage
     <main className="mx-auto max-w-6xl px-4 py-10">
       <BookingProgress step={selectedCategory ? 2 : 1} loading={loading && categories.length === 0} />
       <div className="text-center space-y-2">
-        <h1 className={`${headingFontClassName} text-3xl font-medium sm:text-4xl`}>{title}</h1>
-        <p className={`${headingFontClassName} text-sm text-[var(--text-muted)]`}>
+        <h1 style={{ fontFamily: headingFontFamily }} className="text-3xl font-medium sm:text-4xl">{title}</h1>
+        <p style={{ fontFamily: headingFontFamily }} className="text-sm text-[var(--text-muted)]">
           {!selectedCategory ? "Select a category to continue" : "Select a service to begin your booking"}
         </p>
 

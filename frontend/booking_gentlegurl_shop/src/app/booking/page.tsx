@@ -3,7 +3,14 @@ import { Suspense } from "react";
 import BookingPageContent from "./BookingPageContent";
 
 const justBreathe = localFont({
-  src: "../../../public/fonts/just_breathe/JustBreathe.otf",
+  src: [
+    {
+      path: "../../../public/fonts/just_breathe/JustBreathe.otf",
+      weight: "400",
+      style: "normal",
+    },
+  ],
+  display: "swap",
 });
 
 export default function BookingPage() {
@@ -15,7 +22,7 @@ export default function BookingPage() {
         </main>
       }
     >
-      <BookingPageContent headingFontClassName={justBreathe.className} />
+      <BookingPageContent headingFontFamily={justBreathe.style.fontFamily} />
     </Suspense>
   );
 }
