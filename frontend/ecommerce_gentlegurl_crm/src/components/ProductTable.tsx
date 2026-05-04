@@ -79,6 +79,9 @@ export default function ProductTable({
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
   const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false)
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false)
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null)
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false)
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
     last_page: 1,
@@ -445,11 +448,15 @@ export default function ProductTable({
 
   const handleBulkDelete = async () => {
     if (!selectedIds.size) return
+    setBulkDeleteError(null)
+    setIsBulkDeleteModalOpen(true)
+  }
 
-    const confirmed = window.confirm(`Delete ${selectedIds.size} selected product(s)?`)
-    if (!confirmed) return
+  const confirmBulkDelete = async () => {
+    if (!selectedIds.size) return
 
     try {
+      setIsBulkDeleting(true)
       const res = await fetch('/api/proxy/ecommerce/products/bulk', {
         method: 'DELETE',
         headers: {
@@ -467,14 +474,19 @@ export default function ProductTable({
           json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
             ? json.message
             : 'Bulk delete failed.'
-        throw new Error(message)
+        setBulkDeleteError(message)
+        return
       }
 
       setSelectedIds(new Set())
+      setIsBulkDeleteModalOpen(false)
+      setBulkDeleteError(null)
       await fetchProducts()
     } catch (error) {
       console.error(error)
-      window.alert(error instanceof Error ? error.message : 'Bulk delete failed.')
+      setBulkDeleteError(error instanceof Error ? error.message : 'Bulk delete failed.')
+    } finally {
+      setIsBulkDeleting(false)
     }
   }
 
@@ -748,6 +760,70 @@ export default function ProductTable({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {isBulkDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b bg-gray-50 px-6 py-4">
+              <h2 className="text-2xl font-semibold text-gray-900">Delete Products</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isBulkDeleting) return
+                  setIsBulkDeleteModalOpen(false)
+                  setBulkDeleteError(null)
+                }}
+                className="text-2xl text-gray-500 hover:text-gray-700"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-4 px-6 py-5">
+              <p className="text-lg text-gray-700">
+                Are you sure you want to delete {selectedIds.size} selected product(s)? This action cannot be undone.
+              </p>
+              <div className="max-h-52 overflow-auto rounded-lg bg-amber-100 px-4 py-3">
+                {selectedProducts.slice(0, 6).map((product) => (
+                  <div key={product.id} className="text-sm text-amber-900">
+                    <p className="font-semibold">{product.name}</p>
+                    <p className="text-xs">ID: {product.id}</p>
+                  </div>
+                ))}
+                {selectedProducts.length > 6 && (
+                  <p className="mt-2 text-xs text-amber-800">+{selectedProducts.length - 6} more product(s)</p>
+                )}
+              </div>
+              {bulkDeleteError && (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {bulkDeleteError}
+                </div>
+              )}
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (isBulkDeleting) return
+                    setIsBulkDeleteModalOpen(false)
+                    setBulkDeleteError(null)
+                  }}
+                  className="rounded border border-gray-300 px-5 py-2 text-gray-700"
+                  disabled={isBulkDeleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmBulkDelete}
+                  className="rounded bg-red-600 px-5 py-2 text-white hover:bg-red-700 disabled:opacity-50"
+                  disabled={isBulkDeleting}
+                >
+                  {isBulkDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
