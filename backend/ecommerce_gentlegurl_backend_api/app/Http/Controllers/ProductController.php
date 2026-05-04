@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -892,7 +893,56 @@ class ProductController extends Controller
         return $this->respond($products, __('Products updated successfully.'));
     }
 
+    public function bulkDelete(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:products,id'],
+        ]);
+
+        $products = Product::whereIn('id', $validated['ids'])->get();
+
+        foreach ($products as $product) {
+            try {
+                $this->deleteProductAssets($product);
+                $product->delete();
+            } catch (QueryException $exception) {
+                if ($this->isProductReferencedConstraintError($exception)) {
+                    return $this->respondError(
+                        __('Cannot delete ":name" because it is referenced by existing order items. Set it inactive instead.', ['name' => $product->name]),
+                        422,
+                    );
+                }
+
+                throw $exception;
+            }
+        }
+
+        return $this->respond([
+            'deleted_count' => $products->count(),
+        ], __('Products deleted successfully.'));
+    }
+
     public function destroy(Product $product)
+    {
+        try {
+            $this->deleteProductAssets($product);
+            $product->delete();
+        } catch (QueryException $exception) {
+            if ($this->isProductReferencedConstraintError($exception)) {
+                return $this->respondError(
+                    __('Cannot delete this product because it is referenced by existing order items. Set it inactive instead.'),
+                    422,
+                );
+            }
+
+            throw $exception;
+        }
+
+        return $this->respond(null, __('Product deleted successfully.'));
+    }
+
+    protected function deleteProductAssets(Product $product): void
     {
         // 删除产品时，同时删除所有媒体文件
         foreach ($product->media as $media) {
@@ -915,10 +965,17 @@ class ProductController extends Controller
                 Storage::disk('public')->delete($metaOgImage);
             }
         }
+    }
 
-        $product->delete();
+    protected function isProductReferencedConstraintError(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? '');
+        $driverCode = (string) ($exception->errorInfo[1] ?? '');
+        $message = Str::lower($exception->getMessage());
 
-        return $this->respond(null, __('Product deleted successfully.'));
+        return $sqlState === '23503'
+            || $driverCode === '23503'
+            || str_contains($message, 'order_items_product_id_foreign');
     }
 
     /**
