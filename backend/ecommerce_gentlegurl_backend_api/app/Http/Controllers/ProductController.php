@@ -40,6 +40,7 @@ class ProductController extends Controller
             ->when($request->has('is_reward_only'), function ($query) use ($request) {
                 $query->where('is_reward_only', filter_var($request->get('is_reward_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
             })
+            ->orderByDesc('id')
             ->paginate($perPage);
 
         $products->getCollection()->transform(function (Product $product) {
@@ -383,6 +384,7 @@ class ProductController extends Controller
             ->when($request->has('is_reward_only'), function ($query) use ($request) {
                 $query->where('is_reward_only', filter_var($request->get('is_reward_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
             })
+            ->orderByDesc('id')
             ->get();
 
         $rows = $products->map(function (Product $product) {

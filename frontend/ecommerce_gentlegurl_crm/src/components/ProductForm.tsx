@@ -216,6 +216,32 @@ const getBundleItemKey = (item: BundleItemFormValue) => {
   return null
 }
 
+/** Cost/stock on variant rows are only locked for rows that existed on load as a variant product (use stock adjustment). */
+const buildPersistedVariantCostStockLock = (
+  mode: ProductFormMode,
+  product: ProductRowData | null | undefined,
+) => {
+  if (mode !== 'edit' || !product) {
+    return { lockOriginalVariantRows: false, originalNonBundleVariantIds: new Set<number>() }
+  }
+  const loadedAsVariant = (product.type || 'single') === 'variant'
+  const originalNonBundleVariantIds = new Set<number>()
+  for (const row of product.variants ?? []) {
+    if (row.isBundle === true) continue
+    const rawId = row.id
+    const id =
+      typeof rawId === 'number'
+        ? rawId
+        : typeof rawId === 'string'
+          ? Number.parseInt(rawId, 10)
+          : NaN
+    if (Number.isFinite(id) && id > 0) {
+      originalNonBundleVariantIds.add(id)
+    }
+  }
+  return { lockOriginalVariantRows: loadedAsVariant, originalNonBundleVariantIds }
+}
+
 const VARIANT_BULK_FIELDS = [
   { key: 'price', label: 'Price', type: 'number' },
   { key: 'costPrice', label: 'Cost Price', type: 'number' },
@@ -478,6 +504,18 @@ export default function ProductForm({
     src: string
     index: number
   } | null>(null)
+
+  const persistedVariantCostStockLockRef = useRef(
+    buildPersistedVariantCostStockLock(mode, product),
+  )
+
+  const isPersistedVariantCostStockLocked = (variant: VariantFormValue) => {
+    const lock = persistedVariantCostStockLockRef.current
+    if (!lock.lockOriginalVariantRows) return false
+    const id = variant.id
+    if (!id || !Number.isFinite(id) || id <= 0) return false
+    return lock.originalNonBundleVariantIds.has(id)
+  }
 
   // Close category dropdown when clicking outside
   useEffect(() => {
@@ -1731,6 +1769,12 @@ export default function ProductForm({
 
           const value = variantBulkValues[field]
           if (value === undefined) return
+          if (
+            (field === 'costPrice' || field === 'stock') &&
+            isPersistedVariantCostStockLocked(nextVariant)
+          ) {
+            return
+          }
           nextVariant = {
             ...nextVariant,
             [field]: value,
@@ -3790,12 +3834,12 @@ export default function ProductForm({
                         step="0.01"
                         value={variant.costPrice}
                         onChange={(event) => handleVariantChange(index, 'costPrice', event.target.value)}
-                        disabled={mode === 'edit'}
+                        disabled={isPersistedVariantCostStockLocked(variant)}
                         className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                         placeholder="0.00"
                       />
                     </div>
-                    {mode === 'edit' && (
+                    {isPersistedVariantCostStockLocked(variant) && (
                       <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
                     )}
                   </div>
@@ -3869,11 +3913,11 @@ export default function ProductForm({
                           type="number"
                           value={variant.stock}
                           onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
-                          disabled={mode === 'edit'}
+                          disabled={isPersistedVariantCostStockLocked(variant)}
                           className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                           placeholder="0"
                         />
-                        {mode === 'edit' && (
+                        {isPersistedVariantCostStockLocked(variant) && (
                           <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
                         )}
                       </div>
