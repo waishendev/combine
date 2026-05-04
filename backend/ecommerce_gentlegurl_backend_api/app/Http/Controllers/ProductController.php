@@ -892,7 +892,34 @@ class ProductController extends Controller
         return $this->respond($products, __('Products updated successfully.'));
     }
 
+    public function bulkDelete(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:products,id'],
+        ]);
+
+        $products = Product::whereIn('id', $validated['ids'])->get();
+
+        foreach ($products as $product) {
+            $this->deleteProductAssets($product);
+            $product->delete();
+        }
+
+        return $this->respond([
+            'deleted_count' => $products->count(),
+        ], __('Products deleted successfully.'));
+    }
+
     public function destroy(Product $product)
+    {
+        $this->deleteProductAssets($product);
+        $product->delete();
+
+        return $this->respond(null, __('Product deleted successfully.'));
+    }
+
+    protected function deleteProductAssets(Product $product): void
     {
         // 删除产品时，同时删除所有媒体文件
         foreach ($product->media as $media) {
@@ -915,10 +942,6 @@ class ProductController extends Controller
                 Storage::disk('public')->delete($metaOgImage);
             }
         }
-
-        $product->delete();
-
-        return $this->respond(null, __('Product deleted successfully.'));
     }
 
     /**

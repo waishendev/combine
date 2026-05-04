@@ -514,6 +514,9 @@ $protectedRoutes = function () {
         Route::put('/products/bulk', [ProductController::class, 'bulkUpdate'])
             ->middleware('permission:ecommerce.products.update');
 
+        Route::delete('/products/bulk', [ProductController::class, 'bulkDelete'])
+            ->middleware('permission:ecommerce.products.delete');
+
         Route::get('/products/{product}', [ProductController::class, 'show'])
             ->middleware('permission:ecommerce.products.view|pos.checkout');
 

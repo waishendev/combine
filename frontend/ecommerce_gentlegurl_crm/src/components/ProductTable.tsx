@@ -442,6 +442,42 @@ export default function ProductTable({
   }
 
 
+
+  const handleBulkDelete = async () => {
+    if (!selectedIds.size) return
+
+    const confirmed = window.confirm(`Delete ${selectedIds.size} selected product(s)?`)
+    if (!confirmed) return
+
+    try {
+      const res = await fetch('/api/proxy/ecommerce/products/bulk', {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          ids: Array.from(selectedIds),
+        }),
+      })
+
+      if (!res.ok) {
+        const json = await res.json().catch(() => null)
+        const message =
+          json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
+            ? json.message
+            : 'Bulk delete failed.'
+        throw new Error(message)
+      }
+
+      setSelectedIds(new Set())
+      await fetchProducts()
+    } catch (error) {
+      console.error(error)
+      window.alert(error instanceof Error ? error.message : 'Bulk delete failed.')
+    }
+  }
+
   const getSelectedVariant = (state: StockAdjustmentState) => {
     if (!state.selectedVariantId) return null
     const variantId = Number.parseInt(state.selectedVariantId, 10)
@@ -746,14 +782,24 @@ export default function ProductTable({
           </button>
 
           {showSelection && (
-            <button
-              className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
-              onClick={() => setIsBulkUpdateOpen(true)}
-              disabled={!hasSelection}
-            >
-              <i className="fa-solid fa-pen-to-square" />
-              Bulk Update
-            </button>
+            <>
+              <button
+                className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+                onClick={() => setIsBulkUpdateOpen(true)}
+                disabled={!hasSelection}
+              >
+                <i className="fa-solid fa-pen-to-square" />
+                Bulk Update
+              </button>
+              <button
+                className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
+                onClick={handleBulkDelete}
+                disabled={!hasSelection}
+              >
+                <i className="fa-solid fa-trash" />
+                Bulk Delete
+              </button>
+            </>
           )}
         </div>
 
