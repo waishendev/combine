@@ -104,12 +104,12 @@ async function handleRequest(
     // console.log(`[Proxy API] Cookie header length:`, cookieHeader.length);
     // console.log(`[Proxy API] Has laravel-session:`, cookieHeader.includes('laravel-session'));
 
-    // Get request body for POST, PUT, PATCH requests
+    // Get request body for methods that may carry payload
     let body: string | FormData | undefined;
     let contentType = request.headers.get('content-type') || '';
     const isFormData = contentType.includes('multipart/form-data');
     
-    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method)) {
       if (isFormData) {
         // Handle FormData (file uploads)
         body = await request.formData();
