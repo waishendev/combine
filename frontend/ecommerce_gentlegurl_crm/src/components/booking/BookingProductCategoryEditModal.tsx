@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 
-import type { BookingProductCategoryRowData } from './bookingProductCategoryRow'
+import type { BookingProductCategoryRowData } from './BookingProductCategoryRow'
 import {
   mapBookingProductCategoryApiItemToRow,
   type BookingProductCategoryApiItem,

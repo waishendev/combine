@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 
-import type { BookingProductCategoryRowData } from './bookingProductCategoryRow'
+import type { BookingProductCategoryRowData } from './BookingProductCategoryRow'
 import { useI18n } from '@/lib/i18n'
 
 interface Props {
