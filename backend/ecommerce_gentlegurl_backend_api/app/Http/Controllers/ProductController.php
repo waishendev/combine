@@ -908,7 +908,7 @@ class ProductController extends Controller
                 $product->delete();
             } catch (QueryException $exception) {
                 if ($this->isProductReferencedConstraintError($exception)) {
-                    return $this->respondWithError(
+                    return $this->respondError(
                         __('Cannot delete ":name" because it is referenced by existing order items. Set it inactive instead.', ['name' => $product->name]),
                         422,
                     );
@@ -930,7 +930,7 @@ class ProductController extends Controller
             $product->delete();
         } catch (QueryException $exception) {
             if ($this->isProductReferencedConstraintError($exception)) {
-                return $this->respondWithError(
+                return $this->respondError(
                     __('Cannot delete this product because it is referenced by existing order items. Set it inactive instead.'),
                     422,
                 );

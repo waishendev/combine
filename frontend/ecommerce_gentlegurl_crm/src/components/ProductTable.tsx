@@ -789,7 +789,6 @@ export default function ProductTable({
                 {selectedProducts.slice(0, 6).map((product) => (
                   <div key={product.id} className="text-sm text-amber-900">
                     <p className="font-semibold">{product.name}</p>
-                    <p className="text-xs">ID: {product.id}</p>
                   </div>
                 ))}
                 {selectedProducts.length > 6 && (
