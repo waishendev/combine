@@ -8,6 +8,7 @@ import BookingPolicySettingsCard from '@/components/BookingPolicySettingsCard'
 import BookingServiceNoteSettingsCard from '@/components/BookingServiceNoteSettingsCard'
 import BookingReminderEmailSettingsCard from '@/components/BookingReminderEmailSettingsCard'
 import BookingDepositTermsSettingsCard from '@/components/BookingDepositTermsSettingsCard'
+import BookingSlotsHelpNoteSettingsCard from '@/components/BookingSlotsHelpNoteSettingsCard'
 import { getCurrentUser } from '@/lib/auth'
 
 export default async function BookingShopSettingsPage() {
@@ -57,6 +58,9 @@ export default async function BookingShopSettingsPage() {
       </div>
       <div className="mt-6">
         <BookingDepositTermsSettingsCard canEdit={canUpdate} />
+      </div>
+      <div className="mt-6">
+        <BookingSlotsHelpNoteSettingsCard canEdit={canUpdate} />
       </div>
     </div>
   )

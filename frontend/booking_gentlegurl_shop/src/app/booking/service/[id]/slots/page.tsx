@@ -4,7 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { getAvailabilityPooled, getBookingServiceDetail } from "@/lib/apiClient";
+import { getAvailabilityPooled, getBookingServiceDetail, getBookingSlotsHelpNoteSettings } from "@/lib/apiClient";
 import { BookingSlot, Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
@@ -52,26 +52,6 @@ function formatTime(iso: string) {
   });
 }
 
-type AvailabilityPayload = {
-  success?: boolean;
-  message?: string;
-  /** Some endpoints nest under `data`; others return these at the root */
-  date?: string;
-  slots?: BookingSlot[];
-  visible_slots?: BookingSlot[];
-  has_primary_slot_policy?: boolean;
-  configured_primary_slots?: string[];
-  duration_min?: number;
-  data?: {
-    date?: string;
-    slots?: BookingSlot[];
-    visible_slots?: BookingSlot[];
-    has_primary_slot_policy?: boolean;
-    configured_primary_slots?: string[];
-    duration_min?: number;
-  };
-};
-
 type ServiceDetail = Service & { staffs?: Staff[] };
 
 function SlotPageContent() {
@@ -93,6 +73,7 @@ function SlotPageContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<"all" | "morning" | "afternoon">("all");
+  const [slotsHelpNote, setSlotsHelpNote] = useState({ enabled: false, text: "" });
   const extraDuration = useMemo(
     () => (service?.questions ?? []).flatMap((q) => q.options ?? []).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0),
     [service?.questions, selectedOptionIds]
@@ -133,6 +114,21 @@ function SlotPageContent() {
     };
     run();
   }, [serviceId]);
+
+  useEffect(() => {
+    const run = async () => {
+      try {
+        const setting = await getBookingSlotsHelpNoteSettings();
+        setSlotsHelpNote({
+          enabled: setting.booking_slots_help_note_enabled,
+          text: setting.booking_slots_help_note_text,
+        });
+      } catch {
+        setSlotsHelpNote({ enabled: false, text: "" });
+      }
+    };
+    run();
+  }, []);
 
   useEffect(() => {
     if (canLoad) loadSlots();
@@ -270,6 +266,7 @@ function SlotPageContent() {
   if (categoryId) addonsBackQs.set("category_id", categoryId);
   if (remarksParam) addonsBackQs.set("remarks", remarksParam);
   const addonsBackHref = `/booking/service/${serviceId}${addonsBackQs.toString() ? `?${addonsBackQs.toString()}` : ""}`;
+  const shouldShowSlotsHelpNote = slotsHelpNote.enabled && slotsHelpNote.text.trim().length > 0;
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-8 pb-28 sm:py-10 sm:pb-32">
@@ -498,6 +495,17 @@ function SlotPageContent() {
           </div>
         </section>
       )}
+
+      {shouldShowSlotsHelpNote ? (
+        <aside className="mt-6 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm leading-relaxed text-[var(--text-muted)] shadow-[var(--shadow)] sm:p-6">
+          <div className="flex gap-3">
+            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[var(--accent-strong)]">
+              <i className="fa-regular fa-message text-sm" />
+            </span>
+            <p>{slotsHelpNote.text}</p>
+          </div>
+        </aside>
+      ) : null}
 
     </main>
   );
