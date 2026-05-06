@@ -181,11 +181,11 @@ export default function ServiceStaffPage() {
   }, [confirmStaff, draftDataUrlToFile, id, remarksParam, selectedOptionIds, service?.allow_photo_upload, startAt]);
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 pb-24">
-      <BookingProgress step={5} />
-      <div className="space-y-6">
+    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 pb-24 sm:py-10">
+      <BookingProgress step={4} backHref={slotsBackHref} />
+      <div className="space-y-5 sm:space-y-6">
        
-        <div className="flex items-center justify-start">
+        <div className="hidden items-center justify-start sm:flex">
           <Link
             href={slotsBackHref}
             className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] px-4 py-2 text-sm leading-none"
@@ -201,21 +201,21 @@ export default function ServiceStaffPage() {
         ) : !slotValid ? (
           <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-sm text-[var(--text-muted)]">
             <p className="font-medium text-[var(--foreground)]">Pick a time first</p>
-            <p className="mt-2">Choose a date and time slot, then you can select a stylist who is free for that time.</p>
+            <p className="mt-2">Choose a date and time slot, then you can select a nail technician who is free for that time.</p>
             <Link href={slotsBackHref} className="mt-4 inline-flex rounded-full bg-[var(--accent-strong)] px-5 py-2 text-sm font-semibold text-white">
               Go to date & time
             </Link>
           </div>
         ) : eligibleStaff.length === 0 ? (
           <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm text-[var(--text-muted)]">
-            No stylist is available for the time you selected.{" "}
+            No nail technician is available for the time you selected.{" "}
             <Link href={slotsBackHref} className="font-semibold text-[var(--accent-strong)] underline">
               Choose another slot
             </Link>
             .
           </div>
         ) : (
-          <section className="space-y-4">
+          <section className="space-y-3 sm:space-y-4">
             {/* <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
               <h1 className="font-[var(--font-heading)] text-lg font-semibold sm:text-xl">Appointment details</h1>
               <p className="mt-1 text-sm text-[var(--text-muted)]">
@@ -323,20 +323,16 @@ export default function ServiceStaffPage() {
               </div>
             </div> */}
 
-            <h2 className="text-xl font-semibold">Choose a stylist</h2>
-            <p className="text-sm text-[var(--text-muted)]">Only team members who are free for this slot are shown.</p>
-
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
               {eligibleStaff.map((staff) => (
                 <button
                   key={staff.id}
                   type="button"
                   onClick={() => setConfirmStaff(staff)}
-                  className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow"
+                  className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 text-left  shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow sm:p-6"
                 >
                   <p className="font-semibold text-[var(--foreground)]">{staff.name}</p>
-                  <p className="text-sm text-[var(--text-muted)]">{staff.position || "Staff"}</p>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">{staff.description || "Available stylist"}</p>
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">{staff.description || "Available nail technician"}</p>
                   <span className="mt-5 inline-flex rounded-full bg-[var(--accent-strong)] px-4 py-2 text-xs font-semibold text-white">
                     Select
                   </span>

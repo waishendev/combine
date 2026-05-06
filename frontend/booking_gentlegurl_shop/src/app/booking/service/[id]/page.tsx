@@ -75,10 +75,12 @@ export default function ServiceAddonsPage() {
   const id = params.id;
   const backHref = categoryId ? `/booking?category_id=${encodeURIComponent(categoryId)}` : "/booking";
   const photoInputRef = useRef<HTMLInputElement | null>(null);
+  const questionRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const [service, setService] = useState<Service | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [depositNote, setDepositNote] = useState<string | null>(null);
   const [selectedOptionIds, setSelectedOptionIds] = useState<number[]>([]);
+  const [missingRequiredQuestionId, setMissingRequiredQuestionId] = useState<number | null>(null);
   const [photoPreviews, setPhotoPreviews] = useState<Array<{ id: string; url: string; name: string; type: string }>>(() =>
     loadBookingPhotoDraft(id).map((item) => ({
       id: item.id,
@@ -176,7 +178,37 @@ export default function ServiceAddonsPage() {
   /** Typical salon model: deposit is credited toward the appointment; balance due after service. */
   const estimatedBalanceAtSalon = Math.max(0, estimatedTotalCost - depositPreview.depositTotal);
 
+  const getFirstMissingRequiredQuestionId = useCallback((): number | null => {
+    const questions = service?.questions ?? [];
+    for (const q of questions) {
+      if (!q.is_required) continue;
+      const hasAnySelected = q.options.some((opt) => selectedOptionIds.includes(opt.id));
+      if (!hasAnySelected) return q.id;
+    }
+    return null;
+  }, [selectedOptionIds, service?.questions]);
+
+  useEffect(() => {
+    if (missingRequiredQuestionId == null) return;
+    const stillMissing = getFirstMissingRequiredQuestionId();
+    if (stillMissing == null || stillMissing !== missingRequiredQuestionId) {
+      setMissingRequiredQuestionId(null);
+    }
+  }, [getFirstMissingRequiredQuestionId, missingRequiredQuestionId]);
+
   const goToStylist = useCallback(() => {
+    const missingId = getFirstMissingRequiredQuestionId();
+    if (missingId != null) {
+      setMissingRequiredQuestionId(missingId);
+      const el = questionRefs.current[missingId];
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      return;
+    }
+
     const qs = new URLSearchParams();
     if (selectedOptionIds.length) qs.set("selected_option_ids", selectedOptionIds.join(","));
     if (categoryId) qs.set("category_id", categoryId);
@@ -184,7 +216,7 @@ export default function ServiceAddonsPage() {
     if (trimmedRemarks) qs.set("remarks", trimmedRemarks);
     const q = qs.toString();
     router.push(`/booking/service/${id}/slots${q ? `?${q}` : ""}`);
-  }, [categoryId, customerRemarks, id, router, selectedOptionIds]);
+  }, [categoryId, customerRemarks, getFirstMissingRequiredQuestionId, id, router, selectedOptionIds]);
 
 
   const onPhotoSelect = useCallback((event: ChangeEvent<HTMLInputElement>) => {
@@ -253,11 +285,11 @@ export default function ServiceAddonsPage() {
   }, []);
 
   return (
-    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-10 pb-24">
-      <BookingProgress step={3} loading={!service} />
+    <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 pb-24 sm:py-10">
+      <BookingProgress step={2} loading={!service} backHref={backHref} />
 
-      <div className="mt-6 space-y-6">
-        <div className="flex items-center justify-start">
+      <div className="mt-4 space-y-5 sm:mt-6 sm:space-y-6">
+        <div className="hidden items-center justify-start sm:flex">
           <Link
             href={backHref}
             className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] px-4 py-2 text-sm leading-none"
@@ -302,19 +334,35 @@ export default function ServiceAddonsPage() {
               </div>
             </section> */}
 
-            <section className="space-y-4">
+            <section className="space-y-3 sm:space-y-4">
               {(service.questions ?? []).length === 0 ? (
                 <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm text-[var(--text-muted)]">
                   No add-ons available for this service.
                 </div>
               ) : (
                 (service.questions ?? []).map((q) => (
-                  <div key={q.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+                  <div
+                    key={q.id}
+                    ref={(el) => {
+                      questionRefs.current[q.id] = el;
+                    }}
+                    className={[
+                      "scroll-mt-24 rounded-2xl border bg-[var(--card)] p-4 shadow-sm transition-colors sm:p-5",
+                      missingRequiredQuestionId === q.id
+                        ? "border-[var(--status-error)] ring-2 ring-[var(--status-error)]/20"
+                        : "border-[var(--card-border)]",
+                    ].join(" ")}
+                  >
                     <p className="font-[var(--font-heading)] font-semibold">
                       {q.title} {q.is_required ? "*" : ""}
                     </p>
+                    {q.is_required ? (
+                      <p className="mt-1 text-sm font-medium text-[var(--status-error)]">
+                        Required add-ons — please select {q.question_type === "single_choice" ? "1 option" : "at least 1 option"} to proceed.
+                      </p>
+                    ) : null}
                     {q.description ? <p className="mt-1 text-sm text-[var(--text-muted)]">{q.description}</p> : null}
-                    <div className="mt-4 grid gap-4 md:grid-cols-3">
+                    <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-3">
                       {q.options.map((opt) => {
                         const checked = selectedOptionIds.includes(opt.id);
                         const imgSrc = (opt.image_url || opt.image_path) as string | undefined;
@@ -331,10 +379,16 @@ export default function ServiceAddonsPage() {
                               "group relative w-full overflow-hidden rounded-2xl text-left transition-all duration-300",
                               "border-2 bg-[var(--card)] shadow-sm",
                               checked
-                                ? "border-[var(--accent-strong)] shadow-md ring-2 ring-[var(--accent)]/25"
-                                : "border-[var(--card-border)] hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg",
+                                ? "border-[3px] border-[var(--accent-strong)] bg-[var(--accent)]/10 shadow-lg ring-4 ring-[var(--accent)]/35"
+                                : "border-[var(--card-border)] hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-lg",
                             ].join(" ")}
                           >
+                            {checked ? (
+                              <div className="absolute right-2.5 top-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-strong)] text-white shadow-md sm:right-3 sm:top-3 sm:h-8 sm:w-8">
+                                <i className="fa-solid fa-check text-sm" aria-hidden />
+                                <span className="sr-only">Selected</span>
+                              </div>
+                            ) : null}
                             <div className="aspect-[4/3] bg-gray-100">
                               {imgSrc ? (
                                 <img src={imgSrc} alt={opt.label} className="h-full w-full object-cover" />
@@ -342,17 +396,43 @@ export default function ServiceAddonsPage() {
                                 <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">No image</div>
                               )}
                             </div>
-                            <div className="relative p-4">
+                            <div className="relative p-3 sm:p-4">
                               <div className="flex items-start justify-between gap-2">
                                 <h3 className="font-[var(--font-heading)] font-semibold leading-snug">{opt.label}</h3>
                                 {opt.linked_service_type ? (
-                                  <span className="shrink-0 rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)]">
+                                  <span className="hidden shrink-0 rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
                                     {opt.linked_service_type}
                                   </span>
                                 ) : null}
                               </div>
-                              <p className="mt-1 line-clamp-2 text-sm text-[var(--text-muted)]">{addonDesc}</p>
-                              <div className="mt-3 space-y-0 border-t border-[var(--card-border)] pt-3 text-sm">
+                              <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
+                                {addonDesc}
+                              </p>
+
+                              {/* Mobile: compact pills (stacked, cleaner) */}
+                              <div className="mt-3 flex flex-col items-start gap-2 sm:hidden">
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
+                                  <i className="fa-regular fa-clock text-[10px]" aria-hidden />
+                                  <span className="tabular-nums">+{opt.extra_duration_min} min</span>
+                                </span>
+                                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
+                                  <i className="fa-solid fa-tag text-[10px]" aria-hidden />
+                                  <span className="tabular-nums">
+                                    {String(opt.linked_price_mode ?? '') === 'range' && opt.linked_price_range_min != null && opt.linked_price_range_max != null
+                                      ? `+RM ${Number(opt.linked_price_range_min).toFixed(0)}-${Number(opt.linked_price_range_max).toFixed(0)}`
+                                      : `+RM ${Number(opt.extra_price).toFixed(0)}`}
+                                  </span>
+                                </span>
+                                {opt.linked_service_type ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-[11px] font-semibold capitalize text-[var(--text-muted)]">
+                                    <i className="fa-regular fa-gem text-[10px]" aria-hidden />
+                                    {opt.linked_service_type}
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {/* Desktop: detailed rows */}
+                              <div className="mt-3 hidden space-y-0 border-t border-[var(--card-border)] pt-3 text-sm sm:block">
                                 <div className="flex justify-between gap-3 border-b border-dotted border-[var(--card-border)] pb-2">
                                   <span className="text-[var(--text-muted)]">Extra duration</span>
                                   <span className="shrink-0 font-medium tabular-nums text-[var(--foreground)]">+{opt.extra_duration_min} min</span>
@@ -377,7 +457,88 @@ export default function ServiceAddonsPage() {
             </section>
 
             {service.allow_photo_upload ? (
-              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
+              <>
+                {/* Mobile: collapse optional section */}
+                <details className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:hidden">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                    <span className="font-[var(--font-heading)] text-base font-semibold">Reference photos (optional)</span>
+                    <i className="fa-solid fa-chevron-down text-xs text-[var(--text-muted)]" aria-hidden />
+                  </summary>
+                  <div className="mt-3">
+                    <p className="text-sm text-[var(--text-muted)]">
+                      Upload if you have a preferred design. <span className="text-xs">Max 3.</span>
+                    </p>
+                    <input
+                      ref={photoInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={onPhotoSelect}
+                    />
+                    <div className="mt-4 grid grid-cols-3 gap-3">
+                      {Array.from({ length: 3 }).map((_, index) => {
+                        const photo = photoPreviews[index];
+                        const isEmpty = !photo;
+                        return (
+                          <button
+                            key={index}
+                            type="button"
+                            className={[
+                              "group relative aspect-square overflow-hidden rounded-2xl border-2 border-dashed transition-all duration-200",
+                              isEmpty
+                                ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
+                                : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
+                            ].join(" ")}
+                            onClick={() => {
+                              if (isEmpty) {
+                                photoInputRef.current?.click();
+                              }
+                            }}
+                            disabled={isEmpty ? photoPreviews.length >= 3 : false}
+                            aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
+                          >
+                            {isEmpty ? (
+                              <div className="flex h-full w-full flex-col items-center justify-center p-3 text-center">
+                                <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-[var(--muted)]/40 group-hover:bg-[var(--muted)]/60 transition">
+                                  <i className="fa-solid fa-cloud-arrow-up text-[var(--text-muted)]" aria-hidden />
+                                </div>
+                                <span className="text-xs font-medium text-[var(--text-muted)]">Upload</span>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
+                                  <img src={photo.url} alt={photo.name} className="h-full w-full object-contain" />
+                                </div>
+                                <span className="absolute left-2 top-2 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-semibold text-white">
+                                  {index + 1}/3
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removePhoto(photo.id);
+                                  }}
+                                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-white hover:bg-black/70"
+                                  aria-label={`Remove ${photo.name}`}
+                                >
+                                  <i className="fa-solid fa-xmark" aria-hidden />
+                                </button>
+                              </>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {photoPreviews.length >= 3 ? (
+                      <p className="mt-3 text-xs text-[var(--text-muted)]">You’ve reached the maximum of 3 photos.</p>
+                    ) : null}
+                    {photoError ? <p className="mt-2 text-sm text-[var(--status-error)]">{photoError}</p> : null}
+                  </div>
+                </details>
+
+                {/* Desktop */}
+                <section className="hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:block sm:p-6">
                 <h2 className="font-[var(--font-heading)] text-lg font-semibold">Reference Photos (Optional)</h2>
                 <p className="mt-1 text-sm text-[var(--text-muted)]">
                   If you have a preferred design or would like to share your nail condition, feel free to upload it here.
@@ -456,10 +617,29 @@ export default function ServiceAddonsPage() {
                   <p className="mt-3 text-xs text-[var(--text-muted)]">You’ve reached the maximum of 3 photos.</p>
                 ) : null}
                 {photoError ? <p className="mt-2 text-sm text-[var(--status-error)]">{photoError}</p> : null}
-              </section>
+                </section>
+              </>
             ) : null}
 
-            <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
+            {/* Mobile: collapse optional section */}
+            <details className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:hidden">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
+                <span className="font-[var(--font-heading)] text-base font-semibold">Remarks (optional)</span>
+                <i className="fa-solid fa-chevron-down text-xs text-[var(--text-muted)]" aria-hidden />
+              </summary>
+              <div className="mt-3">
+                <textarea
+                  value={customerRemarks}
+                  onChange={(event) => setCustomerRemarks(event.target.value)}
+                  placeholder="Add a note…"
+                  rows={3}
+                  maxLength={2000}
+                  className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+                />
+              </div>
+            </details>
+
+            <section className="hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:block sm:p-6">
               <h2 className="font-[var(--font-heading)] text-lg font-semibold">Remarks (Optional)</h2>
               <p className="mt-1 text-sm text-[var(--text-muted)]">
                 Let us know if you have any special request or notes for this booking.
@@ -474,10 +654,10 @@ export default function ServiceAddonsPage() {
               />
             </section>
 
-            <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:p-6">
+            <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-6">
               <h2 className="font-[var(--font-heading)] text-lg font-semibold">Booking Summary</h2>
               <p className="mt-1 text-sm text-[var(--text-muted)]">
-                Review duration, deposit, listed prices, and add-ons before choosing your stylist.
+                Review duration, deposit, listed prices, and add-ons before choosing your nail technician.
               </p>
 
               <div className="mt-5 space-y-5 border-t border-[var(--card-border)] pt-5">
