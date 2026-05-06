@@ -73,6 +73,17 @@ class SettingSeeder extends Seeder
             ['value' => 'Note: The deposit is typically credited toward your final bill. The balance above is an estimate (menu price + add-ons − deposit). Packages, vouchers, tips, or changes at the chair may adjust the final amount—confirmed at checkout and at the salon.']
         );
 
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_slots_help_note_enabled'],
+            ['value' => true]
+        );
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_slots_help_note_text'],
+            ['value' => 'If your preferred time is not available or fully booked, feel free to click the WhatsApp button at the bottom right of the page and message us — we’ll be happy to assist you and check for the best available slots for you. You may also try again after 20 minutes, as some slots might be released.']
+        );
+
         Setting::updateOrCreate(
             ['type' => 'booking', 'key' => 'booking_reminder_email'],
             ['value' => [

@@ -720,6 +720,27 @@ export async function getBookingDepositTncSettings(): Promise<BookingDepositTncS
   };
 }
 
+
+export type BookingSlotsHelpNoteSettings = {
+  booking_slots_help_note_enabled: boolean;
+  booking_slots_help_note_text: string;
+};
+
+export async function getBookingSlotsHelpNoteSettings(): Promise<BookingSlotsHelpNoteSettings> {
+  const response = await request<{ data?: { settings?: { booking_slots_help_note_enabled?: boolean; booking_slots_help_note_text?: string | null } } }>(
+    "/public/shop/homepage?type=booking",
+  );
+
+  const enabled = Boolean(response?.data?.settings?.booking_slots_help_note_enabled);
+  const rawText = response?.data?.settings?.booking_slots_help_note_text;
+  const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : "";
+
+  return {
+    booking_slots_help_note_enabled: enabled,
+    booking_slots_help_note_text: text,
+  };
+}
+
 export async function rescheduleBooking(id: number, startAt: string, reason?: string) {
   return request<{ success: boolean; message?: string }>(`/booking/${id}/reschedule`, {
     method: "POST",

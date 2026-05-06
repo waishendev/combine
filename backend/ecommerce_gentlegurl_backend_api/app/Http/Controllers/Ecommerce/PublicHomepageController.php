@@ -193,6 +193,8 @@ class PublicHomepageController extends Controller
                 $settings['booking_service_deposit_note'] = SettingService::get('booking_service_deposit_note', null, $type);
                 $settings['booking_deposit_tnc_enabled'] = (bool) SettingService::get('booking_deposit_tnc_enabled', false, $type);
                 $settings['booking_deposit_tnc_text'] = (string) SettingService::get('booking_deposit_tnc_text', '', $type);
+                $settings['booking_slots_help_note_enabled'] = (bool) SettingService::get('booking_slots_help_note_enabled', false, $type);
+                $settings['booking_slots_help_note_text'] = (string) SettingService::get('booking_slots_help_note_text', '', $type);
             }
 
             $paymentGateways = PaymentGateway::query()

@@ -36,6 +36,8 @@ class ShopSettingController extends Controller
                 'booking_reminder_email' => SettingService::get('booking_reminder_email', ['enabled' => true, 'send_at' => '10:00'], $type),
                 'booking_deposit_tnc_enabled' => (bool) SettingService::get('booking_deposit_tnc_enabled', false, $type),
                 'booking_deposit_tnc_text' => (string) SettingService::get('booking_deposit_tnc_text', '', $type),
+                'booking_slots_help_note_enabled' => (bool) SettingService::get('booking_slots_help_note_enabled', false, $type),
+                'booking_slots_help_note_text' => (string) SettingService::get('booking_slots_help_note_text', '', $type),
             ];
 
             return response()->json([
@@ -129,6 +131,8 @@ class ShopSettingController extends Controller
             'booking_reminder_email' => ['enabled' => true, 'send_at' => '10:00'],
             'booking_deposit_tnc_enabled' => false,
             'booking_deposit_tnc_text' => '',
+            'booking_slots_help_note_enabled' => false,
+            'booking_slots_help_note_text' => '',
         ];
 
         $settingKey = $this->resolveSettingKey($key);
@@ -217,6 +221,12 @@ class ShopSettingController extends Controller
                 break;
             case 'booking_deposit_tnc_text':
                 $data = $this->validateBookingDepositTncText($request);
+                break;
+            case 'booking_slots_help_note_enabled':
+                $data = $this->validateBookingSlotsHelpNoteEnabled($request);
+                break;
+            case 'booking_slots_help_note_text':
+                $data = $this->validateBookingSlotsHelpNoteText($request);
                 break;
 
             default:
@@ -542,6 +552,24 @@ class ShopSettingController extends Controller
         return trim((string) ($validated['value'] ?? ''));
     }
 
+    protected function validateBookingSlotsHelpNoteEnabled(Request $request): bool
+    {
+        $validated = $request->validate([
+            'value' => ['required', 'boolean'],
+        ]);
+
+        return (bool) $validated['value'];
+    }
+
+    protected function validateBookingSlotsHelpNoteText(Request $request): string
+    {
+        $validated = $request->validate([
+            'value' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        return trim((string) ($validated['value'] ?? ''));
+    }
+
     protected function defaultBookingPolicySetting(): array
     {
         return [
@@ -670,6 +698,8 @@ class ShopSettingController extends Controller
                 'booking_reminder_email',
                 'booking_deposit_tnc_enabled',
                 'booking_deposit_tnc_text',
+                'booking_slots_help_note_enabled',
+                'booking_slots_help_note_text',
             ];
         }
 
