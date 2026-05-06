@@ -1,13 +1,18 @@
+import Link from "next/link";
+
 /** Date & time before stylist: pick a slot first, then an available staff member. Checkout is via cart icon, not a wizard step. */
-const STEP_LABELS = ["CATEGORY", "SERVICE", "ADD-ONS", "DATE & TIME", "STYLIST"];
+const STEP_LABELS = ["Choose service", "Select add-ons", "Choose date & time", "Choose nail technician"];
 
 type BookingProgressProps = {
   step: number;
   /** When true, shows a skeleton instead of step numbers (avoids 1→2 flicker while data loads). */
   loading?: boolean;
+  /** Mobile-only back button (keeps headers clean on small screens). */
+  backHref?: string;
+  backLabel?: string;
 };
 
-export function BookingProgress({ step, loading }: BookingProgressProps) {
+export function BookingProgress({ step, loading, backHref, backLabel = "Back" }: BookingProgressProps) {
   const steps = STEP_LABELS;
   const activeStep = Math.min(Math.max(step, 1), steps.length);
   const currentLabel = steps[activeStep - 1];
@@ -52,11 +57,24 @@ export function BookingProgress({ step, loading }: BookingProgressProps) {
     <>
       {/* Mobile: short summary + segment bar (avoids a long horizontal stepper) */}
       <div className="mb-6 sm:mb-10 sm:hidden">
-        <div className="px-4 text-center">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
-            Step {activeStep} of {steps.length}
-          </p>
-          <p className="mt-1 text-sm font-semibold leading-snug text-[var(--foreground)]">{currentLabel}</p>
+        <div className="px-4">
+          <div className="relative">
+            {backHref ? (
+              <Link
+                href={backHref}
+                className="absolute left-0 top-1/2 inline-flex -translate-y-1/2 items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-3 py-1.5 text-xs font-semibold shadow-sm"
+              >
+                <i className="fa-solid fa-arrow-left text-[11px]" aria-hidden />
+                {backLabel}
+              </Link>
+            ) : null}
+            <div className="text-center">
+              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                Step {activeStep} of {steps.length}
+              </p>
+              <p className="mt-1 text-sm font-semibold leading-snug text-[var(--foreground)]">{currentLabel}</p>
+            </div>
+          </div>
         </div>
         <div className="mt-3 flex justify-center gap-1 px-4" role="list" aria-label="Booking steps">
           {steps.map((label, index) => {

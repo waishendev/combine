@@ -272,30 +272,36 @@ function SlotPageContent() {
   const addonsBackHref = `/booking/service/${serviceId}${addonsBackQs.toString() ? `?${addonsBackQs.toString()}` : ""}`;
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-8 pb-28 sm:py-10 sm:pb-32">
-      <BookingProgress step={4} />
+    <main className="mx-auto max-w-5xl px-4 py-6 pb-28 sm:py-10 sm:pb-32">
+      <BookingProgress step={3} backHref={addonsBackHref} />
 
-      <div className="mb-6 sm:mb-8">
-        <Link
-          href={addonsBackHref}
-          className="inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-medium shadow-[var(--shadow)] transition-all hover:border-[var(--accent)] hover:shadow-md sm:px-5 sm:py-2.5"
-        >
-          <i className="fa-solid fa-arrow-left text-xs" />
-          Back to add-ons
-        </Link>
-      </div>
+      <div className="mt-4 sm:mt-6">
+        {/* Desktop: Back + title on same row */}
+        <div className="hidden sm:relative sm:flex sm:items-center sm:justify-center">
+          <Link
+            href={addonsBackHref}
+            className="absolute left-0 inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm font-medium shadow-[var(--shadow)] transition-all hover:border-[var(--accent)] hover:shadow-md"
+          >
+            <i className="fa-solid fa-arrow-left text-xs" />
+            Back
+          </Link>
+          <h1 className="px-16 text-center font-[var(--font-heading)] text-lg font-semibold leading-snug sm:text-xl">
+            Estimated Duration
+          </h1>
+        </div>
 
-      <div className="mb-8 text-center sm:mb-10">
-        <h1 className="font-[var(--font-heading)] text-3xl font-medium tracking-tight sm:text-4xl">
-          Select <em className="text-[var(--accent-strong)] not-italic">date & time</em>
+        {/* Mobile: keep just title here (Back is in stepper) */}
+        <h1 className="text-center font-[var(--font-heading)] text-lg font-semibold leading-snug sm:hidden">
+          Estimated Duration
         </h1>
-        <p className="mx-auto mt-3 max-w-xl text-sm leading-relaxed text-[var(--text-muted)] sm:text-base">
-          {service?.name ?? "Service"} · {durationMin} min
+
+        <p className="mt-3 text-center text-lg text-[var(--text-muted)]">
+          <span className="font-semibold tabular-nums text-[var(--foreground)]">{durationMin} min</span>
         </p>
       </div>
 
       {/* Date picker: strip + calendar toggle */}
-      <section className="mb-8 rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-[var(--shadow)] sm:p-6">
+      <section className="mt-6 mb-7 rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-[var(--shadow)] sm:mt-8 sm:mb-8 sm:p-6">
         <div className="mb-4 flex flex-wrap items-center justify-center gap-3 sm:justify-between sm:gap-4">
           <span className="font-[var(--font-heading)] text-center text-base font-semibold sm:text-left sm:text-lg">
             {calMonth.toLocaleDateString("en-MY", { month: "short", year: "numeric" })}
@@ -373,35 +379,37 @@ function SlotPageContent() {
                 key={d.date}
                 type="button"
                 onClick={() => setDate(d.date)}
-                className={`shrink-0 snap-center rounded-2xl border px-3 py-3 text-center shadow-sm transition-all sm:min-w-[76px] sm:px-4 ${
+                className={`shrink-0 snap-center rounded-2xl border px-3 py-2 text-center shadow-sm transition-all sm:min-w-[76px] sm:px-4 sm:py-3 ${
                   date === d.date
                     ? "border-[var(--accent-strong)] bg-[var(--accent-strong)] text-white shadow-md ring-2 ring-[var(--accent)]/30"
                     : "border-[var(--card-border)] bg-[var(--background)] hover:-translate-y-0.5 hover:border-[var(--accent)]"
                 }`}
               >
                 <div className="text-[10px] font-semibold uppercase tracking-wider opacity-80">{d.day}</div>
-                <div className="font-[var(--font-heading)] text-xl font-semibold leading-tight">{d.num}</div>
-                <div className="text-[10px] opacity-70">{d.month}</div>
+                <div className="font-[var(--font-heading)] text-base font-semibold leading-tight sm:text-xl">{d.num}</div>
+                <div className="hidden text-[10px] opacity-70 sm:block">{d.month}</div>
               </button>
             ))}
           </div>
         )}
 
-        <div className="mt-6 flex flex-wrap justify-center gap-2 border-t border-[var(--card-border)] pt-6">
-          {(["all", "morning", "afternoon"] as const).map((f) => (
-            <button
-              key={f}
-              type="button"
-              onClick={() => setTimeFilter(f)}
-              className={`rounded-full px-4 py-2 text-xs font-semibold uppercase tracking-wide transition-all ${
-                timeFilter === f
-                  ? "bg-[var(--accent-strong)] text-white shadow-sm"
-                  : "border border-[var(--card-border)] bg-[var(--background)] text-[var(--text-muted)] hover:border-[var(--accent)] hover:text-[var(--foreground)]"
-              }`}
-            >
-              {f === "all" ? "All" : f === "morning" ? "☀ Morning" : "☕ Afternoon"}
-            </button>
-          ))}
+        <div className="mt-5 flex justify-center border-t border-[var(--card-border)] pt-5">
+          <div className="inline-flex rounded-full border border-[var(--card-border)] bg-[var(--background)] p-1 shadow-sm">
+            {(["all", "morning", "afternoon"] as const).map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => setTimeFilter(f)}
+                className={`rounded-full px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide transition-all sm:px-4 sm:py-2 sm:text-xs ${
+                  timeFilter === f
+                    ? "bg-[var(--accent-strong)] text-white shadow-sm"
+                    : "text-[var(--text-muted)] hover:text-[var(--foreground)]"
+                }`}
+              >
+                {f === "all" ? "All" : f === "morning" ? "☀ Morning" : "☕ Afternoon"}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -414,13 +422,21 @@ function SlotPageContent() {
           {error}
         </div>
       ) : slots.length === 0 ? (
-        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-8 text-center text-[var(--text-muted)] shadow-sm">
-          No slots available for selected date. Try another date.
+        <div className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-center shadow-sm sm:p-8">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[var(--muted)]/40 text-[var(--text-muted)]">
+            <i className="fa-regular fa-calendar-xmark text-lg" aria-hidden />
+          </div>
+          <p className="mt-3 font-[var(--font-heading)] text-base font-semibold text-[var(--foreground)]">
+            No slots for this date
+          </p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">
+            Try another date or switch to Morning / Afternoon.
+          </p>
         </div>
       ) : (
         <section className="rounded-3xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-[var(--shadow)] sm:p-8">
           <div>
-            <h2 className="mb-6 font-[var(--font-heading)] text-center text-lg font-semibold sm:text-xl">
+            <h2 className="mb-6 font-[var(--font-heading)] text-center text-lg font-semibold sm:text-md">              
               Available times
             </h2>
 
@@ -430,7 +446,7 @@ function SlotPageContent() {
                   <span className="shrink-0">☀ Morning</span>
                   <span className="h-px flex-1 bg-gradient-to-r from-[var(--card-border)] to-transparent" />
                 </div>
-                <div className="flex flex-wrap justify-center gap-2.5 sm:justify-start">
+                <div className="grid grid-cols-2 gap-2.5 sm:flex sm:flex-wrap sm:justify-start">
                   {morning.map((slot, idx) => {
                     const startAt = slot.start_at ?? slot.start_time;
                     const endAt = slot.end_at ?? slot.end_time;
@@ -440,13 +456,10 @@ function SlotPageContent() {
                         key={startAt + idx}
                         type="button"
                         onClick={() => handleSlotClick(slot)}
-                        className="min-w-[108px] rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-4 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md"
+                        className="w-full rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-3 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md sm:w-auto sm:min-w-[108px] sm:px-4"
                       >
-                        <div className="font-[var(--font-heading)] font-semibold">
+                        <div className="font-[var(--font-heading)] text-sm font-semibold sm:text-base">
                           {formatTime(startAt)} — {formatTime(endAt)}
-                        </div>
-                        <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                          {durationMin} min
                         </div>
                         {/* {slot.slot_kind === "fallback" && (
                           <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">
@@ -466,7 +479,7 @@ function SlotPageContent() {
                   <span className="shrink-0">☕ Afternoon</span>
                   <span className="h-px flex-1 bg-gradient-to-r from-[var(--card-border)] to-transparent" />
                 </div>
-                <div className="flex flex-wrap justify-center gap-2.5 sm:justify-start">
+                <div className="grid grid-cols-2 gap-2.5 sm:flex sm:flex-wrap sm:justify-start">
                   {afternoon.map((slot, idx) => {
                     const startAt = slot.start_at ?? slot.start_time;
                     const endAt = slot.end_at ?? slot.end_time;
@@ -476,13 +489,10 @@ function SlotPageContent() {
                         key={startAt + idx}
                         type="button"
                         onClick={() => handleSlotClick(slot)}
-                        className="min-w-[108px] rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-4 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md"
+                        className="w-full rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-3 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md sm:w-auto sm:min-w-[108px] sm:px-4"
                       >
-                        <div className="font-[var(--font-heading)] font-semibold">
+                        <div className="font-[var(--font-heading)] text-sm font-semibold sm:text-base">
                           {formatTime(startAt)} — {formatTime(endAt)}
-                        </div>
-                        <div className="mt-0.5 text-[10px] text-[var(--text-muted)]">
-                          {durationMin} min
                         </div>
                         {/* {slot.slot_kind === "fallback" && (
                           <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-[var(--accent-strong)]">

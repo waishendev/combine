@@ -58,52 +58,58 @@ export default function BookingPageContent() {
     run();
   }, [search, selectedCategory]);
 
-  const title = useMemo(() => {
-    if (!selectedCategory) return "Choose your service category";
-    return `Services in ${selectedCategory.name}`;
-  }, [selectedCategory]);
-
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10">
-      <BookingProgress step={selectedCategory ? 2 : 1} loading={loading && categories.length === 0} />
-      <div className="text-center space-y-2">
-        <h1 className="font-[var(--font-heading)] text-3xl font-medium sm:text-4xl">{title}</h1>
-        <p className="text-sm text-[var(--text-muted)]">
-          {!selectedCategory ? "Select a category to continue" : "Select a service to begin your booking"}
-        </p>
-
-        {selectedCategory ? (
-          <div className="relative mx-auto mt-5 w-full max-w-md">
-            <i className="fa-solid fa-magnifying-glass absolute left-5 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
-            <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search services..."
-              className="w-full rounded-full border border-[var(--card-border)] bg-[var(--card)] px-12 py-3 text-sm shadow-sm outline-none transition-all focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
-            />
-          </div>
-        ) : null}
-      </div>
+    <main className="mx-auto max-w-6xl px-4 py-6 sm:py-10">
+      <BookingProgress
+        step={1}
+        loading={loading && categories.length === 0}
+        backHref={selectedCategory ? "/booking" : undefined}
+      />
 
       {selectedCategory ? (
-        <button
-          type="button"
-          onClick={() => {
-            setSearch("");
-            setServices([]);
-            router.replace("/booking");
-          }}
-          className="mt-6 inline-flex items-center gap-2 rounded-full border border-[var(--card-border)] px-4 py-2 text-sm"
-        >
-          <i className="fa-solid fa-arrow-left" /> Back to categories
-        </button>
+        <>
+          <div className="mt-4 sm:mt-6">
+            {/* Desktop: Back + title on same row */}
+            <div className="hidden sm:relative sm:flex sm:items-center sm:justify-center">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch("");
+                  setServices([]);
+                  router.replace("/booking");
+                }}
+                className="absolute left-0 inline-flex w-fit items-center gap-2 rounded-full border border-[var(--card-border)] bg-[var(--card)] px-4 py-2 text-sm shadow-sm"
+              >
+                <i className="fa-solid fa-arrow-left" /> Back
+              </button>
+              <h1 className="px-16 text-center font-[var(--font-heading)] text-lg font-semibold leading-snug sm:text-xl">
+                {selectedCategory.name}
+              </h1>
+            </div>
+
+            {/* Mobile: keep just title here (Back is in stepper) */}
+            <h1 className="text-center font-[var(--font-heading)] text-lg font-semibold leading-snug sm:hidden">
+              {selectedCategory.name}
+            </h1>
+
+            <div className="relative mx-auto mt-4 w-full max-w-md text-center">
+              <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search…"
+                className="w-full rounded-full border border-[var(--card-border)] bg-[var(--card)] py-2 pl-10 pr-4 text-sm shadow-sm outline-none transition-all focus:border-[var(--accent)] focus:ring-2 focus:ring-[var(--accent)]/20"
+              />
+            </div>
+          </div>
+        </>
       ) : null}
 
       {loading ? <p className="mt-4">Loading...</p> : null}
       {error ? <p className="mt-4 text-[var(--status-error)]">{error}</p> : null}
 
       {!selectedCategory ? (
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:gap-4 md:grid-cols-3">
           {categories.map((category) => (
             <button
               key={category.id}
@@ -111,62 +117,91 @@ export default function BookingPageContent() {
               onClick={() => {
                 router.replace(`/booking?category_id=${category.id}`);
               }}
-              className="text-left group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
+              className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] text-left shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
-              <div className="aspect-[4/3] bg-gray-100">
+              <div className="aspect-[4/3] shrink-0 bg-gray-100">
                 {(category.image_url || category.image_path) ? (
                   <img src={(category.image_url || category.image_path) as string} alt={category.name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-gray-400">No image</div>
                 )}
               </div>
-              <div className="p-4">
-                <h2 className="font-[var(--font-heading)] font-semibold">{category.name}</h2>
+              <div className="flex flex-1 flex-col p-3 sm:p-4">
+                <h2 className="line-clamp-2 font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
+                  {category.name}
+                </h2>
                 {category.description ? (
-                  <p className="mt-1 line-clamp-2 text-sm text-[var(--text-muted)]">{category.description}</p>
+                  <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
+                    {category.description}
+                  </p>
                 ) : null}
               </div>
             </button>
           ))}
         </div>
       ) : (
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:gap-4 md:grid-cols-3">
           {services.map((service) => (
             <Link
               key={service.id}
               href={`/booking/service/${service.id}?category_id=${selectedCategory.id}`}
-              className="group relative overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
+              className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
-              <div className="aspect-[4/3] bg-gray-100">
+              <div className="aspect-[4/3] shrink-0 bg-gray-100">
                 {(service.image_url || service.image_path) ? (
                   <img src={(service.image_url || service.image_path) as string} alt={service.name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="h-full w-full flex items-center justify-center text-gray-400">No image</div>
                 )}
               </div>
-              <div className="relative p-4">
+              <div className="relative flex flex-1 flex-col p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="font-[var(--font-heading)] font-semibold">{service.name}</h2>
-                  <span className="rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)]">
+                  <h2 className="line-clamp-2  font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
+                    {service.name}
+                  </h2>
+                  <span className="hidden rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
                     {service.service_type}
                   </span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-sm text-[var(--text-muted)]">
+                <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
                   {service.description || "Professional treatment service."}
                 </p>
-                <div className="mt-3 space-y-1 border-t border-[var(--card-border)] pt-3 text-sm">
-                  <p className="flex justify-between gap-2">
-                    <span className="text-[var(--text-muted)]">Duration</span>
-                    <span className="font-medium tabular-nums">{service.duration_minutes} min</span>
-                  </p>
-                  <p className="flex justify-between gap-2">
-                    <span className="text-[var(--text-muted)]">Price</span>
-                    <span className="font-medium tabular-nums">
-                      {service.price_mode === "range" && service.price_range_min != null && service.price_range_max != null
-                        ? `RM ${Number(service.price_range_min).toFixed(2)} - ${Number(service.price_range_max).toFixed(2)}`
-                        : `RM ${Number(service.price).toFixed(2)}`}
+                <div className="mt-2 border-t border-[var(--card-border)] pt-3">
+                  {/* Mobile: compact pills (cleaner than a 2-row table) */}
+                  <div className="flex flex-col items-start gap-2 sm:hidden">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
+                      <i className="fa-regular fa-clock text-[10px]" aria-hidden />
+                      <span className="tabular-nums">{service.duration_minutes} min</span>
                     </span>
-                  </p>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
+                      <i className="fa-solid fa-tag text-[10px]" aria-hidden />
+                      <span className="tabular-nums">
+                        {service.price_mode === "range" && service.price_range_min != null && service.price_range_max != null
+                          ? `RM ${Number(service.price_range_min).toFixed(0)}-${Number(service.price_range_max).toFixed(0)}`
+                          : `RM ${Number(service.price).toFixed(0)}`}
+                      </span>
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-[11px] font-semibold capitalize text-[var(--text-muted)]">
+                      <i className="fa-regular fa-gem text-[10px]" aria-hidden />
+                      {service.service_type}
+                    </span>
+                  </div>
+
+                  {/* Desktop: keep detailed layout */}
+                  <div className="hidden space-y-1 text-sm sm:block">
+                    <p className="flex justify-between gap-2">
+                      <span className="text-[var(--text-muted)]">Duration</span>
+                      <span className="font-medium tabular-nums">{service.duration_minutes} min</span>
+                    </p>
+                    <p className="flex justify-between gap-2">
+                      <span className="text-[var(--text-muted)]">Price</span>
+                      <span className="font-medium tabular-nums">
+                        {service.price_mode === "range" && service.price_range_min != null && service.price_range_max != null
+                          ? `RM ${Number(service.price_range_min).toFixed(2)} - ${Number(service.price_range_max).toFixed(2)}`
+                          : `RM ${Number(service.price).toFixed(2)}`}
+                      </span>
+                    </p>
+                  </div>
                 </div>
               </div>
             </Link>
