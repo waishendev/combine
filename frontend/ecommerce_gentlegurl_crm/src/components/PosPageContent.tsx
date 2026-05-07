@@ -848,7 +848,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const activeVariants = (item.variants ?? []).filter((variant) => variant.is_active !== false)
     for (const variant of activeVariants) {
       const variantBarcode = normalizeSkuSearchValue(variant.barcode || variant.sku)
-      if (variantBarcode && variantBarcode.startsWith(keyword)) {
+      if (variantBarcode && variantBarcode.includes(keyword)) {
         return variant
       }
     }
@@ -868,7 +868,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     return products.flatMap((product) => {
       const productBarcode = normalizeSkuSearchValue(product.barcode || product.sku)
-      if (productBarcode && productBarcode.startsWith(normalizedProductQuery)) {
+      if (productBarcode && productBarcode.includes(normalizedProductQuery)) {
         return [{ product }]
       }
 
@@ -1356,26 +1356,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const trimmed = barcode.trim()
     if (!trimmed) return false
 
-    const res = await fetch('/api/proxy/pos/cart/add-by-barcode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ barcode: trimmed, qty }),
-    })
-    const json = await res.json()
+    try {
+      const res = await fetch('/api/proxy/pos/cart/add-by-barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: trimmed, qty }),
+      })
+      const json = await res.json().catch(() => null)
 
-    if (res.ok) {
-      setCart(json.data.cart)
-      showMsg('Added to cart.', 'success')
-      return true
-    }
+      if (res.ok && json?.data?.cart) {
+        setCart(json.data.cart)
+        showMsg(`Added barcode ${trimmed} to cart.`, 'success')
+        return true
+      }
 
-    if (res.status === 404) {
-      showMsg('Barcode not found.', 'error')
+      if (res.status === 404) {
+        showMsg(`No POS product found for barcode ${trimmed}.`, 'error')
+        return false
+      }
+
+      showMsg(typeof json?.message === 'string' ? json.message : `Unable to add barcode ${trimmed}.`, 'error')
+      return false
+    } catch (err) {
+      showMsg(err instanceof Error ? err.message : `Unable to add barcode ${trimmed}.`, 'error')
       return false
     }
-
-    showMsg(json?.message ?? 'Unable to add item.', 'error')
-    return false
   }
   addByBarcodeRef.current = addByBarcode
 
@@ -1617,17 +1622,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const hasCategoryFilter = Number.isFinite(normalizedCategoryId) && normalizedCategoryId > 0
 
       if (keyword.trim()) {
+        const trimmedKeyword = keyword.trim()
         const searchParams = new URLSearchParams({
-          q: keyword.trim(),
+          q: trimmedKeyword,
           page: String(page),
           per_page: '100',
           is_reward_only: 'false',
         })
+        if (productSearchMode === 'barcode') {
+          searchParams.set('barcode', trimmedKeyword)
+          searchParams.set('barcode_search', 'true')
+        }
         if (hasCategoryFilter) {
           searchParams.set('category_id', String(normalizedCategoryId))
         }
         const res = await fetch(`/api/proxy/pos/products/search?${searchParams.toString()}`)
-        const json = await res.json()
+        const json = await res.json().catch(() => null)
+        if (!res.ok) {
+          throw new Error(typeof json?.message === 'string' ? json.message : 'Unable to search POS products.')
+        }
         const paged = extractPaged<ProductOption>(json)
         mapped = paged.data.map((item) => {
           const resolvedProductId = Number(item.product_id)
@@ -1674,12 +1687,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       if (resetHighlight) {
         setProductHighlighted(0)
       }
+    } catch {
+      if (requestId !== latestProductRequestRef.current) return
+      if (!append) {
+        setProducts([])
+      }
+      setProductPage(1)
+      setProductLastPage(1)
+      if (resetHighlight) {
+        setProductHighlighted(0)
+      }
     } finally {
       if (!silent && requestId === latestProductRequestRef.current) {
         setProductLoading(false)
       }
     }
-  }, [])
+  }, [productSearchMode])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     const trimmedKeyword = keyword.trim()
