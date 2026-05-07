@@ -20,7 +20,7 @@ type SliderItem = {
   button_align?: string | null;
 };
 
-const justBreathe = localFont({
+export const justBreathe = localFont({
   src: [
     {
       path: "../../../public/fonts/just_breathe/JustBreathe.otf",
