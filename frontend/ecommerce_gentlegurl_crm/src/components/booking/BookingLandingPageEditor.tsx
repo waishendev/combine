@@ -25,6 +25,8 @@ type Sections = {
     label: string
     title: string
     subtitle: string
+    title_2: string
+    subtitle_2: string
     cta_label: string
     cta_link: string
   }
@@ -70,6 +72,8 @@ const defaultSections: Sections = {
     label: 'Premium Salon Booking',
     title: 'Beauty appointments, made effortless.',
     subtitle: 'Discover signature services, reserve your slot instantly, and arrive confident with our trusted professional team.',
+    title_2: '',
+    subtitle_2: '',
     cta_label: 'Book Appointment',
     cta_link: '/booking',
   },
@@ -214,6 +218,15 @@ function normalizeVisitStudioFromApi(raw: unknown): Sections['visit_studio'] {
 
 function mergeSectionsFromApi(raw: Partial<Sections> & Record<string, unknown>): Sections {
   const merged = { ...defaultSections, ...raw } as Sections
+  const hero = raw.hero as Partial<Sections['hero']> | undefined
+  if (hero) {
+    merged.hero = {
+      ...defaultSections.hero,
+      ...hero,
+      title_2: String(hero.title_2 ?? ''),
+      subtitle_2: String(hero.subtitle_2 ?? ''),
+    }
+  }
   const na = raw.nail_academy as Sections['nail_academy'] | undefined
   if (na?.items && Array.isArray(na.items)) {
     merged.nail_academy = {
@@ -899,6 +912,14 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
           <div className="space-y-1 text-sm text-gray-700 md:col-span-2">
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Subtitle</span>
             <textarea className={textareaCls} rows={2} value={sections.hero.subtitle} onChange={(e) => updateHero('subtitle', e.target.value)} disabled={!canEdit} />
+          </div>
+          <div className="space-y-1 text-sm text-gray-700 md:col-span-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Title 2</span>
+            <input className={inputCls} value={sections.hero.title_2} onChange={(e) => updateHero('title_2', e.target.value)} disabled={!canEdit} />
+          </div>
+          <div className="space-y-1 text-sm text-gray-700 md:col-span-2">
+            <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Subtitle 2</span>
+            <textarea className={textareaCls} rows={2} value={sections.hero.subtitle_2} onChange={(e) => updateHero('subtitle_2', e.target.value)} disabled={!canEdit} />
           </div>
           <div className="space-y-1 text-sm text-gray-700">
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">CTA link</span>

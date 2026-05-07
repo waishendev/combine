@@ -390,6 +390,8 @@ export type LandingSections = {
     label: string;
     title: string;
     subtitle: string;
+    title_2?: string;
+    subtitle_2?: string;
     cta_label: string;
     cta_link: string;
   };

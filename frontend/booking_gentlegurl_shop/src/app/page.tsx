@@ -13,6 +13,8 @@ const defaultSections: LandingSections = {
     title: "Beauty appointments, made effortless.",
     subtitle:
       "Discover signature services, reserve your slot instantly, and arrive confident with our trusted professional team.",
+    title_2: "",
+    subtitle_2: "",
     cta_label: "Book Appointment",
     cta_link: "/booking",
   },
@@ -82,7 +84,16 @@ export default function HomePage() {
         const sliderData = await getBookingHomepageSliders();
         setSliders(sliderData);
         if (data?.sections) {
-          setSections({ ...defaultSections, ...data.sections });
+          setSections({
+            ...defaultSections,
+            ...data.sections,
+            hero: {
+              ...defaultSections.hero,
+              ...data.sections.hero,
+              title_2: data.sections.hero?.title_2 ?? "",
+              subtitle_2: data.sections.hero?.subtitle_2 ?? "",
+            },
+          });
         }
       } catch {
         // fall back to defaults

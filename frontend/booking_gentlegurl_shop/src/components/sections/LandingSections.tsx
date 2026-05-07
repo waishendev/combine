@@ -12,7 +12,7 @@ import type {
   LandingVisitStudio,
   LandingVisitStudioHoursRow,
 } from "@/lib/types";
-import Slider from "@/components/home/Slider";
+import Slider, { justBreathe } from "@/components/home/Slider";
 import type { BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
 
 type HeroProps = {
@@ -25,6 +25,9 @@ export function Hero({ hero, sliders }: HeroProps) {
   if (!hero.is_active) return null;
 
   const hasSliders = sliders && sliders.length > 0;
+  const title2 = hero.title_2?.trim();
+  const subtitle2 = hero.subtitle_2?.trim();
+  const heroFont = justBreathe.className;
 
   return (
     <section className="w-full text-center">
@@ -39,11 +42,17 @@ export function Hero({ hero, sliders }: HeroProps) {
           hasSliders ? "mt-8 sm:mt-10" : ""
         }`}
       >
-        <p className="text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]">{hero.label}</p>
-        <h1 className="text-3xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-4xl md:text-5xl">
+        <p className={`${heroFont} text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]`}>{hero.label}</p>
+        <h1 className={`${heroFont} text-3xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-4xl md:text-5xl`}>
           {hero.title}
         </h1>
-        <p className="max-w-2xl text-lg text-[var(--text-muted)]">{hero.subtitle}</p>
+        <p className={`${heroFont} max-w-2xl text-lg text-[var(--text-muted)]`}>{hero.subtitle}</p>
+        {title2 ? (
+          <h2 className={`${heroFont} max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-3xl`}>
+            {title2}
+          </h2>
+        ) : null}
+        {subtitle2 ? <p className={`${heroFont} max-w-2xl text-lg text-[var(--text-muted)]`}>{subtitle2}</p> : null}
         <Link
           href={hero.cta_link || "/booking"}
           className="mt-1 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-stronger)]"
