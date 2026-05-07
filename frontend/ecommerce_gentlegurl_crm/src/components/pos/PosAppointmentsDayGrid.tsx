@@ -11,16 +11,34 @@ import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentT
 
 const SLOT_MINUTES = 15
 const DAY_START_MIN = 8 * 60
-const DAY_END_MIN = 21 * 60
+const BASE_DAY_END_MIN = 21 * 60
 const SLOT_PX = 22
+
+
+const parseAppointmentDate = (iso: string | null | undefined): Date | null => {
+  if (!iso) return null
+  const normalized = iso.trim()
+  if (!normalized) return null
+
+  const localMatch = normalized.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?$/)
+  if (localMatch) {
+    const [, y, m, d, hh, mm, ss] = localMatch
+    const date = new Date(Number(y), Number(m) - 1, Number(d), Number(hh), Number(mm), Number(ss ?? '0'))
+    if (!Number.isNaN(date.getTime())) return date
+  }
+
+  const parsed = new Date(normalized)
+  if (Number.isNaN(parsed.getTime())) return null
+  return parsed
+}
 
 const formatYmd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 const parseIsoToLocalYmd = (iso: string | null | undefined): string | null => {
   if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
+  const d = parseAppointmentDate(iso)
+  if (!d) return null
   return formatYmd(d)
 }
 
@@ -28,11 +46,27 @@ const minutesFromMidnight = (d: Date) => d.getHours() * 60 + d.getMinutes()
 
 const formatTimeLabel = (iso: string | null | undefined) => {
   if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
+  const d = parseAppointmentDate(iso)
+  if (!d) return ''
   return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
+
+const pickRowStartIso = (row: PosAppointmentListItem): string | null => {
+  const maybe = row as PosAppointmentListItem & {
+    schedule_start_at?: string | null
+    start_at?: string | null
+  }
+  return maybe.appointment_start_at ?? maybe.schedule_start_at ?? maybe.start_at ?? null
+}
+
+const pickRowEndIso = (row: PosAppointmentListItem): string | null => {
+  const maybe = row as PosAppointmentListItem & {
+    schedule_end_at?: string | null
+    end_at?: string | null
+  }
+  return maybe.appointment_end_at ?? maybe.schedule_end_at ?? maybe.end_at ?? null
+}
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 
 type StaffColumnKey = string
@@ -99,7 +133,7 @@ export default function PosAppointmentsDayGrid({
   staffOffTodayIds,
 }: Props) {
   const dayRows = useMemo(() => {
-    return appointments.filter((row) => parseIsoToLocalYmd(row.appointment_start_at ?? null) === dayYmd)
+    return appointments.filter((row) => parseIsoToLocalYmd(pickRowStartIso(row)) === dayYmd)
   }, [appointments, dayYmd])
 
   const staffIdsFromSchedule = useMemo(() => new Set(scheduleStaff.map((s) => s.id)), [scheduleStaff])
@@ -165,7 +199,23 @@ export default function PosAppointmentsDayGrid({
     return byStaff
   }, [dayRows, rowColumnKey])
 
-  const totalSlots = Math.ceil((DAY_END_MIN - DAY_START_MIN) / SLOT_MINUTES)
+  const dayEndMin = useMemo(() => {
+    let maxEndMin = BASE_DAY_END_MIN
+    for (const row of dayRows) {
+      const startDate = parseAppointmentDate(pickRowStartIso(row))
+      if (!startDate) continue
+      const endDate = parseAppointmentDate(pickRowEndIso(row))
+      const startMin = minutesFromMidnight(startDate)
+      const fallbackDuration = Number(row.duration_min ?? 0)
+      const computedEndMin = endDate && endDate > startDate
+        ? minutesFromMidnight(endDate)
+        : startMin + (fallbackDuration > 0 ? fallbackDuration : SLOT_MINUTES)
+      maxEndMin = Math.max(maxEndMin, computedEndMin)
+    }
+    return Math.min(24 * 60, Math.max(BASE_DAY_END_MIN, Math.ceil(maxEndMin / SLOT_MINUTES) * SLOT_MINUTES))
+  }, [dayRows])
+
+  const totalSlots = Math.ceil((dayEndMin - DAY_START_MIN) / SLOT_MINUTES)
   const gridHeight = totalSlots * SLOT_PX
 
   if (loading) {
@@ -234,17 +284,17 @@ export default function PosAppointmentsDayGrid({
           const rows = blocksByStaff.get(col.key) ?? []
           const intervals = rows
             .map((row) => {
-              const startIso = row.appointment_start_at
-              const endIso = row.appointment_end_at ?? row.appointment_start_at
+              const startIso = pickRowStartIso(row)
+              const endIso = pickRowEndIso(row) ?? startIso
               if (!startIso) return null
-              const startD = new Date(startIso)
-              const endD = endIso ? new Date(endIso) : new Date(startD.getTime() + 30 * 60 * 1000)
-              if (Number.isNaN(startD.getTime()) || Number.isNaN(endD.getTime())) return null
+              const startD = parseAppointmentDate(startIso)
+              const endD = parseAppointmentDate(endIso)
+              if (!startD) return null
               let startMin = minutesFromMidnight(startD)
-              let endMin = minutesFromMidnight(endD)
+              let endMin = endD && endD > startD ? minutesFromMidnight(endD) : startMin + Math.max(SLOT_MINUTES, Number(row.duration_min ?? 0))
               if (endMin <= startMin) endMin = startMin + SLOT_MINUTES
               startMin = Math.max(DAY_START_MIN, startMin)
-              endMin = Math.min(DAY_END_MIN, endMin)
+              endMin = Math.min(dayEndMin, endMin)
               if (endMin <= startMin) return null
               return {
                 id: row.id,
@@ -299,7 +349,7 @@ export default function PosAppointmentsDayGrid({
                       width: `calc(${widthPct}% - 2px)`,
                     }}
                   >
-                    <span className="block truncate font-bold">{formatTimeLabel(row.appointment_start_at)}</span>
+                    <span className="block truncate font-bold">{formatTimeLabel(pickRowStartIso(row))}</span>
                     <span className={posAppointmentDayBlockSubtextClass(tone)}>
                       {truncate(row.customer_name, 14)} · {truncate(svc, 18)}
                     </span>
