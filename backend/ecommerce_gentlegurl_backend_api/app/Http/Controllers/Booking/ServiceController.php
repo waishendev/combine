@@ -22,6 +22,7 @@ class ServiceController extends Controller
         return $this->respond($categories->map(fn (BookingServiceCategory $category) => [
             'id' => (int) $category->id,
             'name' => $category->name,
+            'cn_name' => $category->cn_name,
             'slug' => $category->slug,
             'description' => $category->description,
             'image_path' => $category->image_path,

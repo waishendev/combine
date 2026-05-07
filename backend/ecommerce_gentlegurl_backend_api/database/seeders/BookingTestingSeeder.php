@@ -270,6 +270,7 @@ class BookingTestingSeeder extends Seeder
             $categories = [
                 [
                     'name' => 'Hair Essentials',
+                    'cn_name' => '头发基础护理',
                     'slug' => 'hair-essentials',
                     'description' => 'Daily and classic hair services.',
                     'sort_order' => 1,
@@ -277,6 +278,7 @@ class BookingTestingSeeder extends Seeder
                 ],
                 [
                     'name' => 'Premium Treatments',
+                    'cn_name' => '高级护理',
                     'slug' => 'premium-treatments',
                     'description' => 'Repair and intensive premium care.',
                     'sort_order' => 2,
@@ -285,16 +287,22 @@ class BookingTestingSeeder extends Seeder
             ];
 
             foreach ($categories as $category) {
+                $categoryPayload = [
+                    'name' => $category['name'],
+                    'description' => $category['description'],
+                    'is_active' => true,
+                    'sort_order' => $category['sort_order'],
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ];
+
+                if (Schema::hasColumn('booking_service_categories', 'cn_name')) {
+                    $categoryPayload['cn_name'] = $category['cn_name'] ?? null;
+                }
+
                 DB::table('booking_service_categories')->updateOrInsert(
                     ['slug' => $category['slug']],
-                    [
-                        'name' => $category['name'],
-                        'description' => $category['description'],
-                        'is_active' => true,
-                        'sort_order' => $category['sort_order'],
-                        'updated_at' => $now,
-                        'created_at' => $now,
-                    ]
+                    $categoryPayload
                 );
 
                 $resolvedCategoryId = (int) DB::table('booking_service_categories')

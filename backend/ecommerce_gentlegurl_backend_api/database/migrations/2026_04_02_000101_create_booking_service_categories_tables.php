@@ -10,6 +10,7 @@ return new class extends Migration {
         Schema::create('booking_service_categories', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->string('cn_name')->nullable();
             $table->string('slug')->unique();
             $table->text('description')->nullable();
             $table->string('image_path')->nullable();

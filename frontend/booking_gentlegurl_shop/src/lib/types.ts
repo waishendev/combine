@@ -1,6 +1,7 @@
 export type BookingServiceCategory = {
   id: number;
   name: string;
+  cn_name?: string | null;
   slug: string;
   description?: string | null;
   image_path?: string | null;

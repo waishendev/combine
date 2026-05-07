@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Storage;
 class BookingServiceCategory extends Model
 {
     protected $fillable = [
-        'name', 'slug', 'description', 'image_path', 'is_active', 'sort_order',
+        'name', 'cn_name', 'slug', 'description', 'image_path', 'is_active', 'sort_order',
     ];
 
     protected $casts = [

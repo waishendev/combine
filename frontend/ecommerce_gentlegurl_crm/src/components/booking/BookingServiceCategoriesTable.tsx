@@ -519,7 +519,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
             <tr>
               {(
                 [
-                  { key: 'name', label: 'Name' },
+                  { key: 'name', label: 'English Name' },
                   { key: 'slug', label: 'Slug' },
                   { key: 'sortOrder', label: 'Sort Order' },
                   { key: 'isActive', label: t('common.status') },
