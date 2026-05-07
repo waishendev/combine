@@ -18,6 +18,8 @@ class BookingLandingPageSeeder extends Seeder
                         'label' => 'Premium Salon Booking',
                         'title' => 'Beauty appointments, made effortless.',
                         'subtitle' => 'Discover signature services, reserve your slot instantly, and arrive confident with our trusted professional team.',
+                        'title_2' => '',
+                        'subtitle_2' => '',
                         'cta_label' => 'Book Appointment',
                         'cta_link' => '/booking',
                     ],

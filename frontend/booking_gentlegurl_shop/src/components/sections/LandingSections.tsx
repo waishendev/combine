@@ -25,6 +25,8 @@ export function Hero({ hero, sliders }: HeroProps) {
   if (!hero.is_active) return null;
 
   const hasSliders = sliders && sliders.length > 0;
+  const title2 = hero.title_2?.trim();
+  const subtitle2 = hero.subtitle_2?.trim();
 
   return (
     <section className="w-full text-center">
@@ -44,6 +46,12 @@ export function Hero({ hero, sliders }: HeroProps) {
           {hero.title}
         </h1>
         <p className="max-w-2xl text-lg text-[var(--text-muted)]">{hero.subtitle}</p>
+        {title2 ? (
+          <h2 className="max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-3xl">
+            {title2}
+          </h2>
+        ) : null}
+        {subtitle2 ? <p className="max-w-2xl text-lg text-[var(--text-muted)]">{subtitle2}</p> : null}
         <Link
           href={hero.cta_link || "/booking"}
           className="mt-1 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-stronger)]"
