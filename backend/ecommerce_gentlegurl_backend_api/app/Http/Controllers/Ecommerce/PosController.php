@@ -1283,30 +1283,27 @@ class PosController extends Controller
 
     public function addByBarcode(Request $request)
     {
-        $validated = $request->validate([
-            'barcode' => ['required', 'string'],
+        $validator = Validator::make($request->all(), [
+            'barcode' => ['nullable', 'string'],
             'qty' => ['nullable', 'integer', 'min:1'],
         ]);
 
-        $barcode = trim((string) $validated['barcode']);
+        if ($validator->fails()) {
+            return $this->respondError($validator->errors()->first() ?: __('Invalid barcode request.'), 422);
+        }
 
-        $variant = ProductVariant::query()
-            ->with('product')
-            ->where(function ($query) use ($barcode) {
-                $query->where('barcode', $barcode)->orWhere('sku', $barcode);
-            })
-            ->where('is_active', true)
-            ->first();
+        $validated = $validator->validated();
+        $barcode = trim((string) ($validated['barcode'] ?? ''));
+
+        if ($barcode === '') {
+            return $this->respondError(__('Barcode is required.'), 422);
+        }
+
+        $variant = $this->findSellableVariantByBarcode($barcode);
 
         $product = null;
         if (! $variant) {
-            $product = Product::query()
-                ->where(function ($query) use ($barcode) {
-                    $query->where('barcode', $barcode)->orWhere('sku', $barcode);
-                })
-                ->where('is_active', true)
-                ->where('is_reward_only', false)
-                ->first();
+            $product = $this->findSellableProductByBarcode($barcode);
         }
 
         Log::debug('POS addByBarcode resolve', [
@@ -1325,6 +1322,50 @@ class PosController extends Controller
         return $this->addResolvedToCart($request, $variant, $product, $qty, 'barcode');
     }
 
+    protected function findSellableVariantByBarcode(string $barcode): ?ProductVariant
+    {
+        $normalized = mb_strtolower($barcode);
+
+        return ProductVariant::query()
+            ->with(['product', 'bundleItems.componentVariant'])
+            ->where('is_active', true)
+            ->whereHas('product', fn ($builder) => $builder->where('is_active', true)->where('is_reward_only', false))
+            ->where(function ($query) use ($barcode, $normalized) {
+                $query
+                    ->where('barcode', $barcode)
+                    ->orWhereRaw('LOWER(product_variants.barcode) = ?', [$normalized])
+                    ->orWhere('sku', $barcode)
+                    ->orWhereRaw('LOWER(product_variants.sku) = ?', [$normalized]);
+            })
+            ->orderByRaw('CASE WHEN product_variants.barcode = ? THEN 0 ELSE 1 END', [$barcode])
+            ->orderByRaw('CASE WHEN LOWER(product_variants.barcode) = ? THEN 0 ELSE 1 END', [$normalized])
+            ->orderByRaw('CASE WHEN product_variants.sku = ? THEN 0 ELSE 1 END', [$barcode])
+            ->orderBy('sort_order')
+            ->orderBy('id')
+            ->first();
+    }
+
+    protected function findSellableProductByBarcode(string $barcode): ?Product
+    {
+        $normalized = mb_strtolower($barcode);
+
+        return Product::query()
+            ->where('is_active', true)
+            ->where('is_reward_only', false)
+            ->where(function ($query) use ($barcode, $normalized) {
+                $query
+                    ->where('barcode', $barcode)
+                    ->orWhereRaw('LOWER(products.barcode) = ?', [$normalized])
+                    ->orWhere('sku', $barcode)
+                    ->orWhereRaw('LOWER(products.sku) = ?', [$normalized]);
+            })
+            ->orderByRaw('CASE WHEN products.barcode = ? THEN 0 ELSE 1 END', [$barcode])
+            ->orderByRaw('CASE WHEN LOWER(products.barcode) = ? THEN 0 ELSE 1 END', [$normalized])
+            ->orderByRaw('CASE WHEN products.sku = ? THEN 0 ELSE 1 END', [$barcode])
+            ->orderBy('id')
+            ->first();
+    }
+
     public function addByVariant(Request $request)
     {
         $validated = $request->validate([
@@ -1340,7 +1381,7 @@ class PosController extends Controller
 
         if (! empty($validated['variant_id'])) {
             $variant = ProductVariant::query()
-                ->with('product')
+                ->with(['product', 'bundleItems.componentVariant'])
                 ->where('id', (int) $validated['variant_id'])
                 ->where('is_active', true)
                 ->first();
@@ -2494,8 +2535,11 @@ class PosController extends Controller
             return $this->respondError(__('Product is not sellable.'), 404);
         }
 
-        if ($variant && $variant->track_stock && (int) $variant->stock < $qty) {
-            return $this->respondError(__('Insufficient stock.'), 422);
+        if ($variant) {
+            $availableQty = $this->resolveVariantAvailableQty($variant);
+            if ($availableQty !== null && $availableQty < $qty) {
+                return $this->respondError(__('Insufficient stock.'), 422);
+            }
         }
 
         if (! $variant && $resolvedProduct->track_stock && (int) $resolvedProduct->stock < $qty) {
@@ -2519,8 +2563,11 @@ class PosController extends Controller
         $item->variant_id = $variant?->id;
         $item->product_id = $variant ? null : $resolvedProduct->id;
 
-        if ($variant && $variant->track_stock && $item->qty > (int) $variant->stock) {
-            return $this->respondError(__('Insufficient stock.'), 422);
+        if ($variant) {
+            $availableQty = $this->resolveVariantAvailableQty($variant);
+            if ($availableQty !== null && $item->qty > $availableQty) {
+                return $this->respondError(__('Insufficient stock.'), 422);
+            }
         }
 
         if (! $variant && $resolvedProduct->track_stock && $item->qty > (int) $resolvedProduct->stock) {
@@ -2542,11 +2589,27 @@ class PosController extends Controller
         ]);
     }
 
+    protected function resolveVariantAvailableQty(ProductVariant $variant): ?int
+    {
+        if ($variant->is_bundle) {
+            return $variant->derivedAvailableQty();
+        }
+
+        if (! $variant->track_stock) {
+            return null;
+        }
+
+        return (int) ($variant->stock ?? 0);
+    }
+
     public function productSearch(Request $request)
     {
-        $query = trim((string) $request->query('q', ''));
+        $barcodeQuery = trim((string) $request->query('barcode', ''));
+        $query = $barcodeQuery !== '' ? $barcodeQuery : trim((string) $request->query('q', ''));
+        $isBarcodeSearch = $barcodeQuery !== '' || $request->boolean('barcode_search');
         $page = max(1, (int) $request->query('page', 1));
         $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+        $categoryId = $request->integer('category_id');
 
         if ($query === '') {
             return $this->respond([
@@ -2561,27 +2624,41 @@ class PosController extends Controller
         $exact = mb_strtolower($query);
 
         $variants = ProductVariant::query()
-            ->with(['product', 'product.images'])
+            ->with(['product', 'product.images', 'bundleItems.componentVariant'])
             ->where('is_active', true)
             ->whereHas('product', fn ($builder) => $builder->where('is_active', true)->where('is_reward_only', false))
-            ->where(function ($builder) use ($query) {
+            ->when($categoryId > 0, function ($builder) use ($categoryId) {
+                $builder->whereHas('product.categories', fn ($categoryQuery) => $categoryQuery->where('categories.id', $categoryId));
+            })
+            ->where(function ($builder) use ($query, $exact, $isBarcodeSearch) {
                 $builder
-                    ->whereRaw('LOWER(COALESCE(barcode, "")) = ?', [mb_strtolower($query)])
-                    ->orWhere('barcode', 'like', "%{$query}%")
-                    ->orWhereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
-                    ->orWhere('sku', 'like', "%{$query}%")
-                    ->orWhereHas('product', function ($productQuery) use ($query) {
+                    ->where('product_variants.barcode', $query)
+                    ->orWhereRaw('LOWER(product_variants.barcode) = ?', [$exact])
+                    ->orWhere('product_variants.barcode', 'like', "%{$query}%")
+                    ->orWhere('product_variants.sku', $query)
+                    ->orWhereRaw('LOWER(product_variants.sku) = ?', [$exact])
+                    ->orWhere('product_variants.sku', 'like', "%{$query}%")
+                    ->orWhereHas('product', function ($productQuery) use ($query, $exact, $isBarcodeSearch) {
                         $productQuery
-                            ->whereRaw('LOWER(COALESCE(barcode, "")) = ?', [mb_strtolower($query)])
-                            ->orWhere('barcode', 'like', "%{$query}%")
-                            ->orWhereRaw('LOWER(sku) = ?', [mb_strtolower($query)])
-                            ->orWhere('sku', 'like', "%{$query}%")
-                            ->orWhere('name', 'like', "%{$query}%");
+                            ->where('products.barcode', $query)
+                            ->orWhereRaw('LOWER(products.barcode) = ?', [$exact])
+                            ->orWhere('products.barcode', 'like', "%{$query}%")
+                            ->orWhere('products.sku', $query)
+                            ->orWhereRaw('LOWER(products.sku) = ?', [$exact])
+                            ->orWhere('products.sku', 'like', "%{$query}%");
+
+                        if (! $isBarcodeSearch) {
+                            $productQuery->orWhere('products.name', 'like', "%{$query}%");
+                        }
                     });
             })
-            ->orderByRaw('CASE WHEN LOWER(COALESCE(barcode, "")) = ? THEN 0 ELSE 1 END', [$exact])
-            ->orderByRaw('CASE WHEN LOWER(sku) = ? THEN 0 ELSE 1 END', [$exact])
-            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(COALESCE(p.barcode, "")) = ?) THEN 0 ELSE 1 END', [$exact])
+            ->orderByRaw('CASE WHEN product_variants.barcode = ? THEN 0 ELSE 1 END', [$query])
+            ->orderByRaw('CASE WHEN LOWER(product_variants.barcode) = ? THEN 0 ELSE 1 END', [$exact])
+            ->orderByRaw('CASE WHEN product_variants.sku = ? THEN 0 ELSE 1 END', [$query])
+            ->orderByRaw('CASE WHEN LOWER(product_variants.sku) = ? THEN 0 ELSE 1 END', [$exact])
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND p.barcode = ?) THEN 0 ELSE 1 END', [$query])
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(p.barcode) = ?) THEN 0 ELSE 1 END', [$exact])
+            ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND p.sku = ?) THEN 0 ELSE 1 END', [$query])
             ->orderByRaw('CASE WHEN EXISTS (SELECT 1 FROM products p WHERE p.id = product_variants.product_id AND LOWER(p.sku) = ?) THEN 0 ELSE 1 END', [$exact])
             ->orderBy('sort_order')
             ->orderBy('id')
@@ -2594,11 +2671,29 @@ class PosController extends Controller
 
                 return [
                     'id' => $variant->id,
+                    'product_id' => $product?->id,
                     'name' => $product?->name,
                     'sku' => $variant->sku,
                     'barcode' => $variant->barcode ?? $variant->sku,
-                    'price' => (float) ($pricing['unit_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
+                    'price' => (float) ($pricing['effective_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
                     'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
+                    'variants_count' => 1,
+                    'default_variant_id' => $variant->id,
+                    'variants' => [[
+                        'id' => $variant->id,
+                        'name' => $variant->title,
+                        'title' => $variant->title,
+                        'sku' => $variant->sku,
+                        'barcode' => $variant->barcode,
+                        'price' => (float) ($pricing['effective_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
+                        'sale_price' => $variant->sale_price,
+                        'image_url' => $variant->image_url,
+                        'is_active' => (bool) $variant->is_active,
+                        'is_bundle' => (bool) $variant->is_bundle,
+                        'track_stock' => (bool) $variant->track_stock,
+                        'stock' => $this->resolveVariantAvailableQty($variant),
+                        'derived_available_qty' => $variant->is_bundle ? $variant->derivedAvailableQty() : null,
+                    ]],
                 ];
             })->values(),
             'current_page' => $variants->currentPage(),
@@ -2623,7 +2718,7 @@ class PosController extends Controller
 
         if ($targetVariantId) {
             $targetVariant = ProductVariant::query()
-                ->with('product')
+                ->with(['product', 'bundleItems.componentVariant'])
                 ->where('id', $targetVariantId)
                 ->where('is_active', true)
                 ->first();
@@ -2639,7 +2734,8 @@ class PosController extends Controller
 
             $finalQty = $qty + (int) ($duplicateItem?->qty ?? 0);
 
-            if ($targetVariant->track_stock && $finalQty > (int) $targetVariant->stock) {
+            $targetAvailableQty = $this->resolveVariantAvailableQty($targetVariant);
+            if ($targetAvailableQty !== null && $finalQty > $targetAvailableQty) {
                 return $this->respondError(__('Insufficient stock.'), 422);
             }
 
@@ -2669,8 +2765,11 @@ class PosController extends Controller
             ]);
         }
 
-        if ($item->variant?->track_stock && $qty > (int) $item->variant->stock) {
-            return $this->respondError(__('Insufficient stock.'), 422);
+        if ($item->variant) {
+            $availableQty = $this->resolveVariantAvailableQty($item->variant);
+            if ($availableQty !== null && $qty > $availableQty) {
+                return $this->respondError(__('Insufficient stock.'), 422);
+            }
         }
 
         if (! $item->variant && $item->product?->track_stock && $qty > (int) $item->product->stock) {
@@ -3489,8 +3588,11 @@ class PosController extends Controller
                     continue;
                 }
 
-                if ($variant && $variant->track_stock && $item->qty > (int) $variant->stock) {
-                    abort(422, __('Insufficient stock for :sku', ['sku' => $variant->sku ?? $variant->id]));
+                if ($variant) {
+                    $availableQty = $this->resolveVariantAvailableQty($variant);
+                    if ($availableQty !== null && $item->qty > $availableQty) {
+                        abort(422, __('Insufficient stock for :sku', ['sku' => $variant->sku ?? $variant->id]));
+                    }
                 }
 
                 if (! $variant && $product->track_stock && $item->qty > (int) $product->stock) {

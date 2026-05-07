@@ -326,6 +326,7 @@ type ProductVariantOption = {
   is_active: boolean
   track_stock?: boolean | null
   stock?: number | null
+  is_bundle?: boolean
 }
 
 type CheckoutMeta = {
@@ -488,10 +489,13 @@ type VariantPayload = {
   is_active?: boolean | string | number
   track_stock?: boolean | string | number | null
   stock?: number | string | null
+  is_bundle?: boolean | string | number | null
+  derived_available_qty?: number | string | null
 }
 
 type ProductApiItem = {
   id: number
+  product_id?: number | string | null
   name?: string
   sku?: string
   barcode?: string | null
@@ -502,12 +506,17 @@ type ProductApiItem = {
   variants?: Array<{
     id?: number
     name?: string | null
+    title?: string | null
     sku?: string | null
     barcode?: string | null
     price?: number | string | null
     sale_price?: number | string | null
     image_url?: string | null
     is_active?: boolean | string | number
+    track_stock?: boolean | string | number | null
+    stock?: number | string | null
+    is_bundle?: boolean | string | number | null
+    derived_available_qty?: number | string | null
   }>
 }
 
@@ -839,7 +848,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const activeVariants = (item.variants ?? []).filter((variant) => variant.is_active !== false)
     for (const variant of activeVariants) {
       const variantBarcode = normalizeSkuSearchValue(variant.barcode || variant.sku)
-      if (variantBarcode && variantBarcode.startsWith(keyword)) {
+      if (variantBarcode && variantBarcode.includes(keyword)) {
         return variant
       }
     }
@@ -859,7 +868,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     return products.flatMap((product) => {
       const productBarcode = normalizeSkuSearchValue(product.barcode || product.sku)
-      if (productBarcode && productBarcode.startsWith(normalizedProductQuery)) {
+      if (productBarcode && productBarcode.includes(normalizedProductQuery)) {
         return [{ product }]
       }
 
@@ -1347,26 +1356,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const trimmed = barcode.trim()
     if (!trimmed) return false
 
-    const res = await fetch('/api/proxy/pos/cart/add-by-barcode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ barcode: trimmed, qty }),
-    })
-    const json = await res.json()
+    try {
+      const res = await fetch('/api/proxy/pos/cart/add-by-barcode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ barcode: trimmed, qty }),
+      })
+      const json = await res.json().catch(() => null)
 
-    if (res.ok) {
-      setCart(json.data.cart)
-      showMsg('Added to cart.', 'success')
-      return true
-    }
+      if (res.ok && json?.data?.cart) {
+        setCart(json.data.cart)
+        showMsg(`Added barcode ${trimmed} to cart.`, 'success')
+        return true
+      }
 
-    if (res.status === 404) {
-      showMsg('Barcode not found.', 'error')
+      if (res.status === 404) {
+        showMsg(`No POS product found for barcode ${trimmed}.`, 'error')
+        return false
+      }
+
+      showMsg(typeof json?.message === 'string' ? json.message : `Unable to add barcode ${trimmed}.`, 'error')
+      return false
+    } catch (err) {
+      showMsg(err instanceof Error ? err.message : `Unable to add barcode ${trimmed}.`, 'error')
       return false
     }
-
-    showMsg(json?.message ?? 'Unable to add item.', 'error')
-    return false
   }
   addByBarcodeRef.current = addByBarcode
 
@@ -1417,6 +1431,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
 
+  const toOptionalNumber = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === '') return null
+    const parsed = typeof value === 'number' ? value : Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+
+  const toApiBoolean = (value: unknown) =>
+    value === true || value === '1' || value === 1 || value === 'true'
+
   const normalizeProductFromApi = (item: ProductApiItem): ProductOption | null => {
     const productId = Number(item.id)
     if (!Number.isFinite(productId) || productId <= 0) return null
@@ -1435,16 +1458,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             const variantAny = variant as VariantPayload
             const barcode = typeof variantAny?.barcode === 'string' ? variantAny.barcode.trim() : ''
+            const isBundle = toApiBoolean(variantAny?.is_bundle)
+            const availableQty = isBundle
+              ? toOptionalNumber(variantAny?.derived_available_qty ?? variantAny?.stock)
+              : toOptionalNumber(variantAny?.stock)
             return {
               id: variantId,
-              name: variant?.name?.trim() || `Variant #${variantId}`,
+              name: variant?.name?.trim() || variant?.title?.trim() || `Variant #${variantId}`,
               sku,
               barcode: barcode || sku,
               price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
               thumbnail_url: variant?.image_url ?? item.cover_image_url ?? null,
-              is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
-              track_stock: variantAny?.track_stock === true || variantAny?.track_stock === '1' || variantAny?.track_stock === 1 || variantAny?.track_stock === 'true' || null,
-              stock: typeof variantAny?.stock === 'number' ? variantAny.stock : Number(variantAny?.stock || 0) || null,
+              is_active: toApiBoolean(variant?.is_active),
+              track_stock: toApiBoolean(variantAny?.track_stock) || null,
+              stock: availableQty,
+              is_bundle: isBundle,
             }
           })
           .filter((variant): variant is ProductVariantOption => Boolean(variant))
@@ -1594,17 +1622,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const hasCategoryFilter = Number.isFinite(normalizedCategoryId) && normalizedCategoryId > 0
 
       if (keyword.trim()) {
+        const trimmedKeyword = keyword.trim()
         const searchParams = new URLSearchParams({
-          q: keyword.trim(),
+          q: trimmedKeyword,
           page: String(page),
           per_page: '100',
           is_reward_only: 'false',
         })
+        if (productSearchMode === 'barcode') {
+          searchParams.set('barcode', trimmedKeyword)
+          searchParams.set('barcode_search', 'true')
+        }
         if (hasCategoryFilter) {
           searchParams.set('category_id', String(normalizedCategoryId))
         }
         const res = await fetch(`/api/proxy/pos/products/search?${searchParams.toString()}`)
-        const json = await res.json()
+        const json = await res.json().catch(() => null)
+        if (!res.ok) {
+          throw new Error(typeof json?.message === 'string' ? json.message : 'Unable to search POS products.')
+        }
         const paged = extractPaged<ProductOption>(json)
         mapped = paged.data.map((item) => {
           const resolvedProductId = Number(item.product_id)
@@ -1651,12 +1687,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       if (resetHighlight) {
         setProductHighlighted(0)
       }
+    } catch {
+      if (requestId !== latestProductRequestRef.current) return
+      if (!append) {
+        setProducts([])
+      }
+      setProductPage(1)
+      setProductLastPage(1)
+      if (resetHighlight) {
+        setProductHighlighted(0)
+      }
     } finally {
       if (!silent && requestId === latestProductRequestRef.current) {
         setProductLoading(false)
       }
     }
-  }, [])
+  }, [productSearchMode])
 
   const fetchMemberPage = useCallback(async (page: number, keyword: string, append: boolean) => {
     const trimmedKeyword = keyword.trim()
@@ -3553,9 +3599,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   : sku,
                 price: Number.isFinite(price) ? price : 0,
                 thumbnail_url: variant?.image_url ?? payload?.cover_image_url ?? null,
-                is_active: variant?.is_active === true || variant?.is_active === '1' || variant?.is_active === 1 || variant?.is_active === 'true',
-                track_stock: variant?.track_stock === true || variant?.track_stock === '1' || variant?.track_stock === 1 || variant?.track_stock === 'true' || null,
-                stock: typeof variant?.stock === 'number' ? variant.stock : Number(variant?.stock || 0) || null,
+                is_active: toApiBoolean(variant?.is_active),
+                track_stock: toApiBoolean(variant?.track_stock) || null,
+                stock: toApiBoolean(variant?.is_bundle)
+                  ? toOptionalNumber(variant?.derived_available_qty ?? variant?.stock)
+                  : toOptionalNumber(variant?.stock),
+                is_bundle: toApiBoolean(variant?.is_bundle),
               }
             })
             .filter((variant: ProductVariantOption | null): variant is ProductVariantOption => Boolean(variant))
