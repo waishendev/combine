@@ -1888,6 +1888,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return {
             id,
             name: String(maybe.name ?? '').trim(),
+            cn_name: typeof maybe.cn_name === 'string' ? maybe.cn_name.trim() || null : null,
             service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
             price: Number(maybe.price ?? 0),
             service_price: Number(maybe.service_price ?? 0),
@@ -3108,6 +3109,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     return services.filter((service) =>
       service.name.toLowerCase().includes(keyword) ||
+      (service.cn_name ?? '').toLowerCase().includes(keyword) ||
       String(service.service_type ?? '').toLowerCase().includes(keyword),
     )
   }, [serviceQuery, services])
@@ -6674,8 +6676,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const checkoutServiceItemHeader = (
                         <>
                           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
-                          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="text-base font-bold leading-snug text-gray-900">{serviceItem.service_name}</span>{serviceItem.service_cn_name ? <span className="block text-xs font-normal text-gray-500">{serviceItem.service_cn_name}</span> : null}
+                          <div className="mt-1 flex flex-wrap items-start gap-x-2 gap-y-0.5">
+                            <ServiceNameStack
+                              name={serviceItem.service_name}
+                              cnName={serviceItem.service_cn_name}
+                              primaryClassName="text-base font-bold leading-snug text-gray-900"
+                              secondaryClassName="mt-0.5 text-xs font-normal text-gray-500"
+                            />
                             <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
                               {svcTypeChk}
                             </span>
@@ -8029,7 +8036,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                     {block.service ? (
                       <p className="text-xs font-semibold text-gray-600">
-                        {block.service.name}{block.service.cn_name ? ` (${block.service.cn_name})` : ''} · {Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}
+                        <ServiceNameStack
+                          name={block.service.name}
+                          cnName={block.service.cn_name}
+                          primaryClassName="text-sm font-medium text-gray-900"
+                          secondaryClassName="mt-0.5 text-xs text-gray-500"
+                        />
+                        <span className="text-xs text-gray-600">{Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}</span>
                       </p>
                     ) : null}
                     {block.questions.map((question) => (

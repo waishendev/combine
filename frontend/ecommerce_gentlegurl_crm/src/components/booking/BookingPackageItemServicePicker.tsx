@@ -46,14 +46,18 @@ export default function BookingPackageItemServicePicker({
     if (!q) return options
     return options.filter((s) => {
       const name = s.name.toLowerCase()
+      const cnName = (s.cn_name ?? '').toLowerCase()
       const id = String(s.id)
-      return name.includes(q) || id.includes(q)
+      return name.includes(q) || cnName.includes(q) || id.includes(q)
     })
   }, [options, searchQuery])
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+      if (!rootRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+        setSearchQuery('')
+      }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
@@ -64,7 +68,6 @@ export default function BookingPackageItemServicePicker({
       const t = window.setTimeout(() => searchRef.current?.focus(), 80)
       return () => clearTimeout(t)
     }
-    setSearchQuery('')
   }, [open])
 
   const triggerText = selected
@@ -84,12 +87,19 @@ export default function BookingPackageItemServicePicker({
           aria-haspopup="listbox"
           onClick={() => {
             if (disabled) return
-            setOpen((o) => !o)
+            setOpen((o) => {
+              const next = !o
+              if (!next) setSearchQuery('')
+              return next
+            })
           }}
           className="flex w-full min-w-0 items-center justify-between rounded-md border border-gray-300 bg-white px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <span className={`min-w-0 flex-1 truncate ${selected || value ? 'text-gray-900' : 'text-gray-500'}`}>
-            {triggerText}
+          <span className={`min-w-0 flex-1 ${selected || value ? 'text-gray-900' : 'text-gray-500'}`}>
+            <span className="block truncate">{triggerText}</span>
+            {selected?.cn_name ? (
+              <span className="mt-0.5 block truncate text-xs text-gray-500">{selected.cn_name}</span>
+            ) : null}
           </span>
           <i className={`fa-solid fa-chevron-${open ? 'up' : 'down'} ml-2 shrink-0 text-xs text-gray-400`} />
         </button>
@@ -141,13 +151,17 @@ export default function BookingPackageItemServicePicker({
                       onClick={() => {
                         onChange(String(service.id))
                         setOpen(false)
+                        setSearchQuery('')
                       }}
                       className={`flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
                         isSelected ? 'bg-blue-50 text-blue-900' : 'text-gray-800 hover:bg-gray-50'
                       }`}
                     >
                       <span className="min-w-0 flex-1">
-                        <span className="font-medium">{service.name}</span>
+                        <span className="block font-medium leading-tight">{service.name}</span>
+                        {service.cn_name ? (
+                          <span className="mt-0.5 block text-xs leading-tight text-gray-500">{service.cn_name}</span>
+                        ) : null}
                         {/* <span className="ml-2 text-xs text-gray-500">#{service.id}</span> */}
                       </span>
                       {isSelected && <i className="fa-solid fa-check-circle mt-0.5 shrink-0 text-xs text-blue-600" />}

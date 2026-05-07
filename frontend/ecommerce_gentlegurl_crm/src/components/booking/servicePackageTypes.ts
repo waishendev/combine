@@ -21,4 +21,5 @@ export type ServicePackage = {
 export type BookingServiceOption = {
   id: number
   name: string
+  cn_name?: string | null
 }
