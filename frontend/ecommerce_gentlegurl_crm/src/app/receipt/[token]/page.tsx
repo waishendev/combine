@@ -4,6 +4,7 @@ type ReceiptItem = {
   type?: 'product' | 'booking_deposit' | 'booking_settlement' | 'service_package' | string
   sku?: string
   name: string
+  cn_name?: string | null
   variant_name?: string
   qty: number
   unit_price: number
@@ -39,6 +40,7 @@ type ReceiptData = {
   service_items?: Array<{
     type?: 'service' | string
     name: string
+    cn_name?: string | null
     qty: number
     unit_price: number
     line_total: number
@@ -170,7 +172,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               return (
               <tr key={`${item.sku}-${idx}`} className="border-t border-gray-200 text-sm">
                 <td className="px-4 py-3">
-                  <p className="font-semibold">{item.name}</p>
+                  <p className="font-semibold">{item.name}</p>{item.cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.cn_name}</p> : null}
                   <p className="text-xs text-gray-500">
                     Type: {isPackageCoveredReceipt ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>

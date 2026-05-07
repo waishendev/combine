@@ -196,9 +196,9 @@ class BookingTestingSeeder extends Seeder
     private function seedServices(): array
     {
         $serviceSpecs = [
-            ['name' => 'Haircut', 'service_type' => 'standard', 'service_price' => 5200, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
-            ['name' => 'Coloring', 'service_type' => 'premium', 'service_price' => 680, 'price_mode' => 'range', 'price_range_min' => 680, 'price_range_max' => 1200, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
-            ['name' => 'Treatment', 'service_type' => 'premium', 'service_price' => 450, 'price_mode' => 'fixed', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
+            ['name' => 'Haircut', 'cn_name' => '剪发', 'service_type' => 'standard', 'service_price' => 5200, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
+            ['name' => 'Coloring', 'cn_name' => '染发', 'service_type' => 'premium', 'service_price' => 680, 'price_mode' => 'range', 'price_range_min' => 680, 'price_range_max' => 1200, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
+            ['name' => 'Treatment', 'cn_name' => '护理', 'service_type' => 'premium', 'service_price' => 450, 'price_mode' => 'fixed', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
         ];
 
         $services = [];
@@ -212,6 +212,10 @@ class BookingTestingSeeder extends Seeder
                 'buffer_min' => $spec['buffer_min'],
                 'is_active' => true,
             ];
+
+            if (Schema::hasColumn('booking_services', 'cn_name')) {
+                $payload['cn_name'] = $spec['cn_name'] ?? null;
+            }
 
             if (Schema::hasColumn('booking_services', 'service_price')) {
                 $payload['service_price'] = $spec['service_price'];

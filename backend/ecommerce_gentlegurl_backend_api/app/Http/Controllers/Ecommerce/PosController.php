@@ -165,7 +165,7 @@ class PosController extends Controller
             ->values();
 
         $upcomingAppointmentsPaginator = Booking::query()
-            ->with(['service:id,name', 'staff:id,name'])
+            ->with(['service:id,name,cn_name', 'staff:id,name'])
             ->where('customer_id', $member->id)
             ->whereNotIn('status', ['CANCELLED'])
             ->where('start_at', '>=', $now)
@@ -180,6 +180,7 @@ class PosController extends Controller
                 'start_at' => optional($appointment->start_at)->toDateTimeString(),
                 'end_at' => optional($appointment->end_at)->toDateTimeString(),
                 'service_name' => $appointment->service?->name,
+                'service_cn_name' => $appointment->service?->cn_name,
                 'staff_name' => $appointment->staff?->name,
             ])
             ->values();
@@ -251,15 +252,17 @@ class PosController extends Controller
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
                 $q->where('name', 'like', "%{$query}%")
+                    ->orWhere('cn_name', 'like', "%{$query}%")
                     ->orWhere('service_type', 'like', "%{$query}%");
             });
         }
 
         return $this->respond([
-            'data' => $builder->with(['allowedStaffs:id,name'])->get(['id', 'name', 'service_type', 'service_price', 'price', 'duration_min', 'buffer_min'])->map(function (BookingService $service) {
+            'data' => $builder->with(['allowedStaffs:id,name'])->get(['id', 'name', 'cn_name', 'service_type', 'service_price', 'price', 'duration_min', 'buffer_min'])->map(function (BookingService $service) {
                 return [
                     'id' => (int) $service->id,
                     'name' => $service->name,
+                    'cn_name' => $service->cn_name,
                     'service_type' => $service->service_type,
                     'service_price' => (float) $service->service_price,
                     'price' => (float) ($service->price ?? $service->service_price),
@@ -298,13 +301,13 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'staff:id,name']);
+        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'staff:id,name']);
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
                 $q->where('booking_code', 'like', "%{$query}%")
                     ->orWhereHas('customer', fn ($cq) => $cq->where('name', 'like', "%{$query}%"))
-                    ->orWhereHas('service', fn ($sq) => $sq->where('name', 'like', "%{$query}%"))
+                    ->orWhereHas('service', fn ($sq) => $sq->where('name', 'like', "%{$query}%")->orWhere('cn_name', 'like', "%{$query}%"))
                     ->orWhere('guest_name', 'like', "%{$query}%")
                     ->orWhere('guest_phone', 'like', "%{$query}%")
                     ->orWhere('guest_email', 'like', "%{$query}%");
@@ -355,6 +358,7 @@ class PosController extends Controller
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
                 'service_names' => [(string) ($booking->service?->name ?? '-')],
+                'service_cn_names' => array_values(array_filter([(string) ($booking->service?->cn_name ?? '')])),
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
                 'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
                 'staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
@@ -425,7 +429,7 @@ class PosController extends Controller
         $booking = Booking::query()
             ->with([
                 'customer:id,name,phone,email',
-                'service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'staff:id,name',
                 'itemPhotos:id,booking_id,file_path,created_at',
             ])
@@ -459,6 +463,7 @@ class PosController extends Controller
             'service' => [
                 'id' => (int) ($booking->service?->id ?? 0),
                 'name' => (string) ($booking->service?->name ?? '-'),
+                'cn_name' => $booking->service?->cn_name,
                 'service_type' => (string) ($booking->service?->service_type ?? ''),
                 'price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
                 'price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
@@ -1078,7 +1083,7 @@ class PosController extends Controller
         });
 
         $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
-        $booking->load(['service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
+        $booking->load(['service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
 
         return $this->respond([
@@ -1629,7 +1634,7 @@ class PosController extends Controller
             $selectedOptions = BookingServiceQuestionOption::query()
                 ->whereIn('id', $selectedOptionIds->all())
                 ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
-                ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
+                ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,service_type,deposit_amount')
                 ->get();
 
             foreach ($serviceQuestions as $question) {
@@ -1778,7 +1783,7 @@ class PosController extends Controller
         ]);
 
         return $this->respond([
-            'item' => $item->load(['bookingService:id,name', 'assignedStaff:id,name']),
+            'item' => $item->load(['bookingService:id,name,cn_name', 'assignedStaff:id,name']),
             'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ], __('Booking service added to POS cart.'));
     }
@@ -2002,7 +2007,7 @@ class PosController extends Controller
             $selectedOptions = BookingServiceQuestionOption::query()
                 ->whereIn('id', $selectedOptionIds->all())
                 ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
-                ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
+                ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,service_type,deposit_amount')
                 ->get();
 
             foreach ($serviceQuestions as $question) {
@@ -2297,7 +2302,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ], __('Package added to POS cart.'));
@@ -2311,7 +2316,7 @@ class PosController extends Controller
 
         $booking = Booking::query()->with([
             'customer:id,name',
-            'service:id,name,service_price,price,service_type',
+            'service:id,name,cn_name,service_price,price,service_type',
             'staff:id,name',
         ])->findOrFail((int) $validated['booking_id']);
         if ((string) $booking->status !== 'COMPLETED') {
@@ -2430,7 +2435,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ], __('Appointment settlement added to POS cart.'));
@@ -2452,7 +2457,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ], __('Appointment settlement removed from POS cart.'));
@@ -2479,7 +2484,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ]);
@@ -2501,7 +2506,7 @@ class PosController extends Controller
                 'packageItems.servicePackage',
                 'packageItems.customer:id,name',
                 'appointmentSettlementItems.booking.customer:id,name',
-                'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
                 'appointmentSettlementItems.booking.staff:id,name',
             ])),
         ]);
@@ -2836,7 +2841,7 @@ class PosController extends Controller
             'packageItems.servicePackage',
             'packageItems.customer:id,name',
             'appointmentSettlementItems.booking.customer:id,name',
-            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+            'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
             'appointmentSettlementItems.booking.staff:id,name',
         ]);
 
@@ -2927,7 +2932,7 @@ class PosController extends Controller
             'packageItems.servicePackage',
             'packageItems.customer:id,name',
             'appointmentSettlementItems.booking.customer:id,name',
-            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+            'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
             'appointmentSettlementItems.booking.staff:id,name',
         ]);
         if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty() && $cart->appointmentSettlementItems->isEmpty()) {
@@ -3154,7 +3159,7 @@ class PosController extends Controller
             'packageItems.servicePackage',
             'packageItems.customer:id,name',
             'appointmentSettlementItems.booking.customer:id,name',
-            'appointmentSettlementItems.booking.service:id,name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+            'appointmentSettlementItems.booking.service:id,name,cn_name,cn_name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
             'appointmentSettlementItems.booking.staff:id,name',
         ]);
         if ($cart->items->isEmpty() && $cart->serviceItems->isEmpty() && $cart->packageItems->isEmpty() && $cart->appointmentSettlementItems->isEmpty()) {
@@ -4525,6 +4530,7 @@ class PosController extends Controller
                 'type' => 'service',
                 'booking_service_id' => (int) $item->booking_service_id,
                 'service_name' => $item->service_name_snapshot,
+                'service_cn_name' => $item->bookingService?->cn_name,
                 'service_type' => $serviceType,
                 'qty' => (int) $item->qty,
                 'unit_price' => (float) $item->price_snapshot,
@@ -4615,6 +4621,7 @@ class PosController extends Controller
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
                 'service_name' => (string) ($booking->service?->name ?? '-'),
+                'service_cn_name' => $booking->service?->cn_name,
                 'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
                 'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
                 'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
@@ -5114,6 +5121,7 @@ class PosController extends Controller
                     ? $booking->customer?->name
                     : ($guestName !== '' ? $guestName . ' (GUEST)' : '-'))),
             'service_name' => (string) ($booking->service?->name ?? '-'),
+            'service_cn_name' => $booking->service?->cn_name,
             'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
             'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
             'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,

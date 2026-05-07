@@ -64,7 +64,7 @@ class CartController extends Controller
             ->whereIn('id', $selectedOptionIds)
             ->whereIn('booking_service_question_id', $serviceQuestions->pluck('id')->all())
             ->where('is_active', true)
-            ->with('linkedBookingService:id,name,duration_min,service_price,service_type,deposit_amount')
+            ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,service_type,deposit_amount')
             ->get();
 
         foreach ($serviceQuestions as $question) {
@@ -142,6 +142,7 @@ class CartController extends Controller
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,
+                            'linked_cn_name' => $option->linkedBookingService?->cn_name,
                             'linked_service_type' => $option->linkedBookingService
                                 ? (string) $option->linkedBookingService->service_type
                                 : null,
@@ -914,7 +915,7 @@ class CartController extends Controller
     {
         $cart->load([
             'items' => fn ($q) => $q->where('status', 'active')->orderBy('expires_at'),
-            'items.service:id,name,deposit_amount,service_type,service_price,price,price_mode,price_range_min,price_range_max,allow_photo_upload',
+            'items.service:id,name,cn_name,deposit_amount,service_type,service_price,price,price_mode,price_range_min,price_range_max,allow_photo_upload',
             'items.staff:id,name',
             'items.photos',
             'packageItems' => fn ($q) => $q->where('status', 'active')->orderByDesc('id'),
@@ -948,6 +949,7 @@ class CartController extends Controller
                 'id' => (int) $item->id,
                 'service_id' => (int) $item->service_id,
                 'service_name' => $item->service?->name,
+                'service_cn_name' => $item->service?->cn_name,
                 'staff_id' => (int) $item->staff_id,
                 'staff_name' => $item->staff?->name,
                 'service_type' => $item->service_type,

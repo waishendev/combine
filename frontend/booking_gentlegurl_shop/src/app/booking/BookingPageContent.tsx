@@ -156,9 +156,14 @@ export default function BookingPageContent() {
               </div>
               <div className="relative flex flex-1 flex-col p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="line-clamp-2  font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
-                    {service.name}
-                  </h2>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="line-clamp-2 font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
+                      {service.name}
+                    </h2>
+                    {service.cn_name ? (
+                      <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-[var(--text-muted)] sm:text-[13px]">{service.cn_name}</p>
+                    ) : null}
+                  </div>
                   <span className="hidden rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
                     {service.service_type}
                   </span>

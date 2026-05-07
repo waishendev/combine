@@ -28,6 +28,7 @@ type BookingServiceApiItemWithType = BookingServiceApiItem & {
 
 interface FormState {
   name: string
+  cn_name: string
   description: string
   service_type: ServiceType
   duration_min: string
@@ -44,10 +45,11 @@ interface FormState {
   primary_slots: string
   questions: QuestionForm[]
 }
-type BookingServiceOption = { id: number; name: string; duration_min: number; service_price: number }
+type BookingServiceOption = { id: number; name: string; cn_name?: string | null; duration_min: number; service_price: number }
 
 const initialFormState: FormState = {
   name: '',
+  cn_name: '',
   description: '',
   service_type: 'standard',
   duration_min: '30',
@@ -129,6 +131,7 @@ export default function BookingServiceEditModal({
 
         setForm({
           name: typeof service.name === 'string' ? service.name : '',
+          cn_name: typeof service.cn_name === 'string' ? service.cn_name : '',
           description: typeof service.description === 'string' ? service.description : '',
           service_type:
             service.service_type === 'premium' || service.service_type === 'standard'
@@ -299,6 +302,7 @@ export default function BookingServiceEditModal({
             collected.set(id, {
               id,
               name,
+              cn_name: typeof maybe.cn_name === 'string' ? maybe.cn_name : null,
               duration_min: Math.max(0, Number(maybe.duration_min ?? 0)),
               service_price: Math.max(0, Number(maybe.service_price ?? 0)),
             })
@@ -424,6 +428,7 @@ export default function BookingServiceEditModal({
       const fd = new FormData()
       fd.append('_method', 'PUT')
       fd.append('name', trimmedName)
+      fd.append('cn_name', form.cn_name.trim())
       fd.append('description', form.description.trim())
       fd.append('service_type', form.service_type)
       fd.append('duration_min', String(duration))
@@ -511,6 +516,7 @@ export default function BookingServiceEditModal({
         : {
             id: loadedService?.id ?? serviceId,
             name: trimmedName,
+            cnName: form.cn_name.trim(),
             description: form.description.trim(),
             duration_min: duration,
             service_price: servicePrice,
@@ -633,7 +639,7 @@ export default function BookingServiceEditModal({
                     htmlFor="edit-name"
                     className="block text-sm font-medium text-gray-700 mb-1"
                   >
-                    Name <span className="text-red-500">*</span>
+                    English Name <span className="text-red-500">*</span>
                   </label>
                   <input
                     id="edit-name"
@@ -642,7 +648,26 @@ export default function BookingServiceEditModal({
                     value={form.name}
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Service name"
+                    placeholder="English service name"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-cn_name"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Chinese Name
+                  </label>
+                  <input
+                    id="edit-cn_name"
+                    name="cn_name"
+                    type="text"
+                    value={form.cn_name}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="中文服务名称"
                     disabled={disableForm}
                   />
                 </div>

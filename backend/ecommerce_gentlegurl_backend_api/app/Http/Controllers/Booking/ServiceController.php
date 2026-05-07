@@ -45,6 +45,7 @@ class ServiceController extends Controller
             ->get([
                 'id',
                 'name',
+                'cn_name',
                 'description',
                 'service_type',
                 'service_price',
@@ -70,7 +71,7 @@ class ServiceController extends Controller
     {
         $service = BookingService::query()->with([
             'primarySlots',
-            'questions.options.linkedBookingService:id,name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
+            'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
         ])->findOrFail($id);
 
         return $this->respond($this->mapService($service, true));
@@ -109,6 +110,7 @@ class ServiceController extends Controller
         $payload = [
             'id' => (int) $service->id,
             'name' => $service->name,
+            'cn_name' => $service->cn_name,
             'service_type' => $service->service_type,
             'duration_min' => (int) $service->duration_min,
             'duration_minutes' => (int) $service->duration_min,
@@ -142,7 +144,7 @@ class ServiceController extends Controller
                 ->where('is_active', true)
                 ->with(['options' => fn ($q) => $q
                     ->where('is_active', true)
-                    ->with('linkedBookingService:id,name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount')
+                    ->with('linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount')
                     ->orderBy('sort_order')
                     ->orderBy('id')])
                 ->orderBy('sort_order')
@@ -163,6 +165,7 @@ class ServiceController extends Controller
                             'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
                             'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : (int) $option->extra_duration_min,
                             'extra_price' => $linkedService ? (float) $linkedService->service_price : (float) $option->extra_price,
+                            'linked_cn_name' => $linkedService?->cn_name,
                             'linked_price_mode' => $linkedService ? (string) ($linkedService->price_mode ?? 'fixed') : null,
                             'linked_price_range_min' => $linkedService && $linkedService->price_range_min !== null ? (float) $linkedService->price_range_min : null,
                             'linked_price_range_max' => $linkedService && $linkedService->price_range_max !== null ? (float) $linkedService->price_range_max : null,

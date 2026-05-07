@@ -23,7 +23,7 @@ class MyBookingController extends Controller
 
         $bookings = Booking::query()
             ->with([
-                'service:id,name,duration_min,deposit_amount,buffer_min,allow_photo_upload',
+                'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload',
                 'staff:id,name',
                 'itemPhotos',
             ])
