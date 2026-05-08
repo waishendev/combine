@@ -44,7 +44,7 @@ class PublicOrderHistoryController extends Controller
 
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
-            ->with(['items.product.images', 'items.review'])
+            ->with(['items.product.images', 'items.review', 'items.bookingService:id,cn_name'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
@@ -101,6 +101,7 @@ class PublicOrderHistoryController extends Controller
                         'is_variant_product' => $productType === 'variant',
                         'product_slug' => $item->product?->slug,
                         'name' => $item->product_name_snapshot,
+                        'cn_name' => $item->bookingService?->cn_name,
                         'sku' => $item->sku_snapshot,
                         'variant_name' => $item->variant_name_snapshot,
                         'variant_sku' => $item->variant_sku_snapshot,
@@ -158,6 +159,7 @@ class PublicOrderHistoryController extends Controller
         $order = Order::with([
             'items.product.images',
             'items.review',
+            'items.bookingService:id,cn_name',
             'voucher',
             'uploads',
             'returns',
@@ -192,6 +194,7 @@ class PublicOrderHistoryController extends Controller
                 'is_variant_product' => $productType === 'variant',
                 'product_slug' => $item->product?->slug,
                 'name' => $item->product_name_snapshot,
+                'cn_name' => $item->bookingService?->cn_name,
                 'sku' => $item->sku_snapshot,
                 'variant_name' => $item->variant_name_snapshot,
                 'variant_sku' => $item->variant_sku_snapshot,

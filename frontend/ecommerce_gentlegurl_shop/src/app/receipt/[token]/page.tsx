@@ -4,6 +4,7 @@ type ReceiptItem = {
   type?: string;
   sku?: string;
   name: string;
+  cn_name?: string | null;
   variant_name?: string;
   qty: number;
   unit_price: number;
@@ -76,6 +77,15 @@ function resolveItemLabel(item: ReceiptItem) {
   return item.name;
 }
 
+function ItemNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
+  return (
+    <>
+      <p className="font-semibold">{name}</p>
+      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
+    </>
+  );
+}
+
 export default async function PublicReceiptPage({ params }: Props) {
   const { token } = await params;
   const receipt = await getReceipt(token);
@@ -136,7 +146,7 @@ export default async function PublicReceiptPage({ params }: Props) {
             {receipt.items.map((item, index) => (
               <tr key={`${item.sku ?? item.name}-${index}`} className="border-t border-[var(--card-border)] text-sm">
                 <td className="px-4 py-3">
-                  <p className="font-semibold">{resolveItemLabel(item)}</p>
+                  <ItemNameStack name={resolveItemLabel(item)} cnName={item.cn_name} />
                   {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
                   {item.variant_name ? (
                     <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>

@@ -20,7 +20,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items', 'order.serviceItems.bookingService:id,cn_name'])
+            ->with(['order.items.bookingService:id,cn_name', 'order.serviceItems.bookingService:id,cn_name'])
             ->first();
 
         if (!$receiptToken) {
@@ -142,6 +142,7 @@ class PublicReceiptController extends Controller
             return [
             'type' => (string) ($item->line_type ?: 'product'),
             'name' => $row['product_name'],
+            'cn_name' => $item->bookingService?->cn_name,
             'variant_name' => $row['variant_name'],
             'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
             'qty' => $row['quantity'],
@@ -246,7 +247,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items', 'order.serviceItems.bookingService:id,cn_name'])
+            ->with(['order.items.bookingService:id,cn_name', 'order.serviceItems.bookingService:id,cn_name'])
             ->first();
 
         if (! $receiptToken) {

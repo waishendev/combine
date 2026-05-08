@@ -8,6 +8,7 @@ export type OrderItemSummary = {
   is_variant_product?: boolean | null;
   product_slug?: string | null;
   name?: string;
+  cn_name?: string | null;
   sku?: string | null;
   variant_name?: string | null;
   variant_sku?: string | null;

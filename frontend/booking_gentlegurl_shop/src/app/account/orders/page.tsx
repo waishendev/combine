@@ -29,6 +29,15 @@ function resolveLineLabel(item: NonNullable<PublicAccountOrder["items"]>[number]
   return item.name || "Item";
 }
 
+function LineNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
+  return (
+    <>
+      <p className="text-sm font-semibold text-[var(--foreground)]">{name}</p>
+      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
+    </>
+  );
+}
+
 export default function BookingAccountOrdersPage() {
   const [orders, setOrders] = useState<PublicAccountOrder[]>([]);
   const [loading, setLoading] = useState(true);
@@ -184,7 +193,7 @@ export default function BookingAccountOrdersPage() {
                             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                           >
                             <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">{resolveLineLabel(item)}</p>
+                              <LineNameStack name={resolveLineLabel(item)} cnName={item.cn_name} />
                               {item.line_type === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
                               ) : null}

@@ -91,6 +91,7 @@ class MyBookingController extends Controller
                     return null;
                 })(),
                 'service_name' => $booking->service?->name,
+                'service_cn_name' => $booking->service?->cn_name,
                 'add_ons' => $addonItems = $this->mapAddonItems($booking->addon_items_json),
                 'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
                 'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
@@ -99,6 +100,7 @@ class MyBookingController extends Controller
                 'service' => $booking->service ? [
                     'id' => (int) $booking->service->id,
                     'name' => $booking->service->name,
+                    'cn_name' => $booking->service->cn_name,
                     'duration_min' => (int) $booking->service->duration_min,
                     'deposit_amount' => (float) $booking->service->deposit_amount,
                     'buffer_min' => (int) $booking->service->buffer_min,

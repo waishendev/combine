@@ -38,6 +38,15 @@ const resolveOrderItemLabel = (item: OrderItemSummary) => {
   return item.name || "Item";
 };
 
+function OrderItemNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
+  return (
+    <>
+      <p className="text-sm font-semibold text-[var(--foreground)]">{name}</p>
+      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
+    </>
+  );
+}
+
 export function OrdersClient({ orders }: OrdersClientProps) {
   const router = useRouter();
   const [modal, setModal] = useState<ModalState | null>(null);
@@ -438,7 +447,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                               </div>
                             )}
                             <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">{resolveOrderItemLabel(item)}</p>
+                              <OrderItemNameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
                               {shouldShowVariant && (
                                 <p className="text-xs text-[var(--foreground)]/60">
                                   Variant: {variantName}
@@ -490,7 +499,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                   className="h-12 w-12 rounded-lg object-cover"
                 />
                 <div className="space-y-0.5">
-                  <p className="text-sm font-semibold text-[var(--foreground)]">{modal.item.name}</p>
+                  <OrderItemNameStack name={modal.item.name ?? "Item"} cnName={modal.item.cn_name} />
                   {(modal.item.product_type === "variant" || modal.item.product_variant_id) && (
                     <p className="text-xs text-[var(--foreground)]/60">
                       Variant: {modal.item.variant_name ?? "—"}

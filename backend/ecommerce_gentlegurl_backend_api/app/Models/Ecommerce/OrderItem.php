@@ -135,4 +135,9 @@ class OrderItem extends Model
     {
         return $this->belongsTo(\App\Models\Booking\Booking::class);
     }
+
+    public function bookingService()
+    {
+        return $this->belongsTo(\App\Models\Booking\BookingService::class, 'booking_service_id');
+    }
 }

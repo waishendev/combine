@@ -75,6 +75,15 @@ function money(amount: number | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`
 }
 
+function ReceiptItemNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
+  return (
+    <>
+      <p className="font-semibold">{name}</p>
+      {cnName ? <p className="mt-0.5 text-xs text-gray-500">{cnName}</p> : null}
+    </>
+  )
+}
+
 function formatDate(value?: string) {
   if (!value) return '-'
   const date = new Date(value)
@@ -172,7 +181,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               return (
               <tr key={`${item.sku}-${idx}`} className="border-t border-gray-200 text-sm">
                 <td className="px-4 py-3">
-                  <p className="font-semibold">{item.name}</p>{item.cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.cn_name}</p> : null}
+                  <ReceiptItemNameStack name={item.name} cnName={item.cn_name} />
                   <p className="text-xs text-gray-500">
                     Type: {isPackageCoveredReceipt ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>
