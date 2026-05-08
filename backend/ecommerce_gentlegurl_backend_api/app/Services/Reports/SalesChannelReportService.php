@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Models\Ecommerce\OrderItem;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -146,7 +147,9 @@ class SalesChannelReportService
             ->orderByDesc('order_datetime')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $rows = collect($paginator->items())->map(function ($row) {
+        $cnNames = $this->resolveOrderItemCnNames(collect($paginator->items())->pluck('order_item_id')->all());
+
+        $rows = collect($paginator->items())->map(function ($row) use ($cnNames) {
             return [
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
@@ -158,6 +161,7 @@ class SalesChannelReportService
                 'booking_id' => $row->booking_id ? (int) $row->booking_id : null,
                 'booking_no' => $row->booking_no,
                 'package_name' => $row->package_name,
+                'package_cn_name' => $cnNames->get((int) $row->order_item_id),
                 'gross_amount' => (float) $row->gross_amount,
                 'discount' => (float) $row->discount,
                 'net_amount' => (float) $row->net_amount,
@@ -233,6 +237,7 @@ class SalesChannelReportService
                     'booking_id' => $row->booking_id ? (int) $row->booking_id : null,
                     'booking_no' => $row->booking_no,
                     'package_name' => $row->package_name,
+                    'package_cn_name' => null,
                     'gross_amount' => (float) $row->gross_amount,
                     'discount' => (float) $row->discount,
                     'net_amount' => (float) $row->net_amount,
@@ -312,6 +317,7 @@ class SalesChannelReportService
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
             ->selectRaw('o.status')
+            ->selectRaw('oi.id AS order_item_id')
             ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as type")
             ->selectRaw('oi.booking_id as booking_id')
             ->selectRaw('COALESCE(b.booking_code, CONCAT(\'BOOKING-\', oi.booking_id)) as booking_no')
@@ -346,6 +352,26 @@ class SalesChannelReportService
         }
 
         return DB::query()->fromSub($query, 'rows');
+    }
+
+    private function resolveOrderItemCnNames(array $ids)
+    {
+        $itemIds = collect($ids)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($itemIds === []) {
+            return collect();
+        }
+
+        return OrderItem::query()
+            ->with(['bookingService:id,cn_name', 'booking:id,addon_items_json'])
+            ->whereIn('id', $itemIds)
+            ->get()
+            ->mapWithKeys(fn (OrderItem $item) => [(int) $item->id => $item->displayCnName()]);
     }
 
     private function nullableInt(mixed $value): ?int

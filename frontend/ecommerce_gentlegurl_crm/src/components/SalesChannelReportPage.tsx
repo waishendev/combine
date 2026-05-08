@@ -41,6 +41,7 @@ type BookingRow = {
   type: string
   booking_no: string | null
   package_name: string | null
+  package_cn_name?: string | null
   gross_amount: number
   discount: number
   net_amount: number
@@ -103,6 +104,18 @@ type BookingResponse = {
     package_purchase_amount?: number
   }
   pagination?: Partial<Pagination>
+}
+
+
+function ReportNameStack({ name, cnName }: { name?: string | null; cnName?: string | null }) {
+  const displayCnName = cnName?.trim()
+
+  return (
+    <div className="min-w-0">
+      <p className="font-medium text-gray-900">{name || '—'}</p>
+      {displayCnName ? <p className="mt-0.5 text-xs text-gray-500">{displayCnName}</p> : null}
+    </div>
+  )
 }
 
 const DEFAULT_PAGE_SIZE = 15
@@ -574,7 +587,9 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">{paymentMethodDisplayLabel(row.payment_method)}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.type)}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.booking_no ?? '—'}</td>
-                  <td className="px-4 py-2 border border-gray-200">{row.package_name ?? '—'}</td>
+                  <td className="px-4 py-2 border border-gray-200">
+                    <ReportNameStack name={row.package_name} cnName={row.package_cn_name} />
+                  </td>
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.gross_amount)}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>

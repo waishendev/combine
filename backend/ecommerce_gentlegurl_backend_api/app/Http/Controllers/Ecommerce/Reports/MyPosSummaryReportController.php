@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\OrderItem;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -150,8 +151,9 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw('creator_staff.phone AS created_by_phone')
             ->selectRaw('COALESCE(creator_staff.email, creator_user.email) AS created_by_email')
             ->selectRaw('order_items.id AS order_item_id')
-            ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN 'booking_settlement' WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' ELSE 'product' END AS item_type")
+            ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN 'booking_settlement' WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' WHEN order_items.line_type = 'booking_addon' THEN 'booking_addon' ELSE 'product' END AS item_type")
             ->selectRaw('order_items.product_name_snapshot AS product_name')
+            ->selectRaw('NULL::text AS product_cn_name')
             ->selectRaw('order_items.quantity AS qty')
             ->selectRaw("($effectiveLineTotalExpr) AS item_total_price")
             ->selectRaw("($snapshotLineTotalExpr) AS item_snapshot_total")
@@ -169,6 +171,7 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw('customer_service_packages.id AS order_item_id')
             ->selectRaw("'service_package' AS item_type")
             ->selectRaw('service_packages.name AS product_name')
+            ->selectRaw('NULL::text AS product_cn_name')
             ->selectRaw('1 AS qty')
             ->selectRaw('COALESCE((SELECT SUM(sps_amount.split_sales_amount) FROM service_package_staff_splits sps_amount WHERE sps_amount.customer_service_package_id = customer_service_packages.id), service_packages.selling_price) AS item_total_price')
             ->selectRaw('COALESCE((SELECT SUM(sps_amount.split_sales_amount) FROM service_package_staff_splits sps_amount WHERE sps_amount.customer_service_package_id = customer_service_packages.id), service_packages.selling_price) AS item_snapshot_total')
@@ -183,7 +186,7 @@ class MyPosSummaryReportController extends Controller
             ->paginate($perPage);
 
         $productItemIds = collect($paginator->items())
-            ->filter(fn ($row) => ($row->item_type ?? 'product') === 'product')
+            ->filter(fn ($row) => in_array(($row->item_type ?? 'product'), ['product', 'booking_addon'], true))
             ->pluck('order_item_id')
             ->map(fn ($v) => (int) $v)
             ->all();
@@ -198,6 +201,18 @@ class MyPosSummaryReportController extends Controller
             ->map(fn ($v) => (int) $v)
             ->all();
 
+        $orderItemCnNames = OrderItem::query()
+            ->with(['bookingService:id,cn_name', 'booking:id,addon_items_json'])
+            ->whereIn('id', collect($paginator->items())
+                ->filter(fn ($row) => ($row->item_type ?? 'product') !== 'service_package')
+                ->pluck('order_item_id')
+                ->map(fn ($v) => (int) $v)
+                ->filter(fn (int $id) => $id > 0)
+                ->values()
+                ->all())
+            ->get()
+            ->mapWithKeys(fn (OrderItem $item) => [(int) $item->id => $item->displayCnName()]);
+
         $splitsGrouped = collect();
         if (! empty($productItemIds)) {
             $productSplitsGrouped = DB::table('order_item_staff_splits')
@@ -205,6 +220,7 @@ class MyPosSummaryReportController extends Controller
                 ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
                 ->whereIn('order_item_staff_splits.order_item_id', $productItemIds)
                 ->selectRaw('order_item_staff_splits.order_item_id')
+                ->selectRaw("CASE WHEN order_items.line_type = 'booking_addon' THEN 'booking_addon' ELSE 'product' END AS item_type")
                 ->selectRaw('order_item_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('order_item_staff_splits.share_percent')
@@ -213,7 +229,7 @@ class MyPosSummaryReportController extends Controller
                 ->orderBy('order_item_staff_splits.id')
                 ->get()
                 ->map(fn ($row) => [
-                    'split_key' => sprintf('product:%d', (int) $row->order_item_id),
+                    'split_key' => sprintf('%s:%d', (string) ($row->item_type ?? 'product'), (int) $row->order_item_id),
                     'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
                     'staff_name' => $row->staff_name,
                     'share_percent' => (int) $row->share_percent,
@@ -289,6 +305,7 @@ class MyPosSummaryReportController extends Controller
                 'order_item_id' => (int) $row->order_item_id,
                 'item_type' => $row->item_type,
                 'product_name' => $row->product_name,
+                'product_cn_name' => $row->product_cn_name ?? (($row->item_type ?? 'product') !== 'service_package' ? $orderItemCnNames->get((int) $row->order_item_id) : null),
                 'qty' => (int) $row->qty,
                 'item_total_price' => round((float) $row->item_total_price, 2),
                 'item_snapshot_total' => round((float) ($row->item_snapshot_total ?? 0), 2),

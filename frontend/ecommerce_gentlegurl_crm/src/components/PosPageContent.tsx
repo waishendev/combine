@@ -2103,7 +2103,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
             is_required: Boolean(record.is_required),
             options: optionsRaw
-              .map((optionRaw) => {
+              .map((optionRaw): BookingServiceQuestionOption | null => {
                 if (!optionRaw || typeof optionRaw !== 'object') return null
                 const option = optionRaw as Record<string, unknown>
                 return {
@@ -2142,7 +2142,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
             is_required: Boolean(record.is_required),
             options: optionsRaw
-              .map((optionRaw) => {
+              .map((optionRaw): BookingServiceQuestionOption | null => {
                 if (!optionRaw || typeof optionRaw !== 'object') return null
                 const option = optionRaw as Record<string, unknown>
                 return {

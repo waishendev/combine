@@ -35,7 +35,7 @@ type StaffSplit = {
   staff_commission_amount: number
 }
 
-type ReportItemType = 'product' | 'service_package' | 'booking_settlement' | 'booking_deposit'
+type ReportItemType = 'product' | 'service_package' | 'booking_settlement' | 'booking_deposit' | 'booking_addon'
 
 type DetailRow = {
   order_no: string | null
@@ -48,6 +48,7 @@ type DetailRow = {
   order_item_id: number
   item_type?: ReportItemType
   product_name: string | null
+  product_cn_name?: string | null
   qty: number
   item_total_price: number
   item_snapshot_total: number
@@ -56,10 +57,23 @@ type DetailRow = {
   staff_splits: StaffSplit[]
 }
 
+
+function ReportNameStack({ name, cnName, primaryClassName = 'font-medium text-slate-900', secondaryClassName = 'mt-0.5 text-xs text-slate-500' }: { name?: string | null; cnName?: string | null; primaryClassName?: string; secondaryClassName?: string }) {
+  const displayCnName = cnName?.trim()
+
+  return (
+    <div className="min-w-0">
+      <p className={primaryClassName}>{name || '—'}</p>
+      {displayCnName ? <p className={secondaryClassName}>{displayCnName}</p> : null}
+    </div>
+  )
+}
+
 const getItemTypeLabel = (itemType?: ReportItemType) => {
   if (itemType === 'service_package') return 'Service Package'
   if (itemType === 'booking_settlement') return 'Final Settlement'
   if (itemType === 'booking_deposit') return 'Booking Deposit'
+  if (itemType === 'booking_addon') return 'Booking Add-on'
   return 'Product'
 }
 
@@ -600,7 +614,7 @@ export default function MyPosSummaryPage({
                       })()}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <p className="font-medium text-slate-900">{row.product_name ?? '—'}</p>
+                      <ReportNameStack name={row.product_name} cnName={row.product_cn_name} />
                       <p className="text-xs text-slate-500">{getItemTypeLabel(row.item_type)}</p>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
@@ -714,9 +728,12 @@ export default function MyPosSummaryPage({
                         <p className="text-xs font-semibold text-blue-600">
                           Item
                         </p>
-                        <p className="mt-1 text-base font-bold text-blue-900">
-                          {selectedRow.product_name ?? '—'}
-                        </p>
+                        <ReportNameStack
+                          name={selectedRow.product_name}
+                          cnName={selectedRow.product_cn_name}
+                          primaryClassName="mt-1 text-base font-bold text-blue-900"
+                          secondaryClassName="mt-0.5 text-xs font-medium text-blue-700/80"
+                        />
                         <p className="mt-1 text-xs font-semibold uppercase text-blue-600">
                           {getItemTypeLabel(selectedRow.item_type)}
                         </p>
