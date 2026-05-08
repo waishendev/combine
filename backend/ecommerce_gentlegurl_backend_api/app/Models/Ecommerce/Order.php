@@ -121,6 +121,11 @@ class Order extends Model
         return $this->hasMany(OrderServiceItem::class);
     }
 
+    public function payments()
+    {
+        return $this->hasMany(OrderPayment::class);
+    }
+
     public function voucher()
     {
         return $this->hasOne(OrderVoucher::class);

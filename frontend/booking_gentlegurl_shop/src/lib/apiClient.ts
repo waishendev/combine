@@ -307,6 +307,7 @@ export type PublicAccountOrder = {
   status: string;
   payment_status: string;
   payment_method?: string | null;
+  payments?: Array<{ method: string; amount: number }>;
   grand_total: number;
   created_at?: string | null;
   receipt_public_url?: string | null;

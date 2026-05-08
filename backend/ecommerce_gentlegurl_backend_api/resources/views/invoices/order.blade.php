@@ -335,10 +335,16 @@
     }
   }
 
+  $paymentRows = $order->payments ?? collect();
   $paymentMethodRaw = $order->payment_method ?? '';
   $paymentMethodMap = [
     'manual_transfer' => 'Manual Transfer',
     'billplz' => 'Billplz',
+    'cash' => 'Cash',
+    'qrpay' => 'QRPay',
+    'credit_card' => 'Credit Card',
+    'billplz_credit_card' => 'Credit Card',
+    'split' => 'Split',
   ];
   $paymentMethodLabel = $paymentMethodMap[$paymentMethodRaw] ?? ($paymentMethodRaw ?: '-');
   $paymentMethodDisplay = $paymentMethodLabel;
@@ -432,7 +438,16 @@
               </tr>
               <tr>
                 <td>Payment Method</td>
-                <td>{{ $paymentMethodDisplay }}</td>
+                <td>
+                  @if($paymentRows->count() > 0)
+                    @foreach($paymentRows as $payment)
+                      @php($pm = $paymentMethodMap[$payment->payment_method] ?? $payment->payment_method)
+                      <div>{{ $pm }} RM {{ number_format((float) $payment->amount, 2) }}</div>
+                    @endforeach
+                  @else
+                    {{ $paymentMethodDisplay }}
+                  @endif
+                </td>
               </tr>
             </table>
           </td>

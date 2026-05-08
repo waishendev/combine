@@ -95,16 +95,20 @@ class OfflineOrderManagementController extends Controller
     public function updatePaymentMethod(Request $request, Order $order)
     {
         $validated = $request->validate([
-            'payment_method' => ['required', 'string', 'max:100'],
+            'payment_method' => ['nullable', 'string', 'max:100'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'remark' => ['nullable', 'string', 'max:1000'],
         ]);
 
         try {
             $updated = $this->service->updatePaymentMethod(
                 $order,
-                trim((string) $validated['payment_method']),
+                trim((string) ($validated['payment_method'] ?? '')),
                 isset($validated['remark']) ? trim((string) $validated['remark']) : null,
                 $request->user()?->id,
+                $validated['payments'] ?? null,
             );
         } catch (RuntimeException $e) {
             return $this->respondError($e->getMessage(), 422);

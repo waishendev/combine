@@ -1,5 +1,14 @@
 export const dynamic = 'force-dynamic'
 
+function formatPaymentMethod(method?: string) {
+  const key = String(method ?? '').toLowerCase();
+  if (key === 'cash') return 'Cash';
+  if (key === 'qrpay') return 'QRPay';
+  if (key === 'credit_card' || key === 'billplz_credit_card') return 'Credit Card';
+  if (key === 'split') return 'Split';
+  return method || '-';
+}
+
 type ReceiptItem = {
   type?: 'product' | 'booking_deposit' | 'booking_settlement' | 'service_package' | string
   sku?: string
@@ -29,6 +38,7 @@ type ReceiptData = {
   status?: string
   payment_status?: string
   payment_method?: string
+  payments?: Array<{ method: string; amount: number; reference_no?: string | null }>
   created_at?: string
   subtotal: number
   discount_total?: number
@@ -140,7 +150,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               </tr>
               <tr>
                 <td className="pr-4 text-gray-500 md:pr-8">Payment Method</td>
-                <td className="font-semibold">{receipt.payment_method || '-'}</td>
+                <td className="font-semibold">{receipt.payments?.length ? receipt.payments.map((p) => <div key={`${p.method}-${p.amount}`}>{formatPaymentMethod(p.method)} RM {Number(p.amount).toFixed(2)}</div>) : (receipt.payment_method || '-')}</td>
               </tr>
               <tr>
                 <td className="pr-4 text-gray-500 md:pr-8">Payment Status</td>

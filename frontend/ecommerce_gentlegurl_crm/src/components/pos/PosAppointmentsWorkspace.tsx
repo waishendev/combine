@@ -17,6 +17,13 @@ import {
 } from './posAppointmentHelpers'
 import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem, ServiceAddonQuestion, ServiceAddonOption } from './posAppointmentTypes'
 
+type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
+const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
+  { method: 'cash', label: 'Cash' },
+  { method: 'qrpay', label: 'QRPay' },
+  { method: 'credit_card', label: 'Credit Card' },
+]
+
 type StaffOption = {
   id: number
   name: string
@@ -218,6 +225,8 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
   const [createAppointmentSlotsLoading, setCreateAppointmentSlotsLoading] = useState(false)
   const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
+  const [createAppointmentDepositAmount, setCreateAppointmentDepositAmount] = useState('0')
+  const [createAppointmentDepositPayments, setCreateAppointmentDepositPayments] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
   const [createAppointmentQuestions, setCreateAppointmentQuestions] = useState<ServiceAddonQuestion[]>([])
   const [createAppointmentSelectedOptionIds, setCreateAppointmentSelectedOptionIds] = useState<number[]>([])
   const [createAppointmentExtraServiceBlocks, setCreateAppointmentExtraServiceBlocks] = useState<CreateExtraServiceBlock[]>([])
@@ -621,6 +630,8 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentSlotValue('')
     setCreateAppointmentSlots([])
     setCreateAppointmentNotes('')
+    setCreateAppointmentDepositAmount('0')
+    setCreateAppointmentDepositPayments({ cash: '', qrpay: '', credit_card: '' })
     setCreateAppointmentIdentityMode('member')
     setCreateAppointmentCustomerId(null)
     setCreateAppointmentMemberSummary(null)
@@ -694,6 +705,11 @@ export default function PosAppointmentsWorkspace({
       return acc
     }, { baseDuration: 0, addonDuration: 0, basePrice: 0, addonPrice: 0 })
   }, [createAppointmentExtraServiceBlocks])
+  const createAppointmentDepositValue = Number(createAppointmentDepositAmount || 0)
+  const createAppointmentDepositRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(createAppointmentDepositPayments[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [createAppointmentDepositPayments])
+  const createAppointmentDepositPaid = useMemo(() => createAppointmentDepositRows.reduce((sum, row) => sum + row.amount, 0), [createAppointmentDepositRows])
+  const createAppointmentDepositMatches = Math.round(createAppointmentDepositPaid * 100) === Math.round(Math.max(0, createAppointmentDepositValue) * 100)
+
   const createAppointmentAllowedStaffs = useMemo(() => {
     if (!createAppointmentServiceDraft) return []
     let allowed = createAppointmentServiceDraft.allowed_staffs ?? []
@@ -785,6 +801,11 @@ export default function PosAppointmentsWorkspace({
       }
     }
 
+    if (createAppointmentDepositValue > 0 && (!createAppointmentDepositRows.length || !createAppointmentDepositMatches)) {
+      setCreateAppointmentError('Deposit payments must equal the deposit amount.')
+      return
+    }
+
     setCreateAppointmentSubmitting(true)
     setCreateAppointmentError(null)
     try {
@@ -806,6 +827,8 @@ export default function PosAppointmentsWorkspace({
         notes: createAppointmentNotes.trim() ? createAppointmentNotes.trim() : null,
         staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
         qty: 1,
+        deposit_amount: Math.max(0, createAppointmentDepositValue || 0),
+        deposit_payments: createAppointmentDepositValue > 0 ? createAppointmentDepositRows : [],
       }
       if (createAppointmentIdentityMode === 'member') {
         payload.customer_id = createAppointmentCustomerId
@@ -830,7 +853,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
 
-      showMsg('Appointment created successfully. No deposit collected in this flow.', 'success')
+      showMsg(createAppointmentDepositValue > 0 ? 'Appointment created and deposit collected.' : 'Appointment created successfully.', 'success')
       closeCreateAppointmentMemberPicker()
       setCreateAppointmentModalOpen(false)
       await fetchAppointments()
@@ -848,6 +871,9 @@ export default function PosAppointmentsWorkspace({
     }
   }, [
     createAppointmentAssignedStaffId,
+    createAppointmentDepositMatches,
+    createAppointmentDepositRows,
+    createAppointmentDepositValue,
     createAppointmentCustomerId,
     createAppointmentDate,
     createAppointmentExtraServiceBlocks,
@@ -2799,7 +2825,7 @@ export default function PosAppointmentsWorkspace({
                                 ),
                               )
                             }}
-                            disabled={createAppointmentSubmitting}
+                            disabled={createAppointmentSubmitting || (createAppointmentDepositValue > 0 && !createAppointmentDepositMatches)}
                             placeholder="Select main service"
                             searchPlaceholder="Search services…"
                             ariaLabel="Select main service"
@@ -3012,6 +3038,61 @@ export default function PosAppointmentsWorkspace({
                       onChange={(e) => setCreateAppointmentNotes(e.target.value)}
                       className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                     />
+                  </div>
+
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+                    <label className="text-xs font-semibold text-gray-700">Deposit Amount (optional)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={createAppointmentDepositAmount}
+                      onChange={(e) => {
+                        setCreateAppointmentDepositAmount(e.target.value)
+                        setCreateAppointmentError(null)
+                      }}
+                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold"
+                      placeholder="0.00"
+                    />
+                    {createAppointmentDepositValue > 0 ? (
+                      <div className="mt-3 space-y-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                            <div key={method}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setCreateAppointmentDepositPayments({ cash: '', qrpay: '', credit_card: '', [method]: createAppointmentDepositValue.toFixed(2) })
+                                  setCreateAppointmentError(null)
+                                }}
+                                className="mb-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs font-bold text-blue-700"
+                              >
+                                {label}
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={createAppointmentDepositPayments[method]}
+                                onChange={(e) => {
+                                  setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: e.target.value }))
+                                  setCreateAppointmentError(null)
+                                }}
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                                placeholder="0.00"
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div className="flex flex-wrap justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700">
+                          <span>Deposit: RM {createAppointmentDepositValue.toFixed(2)}</span>
+                          <span>Paid: RM {createAppointmentDepositPaid.toFixed(2)}</span>
+                          <span className={createAppointmentDepositPaid > createAppointmentDepositValue ? 'text-rose-700' : createAppointmentDepositMatches ? 'text-emerald-700' : 'text-amber-700'}>
+                            Remaining: RM {Math.max(0, createAppointmentDepositValue - createAppointmentDepositPaid).toFixed(2)}
+                          </span>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
