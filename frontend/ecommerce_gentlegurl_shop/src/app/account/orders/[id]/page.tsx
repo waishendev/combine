@@ -34,6 +34,16 @@ const resolveOrderItemLabel = (item: { line_type?: string | null; name?: string 
   return item.name || "Item";
 };
 
+
+function OrderItemNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
+  return (
+    <>
+      <p className="text-sm font-semibold text-[var(--foreground)]">{name}</p>
+      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
+    </>
+  );
+}
+
 export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { id } = await params;
   const orderId = Number(id);
@@ -127,7 +137,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                     </div>
                   )}
                   <div>
-                    <p className="text-sm font-semibold text-[var(--foreground)]">{resolveOrderItemLabel(item)}</p>
+                    <OrderItemNameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
                     {(item.product_type === "variant" || item.product_variant_id) && (
                       <p className="text-xs text-[var(--foreground)]/60">
                         Variant: {item.variant_name ?? "—"}

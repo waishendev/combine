@@ -14,6 +14,16 @@ import {
 import { BookingPolicy, BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 
+
+function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
+  return (
+    <>
+      <p className="font-semibold">{name}</p>
+      {cnName ? <p className="mt-0.5 text-sm text-[var(--text-muted)]">{cnName}</p> : null}
+    </>
+  );
+}
+
 const defaultPolicy: BookingPolicy = {
   reschedule: { enabled: true, max_changes: 1, cutoff_hours: 72 },
   cancel: { customer_cancel_allowed: false, deposit_refundable: false },
@@ -303,7 +313,7 @@ export default function MyBookingsPage() {
 
           return (
             <div key={booking.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5">
-              <p className="font-semibold">{booking.service_name}</p>
+              <ServiceNameStack name={booking.service_name} cnName={booking.service_cn_name ?? booking.service?.cn_name} />
               {(booking.add_ons?.length ?? 0) > 0 ? (
                 <div className="mt-2 mb-2 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                   <p className="text-sm font-semibold">Add-ons</p>
@@ -584,9 +594,11 @@ export default function MyBookingsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6">
             <h2 className="text-xl font-semibold">Request Cancellation</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Booking #{modalBooking.id} · {modalBooking.service_name} · {new Date(modalBooking.starts_at).toLocaleString("en-MY")}
-            </p>
+            <div className="mt-2 text-sm text-slate-600">
+              <p>Booking #{modalBooking.id}</p>
+              <ServiceNameStack name={modalBooking.service_name} cnName={modalBooking.service_cn_name ?? modalBooking.service?.cn_name} />
+              <p>{new Date(modalBooking.starts_at).toLocaleString("en-MY")}</p>
+            </div>
             <p className="mt-2 text-sm text-slate-600">
               This sends a request to our team. Your booking remains CONFIRMED until review.
             </p>
@@ -620,10 +632,14 @@ export default function MyBookingsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-lg rounded-2xl bg-white p-6">
             <h2 className="text-xl font-semibold">Reschedule Booking</h2>
-            <p className="mt-2 text-sm text-slate-600">
-              Booking #{rescheduleBookingModal.id} · {rescheduleBookingModal.service_name} · Current:{" "}
-              {new Date(rescheduleBookingModal.starts_at).toLocaleString("en-MY")}
-            </p>
+            <div className="mt-2 text-sm text-slate-600">
+              <p>Booking #{rescheduleBookingModal.id}</p>
+              <ServiceNameStack
+                name={rescheduleBookingModal.service_name}
+                cnName={rescheduleBookingModal.service_cn_name ?? rescheduleBookingModal.service?.cn_name}
+              />
+              <p>Current: {new Date(rescheduleBookingModal.starts_at).toLocaleString("en-MY")}</p>
+            </div>
             <p className="mt-2 text-sm text-slate-600">Pick a new date and time. We’ll confirm availability after you submit.</p>
             <p className="mt-2 text-xs text-slate-500">
               Note: Reschedule is only allowed more than {policy.reschedule.cutoff_hours} hours before the booking time.

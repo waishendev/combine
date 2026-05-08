@@ -662,7 +662,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <h3 className="text-sm font-semibold leading-tight text-[var(--foreground)]">{item.service_name}</h3>
+                        <div className="min-w-0"><h3 className="text-sm font-semibold leading-tight text-[var(--foreground)]">{item.service_name}</h3>{item.service_cn_name ? <p className="mt-0.5 text-xs leading-tight text-[var(--text-muted)]">{item.service_cn_name}</p> : null}</div>
                         <span
                           className={`inline-flex shrink-0 items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide ${
                             premium
@@ -704,7 +704,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {packageApplied ? (
                         <div className="flex flex-wrap items-start justify-between gap-2 border-b border-[var(--card-border)]/80 pb-2">
                           <div className="min-w-0">
-                            <p className="font-medium text-[var(--foreground)]">{item.service_name}</p>
+                            <div><p className="font-medium text-[var(--foreground)]">{item.service_name}</p>{item.service_cn_name ? <p className="mt-0.5 text-[10px] text-[var(--text-muted)]">{item.service_cn_name}</p> : null}</div>
                             <p className="text-[10px] text-[var(--status-success)]">Included in your package (main service)</p>
                           </div>
                           <div className="shrink-0 text-right">
@@ -733,6 +733,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                               <div key={opt.id} className="flex justify-between gap-2 pl-1">
                                 <span className="text-[var(--foreground)]">
                                   <span className="text-[var(--text-muted)]">+</span> {opt.label}
+                                  {opt.linked_cn_name ? <span className="block pl-3 text-[10px] text-[var(--text-muted)]">{opt.linked_cn_name}</span> : null}
                                   {/* <span className="ml-1 text-[10px] text-[var(--text-muted)]">(not included in package)</span> */}
                                 </span>
                                 <span className="shrink-0 font-semibold tabular-nums text-[var(--foreground)]">RM {addonPart.toFixed(2)}</span>

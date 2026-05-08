@@ -24,6 +24,7 @@ export default function BookingServiceCategoryCreateModal({
 }: BookingServiceCategoryCreateModalProps) {
   const { t } = useI18n()
   const [name, setName] = useState('')
+  const [cnName, setCnName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
@@ -94,6 +95,7 @@ export default function BookingServiceCategoryCreateModal({
     try {
       const fd = new FormData()
       fd.append('name', trimmedName)
+      fd.append('cn_name', cnName.trim())
       if (slug.trim()) fd.append('slug', slug.trim())
       fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
@@ -120,6 +122,7 @@ export default function BookingServiceCategoryCreateModal({
         : {
             id: 0,
             name: trimmedName,
+            cnName: cnName.trim(),
             slug: slug.trim() || '',
             sortOrder: null,
             isActive,
@@ -153,14 +156,23 @@ export default function BookingServiceCategoryCreateModal({
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
-              Name <span className="text-red-500">*</span>
+              English Name <span className="text-red-500">*</span>
             </label>
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-              placeholder="Category name"
+              placeholder="English category name"
               required
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Chinese Name</label>
+            <input
+              value={cnName}
+              onChange={(e) => setCnName(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              placeholder="中文分类名称"
             />
           </div>
           <div>

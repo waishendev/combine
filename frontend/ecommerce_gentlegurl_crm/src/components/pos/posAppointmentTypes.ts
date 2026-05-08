@@ -52,12 +52,12 @@ export type PosAppointmentDetail = {
   guest_name?: string | null
   guest_phone?: string | null
   guest_email?: string | null
-  service?: { id: number; name: string; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }
+  service?: { id: number; name: string; cn_name?: string | null; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
-  main_services?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_service_settlement_items?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   settled_service_amount?: number | null
   is_range_priced?: boolean
   requires_settled_amount?: boolean
@@ -89,6 +89,8 @@ export type PosAppointmentDetail = {
 export type ServiceAddonOption = {
   id: number
   label: string
+  cn_name?: string | null
+  linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
 }

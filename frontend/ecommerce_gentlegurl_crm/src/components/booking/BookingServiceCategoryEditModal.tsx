@@ -29,6 +29,7 @@ export default function BookingServiceCategoryEditModal({
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [name, setName] = useState('')
+  const [cnName, setCnName] = useState('')
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
@@ -89,6 +90,7 @@ export default function BookingServiceCategoryEditModal({
         const raw = data?.data as
           | {
               name?: string
+              cn_name?: string | null
               slug?: string
               description?: string | null
               is_active?: boolean
@@ -101,6 +103,7 @@ export default function BookingServiceCategoryEditModal({
           return
         }
         setName(String(raw.name ?? ''))
+        setCnName(String(raw.cn_name ?? ''))
         setSlug(String(raw.slug ?? ''))
         setDescription(String(raw.description ?? ''))
         setIsActive(Boolean(raw.is_active))
@@ -150,6 +153,7 @@ export default function BookingServiceCategoryEditModal({
       const fd = new FormData()
       fd.append('_method', 'PUT')
       fd.append('name', trimmedName)
+      fd.append('cn_name', cnName.trim())
       if (slug.trim()) fd.append('slug', slug.trim())
       fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
@@ -176,6 +180,7 @@ export default function BookingServiceCategoryEditModal({
         : {
             id: categoryId,
             name: trimmedName,
+            cnName: cnName.trim(),
             slug: slug.trim(),
             sortOrder: null,
             isActive,
@@ -216,13 +221,23 @@ export default function BookingServiceCategoryEditModal({
             <div className="space-y-4">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">
-                  Name <span className="text-red-500">*</span>
+                  English Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                   required
+                  disabled={disableForm}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">Chinese Name</label>
+                <input
+                  value={cnName}
+                  onChange={(e) => setCnName(e.target.value)}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  placeholder="中文分类名称"
                   disabled={disableForm}
                 />
               </div>

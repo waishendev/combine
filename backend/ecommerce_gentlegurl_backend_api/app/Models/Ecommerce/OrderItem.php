@@ -135,4 +135,75 @@ class OrderItem extends Model
     {
         return $this->belongsTo(\App\Models\Booking\Booking::class);
     }
+
+    public function bookingService()
+    {
+        return $this->belongsTo(\App\Models\Booking\BookingService::class, 'booking_service_id');
+    }
+
+    public function displayCnName(): ?string
+    {
+        if ((string) ($this->line_type ?? '') === 'booking_addon') {
+            return $this->resolveBookingAddonCnName();
+        }
+
+        $cnName = trim((string) ($this->bookingService?->cn_name ?? ''));
+
+        return $cnName !== '' ? $cnName : null;
+    }
+
+    protected function resolveBookingAddonCnName(): ?string
+    {
+        $addonItems = $this->booking?->addon_items_json;
+        if (! is_array($addonItems)) {
+            return null;
+        }
+
+        $candidates = collect([
+            $this->display_name_snapshot,
+            $this->product_name_snapshot,
+        ])
+            ->filter(fn ($value) => trim((string) $value) !== '')
+            ->flatMap(function ($value) {
+                $name = trim((string) $value);
+                $parts = [$name];
+
+                if (str_contains($name, '::')) {
+                    $parts[] = trim((string) str($name)->afterLast('::'));
+                }
+
+                foreach (['Booking Deposit - ', 'Final Settlement - '] as $prefix) {
+                    if (stripos($name, $prefix) === 0) {
+                        $parts[] = trim(substr($name, strlen($prefix)));
+                    }
+                }
+
+                return $parts;
+            })
+            ->map(fn ($value) => mb_strtolower(trim((string) $value)))
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($candidates->isEmpty()) {
+            return null;
+        }
+
+        foreach ($addonItems as $addon) {
+            if (! is_array($addon)) {
+                continue;
+            }
+
+            $addonName = trim((string) ($addon['name'] ?? $addon['label'] ?? ''));
+            if ($addonName === '' || ! $candidates->contains(mb_strtolower($addonName))) {
+                continue;
+            }
+
+            $cnName = trim((string) ($addon['cn_name'] ?? $addon['linked_cn_name'] ?? ''));
+
+            return $cnName !== '' ? $cnName : null;
+        }
+
+        return null;
+    }
 }

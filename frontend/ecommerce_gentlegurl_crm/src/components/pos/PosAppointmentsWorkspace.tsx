@@ -30,6 +30,7 @@ type StaffOption = {
 type BookingServiceOption = {
   id: number
   name: string
+  cn_name?: string | null
   service_type?: string | null
   price?: number
   service_price?: number
@@ -40,6 +41,26 @@ type BookingServiceOption = {
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
 }
+
+function PosServiceNameStack({
+  name,
+  cnName,
+  primaryClassName = 'text-sm font-semibold text-gray-900',
+  secondaryClassName = 'mt-0.5 text-xs text-gray-500',
+}: {
+  name?: string | null
+  cnName?: string | null
+  primaryClassName?: string
+  secondaryClassName?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <p className={primaryClassName}>{name || '—'}</p>
+      {cnName ? <p className={secondaryClassName}>{cnName}</p> : null}
+    </div>
+  )
+}
+
 type CreateExtraServiceBlock = {
   id: string
   service: BookingServiceOption | null
@@ -70,7 +91,7 @@ type PosCancellationRequestRow = {
     end_at?: string | null
     addon_items_json?: unknown
     customer?: { id: number; name: string } | null
-    service?: { id: number; name: string } | null
+    service?: { id: number; name: string; cn_name?: string | null } | null
     staff?: { id: number; name: string } | null
   }
 }
@@ -83,9 +104,15 @@ function PosCancellationRequestSummary({ row }: { row: PosCancellationRequestRow
     <div className="min-w-0 space-y-1 text-xs text-gray-800">
       <p className="text-sm font-semibold text-gray-900">Booking #{b?.booking_code ?? row.booking_id}</p>
       <p className="text-gray-900">{b?.customer?.name ?? '—'}</p>
-      <p>
-        <span className="font-semibold text-gray-600">Service:</span> {b?.service?.name ?? '—'}
-      </p>
+      <div>
+        <span className="font-semibold text-gray-600">Service:</span>
+        <PosServiceNameStack
+          name={b?.service?.name}
+          cnName={b?.service?.cn_name}
+          primaryClassName="mt-0.5 text-xs font-medium text-gray-900"
+          secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+        />
+      </div>
       <p>
         <span className="font-semibold text-gray-600">Add on:</span> {addonLine}
       </p>
@@ -259,6 +286,7 @@ export default function PosAppointmentsWorkspace({
     tmp_id: string
     service_id: number
     service_name: string
+    service_cn_name?: string | null
     price: number
     duration_min: number
     addon_questions: ServiceAddonQuestion[]
@@ -514,6 +542,7 @@ export default function PosAppointmentsWorkspace({
           return {
             id,
             name: String(maybe.name ?? '').trim(),
+            cn_name: typeof maybe.cn_name === 'string' ? maybe.cn_name.trim() || null : null,
             service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
             price: Number(maybe.price ?? 0),
             service_price: Number(maybe.service_price ?? 0),
@@ -564,6 +593,8 @@ export default function PosAppointmentsWorkspace({
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
+                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                 } as ServiceAddonOption
@@ -1107,6 +1138,7 @@ export default function PosAppointmentsWorkspace({
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
         service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
         service_name: String(service.name ?? 'Service'),
+        service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
         price: Number(service.extra_price ?? 0),
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as ServiceAddonQuestion[],
@@ -1201,6 +1233,7 @@ export default function PosAppointmentsWorkspace({
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
+      service_cn_name: service.cn_name ?? null,
       price: Number(service.service_price ?? service.price ?? 0),
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
@@ -1903,12 +1936,12 @@ export default function PosAppointmentsWorkspace({
         <div className="space-y-5 xl:col-span-3 xl:min-h-0">
           <div className="flex flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
             <h3 className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xl font-bold text-gray-900">
-              <span className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <svg className="h-6 w-6 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
                 Appointments
-              </span>
+              </div>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium text-gray-700">
                   <input
@@ -2164,10 +2197,17 @@ export default function PosAppointmentsWorkspace({
                           {(appointmentDetail.main_services ?? []).map((service, serviceIdx) => (
                             <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
                               <div className="flex items-start justify-between gap-2">
-                                <p className="text-sm font-semibold text-slate-900">
-                                  {service.name}
-                                  {service.is_original ? <span className="ml-1 text-[10px] font-bold uppercase tracking-wide text-indigo-700">Original</span> : null}
-                                </p>
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-1">
+                                    <PosServiceNameStack
+                                      name={service.name}
+                                      cnName={service.cn_name}
+                                      primaryClassName="text-sm font-semibold text-slate-900"
+                                      secondaryClassName="mt-0.5 text-xs text-slate-500"
+                                    />
+                                    {service.is_original ? <span className="text-[10px] font-bold uppercase tracking-wide text-indigo-700">Original</span> : null}
+                                  </div>
+                                </div>
                                 <span className="text-xs font-semibold tabular-nums text-slate-900">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
                               </div>
                               {(service.add_ons ?? []).length > 0 ? (
@@ -2602,7 +2642,8 @@ export default function PosAppointmentsWorkspace({
                       <BookingPackageItemServicePicker
                         options={createAppointmentServices.map((service) => ({
                           id: service.id,
-                          name: `${service.name}${service.service_type ? ` (${service.service_type})` : ''}`,
+                          name: service.service_type ? `${service.name} (${service.service_type})` : service.name,
+                          cn_name: service.cn_name,
                         }))}
                         value={createAppointmentServiceDraft?.id ? String(createAppointmentServiceDraft.id) : ''}
                         onChange={(next) => {
@@ -2633,8 +2674,13 @@ export default function PosAppointmentsWorkspace({
 
                   {createAppointmentServiceDraft ? (
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
-                      <p className="font-semibold">{createAppointmentServiceDraft.name}</p>
-                      <p>Base time: {Number(createAppointmentServiceDraft.duration_min ?? 0)} min</p>
+                      <PosServiceNameStack
+                        name={createAppointmentServiceDraft.name}
+                        cnName={createAppointmentServiceDraft.cn_name}
+                        primaryClassName="text-sm font-semibold text-blue-950"
+                        secondaryClassName="mt-0.5 text-xs text-blue-700/80"
+                      />
+                      <p className="mt-1">Base time: {Number(createAppointmentServiceDraft.duration_min ?? 0)} min</p>
                     </div>
                   ) : null}
 
@@ -2646,7 +2692,7 @@ export default function PosAppointmentsWorkspace({
                           const checked = createAppointmentSelectedOptionIds.includes(option.id)
                           return (
                             <label key={option.id} className="flex cursor-pointer items-start justify-between gap-2 rounded-md px-1 py-1 hover:bg-gray-50">
-                              <span className="flex items-start gap-2">
+                              <div className="flex items-start gap-2">
                                 <input
                                   type={question.question_type === 'multi_choice' ? 'checkbox' : 'radio'}
                                   name={`create-question-${question.id}`}
@@ -2661,8 +2707,13 @@ export default function PosAppointmentsWorkspace({
                                     })
                                   }}
                                 />
-                                <span className="text-sm text-gray-800">{option.label}</span>
-                              </span>
+                                <PosServiceNameStack
+                                  name={option.label}
+                                  cnName={option.cn_name ?? option.linked_cn_name}
+                                  primaryClassName="text-sm text-gray-800"
+                                  secondaryClassName="mt-0.5 text-xs text-gray-500"
+                                />
+                              </div>
                               <span className="text-xs font-semibold text-gray-700">
                                 +RM{Number(option.extra_price ?? 0).toFixed(2)}
                               </span>
@@ -2701,7 +2752,7 @@ export default function PosAppointmentsWorkspace({
                               ])
                               return createAppointmentServices
                                 .filter((service) => !takenByOthers.has(service.id))
-                                .map((service) => ({ id: service.id, name: service.name }))
+                                .map((service) => ({ id: service.id, name: service.name, cn_name: service.cn_name }))
                             })()}
                             value={block.service?.id ? String(block.service.id) : ''}
                             onChange={async (next) => {
@@ -2729,6 +2780,8 @@ export default function PosAppointmentsWorkspace({
                                           return {
                                             id: Number(option.id ?? 0),
                                             label: String(option.label ?? 'Add-on'),
+                                            cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                                            linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                                             extra_duration_min: Number(option.extra_duration_min ?? 0),
                                             extra_price: Number(option.extra_price ?? 0),
                                           } as ServiceAddonOption
@@ -2771,7 +2824,7 @@ export default function PosAppointmentsWorkspace({
                               const checked = block.selectedOptionIds.includes(option.id)
                               return (
                                 <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2">
                                     <input
                                       type="checkbox"
                                       checked={checked}
@@ -2786,8 +2839,13 @@ export default function PosAppointmentsWorkspace({
                                         }))
                                       }}
                                     />
-                                    <span>{option.label}</span>
-                                  </span>
+                                    <PosServiceNameStack
+                                      name={option.label}
+                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      primaryClassName="text-xs text-gray-700"
+                                      secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                    />
+                                  </div>
                                   <span className="font-semibold text-gray-700">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
                                 </label>
                               )
@@ -3298,7 +3356,13 @@ export default function PosAppointmentsWorkspace({
                 <span className="font-semibold">Customer:</span> {formatAppointmentCustomerDisplayName(appointmentDetail)}
               </p>
               <p>
-                <span className="font-semibold">Service:</span> {appointmentDetail.service?.name ?? '-'}
+                <span className="font-semibold">Service:</span>
+                <PosServiceNameStack
+                  name={appointmentDetail.service?.name}
+                  cnName={appointmentDetail.service?.cn_name}
+                  primaryClassName="mt-0.5 text-xs font-medium text-gray-900"
+                  secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                />
               </p>
               <p>
                 <span className="font-semibold">Current Staff:</span> {formatAppointmentStaffLabel(appointmentDetail)}
@@ -3603,7 +3667,12 @@ export default function PosAppointmentsWorkspace({
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         {block.service_id > 0 ? (
                           <>
-                            <p className="text-sm font-semibold text-gray-900">{block.service_name}</p>
+                            <PosServiceNameStack
+                              name={block.service_name}
+                              cnName={block.service_cn_name}
+                              primaryClassName="text-sm font-semibold text-gray-900"
+                              secondaryClassName="mt-0.5 text-xs text-gray-500"
+                            />
                             <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
                           </>
                         ) : (
@@ -3631,7 +3700,7 @@ export default function PosAppointmentsWorkspace({
                             const checked = block.selected_addon_ids.has(opt.id)
                             return (
                               <label key={`added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
-                                <span className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={checked}
@@ -3645,7 +3714,7 @@ export default function PosAppointmentsWorkspace({
                                     className="h-4 w-4 rounded border-gray-300 text-indigo-600"
                                   />
                                   {opt.label}
-                                </span>
+                                </div>
                                 <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
                               </label>
                             )
@@ -3861,7 +3930,10 @@ export default function PosAppointmentsWorkspace({
                 {editMainServiceCatalog
                   .filter((service) => service.id !== appointmentDetail?.service?.id)
                   .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => (service.name ?? '').toLowerCase().includes(editMainServiceQuery.trim().toLowerCase()))
+                  .filter((service) => {
+                    const query = editMainServiceQuery.trim().toLowerCase()
+                    return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
+                  })
                   .slice(0, 200)
                   .map((service) => (
                     <button
@@ -3870,14 +3942,22 @@ export default function PosAppointmentsWorkspace({
                       onClick={() => void selectEditMainServiceForBlock(editMainServicePickerTargetId, service)}
                       className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm hover:bg-gray-50"
                     >
-                      <span className="font-semibold text-gray-900">{service.name}</span>
+                      <PosServiceNameStack
+                        name={service.name}
+                        cnName={service.cn_name}
+                        primaryClassName="text-sm font-semibold text-gray-900"
+                        secondaryClassName="mt-0.5 text-xs text-gray-500"
+                      />
                       <span className="text-xs font-semibold text-indigo-700">Select</span>
                     </button>
                   ))}
                 {editMainServiceCatalog
                   .filter((service) => service.id !== appointmentDetail?.service?.id)
                   .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => (service.name ?? '').toLowerCase().includes(editMainServiceQuery.trim().toLowerCase()))
+                  .filter((service) => {
+                    const query = editMainServiceQuery.trim().toLowerCase()
+                    return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
+                  })
                   .length === 0 ? (
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
                     No services found.

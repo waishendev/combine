@@ -95,6 +95,7 @@ type AppointmentSettlementCartItem = {
   guest_phone?: string | null
   guest_email?: string | null
   service_name?: string | null
+  service_cn_name?: string | null
   service_price_mode?: string | null
   service_price_range_min?: number | null
   service_price_range_max?: number | null
@@ -107,8 +108,8 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_service_settlement_items?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   addon_total_price?: number
   deposit_contribution?: number
   package_offset?: number
@@ -137,6 +138,7 @@ type ServiceCartItem = {
   type?: 'service'
   booking_service_id: number
   service_name: string
+  service_cn_name?: string | null
   qty: number
   unit_price: number
   line_total: number
@@ -232,9 +234,30 @@ function formatPosPackageMemberLabel(
   return name ? `Member: ${name}` : `Member: (#${packageItem.customer_id})`
 }
 
+
+function ServiceNameStack({
+  name,
+  cnName,
+  primaryClassName = 'text-sm font-semibold text-gray-900',
+  secondaryClassName = 'mt-0.5 text-xs text-gray-500',
+}: {
+  name?: string | null
+  cnName?: string | null
+  primaryClassName?: string
+  secondaryClassName?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <p className={primaryClassName}>{name || '—'}</p>
+      {cnName ? <p className={secondaryClassName}>{cnName}</p> : null}
+    </div>
+  )
+}
+
 type BookingServiceOption = {
   id: number
   name: string
+  cn_name?: string | null
   service_type?: string | null
   price?: number
   service_price?: number
@@ -249,6 +272,8 @@ type BookingServiceOption = {
 type BookingServiceQuestionOption = {
   id: number
   label: string
+  cn_name?: string | null
+  linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
 }
@@ -426,6 +451,7 @@ type MemberUpcomingAppointment = {
   start_at?: string | null
   end_at?: string | null
   service_name?: string | null
+  service_cn_name?: string | null
   staff_name?: string | null
 }
 
@@ -618,6 +644,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       balance_due: number
       amount_due_now: number
       service_names?: string[]
+      service_cn_names?: string[]
       service_total?: number
       addon_total_price?: number
       deposit_contribution?: number
@@ -680,6 +707,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     tmp_id: string
     service_id: number
     service_name: string
+    service_cn_name?: string | null
     price: number
     duration_min: number
     addon_questions: Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>
@@ -1862,6 +1890,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return {
             id,
             name: String(maybe.name ?? '').trim(),
+            cn_name: typeof maybe.cn_name === 'string' ? maybe.cn_name.trim() || null : null,
             service_type: typeof maybe.service_type === 'string' ? maybe.service_type : null,
             price: Number(maybe.price ?? 0),
             service_price: Number(maybe.service_price ?? 0),
@@ -2074,12 +2103,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
             is_required: Boolean(record.is_required),
             options: optionsRaw
-              .map((optionRaw) => {
+              .map((optionRaw): BookingServiceQuestionOption | null => {
                 if (!optionRaw || typeof optionRaw !== 'object') return null
                 const option = optionRaw as Record<string, unknown>
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
+                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                 }
@@ -2111,12 +2142,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
             is_required: Boolean(record.is_required),
             options: optionsRaw
-              .map((optionRaw) => {
+              .map((optionRaw): BookingServiceQuestionOption | null => {
                 if (!optionRaw || typeof optionRaw !== 'object') return null
                 const option = optionRaw as Record<string, unknown>
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
+                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                 }
@@ -2712,6 +2745,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
         service_id: Number(service.linked_booking_service_id ?? service.id ?? 0),
         service_name: String(service.name ?? 'Service'),
+        service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
         price: Number(service.extra_price ?? 0),
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as typeof cartEditAddonQuestions,
@@ -2818,6 +2852,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       tmp_id: `added-${service.id}-${Math.random()}`,
       service_id: service.id,
       service_name: service.name,
+      service_cn_name: service.cn_name ?? null,
       price: Number(service.service_price ?? service.price ?? 0),
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
@@ -3080,6 +3115,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     return services.filter((service) =>
       service.name.toLowerCase().includes(keyword) ||
+      (service.cn_name ?? '').toLowerCase().includes(keyword) ||
       String(service.service_type ?? '').toLowerCase().includes(keyword),
     )
   }, [serviceQuery, services])
@@ -4765,13 +4801,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   onClick={() => void fetchProductPage(productPage + 1, effectiveServerProductQuery, true, { categoryId: selectedCategoryId })}
                 >
                   {productLoading ? (
-                    <span className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                       <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
                       Loading...
-                    </span>
+                    </div>
                   ) : (
                     `View More (${productPage + 1}/${productLastPage})`
                   )}
@@ -4868,7 +4904,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       return (
                         <div key={service.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
                           <div>
-                            <p className="text-sm font-semibold text-gray-900">{service.name}</p>
+                            <ServiceNameStack name={service.name} cnName={service.cn_name} />
                             <p className="text-xs text-gray-500">Type: {(service.service_type ?? 'standard').toUpperCase()}</p>
                           </div>
                           <div className="flex flex-col items-end gap-2">
@@ -4974,6 +5010,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const serviceLabel = Array.isArray(appt.service_names) && appt.service_names.length
                         ? appt.service_names.join(', ')
                         : ''
+                      const serviceCnLabel = Array.isArray(appt.service_cn_names) && appt.service_cn_names.length
+                        ? appt.service_cn_names.join(', ')
+                        : ''
                       const addonList = Array.isArray(appt.add_ons) ? appt.add_ons : []
                       const apptCustomerId = Number((appt as any)?.customer_id ?? 0)
                       const lockedId = settlementLockedCustomerId ?? null
@@ -5009,7 +5048,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </p>
                             ) : null}
                             {serviceLabel ? (
-                              <p className="mt-1 text-[11px] text-gray-600">Service: {serviceLabel}</p>
+                              <div className="mt-1 text-[11px] text-gray-600">
+                                <p>Service: {serviceLabel}</p>
+                                {serviceCnLabel ? <p className="text-gray-500">{serviceCnLabel}</p> : null}
+                              </div>
                             ) : null}
                             {addonList.length > 0 ? (
                               <p className="mt-1 text-[11px] text-gray-600">
@@ -5268,7 +5310,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </div>
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <h4 className="text-sm font-bold text-gray-900">{serviceItem.service_name}</h4>
+                        <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-bold text-gray-900" />
                         <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
                           {svcType}
                         </span>
@@ -5293,7 +5335,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         {mainCoveredByPkg ? (
                           <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 pb-2">
                             <div className="min-w-0">
-                              <p className="text-sm font-medium text-gray-900">{serviceItem.service_name}</p>
+                              <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                               <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
                                 Included in your package (main service)
                               </p>
@@ -5508,7 +5550,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   return (
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-800">
-                                        <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>
+                                        <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>{service.cn_name ? <span className="block text-[10px] text-gray-500">{service.cn_name}</span> : null}
                                         <span className="font-semibold tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
                                       </div>
                                       {(service.add_ons ?? []).map((addon, addonIdx) => (
@@ -6002,7 +6044,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   {(cartEditSettlementItem.main_services ?? []).filter((service) => service.is_original).map((service) => (
                     <div key={`cart-main-original-${service.id ?? service.name}`} className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-gray-900">{service.name}</p>
+                        <ServiceNameStack name={service.name} cnName={service.cn_name} />
                         <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-800">Original</span>
                       </div>
                       <p className="text-xs text-gray-600">
@@ -6171,7 +6213,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div className="mb-2 flex items-start justify-between gap-2">
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
-                        <p className="text-sm font-semibold text-gray-900">{block.service_name}</p>
+                        <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
                         <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
                       </div>
                       <button
@@ -6189,7 +6231,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           const checked = block.selected_addon_ids.has(opt.id)
                           return (
                             <label key={`cart-added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
-                              <span className="flex items-center gap-2">
+                              <div className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
                                   checked={checked}
@@ -6203,7 +6245,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   className="h-4 w-4 rounded border-gray-300 text-indigo-600"
                                 />
                                 {opt.label}
-                              </span>
+                              </div>
                               <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
                             </label>
                           )
@@ -6425,7 +6467,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       }}
                       className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm hover:bg-gray-50"
                     >
-                      <span className="font-semibold text-gray-900">{service.name}</span>
+                      <span className="font-semibold text-gray-900">{service.name}</span>{service.cn_name ? <span className="block text-xs text-gray-500">{service.cn_name}</span> : null}
                       <span className="text-xs font-semibold text-indigo-700">Select</span>
                     </button>
                   ))}
@@ -6640,8 +6682,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const checkoutServiceItemHeader = (
                         <>
                           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
-                          <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="text-base font-bold leading-snug text-gray-900">{serviceItem.service_name}</span>
+                          <div className="mt-1 flex flex-wrap items-start gap-x-2 gap-y-0.5">
+                            <ServiceNameStack
+                              name={serviceItem.service_name}
+                              cnName={serviceItem.service_cn_name}
+                              primaryClassName="text-base font-bold leading-snug text-gray-900"
+                              secondaryClassName="mt-0.5 text-xs font-normal text-gray-500"
+                            />
                             <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
                               {svcTypeChk}
                             </span>
@@ -6679,7 +6726,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposits</p>
                               {mainCoveredByPkg ? (
                                 <div className="mt-1">
-                                  <p className="text-sm font-medium text-gray-900">{serviceItem.service_name}</p>
+                                  <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                   <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
                                     Included in your package (main service)
                                   </p>
@@ -7855,7 +7902,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
               <div className="rounded-md border border-blue-100 bg-blue-50/60 px-3 py-2">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">Selected Service</p>
-                <p className="mt-1 text-sm font-semibold text-gray-900">{bookingServiceDraft.name} ({bookingServiceDraft.service_type})</p>
+                <div className="mt-1"><ServiceNameStack name={bookingServiceDraft.name} cnName={bookingServiceDraft.cn_name} /><p className="text-xs text-gray-500">{bookingServiceDraft.service_type}</p></div>
                 <p className="mt-0.5 text-xs font-semibold text-gray-600 tabular-nums">
                   Base time: {Number(bookingServiceDraft.duration_min ?? 0)} min
                 </p>
@@ -7899,7 +7946,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             const checked = bookingSelectedOptionIds.includes(option.id)
                             return (
                               <label key={option.id} className="flex cursor-pointer items-center justify-between gap-3 text-sm text-gray-800">
-                                <span className="flex min-w-0 items-start gap-2">
+                                <div className="flex min-w-0 items-start gap-2">
                                   <input
                                     type="checkbox"
                                     name={`booking-question-${question.id}`}
@@ -7914,13 +7961,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       })
                                     }}
                                   />
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium text-gray-900">{option.label}</span>
+                                  <div className="min-w-0">
+                                    <ServiceNameStack
+                                      name={option.label}
+                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      primaryClassName="block truncate font-medium text-gray-900"
+                                      secondaryClassName="mt-0.5 block truncate text-[11px] font-normal text-gray-500"
+                                    />
                                     <span className="mt-0.5 block text-[11px] font-semibold text-gray-600 tabular-nums">
                                       TIME: {Number(option.extra_duration_min ?? 0)} min
                                     </span>
-                                  </span>
-                                </span>
+                                  </div>
+                                </div>
                                 <span className="shrink-0 tabular-nums font-semibold text-gray-900">
                                   +RM{Number(option.extra_price ?? 0).toFixed(2)}
                                 </span>
@@ -7964,7 +8016,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             ])
                             return services
                               .filter((service) => !takenByOthers.has(service.id))
-                              .map((service) => ({ id: service.id, name: service.name }))
+                              .map((service) => ({ id: service.id, name: service.name, cn_name: service.cn_name }))
                           })()}
                           value={block.service?.id ? String(block.service.id) : ''}
                           onChange={async (next) => {
@@ -7995,7 +8047,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                     {block.service ? (
                       <p className="text-xs font-semibold text-gray-600">
-                        {block.service.name} · {Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}
+                        <ServiceNameStack
+                          name={block.service.name}
+                          cnName={block.service.cn_name}
+                          primaryClassName="text-sm font-medium text-gray-900"
+                          secondaryClassName="mt-0.5 text-xs text-gray-500"
+                        />
+                        <span className="text-xs text-gray-600">{Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}</span>
                       </p>
                     ) : null}
                     {block.questions.map((question) => (
@@ -8009,7 +8067,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             const checked = block.selectedOptionIds.includes(option.id)
                             return (
                               <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                                <span className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={checked}
@@ -8024,8 +8082,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       }))
                                     }}
                                   />
-                                  <span>{option.label}</span>
-                                </span>
+                                  <ServiceNameStack
+                                      name={option.label}
+                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      primaryClassName="text-xs text-gray-700"
+                                      secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                    />
+                                </div>
                                 <span className="font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
                               </label>
                             )
@@ -8386,7 +8449,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <div key={appointment.id} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
                               <p className="text-sm font-semibold text-gray-900">{appointment.booking_code || `Booking #${appointment.id}`}</p>
                               <p>Status: {appointment.status || '—'}</p>
-                              <p>Service: {appointment.service_name || '—'}</p>
+                              <div>Service: <ServiceNameStack name={appointment.service_name} cnName={appointment.service_cn_name} primaryClassName="inline text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-xs text-gray-500" /></div>
                               <p>Staff: {appointment.staff_name || '—'}</p>
                               <p>Time: {appointment.start_at ? new Date(appointment.start_at).toLocaleString() : '—'}</p>
                             </div>

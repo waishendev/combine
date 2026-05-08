@@ -82,15 +82,25 @@ export default function BookingPageContent() {
               >
                 <i className="fa-solid fa-arrow-left" /> Back
               </button>
-              <h1 className="px-16 text-center font-[var(--font-heading)] text-lg font-semibold leading-snug sm:text-xl">
-                {selectedCategory.name}
-              </h1>
+              <div className="px-16 text-center">
+                <h1 className="font-[var(--font-heading)] text-lg font-semibold leading-snug sm:text-xl">
+                  {selectedCategory.name}
+                </h1>
+                {selectedCategory.cn_name ? (
+                  <p className="mt-1 text-sm leading-snug text-[var(--text-muted)]">{selectedCategory.cn_name}</p>
+                ) : null}
+              </div>
             </div>
 
             {/* Mobile: keep just title here (Back is in stepper) */}
-            <h1 className="text-center font-[var(--font-heading)] text-lg font-semibold leading-snug sm:hidden">
-              {selectedCategory.name}
-            </h1>
+            <div className="text-center sm:hidden">
+              <h1 className="font-[var(--font-heading)] text-lg font-semibold leading-snug">
+                {selectedCategory.name}
+              </h1>
+              {selectedCategory.cn_name ? (
+                <p className="mt-1 text-sm leading-snug text-[var(--text-muted)]">{selectedCategory.cn_name}</p>
+              ) : null}
+            </div>
 
             <div className="relative mx-auto mt-4 w-full max-w-md text-center">
               <i className="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
@@ -130,6 +140,9 @@ export default function BookingPageContent() {
                 <h2 className="line-clamp-2 font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
                   {category.name}
                 </h2>
+                {category.cn_name ? (
+                  <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-[var(--text-muted)] sm:text-[13px]">{category.cn_name}</p>
+                ) : null}
                 {category.description ? (
                   <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
                     {category.description}
@@ -156,9 +169,14 @@ export default function BookingPageContent() {
               </div>
               <div className="relative flex flex-1 flex-col p-3 sm:p-4">
                 <div className="flex items-center justify-between">
-                  <h2 className="line-clamp-2  font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
-                    {service.name}
-                  </h2>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="line-clamp-2 font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
+                      {service.name}
+                    </h2>
+                    {service.cn_name ? (
+                      <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-[var(--text-muted)] sm:text-[13px]">{service.cn_name}</p>
+                    ) : null}
+                  </div>
                   <span className="hidden rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
                     {service.service_type}
                   </span>

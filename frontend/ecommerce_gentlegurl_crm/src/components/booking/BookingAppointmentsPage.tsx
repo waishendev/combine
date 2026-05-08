@@ -18,7 +18,7 @@ type BookingRow = {
   id: number
   booking_code: string | null
   customer: { id: number; name: string; phone: string | null } | null
-  service: { id: number; name: string } | null
+  service: { id: number; name: string; cn_name?: string | null } | null
   staff: { id: number; name: string } | null
   start_at: string
   end_at?: string | null
@@ -441,7 +441,7 @@ export default function BookingAppointmentsPage({ permissions }: Props) {
                       {row.customer?.name || '-'}
                       <div className="text-xs text-slate-500">{row.customer?.phone || '-'}</div>
                     </td>
-                    <td className="px-4 py-2 border border-gray-200">{row.service?.name || '-'}</td>
+                    <td className="px-4 py-2 border border-gray-200"><div className="font-semibold text-gray-900">{row.service?.name || '-'}</div>{row.service?.cn_name ? <div className="mt-0.5 text-xs text-gray-500">{row.service.cn_name}</div> : null}</td>
                     <td className="px-4 py-2 border border-gray-200">{row.staff?.name || '-'}</td>
                     <td className="px-4 py-2 border border-gray-200 align-top">
                       <div className="tabular-nums text-xs leading-snug text-slate-800">

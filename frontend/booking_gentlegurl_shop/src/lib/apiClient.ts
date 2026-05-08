@@ -314,6 +314,7 @@ export type PublicAccountOrder = {
     id: number;
     line_type?: string | null;
     name?: string | null;
+    cn_name?: string | null;
     quantity?: number | null;
     line_total?: number | null;
     booking_id?: number | null;

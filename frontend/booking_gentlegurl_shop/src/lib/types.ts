@@ -1,6 +1,7 @@
 export type BookingServiceCategory = {
   id: number;
   name: string;
+  cn_name?: string | null;
   slug: string;
   description?: string | null;
   image_path?: string | null;
@@ -12,6 +13,7 @@ export type BookingServiceCategory = {
 export type Service = {
   id: number;
   name: string;
+  cn_name?: string | null;
   description?: string;
   service_type: "premium" | "standard";
   duration_minutes: number;
@@ -42,6 +44,7 @@ export type BookingServiceQuestionOption = {
   id: number;
   label: string;
   linked_booking_service_id?: number | null;
+  linked_cn_name?: string | null;
   extra_duration_min: number;
   extra_price: number;
   /** When option is linked to a booking service that uses range pricing. */
@@ -98,6 +101,7 @@ export type BookingCartItem = {
   id: number;
   service_id: number;
   service_name: string;
+  service_cn_name?: string | null;
   staff_id: number;
   staff_name: string;
   service_type: "premium" | "standard";
@@ -161,6 +165,7 @@ export type BookingRecord = {
   booking_code?: string | null;
   status: string;
   service_name: string;
+  service_cn_name?: string | null;
   add_ons?: Array<{
     id?: number | null;
     name: string;
@@ -209,6 +214,7 @@ export type BookingRecord = {
   service?: {
     id: number;
     name: string;
+    cn_name?: string | null;
     duration_min: number;
     deposit_amount: number;
     buffer_min: number;

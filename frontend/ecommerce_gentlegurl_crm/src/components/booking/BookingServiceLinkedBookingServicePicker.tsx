@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 export type BookingServiceLinkedOption = {
   id: number
   name: string
+  cn_name?: string | null
   duration_min: number
   service_price: number
 }
@@ -39,14 +40,18 @@ export default function BookingServiceLinkedBookingServicePicker({
     if (!q) return options
     return options.filter((s) => {
       const name = s.name.toLowerCase()
+      const cnName = (s.cn_name ?? '').toLowerCase()
       const id = String(s.id)
-      return name.includes(q) || id.includes(q)
+      return name.includes(q) || cnName.includes(q) || id.includes(q)
     })
   }, [options, searchQuery])
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false)
+      if (!rootRef.current?.contains(e.target as Node)) {
+        setOpen(false)
+        setSearchQuery('')
+      }
     }
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
@@ -57,11 +62,10 @@ export default function BookingServiceLinkedBookingServicePicker({
       const t = window.setTimeout(() => searchRef.current?.focus(), 80)
       return () => clearTimeout(t)
     }
-    setSearchQuery('')
   }, [open])
 
   const triggerText = selected
-    ? `${selected.name} (${selected.duration_min} min, RM${Number(selected.service_price || 0).toFixed(2)})`
+    ? `${selected.name}${selected.cn_name ? ` / ${selected.cn_name}` : ''} (${selected.duration_min} min, RM${Number(selected.service_price || 0).toFixed(2)})`
     : 'Select linked booking service'
 
   return (
@@ -74,7 +78,11 @@ export default function BookingServiceLinkedBookingServicePicker({
           disabled={disabled}
           onClick={() => {
             if (disabled) return
-            setOpen((o) => !o)
+            setOpen((o) => {
+              const next = !o
+              if (!next) setSearchQuery('')
+              return next
+            })
           }}
           className="flex w-full items-center justify-between rounded border border-gray-300 bg-white px-3 py-2 text-left text-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
         >
@@ -129,13 +137,14 @@ export default function BookingServiceLinkedBookingServicePicker({
                       onClick={() => {
                         onChange(String(service.id))
                         setOpen(false)
+                        setSearchQuery('')
                       }}
                       className={`flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm transition ${
                         isSelected ? 'bg-blue-50 text-blue-900' : 'hover:bg-gray-50 text-gray-800'
                       }`}
                     >
                       <span className="flex-1">
-                        <span className="font-medium">{service.name}</span>
+                        <span className="font-medium">{service.name}</span>{service.cn_name ? <span className="ml-2 text-xs text-gray-500">{service.cn_name}</span> : null}
                         <span className="ml-2 text-xs text-gray-500">
                           ({service.duration_min} min, RM{Number(service.service_price || 0).toFixed(2)})
                         </span>

@@ -562,6 +562,9 @@
             <tr>
               <td>
                 <div class="item-name">{{ $item['product_name'] }}</div>
+                @if(!empty($item['product_cn_name']))
+                  <div class="sku" style="margin-top:1px;">{{ $item['product_cn_name'] }}</div>
+                @endif
 
                 @php
                   $sku = $item['variant_sku'] ?? $item['product_sku'];

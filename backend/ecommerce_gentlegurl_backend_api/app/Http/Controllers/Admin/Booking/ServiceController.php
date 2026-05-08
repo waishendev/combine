@@ -27,7 +27,7 @@ class ServiceController extends Controller
         $perPage = max(1, min(200, $perPage));
 
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])
+            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])
             ->latest()
             ->paginate($perPage);
 
@@ -39,7 +39,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -56,6 +56,7 @@ class ServiceController extends Controller
 
         $data = $request->validate([
             'name' => ['required', 'string'],
+            'cn_name' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'service_type' => ['required', 'in:premium,standard'],
             'image' => ['nullable', 'image', 'max:5120'],
@@ -121,7 +122,7 @@ class ServiceController extends Controller
         $this->syncQuestions($service, $questions);
 
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])), 'Created', true, 201);
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])), 'Created', true, 201);
     }
 
     public function update(Request $request, int $id)
@@ -136,6 +137,7 @@ class ServiceController extends Controller
         $service = BookingService::findOrFail($id);
         $data = $request->validate([
             'name' => ['sometimes', 'string'],
+            'cn_name' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
             'service_type' => ['required', 'in:premium,standard'],
             'image' => ['nullable', 'image', 'max:5120'],
@@ -206,7 +208,7 @@ class ServiceController extends Controller
         }
 
         BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,duration_min,service_price'])));
+        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])));
     }
 
     public function destroy(int $id)
@@ -348,7 +350,7 @@ class ServiceController extends Controller
         }
 
         $headers = [
-            'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
+            'id', 'name', 'cn_name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
             'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
         ];
         fputcsv($stream, $headers);
@@ -357,6 +359,7 @@ class ServiceController extends Controller
             fputcsv($stream, [
                 $service->id,
                 $service->name,
+                $service->cn_name,
                 $service->service_type,
                 $service->description,
                 $service->duration_min,
@@ -429,7 +432,7 @@ class ServiceController extends Controller
 
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
         $allowedHeaders = [
-            'id', 'name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
+            'id', 'name', 'cn_name', 'service_type', 'description', 'duration_min', 'service_price', 'deposit_amount', 'buffer_min',
             'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'is_active', 'allowed_staff_ids', 'primary_slots', 'questions_json',
         ];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
@@ -486,6 +489,7 @@ class ServiceController extends Controller
 
             $raw = [
                 'name' => $payload['name'] ?? null,
+                'cn_name' => $payload['cn_name'] ?? null,
                 'service_type' => $payload['service_type'] ?? null,
                 'description' => $payload['description'] ?? null,
                 'duration_min' => $payload['duration_min'] ?? null,
@@ -509,6 +513,7 @@ class ServiceController extends Controller
 
             $validator = Validator::make($raw, [
                 'name' => ['required', 'string', 'max:255'],
+                'cn_name' => ['nullable', 'string', 'max:255'],
                 'service_type' => ['required', 'in:premium,standard'],
                 'description' => ['nullable', 'string'],
                 'duration_min' => ['required', 'integer', 'min:1'],
@@ -554,6 +559,7 @@ class ServiceController extends Controller
                     if (! $service) {
                         $service = BookingService::query()->create([
                             'name' => $validated['name'],
+                            'cn_name' => $validated['cn_name'] ?? null,
                             'service_type' => $validated['service_type'],
                             'description' => $validated['description'] ?? null,
                             'service_price' => $validated['service_price'],
@@ -626,6 +632,7 @@ class ServiceController extends Controller
                             ->all();
                         $isUnchanged =
                             ($service->name === $validated['name']) &&
+                            ((string) ($service->cn_name ?? '') === (string) ($validated['cn_name'] ?? '')) &&
                             ($service->service_type === $validated['service_type']) &&
                             (($service->description ?? null) === ($validated['description'] ?? null)) &&
                             ((int) $service->duration_min === (int) $validated['duration_min']) &&
@@ -647,6 +654,7 @@ class ServiceController extends Controller
                         }
                         $service->update([
                             'name' => $validated['name'],
+                            'cn_name' => $validated['cn_name'] ?? null,
                             'service_type' => $validated['service_type'],
                             'description' => $validated['description'] ?? null,
                             'service_price' => $validated['service_price'],
@@ -765,7 +773,7 @@ class ServiceController extends Controller
 
         $linkedServices = BookingService::query()
             ->whereIn('id', $linkedServiceIds)
-            ->get(['id', 'name', 'duration_min', 'service_price'])
+            ->get(['id', 'name', 'cn_name', 'duration_min', 'service_price'])
             ->keyBy('id');
 
         foreach ($questions as $index => $questionPayload) {

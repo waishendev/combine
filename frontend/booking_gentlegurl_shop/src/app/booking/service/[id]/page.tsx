@@ -317,7 +317,7 @@ export default function ServiceAddonsPage() {
               ) : null}
               <div className="p-5">
                 <div className="flex items-start justify-between gap-3">
-                  <h1 className="font-[var(--font-heading)] text-2xl font-semibold">{service.name}</h1>
+                  <div><h1 className="font-[var(--font-heading)] text-2xl font-semibold">{service.name}</h1>{service.cn_name ? <p className="mt-1 text-sm text-[var(--text-muted)]">{service.cn_name}</p> : null}</div>
                   <span className="shrink-0 rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)]">
                     {service.service_type}
                   </span>
@@ -398,7 +398,7 @@ export default function ServiceAddonsPage() {
                             </div>
                             <div className="relative p-3 sm:p-4">
                               <div className="flex items-start justify-between gap-2">
-                                <h3 className="font-[var(--font-heading)] font-semibold leading-snug">{opt.label}</h3>
+                                <div><h3 className="font-[var(--font-heading)] font-semibold leading-snug">{opt.label}</h3>{opt.linked_cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{opt.linked_cn_name}</p> : null}</div>
                                 {opt.linked_service_type ? (
                                   <span className="hidden shrink-0 rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
                                     {opt.linked_service_type}
@@ -664,7 +664,7 @@ export default function ServiceAddonsPage() {
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Main service</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
-                    <p className="font-[var(--font-heading)] text-base font-semibold">{service.name}</p>
+                    <div><p className="font-[var(--font-heading)] text-base font-semibold">{service.name}</p>{service.cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{service.cn_name}</p> : null}</div>
                     <ServiceTierBadge serviceType={service.service_type} />
                   </div>
                   <ul className="mt-3 space-y-2 text-sm">
@@ -699,7 +699,7 @@ export default function ServiceAddonsPage() {
                         >
                           <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">{questionTitle}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <p className="font-[var(--font-heading)] font-semibold">{opt.label}</p>
+                            <div><p className="font-[var(--font-heading)] font-semibold">{opt.label}</p>{opt.linked_cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{opt.linked_cn_name}</p> : null}</div>
                             {opt.linked_service_type ? <ServiceTierBadge serviceType={opt.linked_service_type} /> : null}
                           </div>
                           <div className="mt-3 space-y-0 text-sm">

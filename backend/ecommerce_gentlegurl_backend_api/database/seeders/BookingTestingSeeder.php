@@ -196,9 +196,9 @@ class BookingTestingSeeder extends Seeder
     private function seedServices(): array
     {
         $serviceSpecs = [
-            ['name' => 'Haircut', 'service_type' => 'standard', 'service_price' => 5200, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
-            ['name' => 'Coloring', 'service_type' => 'premium', 'service_price' => 680, 'price_mode' => 'range', 'price_range_min' => 680, 'price_range_max' => 1200, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
-            ['name' => 'Treatment', 'service_type' => 'premium', 'service_price' => 450, 'price_mode' => 'fixed', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
+            ['name' => 'Haircut', 'cn_name' => '剪发', 'service_type' => 'standard', 'service_price' => 5200, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
+            ['name' => 'Coloring', 'cn_name' => '染发', 'service_type' => 'premium', 'service_price' => 680, 'price_mode' => 'range', 'price_range_min' => 680, 'price_range_max' => 1200, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
+            ['name' => 'Treatment', 'cn_name' => '护理', 'service_type' => 'premium', 'service_price' => 450, 'price_mode' => 'fixed', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
         ];
 
         $services = [];
@@ -212,6 +212,10 @@ class BookingTestingSeeder extends Seeder
                 'buffer_min' => $spec['buffer_min'],
                 'is_active' => true,
             ];
+
+            if (Schema::hasColumn('booking_services', 'cn_name')) {
+                $payload['cn_name'] = $spec['cn_name'] ?? null;
+            }
 
             if (Schema::hasColumn('booking_services', 'service_price')) {
                 $payload['service_price'] = $spec['service_price'];
@@ -266,6 +270,7 @@ class BookingTestingSeeder extends Seeder
             $categories = [
                 [
                     'name' => 'Hair Essentials',
+                    'cn_name' => '头发基础护理',
                     'slug' => 'hair-essentials',
                     'description' => 'Daily and classic hair services.',
                     'sort_order' => 1,
@@ -273,6 +278,7 @@ class BookingTestingSeeder extends Seeder
                 ],
                 [
                     'name' => 'Premium Treatments',
+                    'cn_name' => '高级护理',
                     'slug' => 'premium-treatments',
                     'description' => 'Repair and intensive premium care.',
                     'sort_order' => 2,
@@ -281,16 +287,22 @@ class BookingTestingSeeder extends Seeder
             ];
 
             foreach ($categories as $category) {
+                $categoryPayload = [
+                    'name' => $category['name'],
+                    'description' => $category['description'],
+                    'is_active' => true,
+                    'sort_order' => $category['sort_order'],
+                    'updated_at' => $now,
+                    'created_at' => $now,
+                ];
+
+                if (Schema::hasColumn('booking_service_categories', 'cn_name')) {
+                    $categoryPayload['cn_name'] = $category['cn_name'] ?? null;
+                }
+
                 DB::table('booking_service_categories')->updateOrInsert(
                     ['slug' => $category['slug']],
-                    [
-                        'name' => $category['name'],
-                        'description' => $category['description'],
-                        'is_active' => true,
-                        'sort_order' => $category['sort_order'],
-                        'updated_at' => $now,
-                        'created_at' => $now,
-                    ]
+                    $categoryPayload
                 );
 
                 $resolvedCategoryId = (int) DB::table('booking_service_categories')
