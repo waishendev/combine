@@ -16,6 +16,7 @@ class InvoiceService
      * @return array{
      *     line_type: string,
      *     product_name: string,
+     *     product_cn_name: string|null,
      *     product_sku: mixed,
      *     variant_name: mixed,
      *     variant_sku: mixed,
@@ -70,6 +71,7 @@ class InvoiceService
         return [
             'line_type' => $lineType,
             'product_name' => $productName,
+            'product_cn_name' => $item->displayCnName(),
             'product_sku' => $item->sku_snapshot,
             'variant_name' => $variantName,
             'variant_sku' => $item->variant_sku_snapshot,
@@ -130,7 +132,7 @@ class InvoiceService
 
     public function buildPdf(Order $order)
     {
-        $order->loadMissing(['items', 'serviceItems', 'pickupStore', 'customer']);
+        $order->loadMissing(['items.bookingService', 'items.booking', 'serviceItems.bookingService', 'pickupStore', 'customer']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
         $mixedItems = $order->items->map(fn (OrderItem $item) => $this->mapOrderItemToInvoiceRow($item))->values();
@@ -173,6 +175,7 @@ class InvoiceService
                 return [
                     'line_type' => 'service',
                     'product_name' => $item->service_name_snapshot,
+                    'product_cn_name' => $item->bookingService?->cn_name,
                     'product_sku' => null,
                     'variant_name' => 'Service',
                     'variant_sku' => null,
@@ -213,6 +216,7 @@ class InvoiceService
 
                 return [
                     'product_name' => (string) ($first?->servicePackage?->name ?? 'Service Package'),
+                    'product_cn_name' => null,
                     'product_sku' => null,
                     'variant_name' => 'Service Package',
                     'variant_sku' => null,

@@ -593,6 +593,8 @@ export default function PosAppointmentsWorkspace({
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
+                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                 } as ServiceAddonOption
@@ -1934,12 +1936,12 @@ export default function PosAppointmentsWorkspace({
         <div className="space-y-5 xl:col-span-3 xl:min-h-0">
           <div className="flex flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
             <h3 className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xl font-bold text-gray-900">
-              <span className="flex items-center gap-2">
+              <div className="flex items-center gap-2">
                 <svg className="h-6 w-6 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
                 </svg>
                 Appointments
-              </span>
+              </div>
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <label className="flex cursor-pointer select-none items-center gap-2 text-sm font-medium text-gray-700">
                   <input
@@ -2690,7 +2692,7 @@ export default function PosAppointmentsWorkspace({
                           const checked = createAppointmentSelectedOptionIds.includes(option.id)
                           return (
                             <label key={option.id} className="flex cursor-pointer items-start justify-between gap-2 rounded-md px-1 py-1 hover:bg-gray-50">
-                              <span className="flex items-start gap-2">
+                              <div className="flex items-start gap-2">
                                 <input
                                   type={question.question_type === 'multi_choice' ? 'checkbox' : 'radio'}
                                   name={`create-question-${question.id}`}
@@ -2705,8 +2707,13 @@ export default function PosAppointmentsWorkspace({
                                     })
                                   }}
                                 />
-                                <span className="text-sm text-gray-800">{option.label}</span>
-                              </span>
+                                <PosServiceNameStack
+                                  name={option.label}
+                                  cnName={option.cn_name ?? option.linked_cn_name}
+                                  primaryClassName="text-sm text-gray-800"
+                                  secondaryClassName="mt-0.5 text-xs text-gray-500"
+                                />
+                              </div>
                               <span className="text-xs font-semibold text-gray-700">
                                 +RM{Number(option.extra_price ?? 0).toFixed(2)}
                               </span>
@@ -2773,6 +2780,8 @@ export default function PosAppointmentsWorkspace({
                                           return {
                                             id: Number(option.id ?? 0),
                                             label: String(option.label ?? 'Add-on'),
+                                            cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                                            linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                                             extra_duration_min: Number(option.extra_duration_min ?? 0),
                                             extra_price: Number(option.extra_price ?? 0),
                                           } as ServiceAddonOption
@@ -2815,7 +2824,7 @@ export default function PosAppointmentsWorkspace({
                               const checked = block.selectedOptionIds.includes(option.id)
                               return (
                                 <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="flex items-center gap-2">
+                                  <div className="flex items-center gap-2">
                                     <input
                                       type="checkbox"
                                       checked={checked}
@@ -2830,8 +2839,13 @@ export default function PosAppointmentsWorkspace({
                                         }))
                                       }}
                                     />
-                                    <span>{option.label}</span>
-                                  </span>
+                                    <PosServiceNameStack
+                                      name={option.label}
+                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      primaryClassName="text-xs text-gray-700"
+                                      secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                    />
+                                  </div>
                                   <span className="font-semibold text-gray-700">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
                                 </label>
                               )
@@ -3686,7 +3700,7 @@ export default function PosAppointmentsWorkspace({
                             const checked = block.selected_addon_ids.has(opt.id)
                             return (
                               <label key={`added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
-                                <span className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={checked}
@@ -3700,7 +3714,7 @@ export default function PosAppointmentsWorkspace({
                                     className="h-4 w-4 rounded border-gray-300 text-indigo-600"
                                   />
                                   {opt.label}
-                                </span>
+                                </div>
                                 <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
                               </label>
                             )

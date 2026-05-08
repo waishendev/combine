@@ -272,6 +272,8 @@ type BookingServiceOption = {
 type BookingServiceQuestionOption = {
   id: number
   label: string
+  cn_name?: string | null
+  linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
 }
@@ -2107,6 +2109,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
+                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                 }
@@ -2144,6 +2148,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
+                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
                 }
@@ -4795,13 +4801,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   onClick={() => void fetchProductPage(productPage + 1, effectiveServerProductQuery, true, { categoryId: selectedCategoryId })}
                 >
                   {productLoading ? (
-                    <span className="flex items-center gap-2">
+                    <div className="flex items-center gap-2">
                       <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
                       Loading...
-                    </span>
+                    </div>
                   ) : (
                     `View More (${productPage + 1}/${productLastPage})`
                   )}
@@ -6225,7 +6231,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           const checked = block.selected_addon_ids.has(opt.id)
                           return (
                             <label key={`cart-added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
-                              <span className="flex items-center gap-2">
+                              <div className="flex items-center gap-2">
                                 <input
                                   type="checkbox"
                                   checked={checked}
@@ -6239,7 +6245,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   className="h-4 w-4 rounded border-gray-300 text-indigo-600"
                                 />
                                 {opt.label}
-                              </span>
+                              </div>
                               <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
                             </label>
                           )
@@ -7940,7 +7946,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             const checked = bookingSelectedOptionIds.includes(option.id)
                             return (
                               <label key={option.id} className="flex cursor-pointer items-center justify-between gap-3 text-sm text-gray-800">
-                                <span className="flex min-w-0 items-start gap-2">
+                                <div className="flex min-w-0 items-start gap-2">
                                   <input
                                     type="checkbox"
                                     name={`booking-question-${question.id}`}
@@ -7955,13 +7961,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       })
                                     }}
                                   />
-                                  <span className="min-w-0">
-                                    <span className="block truncate font-medium text-gray-900">{option.label}</span>
+                                  <div className="min-w-0">
+                                    <ServiceNameStack
+                                      name={option.label}
+                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      primaryClassName="block truncate font-medium text-gray-900"
+                                      secondaryClassName="mt-0.5 block truncate text-[11px] font-normal text-gray-500"
+                                    />
                                     <span className="mt-0.5 block text-[11px] font-semibold text-gray-600 tabular-nums">
                                       TIME: {Number(option.extra_duration_min ?? 0)} min
                                     </span>
-                                  </span>
-                                </span>
+                                  </div>
+                                </div>
                                 <span className="shrink-0 tabular-nums font-semibold text-gray-900">
                                   +RM{Number(option.extra_price ?? 0).toFixed(2)}
                                 </span>
@@ -8005,7 +8016,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             ])
                             return services
                               .filter((service) => !takenByOthers.has(service.id))
-                              .map((service) => ({ id: service.id, name: service.name }))
+                              .map((service) => ({ id: service.id, name: service.name, cn_name: service.cn_name }))
                           })()}
                           value={block.service?.id ? String(block.service.id) : ''}
                           onChange={async (next) => {
@@ -8056,7 +8067,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             const checked = block.selectedOptionIds.includes(option.id)
                             return (
                               <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                                <span className="flex items-center gap-2">
+                                <div className="flex items-center gap-2">
                                   <input
                                     type="checkbox"
                                     checked={checked}
@@ -8071,8 +8082,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       }))
                                     }}
                                   />
-                                  <span>{option.label}</span>
-                                </span>
+                                  <ServiceNameStack
+                                      name={option.label}
+                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      primaryClassName="text-xs text-gray-700"
+                                      secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                    />
+                                </div>
                                 <span className="font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
                               </label>
                             )

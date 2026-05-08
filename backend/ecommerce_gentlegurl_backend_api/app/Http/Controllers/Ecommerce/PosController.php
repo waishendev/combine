@@ -989,6 +989,8 @@ class PosController extends Controller
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,
+                            'cn_name' => $option->linkedBookingService?->cn_name,
+                            'linked_cn_name' => $option->linkedBookingService?->cn_name,
                         ])->values()->all();
                     $itemSplits = collect($itemPayload['staff_splits'] ?? [])->values();
                     if ($itemSplits->isNotEmpty()) {
@@ -1673,6 +1675,8 @@ class PosController extends Controller
                 'linked_booking_service_id' => $option->linkedBookingService
                     ? (int) $option->linkedBookingService->id
                     : null,
+                'cn_name' => $option->linkedBookingService?->cn_name,
+                'linked_cn_name' => $option->linkedBookingService?->cn_name,
                 'linked_service_type' => $option->linkedBookingService
                     ? (string) $option->linkedBookingService->service_type
                     : null,
@@ -1699,6 +1703,7 @@ class PosController extends Controller
                 'item_kind' => 'main_service',
                 'id' => 'main_service_' . ($index + 1),
                 'name' => (string) ($service->name ?? 'Service'),
+                'cn_name' => $service->cn_name ?? null,
                 'extra_duration_min' => max(0, (int) ($service->duration_min ?? 0)),
                 'extra_price' => round(max(0, (float) ($service->price ?? $service->service_price ?? 0)), 2),
                 'linked_booking_service_id' => (int) $service->id,
@@ -2048,6 +2053,8 @@ class PosController extends Controller
                 'linked_booking_service_id' => $option->linkedBookingService
                     ? (int) $option->linkedBookingService->id
                     : null,
+                'cn_name' => $option->linkedBookingService?->cn_name,
+                'linked_cn_name' => $option->linkedBookingService?->cn_name,
                 'linked_service_type' => $option->linkedBookingService
                     ? (string) $option->linkedBookingService->service_type
                     : null,
@@ -2074,6 +2081,7 @@ class PosController extends Controller
                 'item_kind' => 'main_service',
                 'id' => 'main_service_' . ($index + 1),
                 'name' => (string) ($service->name ?? 'Service'),
+                'cn_name' => $service->cn_name ?? null,
                 'extra_duration_min' => max(0, (int) ($service->duration_min ?? 0)),
                 'extra_price' => round(max(0, (float) ($service->price ?? $service->service_price ?? 0)), 2),
                 'linked_booking_service_id' => (int) $service->id,
@@ -4540,6 +4548,7 @@ class PosController extends Controller
                 'addon_items' => collect($item->addon_items_json ?? [])->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                    'cn_name' => $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                     'extra_price' => (float) ($addon['extra_price'] ?? 0),
                     'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
@@ -5207,6 +5216,7 @@ class PosController extends Controller
             ->map(fn ($item) => [
                 'id' => isset($item['id']) ? (int) $item['id'] : null,
                 'name' => (string) ($item['name'] ?? $item['label'] ?? 'Service'),
+                'cn_name' => $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
                 'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
                 'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
                 'linked_booking_service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
@@ -5214,6 +5224,7 @@ class PosController extends Controller
                 'add_ons' => collect($item['addon_items'] ?? [])->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                    'cn_name' => $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
                     'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
                 ])->values()->all(),

@@ -89,6 +89,8 @@ export type PosAppointmentDetail = {
 export type ServiceAddonOption = {
   id: number
   label: string
+  cn_name?: string | null
+  linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
 }

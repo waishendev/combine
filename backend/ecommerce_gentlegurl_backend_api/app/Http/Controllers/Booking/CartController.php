@@ -142,6 +142,7 @@ class CartController extends Controller
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,
+                            'cn_name' => $option->linkedBookingService?->cn_name,
                             'linked_cn_name' => $option->linkedBookingService?->cn_name,
                             'linked_service_type' => $option->linkedBookingService
                                 ? (string) $option->linkedBookingService->service_type
