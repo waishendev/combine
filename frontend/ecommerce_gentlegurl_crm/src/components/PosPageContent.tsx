@@ -784,6 +784,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('cash')
   const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
   const [cashReceived, setCashReceived] = useState('')
+  const [qrProofFile, setQrProofFile] = useState<File | null>(null)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
   const [checkingOut, setCheckingOut] = useState(false)
@@ -3705,6 +3706,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const cashReceivedAmount = Number(cashReceived || 0)
   const checkoutPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(splitPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [splitPaymentAmounts])
   const splitTotalPaid = useMemo(() => checkoutPaymentRows.reduce((sum, row) => sum + row.amount, 0), [checkoutPaymentRows])
+  const hasQrPayAmount = checkoutPaymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
   const splitRemaining = Math.max(0, cartTotal - splitTotalPaid)
   const splitOverpaid = Math.max(0, splitTotalPaid - cartTotal)
   const splitPaymentMatchesTotal = Math.round(splitTotalPaid * 100) === Math.round(cartTotal * 100)
@@ -3772,10 +3774,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           }
         : {}
 
-    const res = await fetch('/api/proxy/pos/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const checkoutPayload = {
         payment_method: checkoutPaymentRows.length === 1 ? (checkoutPaymentRows[0].method === 'credit_card' ? 'billplz_credit_card' : checkoutPaymentRows[0].method) : 'split',
         payments: checkoutPaymentRows,
         member_id: checkoutGuestIsUnknown ? null : (selectedMember?.id ?? null),
@@ -3814,8 +3813,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             share_percent: split.share_percent,
           })),
         })),
-      }),
-    })
+      }
+
+    const checkoutBody = qrProofFile && hasQrPayAmount ? new FormData() : null
+    if (checkoutBody) {
+      checkoutBody.append('payload', JSON.stringify(checkoutPayload))
+      checkoutBody.append('qr_payment_proof', qrProofFile as File)
+    }
+
+    const res = await fetch('/api/proxy/pos/checkout', checkoutBody
+      ? { method: 'POST', body: checkoutBody }
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(checkoutPayload),
+        })
     const json = await res.json()
 
     if (!res.ok) {
@@ -3891,6 +3903,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
+    setQrProofFile(null)
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
     setCheckoutConfirmationOpen(false)
@@ -4189,6 +4202,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     const url = URL.createObjectURL(file)
+    setQrProofFile(file)
     setQrProofFileName(file.name)
     setQrProofPreviewUrl(url)
     event.currentTarget.value = ''
@@ -4198,6 +4212,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
+    setQrProofFile(null)
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
   }
@@ -7312,6 +7327,32 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total.</p>
                 ) : null}
               </div>
+
+              {hasQrPayAmount ? (
+                <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+                  <label className="block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrUploadInputRef.current?.click()}>
+                      Upload
+                    </button>
+                    <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrCameraBackInputRef.current?.click()}>
+                      Back Camera
+                    </button>
+                    <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrCameraFrontInputRef.current?.click()}>
+                      Front Camera
+                    </button>
+                  </div>
+                  <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
+                  <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
+                  {qrProofFileName ? (
+                    <div className="flex items-center justify-between rounded-xl border-2 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-3 shadow-sm">
+                      <p className="truncate pr-2 text-sm font-medium text-green-800">{qrProofFileName}</p>
+                      <button type="button" className="text-sm font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={clearQrProof}>Clear</button>
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
 
               <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-sm overflow-hidden">
                 <label className="flex cursor-pointer items-center gap-3 px-5 py-4 select-none">

@@ -258,6 +258,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentDiscountTypeDraft, setAppointmentDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
   const [appointmentDiscountValueDraft, setAppointmentDiscountValueDraft] = useState('')
   const [appointmentDiscountRemarkDraft, setAppointmentDiscountRemarkDraft] = useState('')
+  const [appointmentQrProofFile, setAppointmentQrProofFile] = useState<File | null>(null)
   const [appointmentQrProofFileName, setAppointmentQrProofFileName] = useState<string | null>(null)
   const [appointmentQrProofPreviewUrl, setAppointmentQrProofPreviewUrl] = useState<string | null>(null)
   const [appointmentSettlementResult, setAppointmentSettlementResult] = useState<null | {
@@ -632,6 +633,12 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentNotes('')
     setCreateAppointmentDepositAmount('0')
     setCreateAppointmentDepositPayments({ cash: '', qrpay: '', credit_card: '' })
+    if (appointmentQrProofPreviewUrl) {
+      URL.revokeObjectURL(appointmentQrProofPreviewUrl)
+    }
+    setAppointmentQrProofFile(null)
+    setAppointmentQrProofFileName(null)
+    setAppointmentQrProofPreviewUrl(null)
     setCreateAppointmentIdentityMode('member')
     setCreateAppointmentCustomerId(null)
     setCreateAppointmentMemberSummary(null)
@@ -645,7 +652,7 @@ export default function PosAppointmentsWorkspace({
     if (!createAppointmentServices.length) {
       void fetchCreateAppointmentServices()
     }
-  }, [appointmentDateFilter, createAppointmentServices.length, currentUser.staff_id, fetchCreateAppointmentServices])
+  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, createAppointmentServices.length, currentUser.staff_id, fetchCreateAppointmentServices])
 
   const closeCreateAppointmentMemberPicker = useCallback(() => {
     setCreateAppointmentMemberPickerOpen(false)
@@ -708,6 +715,7 @@ export default function PosAppointmentsWorkspace({
   const createAppointmentDepositValue = Number(createAppointmentDepositAmount || 0)
   const createAppointmentDepositRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(createAppointmentDepositPayments[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [createAppointmentDepositPayments])
   const createAppointmentDepositPaid = useMemo(() => createAppointmentDepositRows.reduce((sum, row) => sum + row.amount, 0), [createAppointmentDepositRows])
+  const createAppointmentDepositHasQrPay = createAppointmentDepositRows.some((row) => row.method === 'qrpay' && row.amount > 0)
   const createAppointmentDepositMatches = Math.round(createAppointmentDepositPaid * 100) === Math.round(Math.max(0, createAppointmentDepositValue) * 100)
 
   const createAppointmentAllowedStaffs = useMemo(() => {
@@ -842,11 +850,19 @@ export default function PosAppointmentsWorkspace({
         payload.guest_email = guestEmail || null
       }
 
-      const res = await fetch('/api/proxy/pos/appointments', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      const appointmentBody = appointmentQrProofFile && createAppointmentDepositHasQrPay ? new FormData() : null
+      if (appointmentBody) {
+        appointmentBody.append('payload', JSON.stringify(payload))
+        appointmentBody.append('deposit_qr_payment_proof', appointmentQrProofFile as File)
+      }
+
+      const res = await fetch('/api/proxy/pos/appointments', appointmentBody
+        ? { method: 'POST', body: appointmentBody }
+        : {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         setCreateAppointmentError(String(json?.message ?? 'Unable to create appointment.'))
@@ -854,6 +870,12 @@ export default function PosAppointmentsWorkspace({
       }
 
       showMsg(createAppointmentDepositValue > 0 ? 'Appointment created and deposit collected.' : 'Appointment created successfully.', 'success')
+      if (appointmentQrProofPreviewUrl) {
+        URL.revokeObjectURL(appointmentQrProofPreviewUrl)
+      }
+      setAppointmentQrProofFile(null)
+      setAppointmentQrProofFileName(null)
+      setAppointmentQrProofPreviewUrl(null)
       closeCreateAppointmentMemberPicker()
       setCreateAppointmentModalOpen(false)
       await fetchAppointments()
@@ -871,6 +893,9 @@ export default function PosAppointmentsWorkspace({
     }
   }, [
     createAppointmentAssignedStaffId,
+    appointmentQrProofFile,
+    appointmentQrProofPreviewUrl,
+    createAppointmentDepositHasQrPay,
     createAppointmentDepositMatches,
     createAppointmentDepositRows,
     createAppointmentDepositValue,
@@ -1787,6 +1812,7 @@ export default function PosAppointmentsWorkspace({
       URL.revokeObjectURL(appointmentQrProofPreviewUrl)
     }
     const url = URL.createObjectURL(file)
+    setAppointmentQrProofFile(file)
     setAppointmentCheckoutError(null)
     setAppointmentQrProofFileName(file.name)
     setAppointmentQrProofPreviewUrl(url)
@@ -1798,6 +1824,7 @@ export default function PosAppointmentsWorkspace({
       URL.revokeObjectURL(appointmentQrProofPreviewUrl)
     }
     setAppointmentCheckoutError(null)
+    setAppointmentQrProofFile(null)
     setAppointmentQrProofPreviewUrl(null)
     setAppointmentQrProofFileName(null)
   }
@@ -2627,7 +2654,7 @@ export default function PosAppointmentsWorkspace({
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Create Appointment</h3>
-                <p className="mt-0.5 text-xs text-gray-500">Create directly without deposit and without receipt.</p>
+                <p className="mt-0.5 text-xs text-gray-500">Create directly, with optional split deposit collection.</p>
               </div>
               <button
                 type="button"
@@ -2825,7 +2852,7 @@ export default function PosAppointmentsWorkspace({
                                 ),
                               )
                             }}
-                            disabled={createAppointmentSubmitting || (createAppointmentDepositValue > 0 && !createAppointmentDepositMatches)}
+                            disabled={createAppointmentServicesLoading}
                             placeholder="Select main service"
                             searchPlaceholder="Search services…"
                             ariaLabel="Select main service"
@@ -3085,12 +3112,37 @@ export default function PosAppointmentsWorkspace({
                           ))}
                         </div>
                         <div className="flex flex-wrap justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700">
-                          <span>Deposit: RM {createAppointmentDepositValue.toFixed(2)}</span>
+                          <span>Total Deposit: RM {createAppointmentDepositValue.toFixed(2)}</span>
                           <span>Paid: RM {createAppointmentDepositPaid.toFixed(2)}</span>
                           <span className={createAppointmentDepositPaid > createAppointmentDepositValue ? 'text-rose-700' : createAppointmentDepositMatches ? 'text-emerald-700' : 'text-amber-700'}>
                             Remaining: RM {Math.max(0, createAppointmentDepositValue - createAppointmentDepositPaid).toFixed(2)}
                           </span>
                         </div>
+                        {createAppointmentDepositHasQrPay ? (
+                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                            <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                              <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrUploadInputRef.current?.click()}>
+                                Upload
+                              </button>
+                              <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraBackInputRef.current?.click()}>
+                                Back Camera
+                              </button>
+                              <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraFrontInputRef.current?.click()}>
+                                Front Camera
+                              </button>
+                            </div>
+                            <input ref={appointmentQrUploadInputRef} type="file" accept="image/*" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                            <input ref={appointmentQrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                            <input ref={appointmentQrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                            {appointmentQrProofFileName ? (
+                              <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
+                                <p className="truncate pr-2 font-semibold text-emerald-800">{appointmentQrProofFileName}</p>
+                                <button type="button" className="font-semibold text-red-600 hover:text-red-700" onClick={clearAppointmentQrProof}>Clear</button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -3118,7 +3170,7 @@ export default function PosAppointmentsWorkspace({
               <button
                 type="button"
                 onClick={() => void submitCreateAppointment()}
-                disabled={createAppointmentSubmitting}
+                disabled={createAppointmentSubmitting || (createAppointmentDepositValue > 0 && !createAppointmentDepositMatches)}
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {createAppointmentSubmitting ? 'Creating...' : 'Confirm'}

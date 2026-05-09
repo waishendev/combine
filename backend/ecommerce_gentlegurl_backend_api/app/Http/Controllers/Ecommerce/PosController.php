@@ -13,6 +13,7 @@ use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderItemStaffSplit;
 use App\Models\Ecommerce\OrderReceiptToken;
+use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCartAppointmentSettlementItem;
 use App\Models\Ecommerce\PosCartItem;
@@ -1933,6 +1934,8 @@ class PosController extends Controller
      */
     public function createAppointment(Request $request)
     {
+        $this->mergeJsonPayload($request);
+
         $validated = $request->validate([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
@@ -1955,6 +1958,7 @@ class PosController extends Controller
             'deposit_payments' => ['nullable', 'array'],
             'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
+            'deposit_qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -2220,6 +2224,10 @@ class PosController extends Controller
                 'notes' => $validated['notes'] ?? null,
             ]);
 
+            $depositProofPath = $request->hasFile('deposit_qr_payment_proof')
+                ? $request->file('deposit_qr_payment_proof')->store('booking-payment-proofs', 'public')
+                : null;
+
             foreach ($depositPayments as $paymentRow) {
                 BookingPayment::query()->create([
                     'booking_id' => (int) $booking->id,
@@ -2227,10 +2235,11 @@ class PosController extends Controller
                     'ref' => null,
                     'amount' => round((float) $paymentRow['amount'], 2),
                     'status' => 'PAID',
-                    'raw_response' => [
+                    'raw_response' => array_filter([
                         'source' => 'pos_create_appointment_deposit',
                         'payment_method' => (string) $paymentRow['method'],
-                    ],
+                        'proof_path' => (string) $paymentRow['method'] === 'qrpay' ? $depositProofPath : null,
+                    ]),
                 ]);
             }
 
@@ -3156,11 +3165,18 @@ class PosController extends Controller
 
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
     {
+        $this->mergeJsonPayload($request);
+
+        $hasPaymentsPayload = is_array($request->input('payments')) && count((array) $request->input('payments')) > 0;
+
         $validated = $request->validate([
-            'payment_method' => ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+            'payment_method' => $hasPaymentsPayload
+                ? ['nullable', 'string', 'max:50']
+                : ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card'],
             'payments' => ['nullable', 'array'],
             'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
+            'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:32'],
@@ -4107,6 +4123,15 @@ class PosController extends Controller
 
             $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
             $this->replaceOrderPayments($order, $paymentRows, 'pos_checkout');
+            if ($request->hasFile('qr_payment_proof')) {
+                OrderUpload::query()->create([
+                    'order_id' => (int) $order->id,
+                    'type' => 'payment_slip',
+                    'file_path' => $request->file('qr_payment_proof')->store('payment-slips', 'public'),
+                    'note' => 'POS QRPay proof',
+                    'status' => 'approved',
+                ]);
+            }
             $orderPaymentService->handlePaid($order);
 
             $receiptUrl = $this->buildReceiptUrl($order, $request);
@@ -4138,6 +4163,18 @@ class PosController extends Controller
             'receipt_public_url' => $receiptUrl,
             'package_items' => $purchasedPackageLines,
         ]);
+    }
+
+    private function mergeJsonPayload(Request $request): void
+    {
+        if (! $request->filled('payload')) {
+            return;
+        }
+
+        $payload = json_decode((string) $request->input('payload'), true);
+        if (is_array($payload)) {
+            $request->merge($payload);
+        }
     }
 
     private function normalizePosPaymentMethod(string $method): string
