@@ -9,6 +9,7 @@ import { Footer } from "@/components/layout/Footer";
 import { WhatsappButton } from "@/components/layout/WhatsappButton";
 import CursorTrail from "@/components/visual/CursorTrail";
 import { getBookingHomepage } from "@/lib/serverHomepage";
+import { buildMetadataIcons } from "@/lib/pwaIcons";
 
 const heading = Playfair_Display({ subsets: ["latin"], variable: "--font-heading" });
 const body = Inter({ subsets: ["latin"], variable: "--font-body" });
@@ -42,13 +43,8 @@ export async function generateMetadata(): Promise<Metadata> {
       description,
       ...(homepage?.seo?.meta_og_image ? { images: [homepage.seo.meta_og_image] } : {}),
     },
-    ...(homepage?.shop_favicon_url
-      ? {
-          icons: {
-            icon: homepage.shop_favicon_url,
-          },
-        }
-      : {}),
+    manifest: "/manifest.webmanifest",
+    icons: buildMetadataIcons(homepage?.shop_favicon_icons, homepage?.shop_favicon_url ?? "/images/logo.png"),
   };
 }
 

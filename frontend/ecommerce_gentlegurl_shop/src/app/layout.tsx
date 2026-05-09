@@ -12,6 +12,7 @@ import { headers } from "next/headers";
 import { getHomepage } from "@/lib/server/getHomepage";
 import { getUser } from "@/lib/server/getUser";
 import { mapSeoToMetadata } from "@/lib/seo";
+import { buildMetadataIcons } from "@/lib/pwaIcons";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +35,8 @@ export async function generateMetadata(): Promise<Metadata> {
     alternates: {
       canonical: siteUrl,
     },
-    ...(homepage?.shop_favicon_url
-      ? {
-          icons: {
-            icon: homepage.shop_favicon_url,
-          },
-        }
-      : {}),
+    manifest: "/manifest.webmanifest",
+    icons: buildMetadataIcons(homepage?.shop_favicon_icons, homepage?.shop_favicon_url ?? "/images/logo.png"),
     openGraph: {
       ...(baseMetadata.openGraph ?? {}),
       title: resolvedTitle,
