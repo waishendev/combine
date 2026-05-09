@@ -22,6 +22,11 @@ const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }
   { method: 'credit_card', label: 'Credit Card' },
 ]
 
+const toPaymentCents = (value: number | string | null | undefined) => {
+  const numeric = Number(value ?? 0)
+  return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
+}
+
 type CartItem = {
   id: number
   item_type?: 'PRODUCT' | 'BOOKING_PRODUCT'
@@ -783,7 +788,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('cash')
   const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
-  const [cashReceived, setCashReceived] = useState('')
   const [qrProofFile, setQrProofFile] = useState<File | null>(null)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
@@ -3703,14 +3707,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     })
   }, [cart, cartVariantFetched, cartVariantOptions, cartVariantLoading])
 
-  const cashReceivedAmount = Number(cashReceived || 0)
   const checkoutPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(splitPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [splitPaymentAmounts])
   const splitTotalPaid = useMemo(() => checkoutPaymentRows.reduce((sum, row) => sum + row.amount, 0), [checkoutPaymentRows])
-  const hasQrPayAmount = checkoutPaymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
-  const splitRemaining = Math.max(0, cartTotal - splitTotalPaid)
-  const splitOverpaid = Math.max(0, splitTotalPaid - cartTotal)
-  const splitPaymentMatchesTotal = Math.round(splitTotalPaid * 100) === Math.round(cartTotal * 100)
-  const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
+  const splitCashCents = toPaymentCents(splitPaymentAmounts.cash)
+  const splitQrPayCents = toPaymentCents(splitPaymentAmounts.qrpay)
+  const splitCreditCardCents = toPaymentCents(splitPaymentAmounts.credit_card)
+  const splitTotalPaidCents = splitCashCents + splitQrPayCents + splitCreditCardCents
+  const cartTotalCents = toPaymentCents(cartTotal)
+  const splitHasNonCashPayment = splitQrPayCents > 0 || splitCreditCardCents > 0
+  const hasQrPayAmount = splitQrPayCents > 0
+  const splitCashOnlyOverpaid = splitCashCents > cartTotalCents && splitQrPayCents === 0 && splitCreditCardCents === 0
+  const splitMixedOverpaid = splitTotalPaidCents > cartTotalCents && splitHasNonCashPayment
+  const splitRemaining = Math.max(0, (cartTotalCents - splitTotalPaidCents) / 100)
+  const splitOverpaid = Math.max(0, (splitTotalPaidCents - cartTotalCents) / 100)
+  const splitChange = splitCashOnlyOverpaid ? splitOverpaid : 0
+  const splitPaymentMatchesTotal = splitTotalPaidCents === cartTotalCents
+  const splitPaymentValid = checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
 
   const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
   const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart
@@ -3891,7 +3903,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       booking_addon_total: 0,
       booking_deposit_breakdown: undefined,
     })
-    setCashReceived('')
     setCheckoutItemAssignments([])
     setPackageCheckoutSplits({})
     void fetchUnpaidCompletedAppointments(settlementQuery)
@@ -4003,12 +4014,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     }
 
-    if (!splitPaymentMatchesTotal || checkoutPaymentRows.length === 0) {
-      setCheckoutError(splitOverpaid > 0 ? 'Total paid cannot exceed grand total.' : 'Total paid must equal grand total.')
+    if (!splitPaymentValid) {
+      setCheckoutError(splitMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal grand total.')
       return
     }
 
-    await finalizeCheckout({ paid_amount: splitTotalPaid, change_amount: 0 })
+    await finalizeCheckout({ paid_amount: splitTotalPaid, change_amount: splitChange })
   }
 
   const checkout = async () => {
@@ -4534,7 +4545,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
-    if (checkoutPaymentRows.length === 0 || !splitPaymentMatchesTotal) return false
+    if (!splitPaymentValid) return false
 
     if (checkoutRequiresCustomerValidation) {
       if (checkoutRequiresMemberOnly) {
@@ -4550,9 +4561,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     return true
   }, [
-    checkoutPaymentRows.length,
-    splitPaymentMatchesTotal,
-    cartTotal,
+    splitPaymentValid,
     checkingOut,
     checkoutAllowsGuestToggle,
     checkoutIdentityMode,
@@ -4560,7 +4569,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     checkoutRequiresCustomerValidation,
     guestContactIsComplete,
     checkoutGuestIsUnknown,
-    paymentMethod,
     selectedMember?.id,
   ])
 
@@ -7317,14 +7325,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <p className="font-bold text-blue-700">RM {splitTotalPaid.toFixed(2)}</p>
                   </div>
                   <div className="flex justify-between sm:block">
-                    <span className="text-gray-500">Remaining</span>
-                    <p className={`font-bold ${splitOverpaid > 0 ? 'text-red-700' : splitRemaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
-                      {splitOverpaid > 0 ? `Overpaid RM ${splitOverpaid.toFixed(2)}` : `RM ${splitRemaining.toFixed(2)}`}
+                    <span className="text-gray-500">{splitCashOnlyOverpaid ? 'Change' : splitMixedOverpaid ? 'Overpaid' : 'Remaining'}</span>
+                    <p className={`font-bold ${splitMixedOverpaid ? 'text-red-700' : splitRemaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                      {splitCashOnlyOverpaid
+                        ? `RM ${splitChange.toFixed(2)}`
+                        : splitMixedOverpaid
+                          ? `RM ${splitOverpaid.toFixed(2)}`
+                          : `RM ${splitRemaining.toFixed(2)}`}
                     </p>
                   </div>
                 </div>
-                {splitOverpaid > 0 ? (
-                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total.</p>
+                {splitMixedOverpaid ? (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total for split/non-cash payment.</p>
                 ) : null}
               </div>
 
