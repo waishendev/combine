@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic'
 import { redirect } from 'next/navigation'
 
 import PosPageContent from '@/components/PosPageContent'
+import PosCashShiftGate from '@/components/pos/PosCashShiftGate'
 import { getCurrentUser } from '@/lib/auth'
 
 export default async function PosPage() {
@@ -19,14 +20,16 @@ export default async function PosPage() {
 
   return (
     <div className="h-full overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8 xl:px-10">
-      <PosPageContent
-        currentUser={{
-          id: user.id,
-          name: user.name,
-          staff_id: user.staff_id ?? null,
-          staff_name: user.staff_name ?? null,
-        }}
-      />
+      <PosCashShiftGate>
+        <PosPageContent
+          currentUser={{
+            id: user.id,
+            name: user.name,
+            staff_id: user.staff_id ?? null,
+            staff_name: user.staff_name ?? null,
+          }}
+        />
+      </PosCashShiftGate>
     </div>
   )
 }

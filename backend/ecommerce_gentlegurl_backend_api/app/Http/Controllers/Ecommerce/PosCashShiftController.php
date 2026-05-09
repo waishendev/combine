@@ -1,0 +1,171 @@
+<?php
+
+namespace App\Http\Controllers\Ecommerce;
+
+use App\Http\Controllers\Controller;
+use App\Models\Ecommerce\PosCashShift;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
+
+class PosCashShiftController extends Controller
+{
+    public function current(Request $request)
+    {
+        $shift = $this->currentOpenShiftQuery($request)->first();
+
+        return $this->respond([
+            'shift' => $shift ? $this->serializeShift($shift) : null,
+        ]);
+    }
+
+    public function open(Request $request)
+    {
+        $validated = $request->validate([
+            'opening_amount' => ['required', 'numeric', 'min:0'],
+        ]);
+
+        $shift = DB::transaction(function () use ($request, $validated) {
+            $existing = $this->currentOpenShiftQuery($request)->lockForUpdate()->first();
+            if ($existing) {
+                return $existing;
+            }
+
+            return PosCashShift::query()->create([
+                'opening_amount' => round((float) $validated['opening_amount'], 2),
+                'opened_by' => $request->user()?->id,
+                'opened_at' => now(),
+                'status' => PosCashShift::STATUS_OPEN,
+            ]);
+        });
+
+        return $this->respond([
+            'shift' => $this->serializeShift($shift->fresh(['opener', 'closer'])),
+        ], __('Cash shift is open.'));
+    }
+
+    public function close(Request $request)
+    {
+        $validated = $request->validate([
+            'closing_amount' => ['required', 'numeric', 'min:0'],
+            'remark' => ['nullable', 'string'],
+        ]);
+
+        $shift = DB::transaction(function () use ($request, $validated) {
+            $shift = $this->currentOpenShiftQuery($request)->lockForUpdate()->firstOrFail();
+            $shift->closing_amount = round((float) $validated['closing_amount'], 2);
+            $shift->closed_by = $request->user()?->id;
+            $shift->closed_at = now();
+            $shift->status = PosCashShift::STATUS_CLOSED;
+            $shift->remark = $validated['remark'] ?? null;
+            $shift->save();
+
+            return $shift;
+        });
+
+        return $this->respond([
+            'shift' => $this->serializeShift($shift->fresh(['opener', 'closer'])),
+        ], __('Cash shift closed.'));
+    }
+
+    public function report(Request $request)
+    {
+        $validated = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'status' => ['nullable', Rule::in([PosCashShift::STATUS_OPEN, PosCashShift::STATUS_CLOSED])],
+            'user_id' => ['nullable', 'integer'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        $query = PosCashShift::query()
+            ->with(['opener:id,name,email', 'closer:id,name,email'])
+            ->when(! empty($validated['date_from']), fn (Builder $q) => $q->whereDate('opened_at', '>=', $validated['date_from']))
+            ->when(! empty($validated['date_to']), fn (Builder $q) => $q->whereDate('opened_at', '<=', $validated['date_to']))
+            ->when(! empty($validated['status']), fn (Builder $q) => $q->where('status', $validated['status']))
+            ->when(! empty($validated['user_id']), function (Builder $q) use ($validated) {
+                $q->where(function (Builder $inner) use ($validated) {
+                    $inner->where('opened_by', (int) $validated['user_id'])
+                        ->orWhere('closed_by', (int) $validated['user_id']);
+                });
+            })
+            ->orderByDesc('opened_at');
+
+        $paginator = $query->paginate((int) ($validated['per_page'] ?? 20));
+        $paginator->getCollection()->transform(fn (PosCashShift $shift) => $this->serializeShift($shift));
+
+        return $this->respond($paginator);
+    }
+
+    private function currentOpenShiftQuery(Request $request): Builder
+    {
+        return PosCashShift::query()
+            ->with(['opener:id,name,email', 'closer:id,name,email'])
+            ->where('status', PosCashShift::STATUS_OPEN)
+            ->where('opened_by', $request->user()?->id)
+            ->latest('opened_at');
+    }
+
+    private function serializeShift(PosCashShift $shift): array
+    {
+        $cashSales = $this->cashSalesForShift($shift);
+        $openingAmount = (float) $shift->opening_amount;
+        $expectedCash = round($openingAmount + $cashSales, 2);
+        $closingAmount = $shift->closing_amount !== null ? (float) $shift->closing_amount : null;
+
+        return [
+            'id' => (int) $shift->id,
+            'opening_amount' => round($openingAmount, 2),
+            'opened_by' => $shift->opened_by ? (int) $shift->opened_by : null,
+            'opened_by_name' => $shift->opener?->name,
+            'opened_at' => optional($shift->opened_at)?->toDateTimeString(),
+            'closing_amount' => $closingAmount !== null ? round($closingAmount, 2) : null,
+            'closed_by' => $shift->closed_by ? (int) $shift->closed_by : null,
+            'closed_by_name' => $shift->closer?->name,
+            'closed_at' => optional($shift->closed_at)?->toDateTimeString(),
+            'status' => (string) $shift->status,
+            'remark' => $shift->remark,
+            'cash_sales' => round($cashSales, 2),
+            'expected_cash' => $expectedCash,
+            'difference' => $closingAmount !== null ? round($closingAmount - $expectedCash, 2) : null,
+            'created_at' => optional($shift->created_at)?->toDateTimeString(),
+            'updated_at' => optional($shift->updated_at)?->toDateTimeString(),
+        ];
+    }
+
+    private function cashSalesForShift(PosCashShift $shift): float
+    {
+        $start = $shift->opened_at;
+        $end = $shift->closed_at ?? now();
+
+        $cashFromPayments = (float) DB::table('order_payments')
+            ->join('orders', 'orders.id', '=', 'order_payments.order_id')
+            ->where('order_payments.payment_method', 'cash')
+            ->whereBetween('orders.created_at', [$start, $end])
+            ->where(function ($query) {
+                $query->whereIn('orders.pickup_or_shipping', ['pos', 'in_store'])
+                    ->orWhereNotNull('orders.created_by_user_id');
+            })
+            ->when($shift->opened_by, fn ($query) => $query->where('orders.created_by_user_id', $shift->opened_by))
+            ->sum('order_payments.amount');
+
+        $fallbackCash = (float) DB::table('orders')
+            ->where('payment_method', 'cash')
+            ->whereBetween('created_at', [$start, $end])
+            ->where(function ($query) {
+                $query->whereIn('pickup_or_shipping', ['pos', 'in_store'])
+                    ->orWhereNotNull('created_by_user_id');
+            })
+            ->when($shift->opened_by, fn ($query) => $query->where('created_by_user_id', $shift->opened_by))
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('order_payments')
+                    ->whereColumn('order_payments.order_id', 'orders.id');
+            })
+            ->sum('grand_total');
+
+        return round($cashFromPayments + $fallbackCash, 2);
+    }
+}
