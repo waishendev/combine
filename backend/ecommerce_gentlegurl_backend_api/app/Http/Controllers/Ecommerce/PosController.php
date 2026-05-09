@@ -509,6 +509,7 @@ class PosController extends Controller
             'amount_due_now' => (float) $summary['amount_due_now'],
             'add_ons' => $summary['add_ons'],
             'addon_total_duration_min' => (int) $summary['addon_total_duration_min'],
+            'estimated_duration_min' => (int) ($summary['estimated_duration_min'] ?? $this->recalculateAppointmentDurationMin($booking)),
             'addon_total_price' => (float) $summary['addon_total_price'],
             'addon_paid_online' => (float) $summary['addon_paid_online'],
             'addon_paid_settlement' => (float) $summary['addon_paid_settlement'],
@@ -1112,6 +1113,20 @@ class PosController extends Controller
         $booking->addon_price = round((float) $addonRowsForBooking->sum(fn ($item) => max(0, (float) ($item['extra_price'] ?? 0))), 2);
         $booking->addon_duration_min = (int) $addonRowsForBooking->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
 
+        $recalculatedDurationMin = $this->recalculateAppointmentDurationMin($booking);
+        if ($recalculatedDurationMin <= 0) {
+            return $this->respondError(__('Appointment duration is invalid.'), 422);
+        }
+
+        $newEndAt = $booking->start_at
+            ? Carbon::parse($booking->start_at)->addMinutes($recalculatedDurationMin)
+            : null;
+        if (! $newEndAt) {
+            return $this->respondError(__('Appointment start time is required.'), 422);
+        }
+
+        $booking->end_at = $newEndAt;
+
         $normalizedSplits = $this->normalizeBookingStaffSplits(
             collect($validated['staff_splits'] ?? []),
             (int) ($booking->staff_id ?? 0),
@@ -1120,10 +1135,36 @@ class PosController extends Controller
             return $this->respondError((string) $normalizedSplits['error'], 422);
         }
 
-        DB::transaction(function () use ($booking, $normalizedSplits) {
-            $booking->save();
-            $this->persistBookingStaffSplits($booking, collect($normalizedSplits['splits'] ?? []));
-        });
+        try {
+            DB::transaction(function () use ($booking, $normalizedSplits, $recalculatedDurationMin) {
+                $lockedBooking = Booking::query()
+                    ->whereKey((int) $booking->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $startAt = Carbon::parse($lockedBooking->start_at ?? $booking->start_at);
+                $transactionNewEndAt = $startAt->copy()->addMinutes($recalculatedDurationMin);
+                $staffId = (int) ($lockedBooking->staff_id ?? $booking->staff_id ?? 0);
+                $bufferMin = (int) ($lockedBooking->buffer_min ?? $booking->buffer_min ?? 0);
+
+                if (! $this->availabilityService->isWithinStaffAvailability($staffId, $startAt, $transactionNewEndAt)
+                    || $this->availabilityService->hasConflict($staffId, $startAt, $transactionNewEndAt, $bufferMin, (int) $lockedBooking->id)) {
+                    throw ValidationException::withMessages([
+                        'appointment_end_at' => __('This update extends the appointment time and conflicts with another booking or staff availability.'),
+                    ]);
+                }
+
+                $booking->start_at = $lockedBooking->start_at;
+                $booking->end_at = $transactionNewEndAt;
+                $booking->save();
+                $this->persistBookingStaffSplits($booking, collect($normalizedSplits['splits'] ?? []));
+            });
+        } catch (ValidationException $e) {
+            return $this->respondError(
+                (string) (collect($e->errors())->flatten()->first() ?: __('This update extends the appointment time and conflicts with another booking or staff availability.')),
+                409
+            );
+        }
 
         $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
         $booking->load(['service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
@@ -1280,7 +1321,7 @@ class PosController extends Controller
         }
 
         $newStart = Carbon::parse($validated['start_at']);
-        $newEnd = $newStart->copy()->addMinutes((int) $booking->service->duration_min);
+        $newEnd = $newStart->copy()->addMinutes($this->recalculateAppointmentDurationMin($booking));
         if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id)) {
             return $this->respondError(__('Selected slot is not available.'), 409);
         }
@@ -5342,6 +5383,28 @@ class PosController extends Controller
         return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
     }
 
+
+    protected function recalculateAppointmentDurationMin(Booking $booking): int
+    {
+        $baseDurationMin = max(0, (int) ($booking->service?->duration_min ?? 0));
+
+        $settlementItems = collect($booking->addon_items_json ?? []);
+        $extraMainDurationMin = (int) $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
+
+        $topLevelAddonDurationMin = (int) $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
+            ->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
+
+        $nestedAddonDurationMin = (int) $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->sum(fn ($item) => collect($item['addon_items'] ?? [])->sum(fn ($addon) => max(0, (int) ($addon['extra_duration_min'] ?? 0))));
+
+        return $baseDurationMin + $extraMainDurationMin + $topLevelAddonDurationMin + $nestedAddonDurationMin;
+    }
+
     protected function resolveAppointmentSnapshot(Booking $booking): array
     {
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -5696,6 +5759,7 @@ class PosController extends Controller
             'add_ons' => $addonItems->all(),
             'addon_settlement_items' => $addonSettlementItems->all(),
             'addon_total_duration_min' => $addonTotalDurationMin,
+            'estimated_duration_min' => $this->recalculateAppointmentDurationMin($booking),
             'addon_total_price' => round($addonTotalPrice, 2),
             'deposit_contribution' => round($depositPaid, 2),
             'deposit_paid' => round($depositPaid, 2),

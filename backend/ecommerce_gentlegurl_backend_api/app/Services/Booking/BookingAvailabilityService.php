@@ -44,6 +44,10 @@ class BookingAvailabilityService
         $durationMin = (int) $service->duration_min + max(0, $extraDurationMin);
         $bufferMin = (int) $service->buffer_min;
 
+        if ($durationMin <= 0) {
+            return [];
+        }
+
         $slots = [];
         $period = CarbonPeriod::create($startWindow, $stepMin . ' minutes', $endWindow->copy()->subMinutes($durationMin));
 
@@ -154,7 +158,7 @@ class BookingAvailabilityService
         $hasBookingConflict = Booking::where('staff_id', $staffId)
             ->when($ignoreBookingId !== null, fn ($query) => $query->where('id', '!=', $ignoreBookingId))
             ->where(function ($query) {
-                $query->whereIn('status', ['HOLD', 'CONFIRMED'])
+                $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
                     ->orWhere(function ($completed) {
                         $completed->where('status', 'COMPLETED')
                             ->where(function ($payment) {
@@ -203,6 +207,40 @@ class BookingAvailabilityService
             ->where('start_at', '<', $blockEnd)
             ->where('end_at', '>', $startAt)
             ->exists();
+    }
+
+
+    public function isWithinStaffAvailability(int $staffId, Carbon $startAt, Carbon $endAt): bool
+    {
+        if ($staffId <= 0 || $endAt->lessThanOrEqualTo($startAt)) {
+            return false;
+        }
+
+        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $start = $startAt->copy()->setTimezone($timezone);
+        $end = $endAt->copy()->setTimezone($timezone);
+
+        if (! $start->isSameDay($end)) {
+            return false;
+        }
+
+        $schedule = BookingStaffSchedule::where('staff_id', $staffId)
+            ->where('day_of_week', $start->dayOfWeek)
+            ->first();
+
+        if (! $schedule) {
+            return false;
+        }
+
+        $day = $start->copy()->startOfDay();
+        $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time, $timezone);
+        $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time, $timezone);
+
+        if ($start->lt($startWindow) || $end->gt($endWindow)) {
+            return false;
+        }
+
+        return ! $this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $start, $end);
     }
 
     private function hitsBreak(?string $breakStart, ?string $breakEnd, Carbon $day, Carbon $candidateStart, Carbon $candidateEnd): bool

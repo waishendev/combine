@@ -1882,6 +1882,37 @@ export default function PosAppointmentsWorkspace({
     return new Date(start.getTime() + appointmentSettlementDurationMin * 60 * 1000).toISOString()
   }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, appointmentSettlementDurationMin])
 
+  const editSettlementEstimatedDurationMin = useMemo(() => {
+    if (!appointmentDetail) return 0
+    const originalDuration = (appointmentDetail.main_services ?? [])
+      .filter((service) => service.is_original)
+      .reduce((sum, service) => sum + Number(service.extra_duration_min ?? 0), 0)
+    const fallbackOriginalDuration = Number(appointmentDetail.estimated_duration_min ?? 0) > 0
+      ? Number(appointmentDetail.estimated_duration_min ?? 0) - Number(appointmentDetail.addon_total_duration_min ?? 0)
+      : appointmentSettlementDurationMin
+    const baseDuration = originalDuration > 0 ? originalDuration : Math.max(0, fallbackOriginalDuration)
+    const originalAddonDuration = editAddonQuestions
+      .flatMap((question) => question.options)
+      .filter((option) => editSelectedAddonIds.has(option.id))
+      .reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0)
+    const addedBlockDuration = editAddedMainBlocks.reduce((sum, block) => {
+      const blockAddonDuration = block.addon_questions
+        .flatMap((question) => question.options)
+        .filter((option) => block.selected_addon_ids.has(option.id))
+        .reduce((addonSum, option) => addonSum + Number(option.extra_duration_min ?? 0), 0)
+      return sum + Number(block.duration_min ?? 0) + blockAddonDuration
+    }, 0)
+    return Math.max(0, baseDuration + originalAddonDuration + addedBlockDuration)
+  }, [appointmentDetail, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editSelectedAddonIds])
+
+  const editSettlementEstimatedEndAt = useMemo(() => {
+    const startAt = appointmentDetail?.appointment_start_at
+    if (!startAt || editSettlementEstimatedDurationMin <= 0) return appointmentDetail?.appointment_end_at ?? null
+    const start = new Date(startAt)
+    if (Number.isNaN(start.getTime())) return appointmentDetail?.appointment_end_at ?? null
+    return new Date(start.getTime() + editSettlementEstimatedDurationMin * 60 * 1000).toISOString()
+  }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, editSettlementEstimatedDurationMin])
+
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
     [appointmentAddonTotal, appointmentServiceAmount],
@@ -3584,6 +3615,22 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-bold">Estimated duration after save: {editSettlementEstimatedDurationMin > 0 ? `${editSettlementEstimatedDurationMin} min` : '—'}</p>
+                    <p className="text-xs text-amber-800">Backend will validate the updated time range before saving.</p>
+                  </div>
+                  <div className="text-xs font-semibold tabular-nums text-amber-950">
+                    {formatTimeRange(appointmentDetail.appointment_start_at, editSettlementEstimatedEndAt)}
+                  </div>
+                </div>
+                {appointmentDetail.appointment_end_at && editSettlementEstimatedEndAt && new Date(editSettlementEstimatedEndAt).getTime() > new Date(appointmentDetail.appointment_end_at).getTime() ? (
+                  <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900">
+                    This settlement extends the appointment. Save will be blocked if the new end time conflicts with another booking or staff availability.
+                  </p>
+                ) : null}
+              </div>
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
               {appointmentDetail.is_range_priced ? (

@@ -65,6 +65,7 @@ export type PosAppointmentDetail = {
   requires_settled_amount?: boolean
   add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
   addon_total_duration_min?: number
+  estimated_duration_min?: number
   addon_total_price?: number
   addon_paid_online?: number
   addon_paid_settlement?: number
