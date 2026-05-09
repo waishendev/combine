@@ -9,6 +9,14 @@ function formatPaymentMethod(method?: string) {
   return method || '-';
 }
 
+type ReceiptPayment = {
+  method?: string | null
+  payment_method?: string | null
+  amount?: number | string | null
+  reference_no?: string | null
+  reference?: string | null
+}
+
 type ReceiptItem = {
   type?: 'product' | 'booking_deposit' | 'booking_settlement' | 'service_package' | string
   sku?: string
@@ -38,7 +46,7 @@ type ReceiptData = {
   status?: string
   payment_status?: string
   payment_method?: string
-  payments?: Array<{ method: string; amount: number; reference_no?: string | null }>
+  payments?: ReceiptPayment[] | null
   created_at?: string
   subtotal: number
   discount_total?: number
@@ -94,6 +102,18 @@ function ReceiptItemNameStack({ name, cnName }: { name: string; cnName?: string 
   )
 }
 
+function normalizeReceiptPayments(payments: ReceiptData['payments']) {
+  if (!Array.isArray(payments)) return []
+  return payments
+    .map((payment, index) => {
+      const method = String(payment?.method ?? payment?.payment_method ?? '').trim()
+      const amount = Number(payment?.amount ?? 0)
+      const reference = String(payment?.reference_no ?? payment?.reference ?? '').trim()
+      return { method, amount, reference, key: `${method || 'payment'}-${amount}-${reference || index}` }
+    })
+    .filter((payment) => payment.method && Number.isFinite(payment.amount) && payment.amount > 0)
+}
+
 function formatDate(value?: string) {
   if (!value) return '-'
   const date = new Date(value)
@@ -118,6 +138,7 @@ export default async function PublicReceiptPage({ params }: Props) {
 
   const isPaid = (receipt.payment_status ?? '').toLowerCase() === 'paid'
   const docTitle = isPaid ? 'RECEIPT' : 'INVOICE'
+  const receiptPayments = normalizeReceiptPayments(receipt.payments)
   const isPackageCoveredReceipt = Boolean(receipt.package_coverage?.covered)
   const packageCoveredItems = isPackageCoveredReceipt
     ? (receipt.service_items ?? [])
@@ -150,7 +171,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               </tr>
               <tr>
                 <td className="pr-4 text-gray-500 md:pr-8">Payment Method</td>
-                <td className="font-semibold">{receipt.payments?.length ? receipt.payments.map((p) => <div key={`${p.method}-${p.amount}`}>{formatPaymentMethod(p.method)} RM {Number(p.amount).toFixed(2)}</div>) : (receipt.payment_method || '-')}</td>
+                <td className="font-semibold">{receiptPayments.length ? receiptPayments.map((payment) => <div key={payment.key}>{formatPaymentMethod(payment.method)} RM {payment.amount.toFixed(2)}{payment.reference ? <span className="font-normal text-gray-500"> ({payment.reference})</span> : null}</div>) : formatPaymentMethod(receipt.payment_method)}</td>
               </tr>
               <tr>
                 <td className="pr-4 text-gray-500 md:pr-8">Payment Status</td>

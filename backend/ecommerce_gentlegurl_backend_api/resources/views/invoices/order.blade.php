@@ -335,8 +335,6 @@
     }
   }
 
-  $paymentRows = $order->payments ?? collect();
-  $paymentMethodRaw = $order->payment_method ?? '';
   $paymentMethodMap = [
     'manual_transfer' => 'Manual Transfer',
     'billplz' => 'Billplz',
@@ -346,11 +344,18 @@
     'billplz_credit_card' => 'Credit Card',
     'split' => 'Split',
   ];
-  $paymentMethodLabel = $paymentMethodMap[$paymentMethodRaw] ?? ($paymentMethodRaw ?: '-');
-  $paymentMethodDisplay = $paymentMethodLabel;
-  if ($paymentMethodRaw && $paymentMethodLabel !== $paymentMethodRaw) {
-    $paymentMethodDisplay ;
-  }
+  $paymentRows = collect($order->payments ?? [])
+    ->map(function ($payment) {
+      return [
+        'method' => data_get($payment, 'payment_method') ?: data_get($payment, 'method'),
+        'amount' => (float) data_get($payment, 'amount', 0),
+        'reference_no' => data_get($payment, 'reference_no') ?: data_get($payment, 'reference'),
+      ];
+    })
+    ->filter(fn ($payment) => trim((string) ($payment['method'] ?? '')) !== '' && (float) ($payment['amount'] ?? 0) > 0)
+    ->values();
+  $paymentMethodRaw = (string) ($order->payment_method ?? '');
+  $paymentMethodDisplay = $paymentMethodMap[$paymentMethodRaw] ?? ($paymentMethodRaw ?: '-');
 
   // ✅ Business-grade logic: Paid => RECEIPT, Unpaid => INVOICE
   $isPaid = (bool) $order->paid_at;
@@ -439,10 +444,15 @@
               <tr>
                 <td>Payment Method</td>
                 <td>
-                  @if($paymentRows->count() > 0)
+                  @if($paymentRows->isNotEmpty())
                     @foreach($paymentRows as $payment)
-                      @php($pm = $paymentMethodMap[$payment->payment_method] ?? $payment->payment_method)
-                      <div>{{ $pm }} RM {{ number_format((float) $payment->amount, 2) }}</div>
+                      @php($pm = $paymentMethodMap[$payment['method']] ?? $payment['method'])
+                      <div>
+                        {{ $pm }} {{ $currency }} {{ number_format((float) $payment['amount'], 2) }}
+                        @if(!empty($payment['reference_no']))
+                          <span class="muted small">({{ $payment['reference_no'] }})</span>
+                        @endif
+                      </div>
                     @endforeach
                   @else
                     {{ $paymentMethodDisplay }}
