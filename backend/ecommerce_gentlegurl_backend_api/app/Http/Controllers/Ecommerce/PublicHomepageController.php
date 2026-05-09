@@ -215,7 +215,9 @@ class PublicHomepageController extends Controller
                 'shop_logo_path' => null,
                 'crm_logo_path' => null,
                 'shop_favicon_path' => null,
+                'shop_favicon_icons' => [],
                 'crm_favicon_path' => null,
+                'crm_favicon_icons' => [],
             ], $type);
 
             return [
@@ -232,6 +234,7 @@ class PublicHomepageController extends Controller
                 'settings' => $settings,
                 'shop_logo_url' => $this->resolveLogoUrl($branding['shop_logo_path'] ?? null),
                 'shop_favicon_url' => $this->resolveLogoUrl($branding['shop_favicon_path'] ?? null),
+                'shop_favicon_icons' => $this->resolveIconUrls($branding['shop_favicon_icons'] ?? []),
                 'payment_gateways' => $paymentGateways,
             ];
         });
@@ -278,6 +281,26 @@ class PublicHomepageController extends Controller
         }
 
         return \Illuminate\Support\Facades\Storage::disk('public')->url($normalizedPath);
+    }
+
+
+    protected function resolveIconUrls(mixed $icons): array
+    {
+        if (! is_array($icons)) {
+            return [];
+        }
+
+        $resolved = [];
+        foreach ($icons as $size => $path) {
+            if (is_string($path)) {
+                $url = $this->resolveLogoUrl($path);
+                if ($url) {
+                    $resolved[(string) $size] = $url;
+                }
+            }
+        }
+
+        return $resolved;
     }
 
     protected function defaultShopContactWidget(): array

@@ -38,6 +38,7 @@ export type HomepageAnnouncement = {
 export type HomepageData = {
   shop_logo_url?: string | null;
   shop_favicon_url?: string | null;
+  shop_favicon_icons?: Record<string, string | null> | null;
   seo?: {
     meta_title?: string | null;
     meta_description?: string | null;

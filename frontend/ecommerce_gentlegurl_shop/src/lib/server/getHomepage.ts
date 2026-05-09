@@ -164,6 +164,7 @@ export type HomepageData = {
   services_menu?: HomepageServicesMenuItem[];
   shop_logo_url?: string | null;
   shop_favicon_url?: string | null;
+  shop_favicon_icons?: Record<string, string | null> | null;
   new_products: HomepageProduct[];
   best_sellers: HomepageProduct[];
   featured_products: HomepageProduct[];
