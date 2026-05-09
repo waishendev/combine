@@ -10,6 +10,19 @@ import type { LangCode } from '@/lib/i18n'
 
 export const dynamic = 'force-dynamic'
 
+function sanitizeProductListReturn(raw: unknown): string {
+  const fallback = '/product'
+  if (typeof raw !== 'string' || !raw.trim()) return fallback
+  try {
+    const decoded = decodeURIComponent(raw.trim())
+    if (!decoded.startsWith('/') || decoded.includes('://') || decoded.startsWith('//')) return fallback
+    if (!decoded.startsWith('/product')) return fallback
+    return decoded
+  } catch {
+    return fallback
+  }
+}
+
 async function getProduct(id: string) {
   try {
     const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL
@@ -52,7 +65,13 @@ async function getProduct(id: string) {
   }
 }
 
-export default async function ProductEditPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProductEditPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>
+}) {
   const user = await getCurrentUser()
 
   if (!user) {
@@ -63,6 +82,11 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
   if (!canUpdate) {
     redirect('/product')
   }
+
+  const sp = await searchParams
+  const returnRaw = sp.return
+  const returnQuery = Array.isArray(returnRaw) ? returnRaw[0] : returnRaw
+  const listReturnPath = sanitizeProductListReturn(returnQuery)
 
   const resolvedParams = await params
   const product = await getProduct(resolvedParams.id)
@@ -79,7 +103,7 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
       <div className="text-xs mb-4">
         <span className="text-gray-500">{t('sidebar.admin.management')}</span>
         <span className="mx-1 text-gray-500">/</span>
-        <Link href="/product" className="text-blue-600 hover:underline">
+        <Link href={listReturnPath} className="text-blue-600 hover:underline">
           {t('sidebar.admin.products')}
         </Link>
         <span className="mx-1 text-gray-500">/</span>
@@ -90,7 +114,7 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
       <div className="mb-6">
         <div className="flex items-center gap-4 mb-2">
           <Link
-            href="/product"
+            href={listReturnPath}
             className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
           >
             <i className="fa-solid fa-arrow-left" />
@@ -113,7 +137,7 @@ export default async function ProductEditPage({ params }: { params: Promise<{ id
         <ProductForm
           mode="edit"
           product={product}
-          redirectPath="/product"
+          redirectPath={listReturnPath}
           showBundles
         />
       </div>

@@ -24,11 +24,39 @@ class ProductController extends Controller
         $perPage = $request->integer('per_page', 15);
 
         $products = Product::with(['categories', 'images', 'video', 'variants'])
+            ->when($request->filled('search'), function ($query) use ($request) {
+                $term = trim((string) $request->get('search'));
+                if ($term === '') {
+                    return;
+                }
+                $pattern = $this->likeContainsPattern($term);
+                $query->where(function ($q) use ($pattern) {
+                    $q->where('name', 'like', $pattern)
+                        ->orWhere('sku', 'like', $pattern)
+                        ->orWhereHas('variants', function ($vq) use ($pattern) {
+                            $vq->where('sku', 'like', $pattern);
+                        });
+                });
+            })
             ->when($request->filled('name'), function ($query) use ($request) {
-                $query->where('name', 'like', '%' . $request->get('name') . '%');
+                $term = trim((string) $request->get('name'));
+                if ($term === '') {
+                    return;
+                }
+                $query->where('name', 'like', $this->likeContainsPattern($term));
             })
             ->when($request->filled('sku'), function ($query) use ($request) {
-                $query->where('sku', 'like', '%' . $request->get('sku') . '%');
+                $term = trim((string) $request->get('sku'));
+                if ($term === '') {
+                    return;
+                }
+                $pattern = $this->likeContainsPattern($term);
+                $query->where(function ($q) use ($pattern) {
+                    $q->where('sku', 'like', $pattern)
+                        ->orWhereHas('variants', function ($vq) use ($pattern) {
+                            $vq->where('sku', 'like', $pattern);
+                        });
+                });
             })
             ->when($request->filled('category_id'), function ($query) use ($request) {
                 $query->whereHas('categories', function ($q) use ($request) {
@@ -1263,5 +1291,15 @@ class ProductController extends Controller
                 ])->status(422);
             }
         }
+    }
+
+    /**
+     * Build a SQL LIKE pattern for "contains" matching; escapes \, %, and _ in user input.
+     */
+    protected function likeContainsPattern(string $term): string
+    {
+        $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], trim($term));
+
+        return '%' . $escaped . '%';
     }
 }

@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n'
 
 interface Props {
   inputs: ProductFilterValues
+  categories: Array<{ id: number; name: string }>
   onChange: (values: ProductFilterValues) => void
   onSubmit: (values: ProductFilterValues) => void
   onReset: () => void
@@ -18,6 +19,7 @@ interface Props {
 
 export default function ProductFiltersWrapper({
   inputs,
+  categories,
   onChange,
   onSubmit,
   onReset,
@@ -54,6 +56,7 @@ export default function ProductFiltersWrapper({
         <div className="p-5">
           <ProductFilters
             values={inputs}
+            categories={categories}
             onChange={onChange}
             onSubmit={handleSubmit}
             onReset={handleReset}

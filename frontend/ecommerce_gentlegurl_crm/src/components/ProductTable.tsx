@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { usePathname, useRouter, useSearchParams, type ReadonlyURLSearchParams } from 'next/navigation'
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import TableEmptyState from './TableEmptyState'
@@ -62,6 +62,67 @@ type ImportSummary = {
   failedRows?: Array<{ row: number; reason: string }>
 }
 
+const DEFAULT_PRODUCT_PAGE_SIZE = 50
+
+function parsePageFromSearchParams(sp: ReadonlyURLSearchParams): number {
+  const n = Number(sp.get('page'))
+  if (!Number.isFinite(n) || n < 1) return 1
+  return Math.floor(n)
+}
+
+function parsePerPageFromSearchParams(sp: ReadonlyURLSearchParams): number {
+  const n = Number(sp.get('per_page'))
+  if (!Number.isFinite(n) || n < 1 || n > 200) return DEFAULT_PRODUCT_PAGE_SIZE
+  return Math.floor(n)
+}
+
+function parseFiltersFromSearchParams(sp: ReadonlyURLSearchParams): ProductFilterValues {
+  const st = sp.get('status')
+  return {
+    name: sp.get('name') ?? '',
+    sku: sp.get('sku') ?? '',
+    category_id: sp.get('category_id') ?? '',
+    status: st === 'active' || st === 'inactive' ? st : '',
+  }
+}
+
+function filtersEqual(a: ProductFilterValues, b: ProductFilterValues): boolean {
+  return (
+    a.name.trim() === b.name.trim() &&
+    a.sku.trim() === b.sku.trim() &&
+    a.category_id === b.category_id &&
+    a.status === b.status
+  )
+}
+
+function buildProductListSearchString(args: {
+  currentPage: number
+  pageSize: number
+  filters: ProductFilterValues
+}): string {
+  const qs = new URLSearchParams()
+  if (args.currentPage > 1) qs.set('page', String(args.currentPage))
+  if (args.pageSize !== DEFAULT_PRODUCT_PAGE_SIZE) qs.set('per_page', String(args.pageSize))
+  if (args.filters.name.trim()) qs.set('name', args.filters.name.trim())
+  if (args.filters.sku.trim()) qs.set('sku', args.filters.sku.trim())
+  if (args.filters.category_id) qs.set('category_id', args.filters.category_id)
+  if (args.filters.status) qs.set('status', args.filters.status)
+  return qs.toString()
+}
+
+function listStateMatchesSearchParams(
+  currentPage: number,
+  pageSize: number,
+  filters: ProductFilterValues,
+  sp: ReadonlyURLSearchParams,
+): boolean {
+  return (
+    parsePageFromSearchParams(sp) === currentPage &&
+    parsePerPageFromSearchParams(sp) === pageSize &&
+    filtersEqual(parseFiltersFromSearchParams(sp), filters)
+  )
+}
+
 export default function ProductTable({
   permissions,
   basePath = '/product',
@@ -69,12 +130,17 @@ export default function ProductTable({
   showCategories = true,
 }: ProductTableProps) {
   const { t } = useI18n()
+  const router = useRouter()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
-  const [inputs, setInputs] = useState<ProductFilterValues>({ ...emptyProductFilters })
-  const [filters, setFilters] = useState<ProductFilterValues>({ ...emptyProductFilters })
+  const [inputs, setInputs] = useState(() => parseFiltersFromSearchParams(searchParams))
+  const [filters, setFilters] = useState(() => parseFiltersFromSearchParams(searchParams))
   const [rows, setRows] = useState<ProductRowData[]>([])
-  const [pageSize, setPageSize] = useState(50)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [categoryOptions, setCategoryOptions] = useState<Array<{ id: number; name: string }>>([])
+  const [pageSize, setPageSize] = useState(() => parsePerPageFromSearchParams(searchParams))
+  const [currentPage, setCurrentPage] = useState(() => parsePageFromSearchParams(searchParams))
   const [sortColumn, setSortColumn] = useState<keyof ProductRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
@@ -97,11 +163,86 @@ export default function ProductTable({
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
-  const router = useRouter()
+  const returnListPath = useMemo(() => {
+    const qs = buildProductListSearchString({ currentPage, pageSize, filters })
+    return qs ? `${basePath}?${qs}` : basePath
+  }, [basePath, currentPage, pageSize, filters])
+
+  useEffect(() => {
+    if (listStateMatchesSearchParams(currentPage, pageSize, filters, searchParams)) {
+      return
+    }
+    const qs = buildProductListSearchString({ currentPage, pageSize, filters })
+    const url = qs ? `${pathname}?${qs}` : pathname
+    router.replace(url, { scroll: false })
+  }, [currentPage, pageSize, filters, pathname, router, searchParams])
+
+  useEffect(() => {
+    const p = parsePageFromSearchParams(searchParams)
+    const ps = parsePerPageFromSearchParams(searchParams)
+    const f = parseFiltersFromSearchParams(searchParams)
+    setCurrentPage((prev) => (prev !== p ? p : prev))
+    setPageSize((prev) => (prev !== ps ? ps : prev))
+    setFilters((prev) => (filtersEqual(prev, f) ? prev : f))
+  }, [searchParams])
+
   const canCreate = permissions.includes('ecommerce.products.create')
   const canUpdate = permissions.includes('ecommerce.products.update')
   const canDelete = permissions.includes('ecommerce.products.delete')
   const showActions = canUpdate || canDelete
+
+  const fetchCategories = useCallback(async (signal?: AbortSignal) => {
+    const collectCategoryRows = (nodes: unknown[], depth: number): Array<{ id: number; name: string }> => {
+      const rows: Array<{ id: number; name: string }> = []
+      for (const raw of nodes) {
+        const record = raw as {
+          id?: number | string
+          name?: string | null
+          children?: unknown[]
+        }
+        const id = typeof record.id === 'number' ? record.id : Number(record.id) || 0
+        const baseName = typeof record.name === 'string' ? record.name : ''
+        if (id > 0 && baseName) {
+          const label = depth > 0 ? `${'\u2014 '.repeat(depth)}${baseName}` : baseName
+          rows.push({ id, name: label })
+        }
+        if (Array.isArray(record.children) && record.children.length > 0) {
+          rows.push(...collectCategoryRows(record.children, depth + 1))
+        }
+      }
+      return rows
+    }
+
+    try {
+      const qs = new URLSearchParams()
+      qs.set('page', '1')
+      qs.set('per_page', '1000')
+      const res = await fetch(`/api/proxy/ecommerce/categories?${qs.toString()}`, {
+        cache: 'no-store',
+        signal,
+      })
+      if (!res.ok) return
+      const json = await res.json().catch(() => null)
+      const payload = json?.data
+      const items = Array.isArray(payload?.data)
+        ? payload.data
+        : Array.isArray(payload)
+          ? payload
+          : []
+
+      const flat = collectCategoryRows(items, 0)
+      const seen = new Set<number>()
+      const deduped = flat.filter((item) => {
+        if (seen.has(item.id)) return false
+        seen.add(item.id)
+        return true
+      })
+
+      setCategoryOptions(deduped)
+    } catch (error) {
+      // ignore
+    }
+  }, [])
 
   const fetchProducts = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
@@ -109,8 +250,9 @@ export default function ProductTable({
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
-      if (filters.search) qs.set('name', filters.search)
-      if (filters.sku) qs.set('sku', filters.sku)
+      if (filters.name.trim()) qs.set('name', filters.name.trim())
+      if (filters.sku.trim()) qs.set('sku', filters.sku.trim())
+      if (filters.category_id) qs.set('category_id', filters.category_id)
       if (filters.status) {
         qs.set('is_active', filters.status === 'active' ? 'true' : 'false')
       }
@@ -260,6 +402,12 @@ export default function ProductTable({
       }
     }
   }
+
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchCategories(controller.signal)
+    return () => controller.abort()
+  }, [fetchCategories])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -619,6 +767,7 @@ export default function ProductTable({
       {isFilterModalOpen && (
         <ProductFiltersWrapper
           inputs={inputs}
+          categories={categoryOptions}
           onChange={handleFilterChange}
           onSubmit={handleFilterSubmit}
           onReset={handleFilterReset}
@@ -1007,7 +1156,8 @@ export default function ProductTable({
                   onToggleSelect={handleToggleSelect}
                   onEdit={() => {
                     if (canUpdate) {
-                      router.push(`${basePath}/${product.id}/edit`)
+                      const ret = encodeURIComponent(returnListPath)
+                      router.push(`${basePath}/${product.id}/edit?return=${ret}`)
                     }
                   }}
                   onDelete={() => {

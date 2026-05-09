@@ -2,6 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { Suspense } from 'react'
 
 import ProductTable from '@/components/ProductTable'
 import { getCurrentUser } from '@/lib/auth'
@@ -39,7 +40,9 @@ export default async function ProductPage() {
         </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">{t('product.title')}</h2>
-      <ProductTable permissions={user.permissions} />
+      <Suspense fallback={<div className="text-sm text-gray-500 py-4">Loading…</div>}>
+        <ProductTable permissions={user.permissions} />
+      </Suspense>
     </div>
   )
 }
