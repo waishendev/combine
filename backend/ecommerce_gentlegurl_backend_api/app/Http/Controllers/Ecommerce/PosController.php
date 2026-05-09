@@ -604,8 +604,17 @@ class PosController extends Controller
 
     public function collectAppointmentPayment(Request $request, int $id)
     {
+        $this->mergeJsonPayload($request);
+        $hasPaymentsPayload = is_array($request->input('payments')) && count((array) $request->input('payments')) > 0;
+
         $validated = $request->validate([
-            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card'],
+            'payment_method' => $hasPaymentsPayload
+                ? ['nullable', 'string', 'max:50']
+                : ['required', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
+            'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'discount_type' => ['nullable', 'in:percentage,fixed'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'discount_remark' => ['nullable', 'string', 'max:255'],
@@ -656,8 +665,9 @@ class PosController extends Controller
         if ($amount <= 0) {
             return $this->respondError(__('Payment amount must be greater than 0.'), 422);
         }
+        $paymentRows = $this->resolveOrderPaymentRows($validated, $amount);
 
-        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $discountType, $discountValue, $discountRemark, $totalDiscount, $balanceDue) {
+        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $discountType, $discountValue, $discountRemark, $totalDiscount, $balanceDue, $paymentRows) {
             $serviceBalanceDue = max(0, (float) ($summary['service_balance_due'] ?? 0));
             $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
             $lineGrossAmounts = collect();
@@ -696,7 +706,7 @@ class PosController extends Controller
                 'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
-                'payment_method' => $validated['payment_method'],
+                'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
                 'payment_provider' => 'manual',
                 'subtotal' => $balanceDue,
                 'discount_total' => $totalDiscount,
@@ -762,6 +772,17 @@ class PosController extends Controller
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
                     'booking_service_id' => (int) $booking->service_id,
+                ]);
+            }
+
+            $this->replaceOrderPayments($order, $paymentRows, 'pos_appointment_settlement');
+            if ($request->hasFile('qr_payment_proof')) {
+                OrderUpload::query()->create([
+                    'order_id' => (int) $order->id,
+                    'type' => 'payment_slip',
+                    'file_path' => $request->file('qr_payment_proof')->store('payment-slips', 'public'),
+                    'note' => 'POS appointment QRPay proof',
+                    'status' => 'approved',
                 ]);
             }
 

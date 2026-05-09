@@ -225,7 +225,6 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
   const [createAppointmentSlotsLoading, setCreateAppointmentSlotsLoading] = useState(false)
   const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
-  const [createAppointmentDepositAmount, setCreateAppointmentDepositAmount] = useState('0')
   const [createAppointmentDepositPayments, setCreateAppointmentDepositPayments] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
   const [createAppointmentQuestions, setCreateAppointmentQuestions] = useState<ServiceAddonQuestion[]>([])
   const [createAppointmentSelectedOptionIds, setCreateAppointmentSelectedOptionIds] = useState<number[]>([])
@@ -251,10 +250,10 @@ export default function PosAppointmentsWorkspace({
   )
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
-  const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay'>('cash')
+  const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay' | 'credit_card' | 'split'>('cash')
+  const [appointmentSettlementPaymentAmounts, setAppointmentSettlementPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
   const [appointmentCheckoutConfirmationOpen, setAppointmentCheckoutConfirmationOpen] = useState(false)
   const [appointmentCheckoutError, setAppointmentCheckoutError] = useState<string | null>(null)
-  const [appointmentCashReceived, setAppointmentCashReceived] = useState('')
   const [appointmentDiscountTypeDraft, setAppointmentDiscountTypeDraft] = useState<'percentage' | 'fixed'>('fixed')
   const [appointmentDiscountValueDraft, setAppointmentDiscountValueDraft] = useState('')
   const [appointmentDiscountRemarkDraft, setAppointmentDiscountRemarkDraft] = useState('')
@@ -265,7 +264,7 @@ export default function PosAppointmentsWorkspace({
     order_id: number
     order_number: string
     receipt_public_url: string | null
-    payment_method: 'cash' | 'qrpay'
+    payment_method: 'cash' | 'qrpay' | 'credit_card' | 'split'
     paid_amount: number
     cash_received: number
     change_amount: number
@@ -631,7 +630,6 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentSlotValue('')
     setCreateAppointmentSlots([])
     setCreateAppointmentNotes('')
-    setCreateAppointmentDepositAmount('0')
     setCreateAppointmentDepositPayments({ cash: '', qrpay: '', credit_card: '' })
     if (appointmentQrProofPreviewUrl) {
       URL.revokeObjectURL(appointmentQrProofPreviewUrl)
@@ -712,11 +710,10 @@ export default function PosAppointmentsWorkspace({
       return acc
     }, { baseDuration: 0, addonDuration: 0, basePrice: 0, addonPrice: 0 })
   }, [createAppointmentExtraServiceBlocks])
-  const createAppointmentDepositValue = Number(createAppointmentDepositAmount || 0)
   const createAppointmentDepositRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(createAppointmentDepositPayments[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [createAppointmentDepositPayments])
-  const createAppointmentDepositPaid = useMemo(() => createAppointmentDepositRows.reduce((sum, row) => sum + row.amount, 0), [createAppointmentDepositRows])
+  const createAppointmentDepositValue = useMemo(() => createAppointmentDepositRows.reduce((sum, row) => sum + row.amount, 0), [createAppointmentDepositRows])
+  const createAppointmentDepositPaid = createAppointmentDepositValue
   const createAppointmentDepositHasQrPay = createAppointmentDepositRows.some((row) => row.method === 'qrpay' && row.amount > 0)
-  const createAppointmentDepositMatches = Math.round(createAppointmentDepositPaid * 100) === Math.round(Math.max(0, createAppointmentDepositValue) * 100)
 
   const createAppointmentAllowedStaffs = useMemo(() => {
     if (!createAppointmentServiceDraft) return []
@@ -809,11 +806,6 @@ export default function PosAppointmentsWorkspace({
       }
     }
 
-    if (createAppointmentDepositValue > 0 && (!createAppointmentDepositRows.length || !createAppointmentDepositMatches)) {
-      setCreateAppointmentError('Deposit payments must equal the deposit amount.')
-      return
-    }
-
     setCreateAppointmentSubmitting(true)
     setCreateAppointmentError(null)
     try {
@@ -896,7 +888,6 @@ export default function PosAppointmentsWorkspace({
     appointmentQrProofFile,
     appointmentQrProofPreviewUrl,
     createAppointmentDepositHasQrPay,
-    createAppointmentDepositMatches,
     createAppointmentDepositRows,
     createAppointmentDepositValue,
     createAppointmentCustomerId,
@@ -924,7 +915,8 @@ export default function PosAppointmentsWorkspace({
       setAppointmentSettlementResult(null)
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentPaymentMethod('cash')
-      setAppointmentCashReceived('')
+      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
+      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -1073,11 +1065,17 @@ export default function PosAppointmentsWorkspace({
         ? Math.min(grossDueAmount, (grossDueAmount * discountDraftValue) / 100)
         : Math.min(grossDueAmount, discountDraftValue)
     const dueAmount = Math.max(0, grossDueAmount - discountAmount)
-    const cashReceivedAmount = Number(appointmentCashReceived || 0)
     const settlementPaidSnapshot = Number(appointmentDetail?.settlement_paid ?? 0)
     const packageStatusSnapshot = String(appointmentDetail?.package_status?.status ?? '').toLowerCase()
     const isZeroPackageFinalize =
       packageStatusSnapshot === 'reserved' && settlementPaidSnapshot <= 0.0001 && dueAmount <= 0.0001
+    const paymentRows = isZeroPackageFinalize
+      ? []
+      : SPLIT_PAYMENT_METHODS
+          .map(({ method }) => ({ method, amount: Number(appointmentSettlementPaymentAmounts[method] || 0) }))
+          .filter((row) => Number.isFinite(row.amount) && row.amount > 0)
+    const settlementTotalPaid = paymentRows.reduce((sum, row) => sum + row.amount, 0)
+    const settlementHasQrPay = paymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
 
     if (!isZeroPackageFinalize && dueAmount <= 0) {
       setAppointmentCheckoutError('No balance due for this appointment.')
@@ -1085,11 +1083,11 @@ export default function PosAppointmentsWorkspace({
     }
 
     if (!isZeroPackageFinalize) {
-      if (appointmentPaymentMethod === 'cash') {
-        if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < dueAmount) {
-          setAppointmentCheckoutError('Cash received must be equal to or greater than the settlement amount.')
-          return
-        }
+      const paidCents = Math.round(settlementTotalPaid * 100)
+      const dueCents = Math.round(dueAmount * 100)
+      if (paymentRows.length === 0 || paidCents !== dueCents) {
+        setAppointmentCheckoutError(paidCents > dueCents ? 'Total paid cannot exceed the amount due.' : 'Total paid must equal the amount due.')
+        return
       }
     }
 
@@ -1097,7 +1095,8 @@ export default function PosAppointmentsWorkspace({
     setAppointmentActionLoading(true)
     try {
       const payload = {
-        payment_method: appointmentPaymentMethod,
+        payment_method: paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod),
+        payments: paymentRows,
         discount_type: discountDraftValue > 0 ? appointmentDiscountTypeDraft : null,
         discount_value: discountDraftValue > 0 ? discountDraftValue : 0,
         discount_remark: discountDraftValue > 0 ? appointmentDiscountRemarkDraft.trim() || null : null,
@@ -1107,11 +1106,19 @@ export default function PosAppointmentsWorkspace({
         ? `/api/proxy/pos/appointments/${appointmentDetail.id}/finalize-zero-settlement`
         : `/api/proxy/pos/appointments/${appointmentDetail.id}/collect-payment`
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
+      const settlementBody = appointmentQrProofFile && settlementHasQrPay ? new FormData() : null
+      if (settlementBody) {
+        settlementBody.append('payload', JSON.stringify(payload))
+        settlementBody.append('qr_payment_proof', appointmentQrProofFile as File)
+      }
+
+      const res = await fetch(endpoint, settlementBody
+        ? { method: 'POST', body: settlementBody }
+        : {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         setAppointmentCheckoutError(String(json?.message ?? 'Unable to collect payment.'))
@@ -1125,22 +1132,17 @@ export default function PosAppointmentsWorkspace({
         order_id: Number(json?.data?.order_id ?? 0),
         order_number: String(json?.data?.order_number ?? '-'),
         receipt_public_url: json?.data?.receipt_public_url ?? null,
-        payment_method: appointmentPaymentMethod,
+        payment_method: paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod),
         paid_amount: isZeroPackageFinalize ? 0 : dueAmount,
-        cash_received: isZeroPackageFinalize
-          ? 0
-          : appointmentPaymentMethod === 'cash'
-            ? cashReceivedAmount
-            : dueAmount,
-        change_amount:
-          isZeroPackageFinalize ? 0 : appointmentPaymentMethod === 'cash' ? Math.max(0, cashReceivedAmount - dueAmount) : 0,
+        cash_received: isZeroPackageFinalize ? 0 : settlementTotalPaid,
+        change_amount: 0,
       })
       setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)
       setAppointmentReceiptCooldownUntil(0)
       setAppointmentQrCodeFullscreen(false)
       setAppointmentReceiptQrLoaded(false)
-      setAppointmentCashReceived('')
+      setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -1152,14 +1154,14 @@ export default function PosAppointmentsWorkspace({
       setAppointmentActionLoading(false)
     }
   }, [
-    appointmentCashReceived,
     appointmentDetail,
     appointmentDiscountRemarkDraft,
     appointmentDiscountTypeDraft,
     appointmentDiscountValueDraft,
     appointmentPaymentMethod,
-    appointmentQrProofFileName,
+    appointmentQrProofFile,
     appointmentQrProofPreviewUrl,
+    appointmentSettlementPaymentAmounts,
     fetchAppointments,
     refreshOpenedAppointmentDetail,
     showMsg,
@@ -1968,8 +1970,12 @@ export default function PosAppointmentsWorkspace({
         ? Math.min(appointmentDueAmount, (appointmentDueAmount * appointmentDiscountValueNumber) / 100)
         : Math.min(appointmentDueAmount, appointmentDiscountValueNumber)
   const appointmentDueAfterDiscount = Math.max(0, appointmentDueAmount - appointmentDiscountAmount)
-  const appointmentCashReceivedAmount = Number(appointmentCashReceived || 0)
-  const appointmentCashChange = Math.max(0, appointmentCashReceivedAmount - appointmentDueAfterDiscount)
+  const appointmentSettlementPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(appointmentSettlementPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [appointmentSettlementPaymentAmounts])
+  const appointmentSettlementTotalPaid = useMemo(() => appointmentSettlementPaymentRows.reduce((sum, row) => sum + row.amount, 0), [appointmentSettlementPaymentRows])
+  const appointmentSettlementRemaining = Math.max(0, appointmentDueAfterDiscount - appointmentSettlementTotalPaid)
+  const appointmentSettlementOverpaid = Math.max(0, appointmentSettlementTotalPaid - appointmentDueAfterDiscount)
+  const appointmentSettlementMatchesDue = Math.round(appointmentSettlementTotalPaid * 100) === Math.round(appointmentDueAfterDiscount * 100)
+  const appointmentSettlementHasQrPay = appointmentSettlementPaymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -2439,7 +2445,7 @@ export default function PosAppointmentsWorkspace({
                             onClick={() => {
                               const due = appointmentDueAmountNow
                               setAppointmentPaymentMethod('cash')
-                              setAppointmentCashReceived(due > 0 ? due.toFixed(2) : '')
+                              setAppointmentSettlementPaymentAmounts({ cash: due > 0 ? due.toFixed(2) : '', qrpay: '', credit_card: '' })
                               setAppointmentDiscountTypeDraft('fixed')
                               setAppointmentDiscountValueDraft('')
                               setAppointmentDiscountRemarkDraft('')
@@ -3068,83 +3074,55 @@ export default function PosAppointmentsWorkspace({
                   </div>
 
                   <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
-                    <label className="text-xs font-semibold text-gray-700">Deposit Amount (optional)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={createAppointmentDepositAmount}
-                      onChange={(e) => {
-                        setCreateAppointmentDepositAmount(e.target.value)
-                        setCreateAppointmentError(null)
-                      }}
-                      className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold"
-                      placeholder="0.00"
-                    />
-                    {createAppointmentDepositValue > 0 ? (
-                      <div className="mt-3 space-y-3">
-                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                          {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
-                            <div key={method}>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setCreateAppointmentDepositPayments({ cash: '', qrpay: '', credit_card: '', [method]: createAppointmentDepositValue.toFixed(2) })
-                                  setCreateAppointmentError(null)
-                                }}
-                                className="mb-1 w-full rounded-lg border border-blue-200 bg-white px-2 py-1.5 text-xs font-bold text-blue-700"
-                              >
-                                {label}
-                              </button>
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                value={createAppointmentDepositPayments[method]}
-                                onChange={(e) => {
-                                  setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: e.target.value }))
-                                  setCreateAppointmentError(null)
-                                }}
-                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                                placeholder="0.00"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                        <div className="flex flex-wrap justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700">
-                          <span>Total Deposit: RM {createAppointmentDepositValue.toFixed(2)}</span>
-                          <span>Paid: RM {createAppointmentDepositPaid.toFixed(2)}</span>
-                          <span className={createAppointmentDepositPaid > createAppointmentDepositValue ? 'text-rose-700' : createAppointmentDepositMatches ? 'text-emerald-700' : 'text-amber-700'}>
-                            Remaining: RM {Math.max(0, createAppointmentDepositValue - createAppointmentDepositPaid).toFixed(2)}
-                          </span>
-                        </div>
-                        {createAppointmentDepositHasQrPay ? (
-                          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                            <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                              <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrUploadInputRef.current?.click()}>
-                                Upload
-                              </button>
-                              <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraBackInputRef.current?.click()}>
-                                Back Camera
-                              </button>
-                              <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraFrontInputRef.current?.click()}>
-                                Front Camera
-                              </button>
-                            </div>
-                            <input ref={appointmentQrUploadInputRef} type="file" accept="image/*" onChange={onSelectAppointmentQrProof} className="sr-only" />
-                            <input ref={appointmentQrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectAppointmentQrProof} className="sr-only" />
-                            <input ref={appointmentQrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectAppointmentQrProof} className="sr-only" />
-                            {appointmentQrProofFileName ? (
-                              <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
-                                <p className="truncate pr-2 font-semibold text-emerald-800">{appointmentQrProofFileName}</p>
-                                <button type="button" className="font-semibold text-red-600 hover:text-red-700" onClick={clearAppointmentQrProof}>Clear</button>
-                              </div>
-                            ) : null}
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <label className="text-xs font-semibold text-gray-700">Deposit Payment (optional)</label>
+                      <span className="text-[11px] font-medium text-gray-500">Leave all amounts as 0 for no deposit</span>
+                    </div>
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                        {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                          <div key={method}>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">{label} Amount</label>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={createAppointmentDepositPayments[method]}
+                              onChange={(e) => {
+                                setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: e.target.value }))
+                                setCreateAppointmentError(null)
+                              }}
+                              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              placeholder="0.00"
+                            />
                           </div>
-                        ) : null}
+                        ))}
                       </div>
-                    ) : null}
+                      <div className="flex flex-wrap justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700">
+                        <span>Total Deposit: RM {createAppointmentDepositValue.toFixed(2)}</span>
+                        <span>Paid: RM {createAppointmentDepositPaid.toFixed(2)}</span>
+                        <span className="text-emerald-700">Remaining: RM 0.00</span>
+                      </div>
+                      {createAppointmentDepositHasQrPay ? (
+                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                          <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
+                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                            <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrUploadInputRef.current?.click()}>Upload</button>
+                            <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraBackInputRef.current?.click()}>Back Camera</button>
+                            <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraFrontInputRef.current?.click()}>Front Camera</button>
+                          </div>
+                          <input ref={appointmentQrUploadInputRef} type="file" accept="image/*" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                          <input ref={appointmentQrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                          <input ref={appointmentQrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                          {appointmentQrProofFileName ? (
+                            <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
+                              <p className="truncate pr-2 font-semibold text-emerald-800">{appointmentQrProofFileName}</p>
+                              <button type="button" className="font-semibold text-red-600 hover:text-red-700" onClick={clearAppointmentQrProof}>Clear</button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3170,7 +3148,7 @@ export default function PosAppointmentsWorkspace({
               <button
                 type="button"
                 onClick={() => void submitCreateAppointment()}
-                disabled={createAppointmentSubmitting || (createAppointmentDepositValue > 0 && !createAppointmentDepositMatches)}
+                disabled={createAppointmentSubmitting}
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {createAppointmentSubmitting ? 'Creating...' : 'Confirm'}
@@ -4208,124 +4186,56 @@ export default function PosAppointmentsWorkspace({
                   </label>
                 </div>
               ) : null}
-              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                <p className="mb-3 text-sm font-bold text-gray-900">Payment Method</p>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                  <label
-                    className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all ${
-                      appointmentPaymentMethod === 'cash'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <span>Cash</span>
-                    <input
-                      type="radio"
-                      checked={appointmentPaymentMethod === 'cash'}
-                      onChange={() => {
-                        setAppointmentCheckoutError(null)
-                        setAppointmentPaymentMethod('cash')
-                      }}
-                      className="h-4 w-4"
-                    />
-                  </label>
-                  <label
-                    className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-4 py-3 text-sm font-semibold transition-all ${
-                      appointmentPaymentMethod === 'qrpay'
-                        ? 'border-blue-500 bg-blue-50 text-blue-700'
-                        : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300'
-                    }`}
-                  >
-                    <span>QRPay</span>
-                    <input
-                      type="radio"
-                      checked={appointmentPaymentMethod === 'qrpay'}
-                      onChange={() => {
-                        setAppointmentCheckoutError(null)
-                        setAppointmentPaymentMethod('qrpay')
-                      }}
-                      className="h-4 w-4"
-                    />
-                  </label>
-                </div>
-              </div>
-              {appointmentPaymentMethod === 'cash' ? (
+              {!checkoutZeroPackageSettlement ? (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                  <label className="mb-2 block text-sm font-bold text-gray-900">Cash Received</label>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={appointmentCashReceived}
-                    onChange={(e) => {
-                      setAppointmentCheckoutError(null)
-                      setAppointmentCashReceived(e.target.value)
-                    }}
-                    className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
-                    placeholder={appointmentDueAfterDiscount.toFixed(2)}
-                  />
-                  {appointmentCashChange > 0 ? (
-                    <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm">
-                      <span className="font-semibold text-emerald-800">Change:</span>
-                      <span className="font-bold text-emerald-700">RM {appointmentCashChange.toFixed(2)}</span>
-                    </div>
-                  ) : null}
+                  <div className="mb-3 flex items-center justify-between gap-3">
+                    <p className="text-sm font-bold text-gray-900">Split Payment</p>
+                    <span className="text-xs font-semibold text-gray-500">Enter paid amount per method</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                      <div key={method} className="rounded-lg border border-gray-200 bg-white p-3">
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">{label} Amount</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={appointmentSettlementPaymentAmounts[method]}
+                          onChange={(e) => {
+                            setAppointmentCheckoutError(null)
+                            setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
+                            setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, [method]: e.target.value }))
+                          }}
+                          className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 focus:border-blue-500 focus:outline-none"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 sm:grid-cols-3">
+                    <span>Amount Due: RM {appointmentDueAfterDiscount.toFixed(2)}</span>
+                    <span>Total Paid: RM {appointmentSettlementTotalPaid.toFixed(2)}</span>
+                    <span className={appointmentSettlementOverpaid > 0 ? 'text-rose-700' : appointmentSettlementMatchesDue ? 'text-emerald-700' : 'text-amber-700'}>
+                      {appointmentSettlementOverpaid > 0 ? `Overpaid RM ${appointmentSettlementOverpaid.toFixed(2)}` : `Remaining: RM ${appointmentSettlementRemaining.toFixed(2)}`}
+                    </span>
+                  </div>
                 </div>
-              ) : appointmentPaymentMethod === 'qrpay' ? (
+              ) : null}
+              {appointmentSettlementHasQrPay ? (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                    <button
-                      type="button"
-                      className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50"
-                      onClick={() => appointmentQrUploadInputRef.current?.click()}
-                    >
-                      Upload
-                    </button>
-                    <button
-                      type="button"
-                      className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50"
-                      onClick={() => appointmentQrCameraBackInputRef.current?.click()}
-                    >
-                      Back Camera
-                    </button>
-                    <button
-                      type="button"
-                      className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50"
-                      onClick={() => appointmentQrCameraFrontInputRef.current?.click()}
-                    >
-                      Front Camera
-                    </button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrUploadInputRef.current?.click()}>Upload</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraBackInputRef.current?.click()}>Back Camera</button>
+                    <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrCameraFrontInputRef.current?.click()}>Front Camera</button>
                   </div>
-                  <input
-                    ref={appointmentQrUploadInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={onSelectAppointmentQrProof}
-                    className="sr-only"
-                  />
-                  <input
-                    ref={appointmentQrCameraBackInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    onChange={onSelectAppointmentQrProof}
-                    className="sr-only"
-                  />
-                  <input
-                    ref={appointmentQrCameraFrontInputRef}
-                    type="file"
-                    accept="image/*"
-                    capture="user"
-                    onChange={onSelectAppointmentQrProof}
-                    className="sr-only"
-                  />
+                  <input ref={appointmentQrUploadInputRef} type="file" accept="image/*" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                  <input ref={appointmentQrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectAppointmentQrProof} className="sr-only" />
+                  <input ref={appointmentQrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectAppointmentQrProof} className="sr-only" />
                   {appointmentQrProofFileName ? (
                     <div className="mt-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs">
                       <p className="truncate pr-2 font-semibold text-emerald-800">{appointmentQrProofFileName}</p>
-                      <button type="button" className="font-semibold text-red-600 hover:text-red-700" onClick={clearAppointmentQrProof}>
-                        Clear
-                      </button>
+                      <button type="button" className="font-semibold text-red-600 hover:text-red-700" onClick={clearAppointmentQrProof}>Clear</button>
                     </div>
                   ) : null}
                 </div>
@@ -4345,7 +4255,7 @@ export default function PosAppointmentsWorkspace({
                   type="button"
                   disabled={
                     appointmentActionLoading ||
-                    (!checkoutZeroPackageSettlement && appointmentDueAfterDiscount <= 0)
+                    (!checkoutZeroPackageSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementMatchesDue))
                   }
                   onClick={() => void settleAppointmentPayment()}
                   className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
