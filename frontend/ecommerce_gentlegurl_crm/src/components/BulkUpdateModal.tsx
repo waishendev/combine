@@ -1,3 +1,5 @@
+'use client'
+
 import { useState } from 'react'
 import { resolveImageUrl } from '@/utils/resolveImageUrl'
 import MultiFieldForm from './MultiFieldForm'
@@ -27,11 +29,11 @@ export default function BulkUpdateModal({
   const [showSuccess, setShowSuccess] = useState(false)
   return show ? (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="bg-white rounded-xl shadow-lg p-6 w-[90%] max-w-4xl space-y-4">
+      <div className="bg-white rounded-xl shadow-lg p-6 w-[90%] max-w-4xl max-h-[90vh] overflow-y-auto space-y-4">
         <h2 className="text-lg font-bold">Bulk Update Products</h2>
 
         {/* ✅ 产品列表 */}
-        <div className="border rounded p-2 bg-gray-50 max-h-[150px] overflow-y-auto text-sm text-gray-700">
+        <div className="border rounded p-2 bg-gray-50 max-h-[220px] overflow-y-auto text-sm text-gray-700">
           {selectedProducts.map((p) => (
             <div key={p.id} className="flex items-start gap-3 mb-3">
               <img

@@ -1,3 +1,5 @@
+'use client'
+
 import { useEffect, useState } from 'react'
 import FieldRenderer, { FieldConfig, FieldType } from './FileRender'
 
@@ -8,7 +10,7 @@ const FIELD_CONFIG: FieldConfig[] = [
   { key: 'sale_price_start_at', label: 'Start At', type: 'datetime' },
   { key: 'sale_price_end_at', label: 'End At', type: 'datetime' },
   { key: 'low_stock_threshold', label: 'Low Stock Threshold', type: 'number' },
-  { key: 'category_id', label: 'Category', type: 'select' },
+  { key: 'category_ids', label: 'Categories', type: 'category_multi' },
 ]
 
 interface Product {
@@ -37,20 +39,48 @@ export default function MultiFieldForm({
     const controller = new AbortController()
     const fetchCategories = async () => {
       try {
-        const res = await fetch(
-          '/api/proxy/ecommerce/categories?is_active=1&per_page=500',
-          {
-            cache: 'no-store',
-            signal: controller.signal,
-          },
-        )
+        const res = await fetch('/api/proxy/ecommerce/categories?page=1&per_page=1000', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
         if (!res.ok) return
         const json = await res.json()
-        const items = Array.isArray(json?.data?.data) ? json.data.data : []
-        setCategories(items.map((item: { id: number; name: string }) => ({
-          id: item.id,
-          name: item.name,
-        })))
+        const payload = json?.data
+        const rawItems = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload)
+            ? payload
+            : []
+
+        const collectRows = (nodes: unknown[], depth: number): Array<{ id: number; name: string }> => {
+          const rows: Array<{ id: number; name: string }> = []
+          for (const node of nodes) {
+            const record = node as {
+              id?: number | string
+              name?: string | null
+              children?: unknown[]
+            }
+            const id = typeof record.id === 'number' ? record.id : Number(record.id) || 0
+            const baseName = typeof record.name === 'string' ? record.name : ''
+            if (id > 0 && baseName) {
+              const label = depth > 0 ? `${'\u2014 '.repeat(depth)}${baseName}` : baseName
+              rows.push({ id, name: label })
+            }
+            if (Array.isArray(record.children) && record.children.length > 0) {
+              rows.push(...collectRows(record.children, depth + 1))
+            }
+          }
+          return rows
+        }
+
+        const flat = collectRows(rawItems, 0)
+        const seen = new Set<number>()
+        const deduped = flat.filter((item) => {
+          if (seen.has(item.id)) return false
+          seen.add(item.id)
+          return true
+        })
+        setCategories(deduped)
       } catch (error) {
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
           setErrorMessages(['Failed to fetch categories.'])
@@ -73,6 +103,8 @@ export default function MultiFieldForm({
         return ''
       case 'select':
         return ''
+      case 'category_multi':
+        return []
       case 'time':
         return { available_from: '00:00:00', available_to: '23:59:59' }
       default:
@@ -137,9 +169,10 @@ export default function MultiFieldForm({
       if (key === 'discount_percent') {
         continue
       }
-      if (key === 'category_id') {
-        if (values[key]) {
-          payload.category_ids = [values[key]]
+      if (key === 'category_ids') {
+        const ids = values[key]
+        if (Array.isArray(ids) && ids.length > 0) {
+          payload.category_ids = ids.map((id: unknown) => Number(id)).filter((n) => Number.isFinite(n) && n > 0)
         }
         continue
       }
