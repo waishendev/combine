@@ -10,7 +10,9 @@ type BrandingPayload = {
   shop_logo_url?: string | null
   crm_logo_url?: string | null
   shop_favicon_url?: string | null
+  shop_favicon_icons?: Record<string, string | null> | null
   crm_favicon_url?: string | null
+  crm_favicon_icons?: Record<string, string | null> | null
 }
 
 type BrandingResponse = {
@@ -72,7 +74,7 @@ export default function LogoUploadForm({
       return 'Upload a storefront logo that appears on the Ecommerce Shop header.'
     }
     if (logoKey === 'shop_favicon_url' || logoKey === 'crm_favicon_url') {
-      return 'Upload a favicon used in browser tabs and bookmarks.'
+      return 'Upload the source icon used to generate browser, Apple, Android, and PWA icons.'
     }
     return 'Upload a CRM logo that appears in the admin header.'
   }, [helperText, logoKey])
@@ -83,7 +85,7 @@ export default function LogoUploadForm({
     }
 
     if (logoKey === 'shop_favicon_url' || logoKey === 'crm_favicon_url') {
-      return 'Recommended size: 64x64px or 128x128px. Only PNG or ICO is supported.'
+      return 'Recommended size: 512x512px square. PNG or WebP works best; ICO is also accepted for browser favicon fallback.'
     }
 
     return 'Recommended size: 240x80px. PNG or WebP with transparent background looks best.'

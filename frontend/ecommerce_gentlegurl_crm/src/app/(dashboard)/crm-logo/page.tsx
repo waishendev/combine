@@ -58,12 +58,12 @@ export default async function CrmLogoPage() {
         <LogoUploadForm
           canEdit={canEdit}
           title="Favicon"
-          description="Upload a favicon used for browser tabs and bookmarks."
+          description="Upload the source icon used for browser tabs, Apple touch icons, Android home screen icons, and PWA bookmarks."
           logoKey="crm_favicon_url"
           uploadEndpoint="/api/proxy/ecommerce/branding/crm-favicon"
           fileLabel="Upload new favicon"
           previewAlt="Favicon preview"
-          accept="image/png,image/x-icon,image/vnd.microsoft.icon,.png,.ico"
+          accept="image/png,image/webp,image/jpeg,image/gif,image/x-icon,image/vnd.microsoft.icon,.png,.webp,.jpg,.jpeg,.gif,.ico"
         />
       </div>
     </div>
