@@ -1333,7 +1333,8 @@ class PosController extends Controller
 
         $newStart = Carbon::parse($validated['start_at']);
         $newEnd = $newStart->copy()->addMinutes($this->recalculateAppointmentDurationMin($booking));
-        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id)) {
+        if (! $this->availabilityService->isWithinStaffAvailability($targetStaffId, $newStart, $newEnd)
+            || $this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
             return $this->respondError(__('Selected slot is not available.'), 409);
         }
 
@@ -2019,7 +2020,8 @@ class PosController extends Controller
         $startAt = Carbon::parse((string) $validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
-        if ($availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, (int) $service->buffer_min)) {
+        if (! $availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
+            || $availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, (int) $service->buffer_min)) {
             return $this->respondError(__('Selected slot is no longer available.'), 409);
         }
 
@@ -2231,7 +2233,8 @@ class PosController extends Controller
 
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
+        if (! $this->availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
+            || $this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
             return $this->respondError(__('Selected slot is no longer available.'), 409);
         }
 
@@ -3867,7 +3870,9 @@ class PosController extends Controller
                 $endAt = $serviceItem->end_at ? Carbon::parse((string) $serviceItem->end_at) : $startAt->copy()->addMinutes((int) ($serviceItem->bookingService->duration_min ?? 0));
                 $bufferMin = (int) ($serviceItem->bookingService->buffer_min ?? 0);
 
-                if ($serviceItem->assigned_staff_id && $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin)) {
+                if ($serviceItem->assigned_staff_id
+                    && (! $this->availabilityService->isWithinStaffAvailability((int) $serviceItem->assigned_staff_id, $startAt, $endAt)
+                        || $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin))) {
                     abort(409, __('Selected slot is no longer available.'));
                 }
 
