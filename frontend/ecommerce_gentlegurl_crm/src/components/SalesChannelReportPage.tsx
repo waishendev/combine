@@ -237,6 +237,7 @@ export default function SalesChannelReportPage({
   paramPrefix,
   isAllWorkspace = false,
   showDateInputsInFilterModal = true,
+  onDataChanged,
 }: {
   mode: Mode
   canExport?: boolean
@@ -247,6 +248,7 @@ export default function SalesChannelReportPage({
   isAllWorkspace?: boolean
   /** Sales Visual manages date elsewhere; hide date inputs in modal. */
   showDateInputsInFilterModal?: boolean
+  onDataChanged?: () => void
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -606,7 +608,10 @@ export default function SalesChannelReportPage({
                         currentPaymentMethod={row.payment_method}
                         orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
                         paymentBreakdown={row.payments}
-                        onDone={() => setRefreshKey((prev) => prev + 1)}
+                        onDone={() => {
+                          setRefreshKey((prev) => prev + 1)
+                          onDataChanged?.()
+                        }}
                       />
                     </td>
                   </tr>
@@ -640,7 +645,10 @@ export default function SalesChannelReportPage({
                       paymentBreakdown={row.payments}
                       staffActionLabel={isBookingWorkerType(row.type) ? 'worker' : 'sales_person'}
                       hideStaffAction={isBookingDepositType(row.type)}
-                      onDone={() => setRefreshKey((prev) => prev + 1)}
+                      onDone={() => {
+                        setRefreshKey((prev) => prev + 1)
+                        onDataChanged?.()
+                      }}
                     />
                   </td>
                 </tr>

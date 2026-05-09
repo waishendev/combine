@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useState } from 'react'
-import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 type Mode = 'ecommerce' | 'booking' | 'all'
 
@@ -56,9 +56,7 @@ function formatDisplayDay(ymd: string) {
 const fmtRm = (n: number) =>
   `RM ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-export default function SalesVisualDailyDashboard({ mode }: { mode: Mode }) {
-  const router = useRouter()
-  const pathname = usePathname()
+export default function SalesVisualDailyDashboard({ mode, refreshKey = 0 }: { mode: Mode; refreshKey?: number }) {
   const searchParams = useSearchParams()
   const date = searchParams.get('date') ?? formatYmd(new Date())
 
@@ -91,23 +89,7 @@ export default function SalesVisualDailyDashboard({ mode }: { mode: Mode }) {
 
   useEffect(() => {
     void load()
-  }, [load])
-
-  const shiftDay = (delta: number) => {
-    const base = new Date(`${date}T12:00:00`)
-    base.setDate(base.getDate() + delta)
-    const next = formatYmd(base)
-    const q = new URLSearchParams(searchParams.toString())
-    q.set('date', next)
-    q.set('date_from', next)
-    q.set('date_to', next)
-    q.set('page', '1')
-    if (mode === 'all') {
-      q.set('ec_page', '1')
-      q.set('bk_page', '1')
-    }
-    router.push(`${pathname}?${q.toString()}`)
-  }
+  }, [load, refreshKey])
 
   const payments: PaymentMethodRow[] = Array.isArray(data?.payment_methods)
     ? (data!.payment_methods as PaymentMethodRow[])
