@@ -4418,16 +4418,76 @@ class PosController extends Controller
             }
 
             if ($variant) {
-                if (! $variant->track_stock) {
-                    continue;
-                }
-
                 $lockedVariant = ProductVariant::query()
+                    ->with(['bundleItems.componentVariant.product'])
                     ->where('id', (int) $variant->id)
                     ->lockForUpdate()
                     ->first();
 
-                if (! $lockedVariant || $lockedVariant->is_bundle) {
+                if (! $lockedVariant) {
+                    continue;
+                }
+
+                // Bundle SKUs: inventory lives on component variants (same as OrderReserveService).
+                if ($lockedVariant->is_bundle) {
+                    $lockedVariant->loadMissing('bundleItems.componentVariant.product');
+                    foreach ($lockedVariant->bundleItems as $bundleItem) {
+                        $component = $bundleItem->componentVariant;
+                        if (! $component || ! $component->track_stock) {
+                            continue;
+                        }
+
+                        $required = (int) ($bundleItem->quantity ?? 1) * $qty;
+                        if ($required <= 0) {
+                            continue;
+                        }
+
+                        $componentVariant = ProductVariant::query()
+                            ->where('id', (int) $component->id)
+                            ->lockForUpdate()
+                            ->first();
+                        if (! $componentVariant) {
+                            continue;
+                        }
+
+                        $beforeQty = (int) ($componentVariant->stock ?? 0);
+                        $afterQty = max(0, $beforeQty - $required);
+                        if ($afterQty === $beforeQty) {
+                            continue;
+                        }
+
+                        $unitCost = (float) ($componentVariant->cost_price ?? 0);
+                        $beforeInventory = round($beforeQty * $unitCost, 2);
+                        $afterInventory = round($afterQty * $unitCost, 2);
+
+                        $componentVariant->stock = $afterQty;
+                        $componentVariant->save();
+
+                        $componentProduct = $componentVariant->relationLoaded('product')
+                            ? $componentVariant->product
+                            : Product::query()->find($componentVariant->product_id);
+
+                        ProductStockMovement::create([
+                            'product_id' => (int) ($componentProduct?->id ?? $componentVariant->product_id),
+                            'product_variant_id' => (int) $componentVariant->id,
+                            'type' => 'stock_out',
+                            'quantity_before' => $beforeQty,
+                            'quantity_change' => $required,
+                            'quantity_after' => $afterQty,
+                            'cost_price_before' => $unitCost,
+                            'cost_price_after' => $unitCost,
+                            'inventory_value_before' => $beforeInventory,
+                            'inventory_value_after' => $afterInventory,
+                            'input_cost_price_per_unit' => null,
+                            'remark' => 'POS checkout (bundle)',
+                            'created_by_user_id' => $actorUserId,
+                        ]);
+                    }
+
+                    continue;
+                }
+
+                if (! $lockedVariant->track_stock) {
                     continue;
                 }
 

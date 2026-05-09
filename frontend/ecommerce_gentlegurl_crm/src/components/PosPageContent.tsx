@@ -333,6 +333,9 @@ type ProductOption = {
   variants: ProductVariantOption[]
   variants_count?: number
   default_variant_id?: number | null
+  /** Product-level inventory when there are no variants (simple products). */
+  track_stock?: boolean | null
+  stock?: number | null
 }
 
 type ProductSearchHit = {
@@ -530,6 +533,13 @@ type VariantPayload = {
   stock?: number | string | null
   is_bundle?: boolean | string | number | null
   derived_available_qty?: number | string | null
+  bundle_items?: Array<{
+    quantity?: number | string | null
+    component_variant?: {
+      stock?: number | string | null
+      derived_available_qty?: number | string | null
+    } | null
+  }> | null
 }
 
 type ProductApiItem = {
@@ -541,6 +551,9 @@ type ProductApiItem = {
   price?: number | string
   is_staff_free?: boolean | number | string | null
   variants_count?: number | string | null
+  stock?: number | string | null
+  stock_quantity?: number | string | null
+  track_stock?: boolean | string | number | null
   cover_image_url?: string | null
   variants?: Array<{
     id?: number
@@ -556,6 +569,7 @@ type ProductApiItem = {
     stock?: number | string | null
     is_bundle?: boolean | string | number | null
     derived_available_qty?: number | string | null
+    bundle_items?: VariantPayload['bundle_items']
   }>
 }
 
@@ -1482,6 +1496,96 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const toApiBoolean = (value: unknown) =>
     value === true || value === '1' || value === 1 || value === 'true'
 
+  /**
+   * Bundle variants often keep `stock` at 0 while sellable qty is in `derived_available_qty`
+   * or derivable from `bundle_items`. Prefer derived / bundle math before raw `stock`.
+   */
+  const resolveVariantAvailableQty = (variant: VariantPayload): number | null => {
+    const rawDerived = variant.derived_available_qty
+    if (rawDerived !== null && rawDerived !== undefined && rawDerived !== '') {
+      return toOptionalNumber(rawDerived)
+    }
+
+    const rows = variant.bundle_items
+    const bundleLike =
+      toApiBoolean(variant.is_bundle) || (Array.isArray(rows) && rows.length > 0)
+
+    if (bundleLike && Array.isArray(rows) && rows.length > 0) {
+      let minBundles = Infinity
+      for (const row of rows) {
+        const needRaw = row?.quantity
+        const need =
+          typeof needRaw === 'number' ? needRaw : Number(needRaw ?? 0)
+        if (!Number.isFinite(need) || need <= 0) continue
+
+        const comp = row?.component_variant
+        if (!comp || typeof comp !== 'object') continue
+
+        const rd = comp.derived_available_qty
+        const compQty =
+          rd !== null && rd !== undefined && rd !== ''
+            ? toOptionalNumber(rd)
+            : toOptionalNumber(comp.stock)
+        if (compQty === null) continue
+
+        minBundles = Math.min(minBundles, Math.floor(compQty / need))
+      }
+      if (Number.isFinite(minBundles) && minBundles !== Infinity) {
+        return minBundles
+      }
+    }
+
+    return toOptionalNumber(variant.stock)
+  }
+
+  const normalizeVariantTrackStock = (variant: VariantPayload): boolean | null => {
+    if (
+      variant.track_stock === false ||
+      variant.track_stock === '0' ||
+      variant.track_stock === 0 ||
+      variant.track_stock === 'false'
+    ) {
+      return false
+    }
+    return toApiBoolean(variant.track_stock) ? true : null
+  }
+
+  /** Variant row: OOS only when tracking and quantity is a known number ≤ 0 (null ≠ 0 for bundles). */
+  const isVariantOutOfStockForDisplay = (variant: ProductVariantOption | null | undefined) => {
+    if (!variant) return false
+    if (!(variant.track_stock ?? true)) return false
+    const q = variant.stock
+    if (q === null || q === undefined) return false
+    return typeof q === 'number' && Number.isFinite(q) && q <= 0
+  }
+
+  const variantHasSellableStock = (
+    trackStock: boolean | null | undefined,
+    stock: number | null | undefined,
+  ) => {
+    if (!(trackStock ?? true)) return true
+    if (stock === null || stock === undefined) return true
+    return typeof stock === 'number' && Number.isFinite(stock) && stock > 0
+  }
+
+  /**
+   * Catalog card: show Out of stock only for simple products (no variants).
+   * If the API reports variants (rows or variants_count), OOS is shown only inside the picker modal.
+   */
+  const isPosSimpleProductOutOfStock = (item: ProductOption) => {
+    const variantRows = item.variants?.length ?? 0
+    const declared =
+      typeof item.variants_count === 'number'
+        ? item.variants_count
+        : Number(item.variants_count ?? 0) || 0
+    if (variantRows > 0 || declared > 0) return false
+
+    if (!(item.track_stock ?? true)) return false
+    const q = item.stock
+    if (q === null || q === undefined) return false
+    return typeof q === 'number' && Number.isFinite(q) && q <= 0
+  }
+
   const normalizeProductFromApi = (item: ProductApiItem): ProductOption | null => {
     const productId = Number(item.id)
     if (!Number.isFinite(productId) || productId <= 0) return null
@@ -1500,10 +1604,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             const variantAny = variant as VariantPayload
             const barcode = typeof variantAny?.barcode === 'string' ? variantAny.barcode.trim() : ''
-            const isBundle = toApiBoolean(variantAny?.is_bundle)
-            const availableQty = isBundle
-              ? toOptionalNumber(variantAny?.derived_available_qty ?? variantAny?.stock)
-              : toOptionalNumber(variantAny?.stock)
+            const availableQty = resolveVariantAvailableQty(variantAny)
+            const isBundle =
+              toApiBoolean(variantAny?.is_bundle) ||
+              (Array.isArray(variantAny.bundle_items) && variantAny.bundle_items.length > 0)
             return {
               id: variantId,
               name: variant?.name?.trim() || variant?.title?.trim() || `Variant #${variantId}`,
@@ -1512,7 +1616,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
               thumbnail_url: variant?.image_url ?? item.cover_image_url ?? null,
               is_active: toApiBoolean(variant?.is_active),
-              track_stock: toApiBoolean(variantAny?.track_stock) || null,
+              track_stock: normalizeVariantTrackStock(variantAny),
               stock: availableQty,
               is_bundle: isBundle,
             }
@@ -1531,6 +1635,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const priceRaw = activeVariant?.price ?? item.price ?? 0
     const price = typeof priceRaw === 'number' ? priceRaw : Number(priceRaw || 0)
 
+    const declaredVariantCount =
+      typeof item.variants_count === 'number'
+        ? item.variants_count
+        : Number(item.variants_count ?? 0) || 0
+    const isSimpleProduct = variants.length === 0 && declaredVariantCount === 0
+
     return {
       // IMPORTANT: keep the list/grid unique by product id (like Shop).
       // Variants should only be selected inside the modal / cart item variant selector.
@@ -1547,6 +1657,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         ? item.variants_count
         : Number(item.variants_count ?? variants.length) || variants.length,
       default_variant_id: activeVariant?.id ?? variants[0]?.id ?? null,
+      ...(isSimpleProduct
+        ? {
+            track_stock:
+              item.track_stock === false ||
+              item.track_stock === '0' ||
+              item.track_stock === 0 ||
+              item.track_stock === 'false'
+                ? false
+                : toApiBoolean(item.track_stock)
+                  ? true
+                  : null,
+            stock: toOptionalNumber(item.stock_quantity ?? item.stock),
+          }
+        : {}),
     }
   }
 
@@ -3562,6 +3686,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const confirmAddSelectedProduct = async () => {
     if (!selectedProduct) return
 
+    if (isPosSimpleProductOutOfStock(selectedProduct)) {
+      showMsg('This product is out of stock.', 'error')
+      return
+    }
+
     let variantIdToUse: number | null = null
 
     if (selectedProduct.variants.length > 0) {
@@ -3612,6 +3741,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return
     }
 
+    if (isPosSimpleProductOutOfStock(item)) {
+      showMsg('This product is out of stock.', 'error')
+      return
+    }
+
     const productId = Number(item.product_id || item.id)
     if (!Number.isFinite(productId) || productId <= 0) {
       showMsg('Invalid product ID.', 'error')
@@ -3640,6 +3774,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               const price = Number(variant?.sale_price ?? variant?.price ?? 0)
               if (!Number.isFinite(id) || id <= 0 || !sku) return null
 
+              const vPayload = variant as VariantPayload
               return {
                 id,
                 name: variant?.title?.trim() || variant?.name?.trim() || sku,
@@ -3650,11 +3785,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 price: Number.isFinite(price) ? price : 0,
                 thumbnail_url: variant?.image_url ?? payload?.cover_image_url ?? null,
                 is_active: toApiBoolean(variant?.is_active),
-                track_stock: toApiBoolean(variant?.track_stock) || null,
-                stock: toApiBoolean(variant?.is_bundle)
-                  ? toOptionalNumber(variant?.derived_available_qty ?? variant?.stock)
-                  : toOptionalNumber(variant?.stock),
-                is_bundle: toApiBoolean(variant?.is_bundle),
+                track_stock: normalizeVariantTrackStock(vPayload),
+                stock: resolveVariantAvailableQty(vPayload),
+                is_bundle:
+                  toApiBoolean(variant?.is_bundle) ||
+                  (Array.isArray(vPayload.bundle_items) && vPayload.bundle_items.length > 0),
               }
             })
             .filter((variant: ProductVariantOption | null): variant is ProductVariantOption => Boolean(variant))
@@ -4750,13 +4885,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
                 const variantsCount = item.variants_count ?? item.variants.length
                 const titleWithVariant = hit.matchedVariantName ? `${item.name} (${hit.matchedVariantName})` : item.name
+                const catalogCardOutOfStock = isPosSimpleProductOutOfStock(item)
 
                 return (
                 <div
                   key={item.product_id}
                   role="button"
                   tabIndex={0}
-                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[124px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
+                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[124px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : catalogCardOutOfStock ? 'border-red-100 opacity-90' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => {
                     void onSelectProduct(item, hit.matchedVariantId ?? null)
@@ -4786,6 +4922,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1" title={titleWithVariant}>{titleWithVariant}</p>
                       <p className="text-xs text-gray-500 font-mono truncate">{displaySku}</p>
+                      {catalogCardOutOfStock && (
+                        <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-red-600">
+                          Out of stock
+                        </p>
+                      )}
                       {variantsCount > 0 && (
                         <p className="text-[11px] text-blue-600 font-medium mt-0.5">({variantsCount} variants)</p>
                       )}
@@ -5246,8 +5387,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
                             {(cartVariantOptions[item.id] ?? []).map((variant) => {
                               const variantTrackStock = variant.track_stock ?? null
-                              const variantStock = typeof variant.stock === 'number' && Number.isFinite(variant.stock) ? variant.stock : null
-                              const variantHasStock = !((variantTrackStock ?? true) && variantStock !== null && variantStock >= 0) || (variantStock !== null && variantStock > 0)
+                              const variantStock =
+                                typeof variant.stock === 'number' && Number.isFinite(variant.stock)
+                                  ? variant.stock
+                                  : null
+                              const variantHasStock = variantHasSellableStock(variantTrackStock, variantStock)
                               const isDisabled = !variantHasStock || !variant.is_active
                               
                               return (
@@ -5885,7 +6029,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       {selectedProduct.variants.map((variant) => {
                         const selected = variant.id === selectedVariantId
                         const isActive = variant.is_active !== false
-                        const outOfStock = (variant.track_stock ?? true) && (variant.stock ?? 0) <= 0
+                        const outOfStock = isVariantOutOfStockForDisplay(variant)
                         return (
                           <button
                             type="button"
@@ -5925,6 +6069,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       })}
                     </div>
                   </div>
+                ) : isPosSimpleProductOutOfStock(selectedProduct) ? (
+                  <div className="rounded-xl border-2 border-red-100 bg-red-50 px-4 py-3">
+                    <p className="text-sm font-bold text-red-600">Out of stock</p>
+                  </div>
                 ) : null}
 
                 {/* Description */}
@@ -5945,9 +6093,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         (selectedProduct.variants.find((v) => v.id === selectedVariantId) ?? selectedProduct.variants[0])) ||
                       null
 
-                    const trackStock = selectedVariant?.track_stock ?? null
-                    const stockValue =
-                      typeof selectedVariant?.stock === 'number' && Number.isFinite(selectedVariant.stock)
+                    const usesSimpleProductStock = selectedProduct.variants.length === 0
+
+                    const trackStock = usesSimpleProductStock
+                      ? selectedProduct.track_stock ?? null
+                      : selectedVariant?.track_stock ?? null
+                    const stockValue = usesSimpleProductStock
+                      ? typeof selectedProduct.stock === 'number' && Number.isFinite(selectedProduct.stock)
+                        ? selectedProduct.stock
+                        : null
+                      : typeof selectedVariant?.stock === 'number' && Number.isFinite(selectedVariant.stock)
                         ? selectedVariant.stock
                         : null
 
@@ -6013,7 +6168,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <button
                     className="w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 px-6 py-4 text-white font-bold text-base shadow-lg hover:from-blue-700 hover:to-blue-800 hover:shadow-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 active:scale-[0.98]"
                     onClick={() => void confirmAddSelectedProduct()}
-                    disabled={selectedProduct.variants.length > 0 && !selectedVariantId}
+                    disabled={
+                      (selectedProduct.variants.length > 0 && !selectedVariantId) ||
+                      isPosSimpleProductOutOfStock(selectedProduct)
+                    }
                   >
                     Add to Cart
                   </button>
