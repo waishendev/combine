@@ -93,13 +93,17 @@ export type PosAppointmentVisualTone = 'active' | 'hold' | 'completedPaid' | 'co
  * and no amount due.
  */
 export function posAppointmentRegisterPaid(
-  row: Pick<PosAppointmentListItem, 'amount_due_now' | 'balance_due' | 'package_status' | 'settlement_paid'>,
+  row: Pick<PosAppointmentListItem, 'amount_due_now' | 'balance_due' | 'package_status' | 'settlement_paid' | 'payment_status'>,
 ): boolean {
   const settlementPaid = Number(row.settlement_paid ?? 0)
   const pkg = String(row.package_status?.status ?? '').toLowerCase()
   const packageReservedPending = pkg === 'reserved' && settlementPaid <= 0.0001
-  const due = Number(row.amount_due_now ?? row.balance_due ?? 0)
-  return !packageReservedPending && due <= 0.0001
+  const amountDueNow = Number(row.amount_due_now ?? 0)
+  const balanceDue = Number(row.balance_due ?? 0)
+  const paymentStatus = String(row.payment_status ?? '').toUpperCase()
+  const hasPaymentStatus = paymentStatus.length > 0
+
+  return !packageReservedPending && amountDueNow <= 0.0001 && balanceDue <= 0.0001 && (!hasPaymentStatus || paymentStatus === 'PAID')
 }
 
 export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): PosAppointmentVisualTone {

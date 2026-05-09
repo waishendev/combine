@@ -20,6 +20,7 @@ export type PosAppointmentListItem = {
   staff_id?: number | null
   staff_name?: string | null
   status: string
+  payment_status?: string | null
   deposit_contribution?: number
   deposit_paid: number
   linked_booking_deposit?: number
@@ -45,6 +46,7 @@ export type PosAppointmentDetail = {
   id: number
   booking_code: string
   status: string
+  payment_status?: string | null
   appointment_start_at?: string | null
   appointment_end_at?: string | null
   /** Present when booked under a member; guest walk-ins use `guest_*` instead. */

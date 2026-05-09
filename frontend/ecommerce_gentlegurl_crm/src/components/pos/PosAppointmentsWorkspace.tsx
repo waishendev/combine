@@ -1911,10 +1911,10 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
+  const appointmentPaymentStatusUpper = String(appointmentDetail?.payment_status ?? '').toUpperCase()
   const appointmentPackageApplied = ['reserved', 'consumed'].includes(
     String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
   )
-  const appointmentCheckoutCompleted = appointmentSettlementPaid > 0
   /** Package reserved on booking but settlement not recorded yet — treat as unpaid until POS/main checkout finalises. */
   const packageReservedPendingRegister = useMemo(
     () =>
@@ -1922,6 +1922,12 @@ export default function PosAppointmentsWorkspace({
       appointmentSettlementPaid <= 0.0001,
     [appointmentDetail?.package_status?.status, appointmentSettlementPaid],
   )
+  /** Reserved package, remaining balance, or non-PAID status ⇒ still unpaid at register. */
+  const appointmentPaymentBadgeIsPaid =
+    !packageReservedPendingRegister &&
+    appointmentDueAmountNow <= 0.0001 &&
+    (appointmentPaymentStatusUpper.length === 0 || appointmentPaymentStatusUpper === 'PAID')
+  const appointmentCheckoutCompleted = appointmentPaymentBadgeIsPaid
   const appointmentShowApplyPackageButton = useMemo(
     () =>
       !appointmentPackageApplied &&
@@ -1935,10 +1941,6 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentShowPaymentBadge =
     !appointmentIsTerminalCancelled && ['CONFIRMED', 'COMPLETED'].includes(appointmentStatusUpper)
-  /** Reserved package + no settlement order yet ⇒ still “unpaid” at register (same as completed-but-unpaid). */
-  const appointmentPaymentBadgeIsPaid =
-    !packageReservedPendingRegister && appointmentDueAmountNow <= 0.0001
-
   const canMarkAppointmentCompleted =
     !appointmentActionLoading &&
     !appointmentIsTerminalCancelled &&

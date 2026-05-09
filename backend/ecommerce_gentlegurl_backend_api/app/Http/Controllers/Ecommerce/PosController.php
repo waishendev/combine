@@ -328,47 +328,30 @@ class PosController extends Controller
         if ($request->filled('staff_id')) {
             $builder->where('staff_id', (int) $request->query('staff_id'));
         }
+        $statusFilterNeedsActiveCheck = false;
         if ($unpaidOnly) {
-            $builder->where('status', 'COMPLETED')->where('payment_status', 'UNPAID');
+            $builder->where('status', 'COMPLETED');
+            $statusFilterNeedsActiveCheck = true;
         } elseif ($request->filled('status')) {
             $status = strtoupper(trim((string) $request->query('status')));
-            if (in_array($status, ['HOLD', 'CONFIRMED'], true)) {
+            if (in_array($status, ['HOLD', 'CONFIRMED', 'PENDING'], true)) {
                 $builder->where('status', $status);
             } elseif ($status === 'COMPLETED') {
-                $builder->where('status', 'COMPLETED')
-                    ->where(function ($payment) {
-                        $payment->whereNull('payment_status')
-                            ->orWhere('payment_status', '!=', 'PAID');
-                    });
+                // Payment_status can be stale; classify completed paid/unpaid from the resolved balances below.
+                $builder->where('status', 'COMPLETED');
+                $statusFilterNeedsActiveCheck = true;
             } else {
-                $builder->where(function ($active) {
-                    $active->whereIn('status', ['HOLD', 'CONFIRMED'])
-                        ->orWhere(function ($completedUnpaid) {
-                            $completedUnpaid->where('status', 'COMPLETED')
-                                ->where(function ($payment) {
-                                    $payment->whereNull('payment_status')
-                                        ->orWhere('payment_status', '!=', 'PAID');
-                                });
-                        });
-                });
+                $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED']);
+                $statusFilterNeedsActiveCheck = true;
             }
         } else {
             // POS appointments is the active schedule: hide completed+paid and terminal statuses.
-            $builder->where(function ($active) {
-                $active->whereIn('status', ['HOLD', 'CONFIRMED'])
-                    ->orWhere(function ($completedUnpaid) {
-                        $completedUnpaid->where('status', 'COMPLETED')
-                            ->where(function ($payment) {
-                                $payment->whereNull('payment_status')
-                                    ->orWhere('payment_status', '!=', 'PAID');
-                            });
-                    });
-            });
+            // Completed paid/unpaid is decided from financial fields after resolving the appointment summary.
+            $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED']);
+            $statusFilterNeedsActiveCheck = true;
         }
 
-        $paginator = $builder->orderBy('start_at')->paginate($perPage, ['*'], 'page', $page);
-
-        $rows = collect($paginator->items())->map(function (Booking $booking) {
+        $allRows = $builder->orderBy('start_at')->get()->map(function (Booking $booking) {
             $summary = $this->resolveAppointmentFinancialSummary($booking);
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
@@ -390,6 +373,7 @@ class PosController extends Controller
                 'staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'status' => (string) $booking->status,
+                'payment_status' => (string) ($booking->payment_status ?? ''),
                 'deposit_contribution' => (float) $summary['deposit_contribution'],
                 'deposit_paid' => (float) $summary['deposit_contribution'],
                 'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
@@ -411,7 +395,13 @@ class PosController extends Controller
                 'add_ons' => $summary['add_ons'] ?? [],
                 'package_status' => $summary['package_status'],
             ];
+        })->when($statusFilterNeedsActiveCheck, function ($rows) {
+            return $rows->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row));
         })->values();
+
+        $totalRows = $allRows->count();
+        $rows = $allRows->forPage($page, $perPage)->values();
+        $lastPage = max(1, (int) ceil($totalRows / $perPage));
 
         $pendingCancellationRequestsCount = BookingCancellationRequest::query()
             ->where('status', 'pending')
@@ -419,10 +409,10 @@ class PosController extends Controller
 
         return $this->respond([
             'data' => $rows,
-            'current_page' => $paginator->currentPage(),
-            'last_page' => $paginator->lastPage(),
-            'per_page' => $paginator->perPage(),
-            'total' => $paginator->total(),
+            'current_page' => $page,
+            'last_page' => $lastPage,
+            'per_page' => $perPage,
+            'total' => $totalRows,
             'pending_cancellation_requests_count' => $pendingCancellationRequestsCount,
         ]);
     }
@@ -1502,6 +1492,35 @@ class PosController extends Controller
         return $this->respond([
             'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
+    }
+
+
+    protected function appointmentRowBlocksActiveSchedule(array $row): bool
+    {
+        $status = strtoupper((string) ($row['status'] ?? ''));
+        if (in_array($status, ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'], true)) {
+            return false;
+        }
+
+        if ($status !== 'COMPLETED') {
+            return in_array($status, ['HOLD', 'CONFIRMED', 'PENDING'], true);
+        }
+
+        $amountDueNow = (float) ($row['amount_due_now'] ?? 0);
+        $balanceDue = (float) ($row['balance_due'] ?? 0);
+        $settlementPaid = (float) ($row['settlement_paid'] ?? 0);
+        $paymentStatus = strtoupper((string) ($row['payment_status'] ?? ''));
+        $packageStatus = strtolower((string) data_get($row, 'package_status.status', ''));
+
+        if ($amountDueNow > 0.0001 || $balanceDue > 0.0001) {
+            return true;
+        }
+
+        if ($packageStatus === 'reserved' && $settlementPaid <= 0.0001) {
+            return true;
+        }
+
+        return $paymentStatus !== 'PAID';
     }
 
     /**
@@ -5334,6 +5353,7 @@ class PosController extends Controller
             'id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'status' => (string) $booking->status,
+            'payment_status' => (string) ($booking->payment_status ?? ''),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
