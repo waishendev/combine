@@ -438,6 +438,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             requiredPermission: 'ecommerce.stock-movements-logs.view',
           },
           {
+            key: 'product-stock-movement-revoke',
+            label: 'Stock Movement Revoke',
+            href: '/products/stock-movements/revoke',
+            requiredPermission: 'ecommerce.stock-movements-logs.view',
+          },
+          {
             key: 'ecommerce-commission-logs',
             label: 'Commission Logs',
             href: '/booking/commissions/logs',
