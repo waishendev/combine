@@ -100,13 +100,16 @@ class OfflineOrderManagementController extends Controller
             'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
             'remark' => ['nullable', 'string', 'max:1000'],
+            'remarks' => ['nullable', 'string', 'max:1000'],
         ]);
 
         try {
             $updated = $this->service->updatePaymentMethod(
                 $order,
                 trim((string) ($validated['payment_method'] ?? '')),
-                isset($validated['remark']) ? trim((string) $validated['remark']) : null,
+                isset($validated['remark'])
+                    ? trim((string) $validated['remark'])
+                    : (isset($validated['remarks']) ? trim((string) $validated['remarks']) : null),
                 $request->user()?->id,
                 $validated['payments'] ?? null,
             );

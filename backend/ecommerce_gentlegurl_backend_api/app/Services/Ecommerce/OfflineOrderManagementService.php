@@ -497,6 +497,11 @@ class OfflineOrderManagementService
                 return ['method' => $method, 'amount' => round((float) ($row['amount'] ?? 0), 2)];
             })
             ->filter(fn (array $row) => $row['method'] !== '' && $row['amount'] > 0)
+            ->groupBy('method')
+            ->map(fn ($group, string $method) => [
+                'method' => $method,
+                'amount' => round((float) $group->sum('amount'), 2),
+            ])
             ->values();
 
         if ($rows->isEmpty()) {

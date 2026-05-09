@@ -17,6 +17,8 @@ type Pagination = {
   last_page: number
 }
 
+type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null; reference_no?: string | null }
+
 type EcommerceRow = {
   order_id: number
   order_no: string
@@ -24,6 +26,8 @@ type EcommerceRow = {
   customer: string
   channel: string
   payment_method: string
+  payments?: PaymentBreakdownRow[]
+  order_total?: number
   item_count: number
   product_amount: number
   discount: number
@@ -38,6 +42,8 @@ type BookingRow = {
   customer: string
   channel: string
   payment_method: string
+  payments?: PaymentBreakdownRow[]
+  order_total?: number
   type: string
   booking_no: string | null
   package_name: string | null
@@ -179,6 +185,35 @@ const paymentMethodDisplayLabel = (raw: string) => {
   const key = (raw ?? '').trim().toLowerCase()
   if (!key) return '—'
   return PAYMENT_METHOD_TABLE_LABELS[key] ?? labelize(raw)
+}
+
+
+const normalizedPaymentBreakdown = (payments?: PaymentBreakdownRow[]) => {
+  if (!Array.isArray(payments)) return []
+  return payments
+    .map((payment, index) => {
+      const method = String(payment.method ?? payment.payment_method ?? '').trim()
+      const amount = Number(payment.amount ?? 0)
+      return { method, amount, key: `${method || 'payment'}-${amount}-${payment.reference_no ?? index}` }
+    })
+    .filter((payment) => payment.method && Number.isFinite(payment.amount) && payment.amount > 0)
+}
+
+const PaymentMethodCell = ({ method, payments }: { method: string; payments?: PaymentBreakdownRow[] }) => {
+  const rows = normalizedPaymentBreakdown(payments)
+  if (rows.length === 0) return <>{paymentMethodDisplayLabel(method)}</>
+  if (rows.length === 1) return <>{paymentMethodDisplayLabel(rows[0].method)}</>
+
+  return (
+    <div className="space-y-0.5">
+      <p className="font-semibold text-slate-800">Split</p>
+      {rows.map((payment) => (
+        <p key={payment.key} className="text-xs text-slate-600">
+          {paymentMethodDisplayLabel(payment.method)} · RM {formatAmount(payment.amount)}
+        </p>
+      ))}
+    </div>
+  )
 }
 
 const normalizeBookingType = (value?: string | null) => String(value ?? '').trim().toLowerCase()
@@ -558,7 +593,7 @@ export default function SalesChannelReportPage({
                     <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
                     <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
                     <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
-                    <td className="px-4 py-2 border border-gray-200">{paymentMethodDisplayLabel(row.payment_method)}</td>
+                    <td className="px-4 py-2 border border-gray-200"><PaymentMethodCell method={row.payment_method} payments={row.payments} /></td>
                     <td className="px-4 py-2 border border-gray-200">{row.item_count}</td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.product_amount)}</td>
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.discount)}</td>
@@ -569,6 +604,8 @@ export default function SalesChannelReportPage({
                         orderId={row.order_id}
                         channel={row.channel}
                         currentPaymentMethod={row.payment_method}
+                        orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
+                        paymentBreakdown={row.payments}
                         onDone={() => setRefreshKey((prev) => prev + 1)}
                       />
                     </td>
@@ -584,7 +621,7 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
                   <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
-                  <td className="px-4 py-2 border border-gray-200">{paymentMethodDisplayLabel(row.payment_method)}</td>
+                  <td className="px-4 py-2 border border-gray-200"><PaymentMethodCell method={row.payment_method} payments={row.payments} /></td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.type)}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.booking_no ?? '—'}</td>
                   <td className="px-4 py-2 border border-gray-200">
@@ -599,6 +636,8 @@ export default function SalesChannelReportPage({
                       orderId={row.order_id}
                       channel={row.channel}
                       currentPaymentMethod={row.payment_method}
+                      orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
+                      paymentBreakdown={row.payments}
                       staffActionLabel={isBookingWorkerType(row.type) ? 'worker' : 'sales_person'}
                       hideStaffAction={isBookingDepositType(row.type)}
                       onDone={() => setRefreshKey((prev) => prev + 1)}
