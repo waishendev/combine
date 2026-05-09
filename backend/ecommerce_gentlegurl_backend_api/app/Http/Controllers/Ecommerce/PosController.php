@@ -1135,8 +1135,9 @@ class PosController extends Controller
             return $this->respondError((string) $normalizedSplits['error'], 422);
         }
 
+        $settlementConflictDiagnostics = null;
         try {
-            DB::transaction(function () use ($booking, $normalizedSplits, $recalculatedDurationMin) {
+            DB::transaction(function () use ($booking, $normalizedSplits, $recalculatedDurationMin, &$settlementConflictDiagnostics) {
                 $lockedBooking = Booking::query()
                     ->whereKey((int) $booking->id)
                     ->lockForUpdate()
@@ -1146,11 +1147,20 @@ class PosController extends Controller
                 $transactionNewEndAt = $startAt->copy()->addMinutes($recalculatedDurationMin);
                 $staffId = (int) ($lockedBooking->staff_id ?? $booking->staff_id ?? 0);
                 $bufferMin = (int) ($lockedBooking->buffer_min ?? $booking->buffer_min ?? 0);
+                $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $transactionNewEndAt);
+                $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($staffId, $startAt, $transactionNewEndAt, $bufferMin, (int) $lockedBooking->id, $lockedBooking);
 
-                if (! $this->availabilityService->isWithinStaffAvailability($staffId, $startAt, $transactionNewEndAt)
-                    || $this->availabilityService->hasConflict($staffId, $startAt, $transactionNewEndAt, $bufferMin, (int) $lockedBooking->id, $lockedBooking)) {
+                if (! (bool) ($scheduleDiagnostics['is_available'] ?? false) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                    $settlementConflictDiagnostics = [
+                        ...$conflictDiagnostics,
+                        'staff_schedule' => $scheduleDiagnostics,
+                        'current_booking_id' => (int) $lockedBooking->id,
+                        'current_appointment_id' => (int) $lockedBooking->id,
+                    ];
+                    Log::warning('POS edit settlement appointment duration conflict', $settlementConflictDiagnostics);
+
                     throw ValidationException::withMessages([
-                        'appointment_end_at' => __('This update extends the appointment time and conflicts with another booking or staff availability.'),
+                        'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
                     ]);
                 }
 
@@ -1162,7 +1172,8 @@ class PosController extends Controller
         } catch (ValidationException $e) {
             return $this->respondError(
                 (string) (collect($e->errors())->flatten()->first() ?: __('This update extends the appointment time and conflicts with another booking or staff availability.')),
-                409
+                409,
+                ['conflict_debug' => $settlementConflictDiagnostics]
             );
         }
 
@@ -5383,6 +5394,40 @@ class PosController extends Controller
         return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
     }
 
+
+
+    protected function formatSettlementConflictMessage(array $diagnostics): string
+    {
+        $base = __('This update extends the appointment time and conflicts with another booking or staff availability.');
+        $parts = [];
+
+        $bookingIds = collect($diagnostics['conflicting_booking_ids'] ?? [])->filter()->values()->all();
+        if (! empty($bookingIds)) {
+            $parts[] = 'Conflicting booking IDs: ' . implode(', ', $bookingIds);
+        }
+
+        $cartItemIds = collect($diagnostics['conflicting_cart_item_ids'] ?? [])->filter()->values()->all();
+        if (! empty($cartItemIds)) {
+            $parts[] = 'Conflicting cart hold IDs: ' . implode(', ', $cartItemIds);
+        }
+
+        $leaveIds = collect($diagnostics['detected_leave_ids'] ?? [])->filter()->values()->all();
+        if (! empty($leaveIds)) {
+            $parts[] = 'Staff leave/time-off IDs: ' . implode(', ', $leaveIds);
+        }
+
+        $blockIds = collect($diagnostics['detected_block_ids'] ?? [])->filter()->values()->all();
+        if (! empty($blockIds)) {
+            $parts[] = 'Booking block IDs: ' . implode(', ', $blockIds);
+        }
+
+        $schedule = (array) ($diagnostics['staff_schedule'] ?? []);
+        if (($schedule['is_available'] ?? true) === false) {
+            $parts[] = 'Staff schedule failure: ' . (string) ($schedule['failure_reason'] ?? 'unknown');
+        }
+
+        return empty($parts) ? $base : $base . ' ' . implode(' | ', $parts);
+    }
 
     protected function recalculateAppointmentDurationMin(Booking $booking): int
     {
