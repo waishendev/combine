@@ -69,6 +69,11 @@ type ApiMeta = {
   total: number
 }
 
+type ProductStockMovementLogsPageProps = {
+  basePath?: string
+  workflow?: 'logs' | 'revoke'
+}
+
 const DEFAULT_META: ApiMeta = {
   current_page: 1,
   last_page: 1,
@@ -104,7 +109,10 @@ const canRevokeMovement = (row: MovementRow) => {
   return row.remark?.trim().toLowerCase() !== 'pos checkout'
 }
 
-export default function ProductStockMovementLogsPage() {
+export default function ProductStockMovementLogsPage({
+  basePath = '/products/stock-movements',
+  workflow = 'logs',
+}: ProductStockMovementLogsPageProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
 
@@ -123,6 +131,13 @@ export default function ProductStockMovementLogsPage() {
   const [type, setType] = useState(searchParams.get('type') ?? '')
   const [dateFrom, setDateFrom] = useState(searchParams.get('date_from') ?? '')
   const [dateTo, setDateTo] = useState(searchParams.get('date_to') ?? '')
+  const isRevokeWorkflow = workflow === 'revoke'
+  const defaultRevokableOnly = isRevokeWorkflow
+  const [revokableOnly, setRevokableOnly] = useState(
+    searchParams.has('revokable_only')
+      ? searchParams.get('revokable_only') === '1'
+      : defaultRevokableOnly,
+  )
   const [pageSize, setPageSize] = useState(
     Number(searchParams.get('per_page') ?? 20) || 20,
   )
@@ -134,8 +149,9 @@ export default function ProductStockMovementLogsPage() {
   }, [productId, products])
 
   const activeFilterCount = useMemo(() => {
-    return [productId, type, dateFrom, dateTo].filter((value) => Boolean(value)).length
-  }, [productId, type, dateFrom, dateTo])
+    const revokableFilterCount = revokableOnly !== defaultRevokableOnly ? 1 : 0
+    return [productId, type, dateFrom, dateTo].filter((value) => Boolean(value)).length + revokableFilterCount
+  }, [dateFrom, dateTo, defaultRevokableOnly, productId, revokableOnly, type])
 
   const syncQuery = useCallback(
     (nextPage: number) => {
@@ -144,12 +160,13 @@ export default function ProductStockMovementLogsPage() {
       if (type) params.set('type', type)
       if (dateFrom) params.set('date_from', dateFrom)
       if (dateTo) params.set('date_to', dateTo)
+      if (revokableOnly) params.set('revokable_only', '1')
       params.set('page', String(nextPage))
       params.set('per_page', String(pageSize))
       const query = params.toString()
-      router.replace(`/products/stock-movements${query ? `?${query}` : ''}`)
+      router.replace(`${basePath}${query ? `?${query}` : ''}`)
     },
-    [dateFrom, dateTo, pageSize, productId, router, type],
+    [basePath, dateFrom, dateTo, pageSize, productId, revokableOnly, router, type],
   )
 
   const fetchRows = useCallback(
@@ -164,6 +181,7 @@ export default function ProductStockMovementLogsPage() {
         if (type) params.set('type', type)
         if (dateFrom) params.set('date_from', dateFrom)
         if (dateTo) params.set('date_to', dateTo)
+        if (revokableOnly) params.set('revokable_only', '1')
 
         const res = await fetch(
           `/api/proxy/ecommerce/product-stock-movements?${params.toString()}`,
@@ -190,7 +208,7 @@ export default function ProductStockMovementLogsPage() {
         setLoading(false)
       }
     },
-    [dateFrom, dateTo, pageSize, productId, type],
+    [dateFrom, dateTo, pageSize, productId, revokableOnly, type],
   )
 
   const fetchProducts = useCallback(async () => {
@@ -248,9 +266,9 @@ export default function ProductStockMovementLogsPage() {
     setType('')
     setDateFrom('')
     setDateTo('')
+    setRevokableOnly(defaultRevokableOnly)
     setPageSize(20)
-    router.replace('/products/stock-movements')
-    void fetchRows(1)
+    router.replace(basePath)
   }
 
   const handlePageChange = (page: number) => {
@@ -400,6 +418,15 @@ export default function ProductStockMovementLogsPage() {
               />
             </div>
           </div>
+          <label className="mt-4 flex items-center gap-2 text-sm font-medium text-gray-700">
+            <input
+              type="checkbox"
+              checked={revokableOnly}
+              onChange={(event) => setRevokableOnly(event.target.checked)}
+              className="h-4 w-4 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+            />
+            Show only movements that can currently be revoked
+          </label>
           <div className="mt-4 flex flex-wrap justify-end gap-2">
             <button
               type="button"
@@ -416,6 +443,12 @@ export default function ProductStockMovementLogsPage() {
               Apply Filters
             </button>
           </div>
+        </div>
+      ) : null}
+
+      {isRevokeWorkflow ? (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Review eligible manual stock movements and use the Revoke action to create an auditable reversal record.
         </div>
       ) : null}
 

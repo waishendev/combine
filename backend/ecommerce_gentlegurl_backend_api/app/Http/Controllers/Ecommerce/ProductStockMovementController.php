@@ -22,6 +22,7 @@ class ProductStockMovementController extends Controller
             'date_to' => ['nullable', 'date'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:200'],
+            'revokable_only' => ['nullable', 'boolean'],
         ]);
 
         $perPage = (int) ($validated['per_page'] ?? 20);
@@ -46,6 +47,16 @@ class ProductStockMovementController extends Controller
             })
             ->when(isset($validated['date_to']), function ($builder) use ($validated) {
                 $builder->whereDate('created_at', '<=', $validated['date_to']);
+            })
+            ->when((bool) ($validated['revokable_only'] ?? false), function ($builder) {
+                $builder->whereIn('type', ['stock_in', 'stock_out'])
+                    ->where('is_revoked', false)
+                    ->whereNull('reversal_of_movement_id')
+                    ->whereDoesntHave('reversalMovement')
+                    ->where(function ($nested) {
+                        $nested->whereNull('remark')
+                            ->orWhereRaw('LOWER(TRIM(remark)) != ?', ['pos checkout']);
+                    });
             })
             ->latest('id');
 
