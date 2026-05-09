@@ -4572,6 +4572,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     selectedMember?.id,
   ])
 
+  const checkoutResultHasCashChange = Boolean(
+    checkoutResult &&
+      checkoutResult.payment_method === 'cash' &&
+      checkoutResult.change_amount > 0 &&
+      checkoutResult.paid_amount > checkoutResult.total,
+  )
+
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
       <div className="flex items-center justify-between gap-3">
@@ -8638,7 +8645,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       {/* Checkout Success Modal with QR Code */}
       {checkoutResult && (
         <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
+          <div className={`w-full ${checkoutResultHasCashChange ? 'max-w-4xl' : 'max-w-lg'} rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden`}>
             <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex items-center justify-between">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8664,7 +8671,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </svg>
               </button>
             </div>
-            <div className="p-6 space-y-5">
+            <div className={checkoutResultHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}>
+              {checkoutResultHasCashChange ? (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 shadow-inner">
+                  <p className="text-sm font-bold uppercase tracking-wide text-emerald-800">Cash Summary</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Grand Total</span>
+                      <span className="font-bold text-gray-900">RM {checkoutResult.total.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Cash Received</span>
+                      <span className="font-bold text-gray-900">RM {checkoutResult.paid_amount.toFixed(2)}</span>
+                    </div>
+                    <div className="rounded-2xl border-2 border-emerald-500 bg-white px-4 py-4 text-center shadow-sm">
+                      <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Change to Return</p>
+                      <p className="mt-1 text-4xl font-black text-emerald-700">RM {checkoutResult.change_amount.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="space-y-5">
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium text-gray-600">Order Number</p>
                 <p className="text-2xl font-bold text-gray-900">{checkoutResult.order_number}</p>
@@ -8743,6 +8770,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               )}
             </div>
           </div>
+        </div>
         </div>
       )}
 

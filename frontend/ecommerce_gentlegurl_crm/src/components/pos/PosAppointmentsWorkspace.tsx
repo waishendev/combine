@@ -2053,6 +2053,12 @@ export default function PosAppointmentsWorkspace({
   const appointmentSettlementMatchesDue = appointmentSettlementTotalPaidCents === appointmentDueAfterDiscountCents
   const appointmentSettlementPaymentValid = appointmentSettlementPaymentRows.length > 0 && (appointmentSettlementMatchesDue || appointmentSettlementCashOnlyOverpaid)
   const appointmentSettlementHasQrPay = appointmentSettlementQrPayCents > 0
+  const appointmentSettlementHasCashChange = Boolean(
+    appointmentSettlementResult &&
+      appointmentSettlementResult.payment_method === 'cash' &&
+      appointmentSettlementResult.change_amount > 0 &&
+      appointmentSettlementResult.cash_received > appointmentSettlementResult.paid_amount,
+  )
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -4381,7 +4387,7 @@ export default function PosAppointmentsWorkspace({
 
       {appointmentSettlementResult && (
         <div className="fixed inset-0 z-[56] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+          <div className={`w-full ${appointmentSettlementHasCashChange ? 'max-w-4xl' : 'max-w-lg'} overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl`}>
             <div className="flex items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
               <h4 className="flex items-center gap-2 text-xl font-bold text-white">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4407,7 +4413,27 @@ export default function PosAppointmentsWorkspace({
                 </svg>
               </button>
             </div>
-            <div className="space-y-5 p-6">
+            <div className={appointmentSettlementHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}>
+              {appointmentSettlementHasCashChange ? (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 shadow-inner">
+                  <p className="text-sm font-bold uppercase tracking-wide text-emerald-800">Cash Summary</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Grand Total</span>
+                      <span className="font-bold text-gray-900">RM {appointmentSettlementResult.paid_amount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Cash Received</span>
+                      <span className="font-bold text-gray-900">RM {appointmentSettlementResult.cash_received.toFixed(2)}</span>
+                    </div>
+                    <div className="rounded-2xl border-2 border-emerald-500 bg-white px-4 py-4 text-center shadow-sm">
+                      <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Change to Return</p>
+                      <p className="mt-1 text-4xl font-black text-emerald-700">RM {appointmentSettlementResult.change_amount.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="space-y-5">
               <div className="space-y-2 text-center">
                 <p className="text-sm font-medium text-gray-600">Order Number</p>
                 <p className="text-2xl font-bold text-gray-900">{appointmentSettlementResult.order_number}</p>
@@ -4484,6 +4510,7 @@ export default function PosAppointmentsWorkspace({
                   </div>
                 </div>
               ) : null}
+              </div>
             </div>
           </div>
         </div>
