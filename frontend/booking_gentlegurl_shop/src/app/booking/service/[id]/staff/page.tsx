@@ -5,7 +5,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
-import { addCartItem, getBookingServiceDetail, uploadBookingCartItemPhotos } from "@/lib/apiClient";
+import { addCartItem, getAvailabilityPooled, getBookingServiceDetail, uploadBookingCartItemPhotos } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { clearBookingPhotoDraft, loadBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
 import { Service, Staff } from "@/lib/types";
@@ -53,6 +53,8 @@ export default function ServiceStaffPage() {
 
   const [service, setService] = useState<ServiceDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [verifiedAvailableStaffIds, setVerifiedAvailableStaffIds] = useState<number[] | null>(null);
+  const [verifyingAvailability, setVerifyingAvailability] = useState(false);
   const [confirmStaff, setConfirmStaff] = useState<Staff | null>(null);
   const [adding, setAdding] = useState(false);
   const [cartAddSuccessOpen, setCartAddSuccessOpen] = useState(false);
@@ -70,11 +72,6 @@ export default function ServiceStaffPage() {
   }, [id]);
 
   const staffs = service?.staffs ?? [];
-  const eligibleStaff = useMemo(() => {
-    if (availableStaffIds.length === 0) return [];
-    const set = new Set(availableStaffIds);
-    return staffs.filter((s) => set.has(s.id));
-  }, [staffs, availableStaffIds]);
 
   const extraDuration = useMemo(
     () =>
@@ -122,7 +119,57 @@ export default function ServiceStaffPage() {
   const durationMin = (service?.duration_minutes ?? 60) + extraDuration;
   const estimatedBalanceAtSalon = Math.max(0, estimatedTotalCost - depositPreview.depositTotal);
 
-  const slotValid = Boolean(slotDate && startAt && endAt && availableStaffIds.length > 0);
+  useEffect(() => {
+    if (!service || !slotDate || !startAt) {
+      setVerifiedAvailableStaffIds(null);
+      return;
+    }
+
+    let cancelled = false;
+    setVerifyingAvailability(true);
+    getAvailabilityPooled(id, slotDate, extraDuration)
+      .then((payload) => {
+        if (cancelled) return;
+        const allSlots = Array.isArray(payload?.visible_slots)
+          ? payload.visible_slots
+          : Array.isArray(payload?.slots)
+            ? payload.slots
+            : [];
+        const selectedStartMs = new Date(startAt).getTime();
+        const matchingSlot = allSlots.find((slot) => {
+          const slotStart = slot.start_at ?? slot.start_time;
+          return slotStart && new Date(slotStart).getTime() === selectedStartMs;
+        });
+        const staffIds = Array.isArray(matchingSlot?.available_staff_ids)
+          ? matchingSlot.available_staff_ids.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)
+          : [];
+        setVerifiedAvailableStaffIds(staffIds);
+        if (confirmStaff && !staffIds.includes(confirmStaff.id)) {
+          setConfirmStaff(null);
+        }
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setVerifiedAvailableStaffIds([]);
+        setError(err instanceof Error ? err.message : "Unable to verify staff availability.");
+      })
+      .finally(() => {
+        if (!cancelled) setVerifyingAvailability(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [confirmStaff, extraDuration, id, service, slotDate, startAt]);
+
+  const effectiveAvailableStaffIds = verifiedAvailableStaffIds ?? availableStaffIds;
+  const eligibleStaff = useMemo(() => {
+    if (effectiveAvailableStaffIds.length === 0) return [];
+    const set = new Set(effectiveAvailableStaffIds);
+    return staffs.filter((staff) => set.has(staff.id));
+  }, [staffs, effectiveAvailableStaffIds]);
+
+  const slotValid = Boolean(slotDate && startAt && endAt && effectiveAvailableStaffIds.length > 0);
 
   useEffect(() => {
     if (!confirmStaff && !cartAddSuccessOpen) return;
@@ -198,6 +245,10 @@ export default function ServiceStaffPage() {
 
         {!service ? (
           <p>Loading service...</p>
+        ) : verifyingAvailability ? (
+          <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-sm text-[var(--text-muted)]">
+            Checking staff availability for your selected time…
+          </div>
         ) : !slotValid ? (
           <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6 text-sm text-[var(--text-muted)]">
             <p className="font-medium text-[var(--foreground)]">Pick a time first</p>

@@ -10,6 +10,8 @@ use App\Models\Booking\BookingStaffSchedule;
 use App\Models\Booking\BookingStaffTimeoff;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Log;
 
 class BookingAvailabilityService
 {
@@ -43,6 +45,10 @@ class BookingAvailabilityService
         $isTodayInBusinessTz = $day->isSameDay($nowInBusinessTz);
         $durationMin = (int) $service->duration_min + max(0, $extraDurationMin);
         $bufferMin = (int) $service->buffer_min;
+
+        if ($durationMin <= 0) {
+            return [];
+        }
 
         $slots = [];
         $period = CarbonPeriod::create($startWindow, $stepMin . ' minutes', $endWindow->copy()->subMinutes($durationMin));
@@ -147,14 +153,83 @@ class BookingAvailabilityService
         return $visible;
     }
 
-    public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null): bool
+    public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null, ?Booking $ignoreBooking = null): bool
+    {
+        return $this->getConflictDiagnostics($staffId, $startAt, $endAt, $bufferMin, $ignoreBookingId, $ignoreBooking)['has_conflict'];
+    }
+
+    protected function businessTimezone(): string
+    {
+        return (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+    }
+
+    protected function normalizeForStorage(Carbon $value): Carbon
+    {
+        return $value->copy()->setTimezone($this->businessTimezone());
+    }
+
+    /** Apply the canonical appointment overlap rule: existing_start < new_end AND existing_end > new_start. */
+    protected function whereOverlaps(Builder $query, Carbon $startAt, Carbon $endAt, string $startColumn = 'start_at', string $endColumn = 'end_at'): Builder
+    {
+        $start = $this->normalizeForStorage($startAt)->toDateTimeString();
+        $end = $this->normalizeForStorage($endAt)->toDateTimeString();
+
+        return $query->where($startColumn, '<', $end)
+            ->where($endColumn, '>', $start);
+    }
+
+    /**
+     * Return exact conflict sources for appointment availability checks.
+     *
+     * The optional ignored booking is the booking currently being edited/rescheduled. Its own row,
+     * same-code sibling rows, and matching stale cart holds are ignored; every other overlapping
+     * booking/cart/time-off/block still blocks.
+     *
+     * @return array{
+     *   has_conflict:bool,
+     *   current_booking_id:int|null,
+     *   current_appointment_id:int|null,
+     *   staff_id:int,
+     *   requested_start:string,
+     *   requested_end:string,
+     *   block_end:string,
+     *   ignored_booking_ids:array<int,int>,
+     *   ignored_booking_code:string|null,
+     *   conflicting_appointment_ids:array<int,int>,
+     *   conflicting_booking_ids:array<int,int>,
+     *   conflicting_booking_codes:array<int,string>,
+     *   conflicting_cart_item_ids:array<int,int>,
+     *   detected_leave_ids:array<int,int>,
+     *   detected_block_ids:array<int,int>
+     * }
+     */
+    public function getConflictDiagnostics(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null, ?Booking $ignoreBooking = null): array
     {
         $blockEnd = $endAt->copy()->addMinutes($bufferMin);
+        $queryStartAt = $this->normalizeForStorage($startAt);
+        $queryEndAt = $this->normalizeForStorage($endAt);
+        $queryBlockEndAt = $this->normalizeForStorage($blockEnd);
+        $ignoreBookingIds = collect([$ignoreBookingId, $ignoreBooking?->id])
+            ->filter(fn ($id) => $id !== null && (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+        $ignoreBookingCode = trim((string) ($ignoreBooking?->booking_code ?? ''));
+        $ignoreStartAt = $ignoreBooking?->start_at ? $ignoreBooking->start_at->toDateTimeString() : null;
+        $ignoreServiceId = (int) ($ignoreBooking?->service_id ?? 0);
 
-        $hasBookingConflict = Booking::where('staff_id', $staffId)
-            ->when($ignoreBookingId !== null, fn ($query) => $query->where('id', '!=', $ignoreBookingId))
+        $bookingConflicts = Booking::where('staff_id', $staffId)
+            ->when(! empty($ignoreBookingIds), fn ($query) => $query->whereNotIn('id', $ignoreBookingIds))
+            ->when($ignoreBookingCode !== '', function ($query) use ($ignoreBookingCode) {
+                $query->where(function ($nested) use ($ignoreBookingCode) {
+                    $nested->whereNull('booking_code')
+                        ->orWhere('booking_code', '')
+                        ->orWhere('booking_code', '!=', $ignoreBookingCode);
+                });
+            })
             ->where(function ($query) {
-                $query->whereIn('status', ['HOLD', 'CONFIRMED'])
+                $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
                     ->orWhere(function ($completed) {
                         $completed->where('status', 'COMPLETED')
                             ->where(function ($payment) {
@@ -163,46 +238,210 @@ class BookingAvailabilityService
                             });
                     });
             })
-            ->where(function ($query) use ($startAt, $blockEnd) {
-                $query->where('start_at', '<', $blockEnd)
-                    ->whereRaw("end_at + (buffer_min * interval '1 minute') > ?", [$startAt->toDateTimeString()]);
+            ->where('start_at', '<', $queryBlockEndAt->toDateTimeString())
+            ->get(['id', 'booking_code', 'start_at', 'end_at', 'buffer_min', 'status', 'payment_status'])
+            ->filter(function (Booking $candidate) use ($queryStartAt) {
+                $candidateBufferedEnd = $candidate->end_at
+                    ? $this->normalizeForStorage($candidate->end_at)->addMinutes(max(0, (int) ($candidate->buffer_min ?? 0)))
+                    : null;
+
+                return $candidateBufferedEnd !== null && $candidateBufferedEnd->gt($queryStartAt);
             })
-            ->exists();
+            ->values();
 
-        if ($hasBookingConflict) {
-            return true;
-        }
-
-
-        $hasCartItemConflict = BookingCartItem::where('staff_id', $staffId)
+        $cartConflicts = BookingCartItem::where('staff_id', $staffId)
             ->where('status', 'active')
             ->where('expires_at', '>', now())
-            ->where('start_at', '<', $blockEnd)
-            ->whereRaw("end_at > ?", [$startAt->toDateTimeString()])
-            ->exists();
+            ->when($ignoreBooking !== null && $ignoreStartAt && $ignoreServiceId > 0, function ($query) use ($ignoreStartAt, $ignoreServiceId) {
+                // Stale active cart holds from the original booking flow can keep the old range.
+                // Exclude only the hold that matches this same booking's staff/service/start;
+                // different starts/services remain real conflicts.
+                $query->where(function ($nested) use ($ignoreStartAt, $ignoreServiceId) {
+                    $nested->where('service_id', '!=', $ignoreServiceId)
+                        ->orWhere('start_at', '!=', $ignoreStartAt);
+                });
+            })
+            ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
+                $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
+            })
+            ->get(['id', 'start_at', 'end_at', 'service_id', 'status'])
+            ->map(fn (BookingCartItem $item) => [
+                'id' => (int) $item->id,
+                'service_id' => (int) ($item->service_id ?? 0),
+                'start_at' => optional($item->start_at)?->toDateTimeString(),
+                'end_at' => optional($item->end_at)?->toDateTimeString(),
+                'status' => (string) ($item->status ?? ''),
+            ])
+            ->values()
+            ->all();
 
-        if ($hasCartItemConflict) {
-            return true;
-        }
+        $timeoffConflicts = BookingStaffTimeoff::where('staff_id', $staffId)
+            ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
+                $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
+            })
+            ->get(['id', 'start_at', 'end_at'])
+            ->map(fn (BookingStaffTimeoff $timeoff) => [
+                'id' => (int) $timeoff->id,
+                'start_at' => optional($timeoff->start_at)?->toDateTimeString(),
+                'end_at' => optional($timeoff->end_at)?->toDateTimeString(),
+            ])
+            ->values()
+            ->all();
 
-        $hasTimeoff = BookingStaffTimeoff::where('staff_id', $staffId)
-            ->where('start_at', '<', $blockEnd)
-            ->where('end_at', '>', $startAt)
-            ->exists();
-
-        if ($hasTimeoff) {
-            return true;
-        }
-
-        return BookingBlock::where(function ($query) use ($staffId) {
+        $blockConflicts = BookingBlock::where(function ($query) use ($staffId) {
             $query->where('scope', 'STORE')
                 ->orWhere(function ($nested) use ($staffId) {
                     $nested->where('scope', 'STAFF')->where('staff_id', $staffId);
                 });
         })
-            ->where('start_at', '<', $blockEnd)
-            ->where('end_at', '>', $startAt)
-            ->exists();
+            ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
+                $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
+            })
+            ->get(['id', 'scope', 'staff_id', 'start_at', 'end_at'])
+            ->map(fn (BookingBlock $block) => [
+                'id' => (int) $block->id,
+                'scope' => (string) ($block->scope ?? ''),
+                'staff_id' => $block->staff_id ? (int) $block->staff_id : null,
+                'start_at' => optional($block->start_at)?->toDateTimeString(),
+                'end_at' => optional($block->end_at)?->toDateTimeString(),
+            ])
+            ->values()
+            ->all();
+
+        $conflictingBookingRows = $bookingConflicts->map(fn (Booking $conflict) => [
+            'id' => (int) $conflict->id,
+            'booking_code' => (string) ($conflict->booking_code ?? ''),
+            'start_at' => optional($conflict->start_at)?->toDateTimeString(),
+            'end_at' => optional($conflict->end_at)?->toDateTimeString(),
+            'buffer_min' => (int) ($conflict->buffer_min ?? 0),
+            'buffered_end_at' => $conflict->end_at
+                ? $this->normalizeForStorage($conflict->end_at)->addMinutes(max(0, (int) ($conflict->buffer_min ?? 0)))->toDateTimeString()
+                : null,
+            'status' => (string) ($conflict->status ?? ''),
+            'payment_status' => (string) ($conflict->payment_status ?? ''),
+            'blocks_time' => true,
+        ])->values()->all();
+        $conflictingBookingIds = collect($conflictingBookingRows)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $conflictingCartItemIds = collect($cartConflicts)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $timeoffIds = collect($timeoffConflicts)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $blockIdList = collect($blockConflicts)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+        $diagnostics = [
+            'has_conflict' => ! empty($conflictingBookingIds) || ! empty($cartConflicts) || ! empty($timeoffIds) || ! empty($blockIdList),
+            'current_booking_id' => $ignoreBooking?->id ? (int) $ignoreBooking->id : ($ignoreBookingId ? (int) $ignoreBookingId : null),
+            'current_appointment_id' => $ignoreBooking?->id ? (int) $ignoreBooking->id : ($ignoreBookingId ? (int) $ignoreBookingId : null),
+            'staff_id' => $staffId,
+            'requested_start' => $queryStartAt->toDateTimeString(),
+            'requested_end' => $queryEndAt->toDateTimeString(),
+            'requested_start_original_timezone' => $startAt->toIso8601String(),
+            'requested_end_original_timezone' => $endAt->toIso8601String(),
+            'block_end' => $queryBlockEndAt->toDateTimeString(),
+            'business_timezone' => $this->businessTimezone(),
+            'ignored_booking_ids' => $ignoreBookingIds,
+            'ignored_booking_code' => $ignoreBookingCode !== '' ? $ignoreBookingCode : null,
+            'conflicting_appointment_ids' => $conflictingBookingIds,
+            'conflicting_booking_ids' => $conflictingBookingIds,
+            'conflicting_booking_codes' => collect($conflictingBookingRows)->pluck('booking_code')->filter()->values()->all(),
+            'conflicting_appointments' => $conflictingBookingRows,
+            'conflicting_cart_item_ids' => $conflictingCartItemIds,
+            'conflicting_cart_items' => $cartConflicts,
+            'detected_leave_ids' => $timeoffIds,
+            'detected_leaves' => $timeoffConflicts,
+            'detected_block_ids' => $blockIdList,
+            'detected_blocks' => $blockConflicts,
+        ];
+
+        if ((bool) ($diagnostics['has_conflict'] ?? false)) {
+            Log::debug('Booking availability overlap conflict detected', $diagnostics);
+        }
+
+        return $diagnostics;
+    }
+
+    public function getStaffAvailabilityDiagnostics(int $staffId, Carbon $startAt, Carbon $endAt): array
+    {
+        if ($staffId <= 0) {
+            return ['is_available' => false, 'failure_reason' => 'invalid_staff_id'];
+        }
+
+        if ($endAt->lessThanOrEqualTo($startAt)) {
+            return ['is_available' => false, 'failure_reason' => 'end_not_after_start'];
+        }
+
+        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $start = $startAt->copy()->setTimezone($timezone);
+        $end = $endAt->copy()->setTimezone($timezone);
+
+        if (! $start->isSameDay($end)) {
+            return [
+                'is_available' => false,
+                'failure_reason' => 'range_crosses_business_day',
+                'business_timezone' => $timezone,
+                'localized_start' => $start->toDateTimeString(),
+                'localized_end' => $end->toDateTimeString(),
+            ];
+        }
+
+        $schedule = BookingStaffSchedule::where('staff_id', $staffId)
+            ->where('day_of_week', $start->dayOfWeek)
+            ->first();
+
+        if (! $schedule) {
+            return [
+                'is_available' => false,
+                'failure_reason' => 'no_staff_schedule',
+                'business_timezone' => $timezone,
+                'day_of_week' => $start->dayOfWeek,
+                'localized_start' => $start->toDateTimeString(),
+                'localized_end' => $end->toDateTimeString(),
+            ];
+        }
+
+        $day = $start->copy()->startOfDay();
+        $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time, $timezone);
+        $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time, $timezone);
+
+        if ($start->lt($startWindow) || $end->gt($endWindow)) {
+            return [
+                'is_available' => false,
+                'failure_reason' => 'outside_staff_schedule',
+                'business_timezone' => $timezone,
+                'schedule_id' => (int) $schedule->id,
+                'schedule_start' => $startWindow->toDateTimeString(),
+                'schedule_end' => $endWindow->toDateTimeString(),
+                'localized_start' => $start->toDateTimeString(),
+                'localized_end' => $end->toDateTimeString(),
+            ];
+        }
+
+        if ($this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $start, $end)) {
+            return [
+                'is_available' => false,
+                'failure_reason' => 'hits_staff_break',
+                'business_timezone' => $timezone,
+                'schedule_id' => (int) $schedule->id,
+                'break_start' => $schedule->break_start,
+                'break_end' => $schedule->break_end,
+                'localized_start' => $start->toDateTimeString(),
+                'localized_end' => $end->toDateTimeString(),
+            ];
+        }
+
+        return [
+            'is_available' => true,
+            'failure_reason' => null,
+            'business_timezone' => $timezone,
+            'schedule_id' => (int) $schedule->id,
+            'schedule_start' => $startWindow->toDateTimeString(),
+            'schedule_end' => $endWindow->toDateTimeString(),
+            'localized_start' => $start->toDateTimeString(),
+            'localized_end' => $end->toDateTimeString(),
+        ];
+    }
+
+    public function isWithinStaffAvailability(int $staffId, Carbon $startAt, Carbon $endAt): bool
+    {
+        return (bool) ($this->getStaffAvailabilityDiagnostics($staffId, $startAt, $endAt)['is_available'] ?? false);
     }
 
     private function hitsBreak(?string $breakStart, ?string $breakEnd, Carbon $day, Carbon $candidateStart, Carbon $candidateEnd): bool

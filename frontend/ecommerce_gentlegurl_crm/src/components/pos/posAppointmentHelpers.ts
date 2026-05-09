@@ -81,8 +81,13 @@ export function formatTimeRange(startAt?: string | null, endAt?: string | null) 
 export function formatDateTimeRange(startAt?: string | null, endAt?: string | null) {
   if (!startAt) return '-'
   const start = new Date(startAt)
-  if (!endAt) return start.toLocaleString()
-  return `${start.toLocaleString()} - ${new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  if (Number.isNaN(start.getTime())) return '-'
+  const date = start.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const startTime = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (!endAt) return `${date}, ${startTime}`
+  const end = new Date(endAt)
+  const endTime = Number.isNaN(end.getTime()) ? '' : end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  return endTime ? `${date}, ${startTime} - ${endTime}` : `${date}, ${startTime}`
 }
 
 /** Visual grouping for schedule blocks (month preview + day grid). */
