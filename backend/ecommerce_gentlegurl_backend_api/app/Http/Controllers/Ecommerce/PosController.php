@@ -999,6 +999,8 @@ class PosController extends Controller
 
             $existingMainByServiceId = $existingSettlementItems
                 ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+                ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+                ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
                 ->keyBy(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0));
 
             $mainServiceRows = $serviceIds
@@ -1101,6 +1103,8 @@ class PosController extends Controller
 
             $existingMainRows = $existingSettlementItems
                 ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+                ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+                ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
                 ->values()
                 ->all();
             $booking->addon_items_json = array_values([...$existingMainRows, ...$newAddonItems]);
@@ -5450,6 +5454,8 @@ class PosController extends Controller
 
         $nestedAddonDurationMin = (int) $settlementItems
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
             ->sum(fn ($item) => collect($item['addon_items'] ?? [])->sum(fn ($addon) => max(0, (int) ($addon['extra_duration_min'] ?? 0))));
 
         return $baseDurationMin + $extraMainDurationMin + $topLevelAddonDurationMin + $nestedAddonDurationMin;
@@ -5558,6 +5564,8 @@ class PosController extends Controller
         $settlementItems = collect($booking->addon_items_json ?? []);
         $extraMainServices = $settlementItems
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
             ->map(fn ($item) => [
                 'id' => isset($item['id']) ? (int) $item['id'] : null,
                 'name' => (string) ($item['name'] ?? $item['label'] ?? 'Service'),

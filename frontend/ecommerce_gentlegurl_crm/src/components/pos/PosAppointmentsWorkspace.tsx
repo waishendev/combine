@@ -1175,6 +1175,21 @@ export default function PosAppointmentsWorkspace({
     return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
   }, [])
 
+  const appointmentDisplayMainServices = useMemo(() => {
+    const originalServiceId = Number(appointmentDetail?.service?.id ?? 0)
+    const seenAdded = new Set<number>()
+    return (appointmentDetail?.main_services ?? []).filter((service) => {
+      const serviceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+      if (service.is_original) return true
+      if (originalServiceId > 0 && serviceId === originalServiceId) return false
+      if (serviceId > 0) {
+        if (seenAdded.has(serviceId)) return false
+        seenAdded.add(serviceId)
+      }
+      return true
+    })
+  }, [appointmentDetail?.main_services, appointmentDetail?.service?.id])
+
   const openEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.service?.id) return
     setEditSettlementError(null)
@@ -1186,7 +1201,7 @@ export default function PosAppointmentsWorkspace({
         .filter((id): id is number => id != null),
     )
     setEditSelectedAddonIds(currentAddonIds)
-    const addedMainBlocksSeed = (appointmentDetail.main_services ?? [])
+    const addedMainBlocksSeed = appointmentDisplayMainServices
       .filter((service) => !service.is_original)
       .map((service) => ({
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
@@ -1258,7 +1273,7 @@ export default function PosAppointmentsWorkspace({
       setEditAddonOptionsLoading(false)
       setEditMainServiceCatalogLoading(false)
     }
-  }, [appointmentDetail, rebalanceEditSettlementPrimaryShare])
+  }, [appointmentDetail, appointmentDisplayMainServices, rebalanceEditSettlementPrimaryShare])
 
   const toggleEditAddon = useCallback((optionId: number) => {
     setEditSelectedAddonIds((prev) => {
@@ -1274,6 +1289,7 @@ export default function PosAppointmentsWorkspace({
 
   const addEditMainServiceBlock = useCallback(async (service: BookingServiceOption) => {
     if (!service?.id) return
+    if (appointmentDetail?.service?.id === service.id) return
     if (editAddedMainBlocks.some((block) => block.service_id === service.id)) return
     let questions: ServiceAddonQuestion[] = []
     try {
@@ -1295,7 +1311,7 @@ export default function PosAppointmentsWorkspace({
       staff_splits: [{ staff_id: null, share_percent: '100' }],
       auto_balance: true,
     }])
-  }, [editAddedMainBlocks])
+  }, [appointmentDetail?.service?.id, editAddedMainBlocks])
 
   const openEditMainServicePicker = useCallback(() => {
     setEditMainServiceQuery('')
@@ -1864,14 +1880,14 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentSettlementDurationMin = useMemo(() => {
     if (!appointmentDetail) return 0
-    const mainDuration = (appointmentDetail.main_services ?? []).reduce((sum, service) => {
+    const mainDuration = appointmentDisplayMainServices.reduce((sum, service) => {
       const own = Number(service.extra_duration_min ?? 0)
       const addon = (service.add_ons ?? []).reduce((addonSum, addonRow) => addonSum + Number(addonRow.extra_duration_min ?? 0), 0)
       return sum + own + addon
     }, 0)
     if (mainDuration > 0) return mainDuration
     return Math.max(0, Number(formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at).replace(/[^\d]/g, '')) || 0)
-  }, [appointmentDetail])
+  }, [appointmentDetail, appointmentDisplayMainServices])
 
   const appointmentSettlementDisplayEndAt = useMemo(() => {
     const startAt = appointmentDetail?.appointment_start_at
@@ -1884,7 +1900,7 @@ export default function PosAppointmentsWorkspace({
 
   const editSettlementEstimatedDurationMin = useMemo(() => {
     if (!appointmentDetail) return 0
-    const originalDuration = (appointmentDetail.main_services ?? [])
+    const originalDuration = appointmentDisplayMainServices
       .filter((service) => service.is_original)
       .reduce((sum, service) => sum + Number(service.extra_duration_min ?? 0), 0)
     const fallbackOriginalDuration = Number(appointmentDetail.estimated_duration_min ?? 0) > 0
@@ -1903,7 +1919,7 @@ export default function PosAppointmentsWorkspace({
       return sum + Number(block.duration_min ?? 0) + blockAddonDuration
     }, 0)
     return Math.max(0, baseDuration + originalAddonDuration + addedBlockDuration)
-  }, [appointmentDetail, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editSelectedAddonIds])
+  }, [appointmentDetail, appointmentDisplayMainServices, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editSelectedAddonIds])
 
   const editSettlementEstimatedEndAt = useMemo(() => {
     const startAt = appointmentDetail?.appointment_start_at
@@ -2283,11 +2299,11 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     ) : null} */}
 
-                    {(appointmentDetail.main_services ?? []).length > 0 ? (
+                    {appointmentDisplayMainServices.length > 0 ? (
                       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 shadow-sm ring-1 ring-slate-200/80">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Service</p>
                         <div className="mt-2 space-y-2">
-                          {(appointmentDetail.main_services ?? []).map((service, serviceIdx) => (
+                          {appointmentDisplayMainServices.map((service, serviceIdx) => (
                             <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
@@ -3977,7 +3993,7 @@ export default function PosAppointmentsWorkspace({
                   const originalServiceAmt = isRange && Number.isFinite(settledAmt)
                     ? settledAmt
                     : Number(
-                      (appointmentDetail.main_services ?? [])
+                      appointmentDisplayMainServices
                         .find((service) => service.is_original)?.extra_price
                         ?? appointmentDetail.service_total
                         ?? 0,
