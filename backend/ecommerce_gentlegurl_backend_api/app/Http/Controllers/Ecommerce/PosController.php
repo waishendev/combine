@@ -4357,8 +4357,18 @@ class PosController extends Controller
         }
 
         $paidCents = (int) $rows->sum(fn (array $row) => (int) round(((float) $row['amount']) * 100));
-        if ($paidCents !== $expectedCents) {
-            throw ValidationException::withMessages(['payments' => __('Payment total must equal the order total.')]);
+        $cashCents = (int) $rows
+            ->filter(fn (array $row) => (string) $row['method'] === 'cash')
+            ->sum(fn (array $row) => (int) round(((float) $row['amount']) * 100));
+        $nonCashCents = $paidCents - $cashCents;
+        $cashOnlyOverpaid = $cashCents > $expectedCents && $nonCashCents === 0;
+
+        if ($paidCents !== $expectedCents && ! $cashOnlyOverpaid) {
+            throw ValidationException::withMessages([
+                'payments' => $paidCents > $expectedCents
+                    ? __('Payment total cannot exceed grand total for split/non-cash payment.')
+                    : __('Payment total must equal the order total.'),
+            ]);
         }
 
         return $rows->all();

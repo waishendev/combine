@@ -25,6 +25,11 @@ const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }
   { method: 'credit_card', label: 'Credit Card' },
 ]
 
+const toPaymentCents = (value: number | string | null | undefined) => {
+  const numeric = Number(value ?? 0)
+  return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
+}
+
 type StaffOption = {
   id: number
   name: string
@@ -1083,7 +1088,15 @@ export default function PosAppointmentsWorkspace({
           .map(({ method }) => ({ method, amount: Number(appointmentSettlementPaymentAmounts[method] || 0) }))
           .filter((row) => Number.isFinite(row.amount) && row.amount > 0)
     const settlementTotalPaid = paymentRows.reduce((sum, row) => sum + row.amount, 0)
-    const settlementHasQrPay = paymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
+    const settlementCashCents = toPaymentCents(appointmentSettlementPaymentAmounts.cash)
+    const settlementQrPayCents = toPaymentCents(appointmentSettlementPaymentAmounts.qrpay)
+    const settlementCreditCardCents = toPaymentCents(appointmentSettlementPaymentAmounts.credit_card)
+    const settlementTotalPaidCents = settlementCashCents + settlementQrPayCents + settlementCreditCardCents
+    const dueCents = toPaymentCents(dueAmount)
+    const settlementCashOnlyOverpaid = settlementCashCents > dueCents && settlementQrPayCents === 0 && settlementCreditCardCents === 0
+    const settlementMixedOverpaid = settlementTotalPaidCents > dueCents && (settlementQrPayCents > 0 || settlementCreditCardCents > 0)
+    const settlementHasQrPay = settlementQrPayCents > 0
+    const settlementChange = settlementCashOnlyOverpaid ? Math.max(0, (settlementTotalPaidCents - dueCents) / 100) : 0
 
     if (!isZeroPackageFinalize && dueAmount <= 0) {
       setAppointmentCheckoutError('No balance due for this appointment.')
@@ -1091,10 +1104,8 @@ export default function PosAppointmentsWorkspace({
     }
 
     if (!isZeroPackageFinalize) {
-      const paidCents = Math.round(settlementTotalPaid * 100)
-      const dueCents = Math.round(dueAmount * 100)
-      if (paymentRows.length === 0 || paidCents !== dueCents) {
-        setAppointmentCheckoutError(paidCents > dueCents ? 'Total paid cannot exceed the amount due.' : 'Total paid must equal the amount due.')
+      if (paymentRows.length === 0 || (settlementTotalPaidCents !== dueCents && !settlementCashOnlyOverpaid)) {
+        setAppointmentCheckoutError(settlementMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal the amount due.')
         return
       }
     }
@@ -1143,7 +1154,7 @@ export default function PosAppointmentsWorkspace({
         payment_method: paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod),
         paid_amount: isZeroPackageFinalize ? 0 : dueAmount,
         cash_received: isZeroPackageFinalize ? 0 : settlementTotalPaid,
-        change_amount: 0,
+        change_amount: isZeroPackageFinalize ? 0 : settlementChange,
       })
       setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)
@@ -1154,10 +1165,11 @@ export default function PosAppointmentsWorkspace({
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
+      setAppointmentQrProofFile(null)
       setAppointmentQrProofPreviewUrl(null)
       setAppointmentQrProofFileName(null)
       await fetchAppointments()
-      await refreshOpenedAppointmentDetail()
+      setAppointmentDetail(null)
     } finally {
       setAppointmentActionLoading(false)
     }
@@ -1171,7 +1183,6 @@ export default function PosAppointmentsWorkspace({
     appointmentQrProofPreviewUrl,
     appointmentSettlementPaymentAmounts,
     fetchAppointments,
-    refreshOpenedAppointmentDetail,
     showMsg,
   ])
 
@@ -2028,10 +2039,25 @@ export default function PosAppointmentsWorkspace({
   const appointmentDueAfterDiscount = Math.max(0, appointmentDueAmount - appointmentDiscountAmount)
   const appointmentSettlementPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(appointmentSettlementPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [appointmentSettlementPaymentAmounts])
   const appointmentSettlementTotalPaid = useMemo(() => appointmentSettlementPaymentRows.reduce((sum, row) => sum + row.amount, 0), [appointmentSettlementPaymentRows])
-  const appointmentSettlementRemaining = Math.max(0, appointmentDueAfterDiscount - appointmentSettlementTotalPaid)
-  const appointmentSettlementOverpaid = Math.max(0, appointmentSettlementTotalPaid - appointmentDueAfterDiscount)
-  const appointmentSettlementMatchesDue = Math.round(appointmentSettlementTotalPaid * 100) === Math.round(appointmentDueAfterDiscount * 100)
-  const appointmentSettlementHasQrPay = appointmentSettlementPaymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
+  const appointmentSettlementCashCents = toPaymentCents(appointmentSettlementPaymentAmounts.cash)
+  const appointmentSettlementQrPayCents = toPaymentCents(appointmentSettlementPaymentAmounts.qrpay)
+  const appointmentSettlementCreditCardCents = toPaymentCents(appointmentSettlementPaymentAmounts.credit_card)
+  const appointmentSettlementTotalPaidCents = appointmentSettlementCashCents + appointmentSettlementQrPayCents + appointmentSettlementCreditCardCents
+  const appointmentDueAfterDiscountCents = toPaymentCents(appointmentDueAfterDiscount)
+  const appointmentSettlementHasNonCashPayment = appointmentSettlementQrPayCents > 0 || appointmentSettlementCreditCardCents > 0
+  const appointmentSettlementRemaining = Math.max(0, (appointmentDueAfterDiscountCents - appointmentSettlementTotalPaidCents) / 100)
+  const appointmentSettlementOverpaid = Math.max(0, (appointmentSettlementTotalPaidCents - appointmentDueAfterDiscountCents) / 100)
+  const appointmentSettlementCashOnlyOverpaid = appointmentSettlementCashCents > appointmentDueAfterDiscountCents && appointmentSettlementQrPayCents === 0 && appointmentSettlementCreditCardCents === 0
+  const appointmentSettlementMixedOverpaid = appointmentSettlementTotalPaidCents > appointmentDueAfterDiscountCents && appointmentSettlementHasNonCashPayment
+  const appointmentSettlementChange = appointmentSettlementCashOnlyOverpaid ? appointmentSettlementOverpaid : 0
+  const appointmentSettlementMatchesDue = appointmentSettlementTotalPaidCents === appointmentDueAfterDiscountCents
+  const appointmentSettlementPaymentValid = appointmentSettlementPaymentRows.length > 0 && (appointmentSettlementMatchesDue || appointmentSettlementCashOnlyOverpaid)
+  const appointmentSettlementHasCashChange = Boolean(
+    appointmentSettlementResult &&
+      appointmentSettlementResult.payment_method === 'cash' &&
+      appointmentSettlementResult.change_amount > 0 &&
+      appointmentSettlementResult.cash_received > appointmentSettlementResult.paid_amount,
+  )
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -4154,7 +4180,7 @@ export default function PosAppointmentsWorkspace({
 
       {appointmentCheckoutConfirmationOpen && appointmentDetail && (
         <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Checkout Confirmation</h4>
@@ -4177,7 +4203,7 @@ export default function PosAppointmentsWorkspace({
                 </svg>
               </button>
             </div>
-            <div className="space-y-4 px-6 py-5">
+            <div className="space-y-4 overflow-y-auto px-6 py-5">
               {appointmentCheckoutError ? (
                 <div
                   role="alert"
@@ -4267,6 +4293,17 @@ export default function PosAppointmentsWorkspace({
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
                       <div key={method} className="rounded-lg border border-gray-200 bg-white p-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAppointmentCheckoutError(null)
+                            setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
+                            setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', [method]: appointmentDueAfterDiscount.toFixed(2) })
+                          }}
+                          className="mb-2 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-100"
+                        >
+                          {label}
+                        </button>
                         <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">{label} Amount</label>
                         <input
                           type="number"
@@ -4287,14 +4324,20 @@ export default function PosAppointmentsWorkspace({
                   <div className="mt-3 grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-gray-700 sm:grid-cols-3">
                     <span>Amount Due: RM {appointmentDueAfterDiscount.toFixed(2)}</span>
                     <span>Total Paid: RM {appointmentSettlementTotalPaid.toFixed(2)}</span>
-                    <span className={appointmentSettlementOverpaid > 0 ? 'text-rose-700' : appointmentSettlementMatchesDue ? 'text-emerald-700' : 'text-amber-700'}>
-                      {appointmentSettlementOverpaid > 0 ? `Overpaid RM ${appointmentSettlementOverpaid.toFixed(2)}` : `Remaining: RM ${appointmentSettlementRemaining.toFixed(2)}`}
+                    <span className={appointmentSettlementMixedOverpaid ? 'text-rose-700' : appointmentSettlementMatchesDue || appointmentSettlementCashOnlyOverpaid ? 'text-emerald-700' : 'text-amber-700'}>
+                      {appointmentSettlementCashOnlyOverpaid
+                        ? `Change RM ${appointmentSettlementChange.toFixed(2)}`
+                        : appointmentSettlementMixedOverpaid
+                          ? `Overpaid RM ${appointmentSettlementOverpaid.toFixed(2)}`
+                          : `Remaining: RM ${appointmentSettlementRemaining.toFixed(2)}`}
                     </span>
                   </div>
+                  {appointmentSettlementMixedOverpaid ? (
+                    <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total for split/non-cash payment.</p>
+                  ) : null}
                 </div>
               ) : null}
-              {appointmentSettlementHasQrPay ? (
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrUploadInputRef.current?.click()}>Upload</button>
@@ -4311,7 +4354,6 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   ) : null}
                 </div>
-              ) : null}
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
@@ -4327,7 +4369,7 @@ export default function PosAppointmentsWorkspace({
                   type="button"
                   disabled={
                     appointmentActionLoading ||
-                    (!checkoutZeroPackageSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementMatchesDue))
+                    (!checkoutZeroPackageSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}
                   className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
@@ -4342,7 +4384,7 @@ export default function PosAppointmentsWorkspace({
 
       {appointmentSettlementResult && (
         <div className="fixed inset-0 z-[56] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+          <div className={`w-full ${appointmentSettlementHasCashChange ? 'max-w-4xl' : 'max-w-lg'} overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl`}>
             <div className="flex items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
               <h4 className="flex items-center gap-2 text-xl font-bold text-white">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -4368,7 +4410,27 @@ export default function PosAppointmentsWorkspace({
                 </svg>
               </button>
             </div>
-            <div className="space-y-5 p-6">
+            <div className={appointmentSettlementHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}>
+              {appointmentSettlementHasCashChange ? (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 shadow-inner">
+                  <p className="text-sm font-bold uppercase tracking-wide text-emerald-800">Cash Summary</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Grand Total</span>
+                      <span className="font-bold text-gray-900">RM {appointmentSettlementResult.paid_amount.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Cash Received</span>
+                      <span className="font-bold text-gray-900">RM {appointmentSettlementResult.cash_received.toFixed(2)}</span>
+                    </div>
+                    <div className="rounded-2xl border-2 border-emerald-500 bg-white px-4 py-4 text-center shadow-sm">
+                      <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Change to Return</p>
+                      <p className="mt-1 text-4xl font-black text-emerald-700">RM {appointmentSettlementResult.change_amount.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="space-y-5">
               <div className="space-y-2 text-center">
                 <p className="text-sm font-medium text-gray-600">Order Number</p>
                 <p className="text-2xl font-bold text-gray-900">{appointmentSettlementResult.order_number}</p>
@@ -4445,6 +4507,7 @@ export default function PosAppointmentsWorkspace({
                   </div>
                 </div>
               ) : null}
+              </div>
             </div>
           </div>
         </div>

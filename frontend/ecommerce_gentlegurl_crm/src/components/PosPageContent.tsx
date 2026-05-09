@@ -22,6 +22,11 @@ const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }
   { method: 'credit_card', label: 'Credit Card' },
 ]
 
+const toPaymentCents = (value: number | string | null | undefined) => {
+  const numeric = Number(value ?? 0)
+  return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
+}
+
 type CartItem = {
   id: number
   item_type?: 'PRODUCT' | 'BOOKING_PRODUCT'
@@ -783,7 +788,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('cash')
   const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
-  const [cashReceived, setCashReceived] = useState('')
   const [qrProofFile, setQrProofFile] = useState<File | null>(null)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
@@ -3703,14 +3707,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     })
   }, [cart, cartVariantFetched, cartVariantOptions, cartVariantLoading])
 
-  const cashReceivedAmount = Number(cashReceived || 0)
   const checkoutPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(splitPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [splitPaymentAmounts])
   const splitTotalPaid = useMemo(() => checkoutPaymentRows.reduce((sum, row) => sum + row.amount, 0), [checkoutPaymentRows])
-  const hasQrPayAmount = checkoutPaymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
-  const splitRemaining = Math.max(0, cartTotal - splitTotalPaid)
-  const splitOverpaid = Math.max(0, splitTotalPaid - cartTotal)
-  const splitPaymentMatchesTotal = Math.round(splitTotalPaid * 100) === Math.round(cartTotal * 100)
-  const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
+  const splitCashCents = toPaymentCents(splitPaymentAmounts.cash)
+  const splitQrPayCents = toPaymentCents(splitPaymentAmounts.qrpay)
+  const splitCreditCardCents = toPaymentCents(splitPaymentAmounts.credit_card)
+  const splitTotalPaidCents = splitCashCents + splitQrPayCents + splitCreditCardCents
+  const cartTotalCents = toPaymentCents(cartTotal)
+  const splitHasNonCashPayment = splitQrPayCents > 0 || splitCreditCardCents > 0
+  const hasQrPayAmount = splitQrPayCents > 0
+  const splitCashOnlyOverpaid = splitCashCents > cartTotalCents && splitQrPayCents === 0 && splitCreditCardCents === 0
+  const splitMixedOverpaid = splitTotalPaidCents > cartTotalCents && splitHasNonCashPayment
+  const splitRemaining = Math.max(0, (cartTotalCents - splitTotalPaidCents) / 100)
+  const splitOverpaid = Math.max(0, (splitTotalPaidCents - cartTotalCents) / 100)
+  const splitChange = splitCashOnlyOverpaid ? splitOverpaid : 0
+  const splitPaymentMatchesTotal = splitTotalPaidCents === cartTotalCents
+  const splitPaymentValid = checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
 
   const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
   const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart
@@ -3891,7 +3903,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       booking_addon_total: 0,
       booking_deposit_breakdown: undefined,
     })
-    setCashReceived('')
     setCheckoutItemAssignments([])
     setPackageCheckoutSplits({})
     void fetchUnpaidCompletedAppointments(settlementQuery)
@@ -4003,12 +4014,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     }
 
-    if (!splitPaymentMatchesTotal || checkoutPaymentRows.length === 0) {
-      setCheckoutError(splitOverpaid > 0 ? 'Total paid cannot exceed grand total.' : 'Total paid must equal grand total.')
+    if (!splitPaymentValid) {
+      setCheckoutError(splitMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal grand total.')
       return
     }
 
-    await finalizeCheckout({ paid_amount: splitTotalPaid, change_amount: 0 })
+    await finalizeCheckout({ paid_amount: splitTotalPaid, change_amount: splitChange })
   }
 
   const checkout = async () => {
@@ -4534,7 +4545,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
-    if (checkoutPaymentRows.length === 0 || !splitPaymentMatchesTotal) return false
+    if (!splitPaymentValid) return false
 
     if (checkoutRequiresCustomerValidation) {
       if (checkoutRequiresMemberOnly) {
@@ -4550,9 +4561,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     return true
   }, [
-    checkoutPaymentRows.length,
-    splitPaymentMatchesTotal,
-    cartTotal,
+    splitPaymentValid,
     checkingOut,
     checkoutAllowsGuestToggle,
     checkoutIdentityMode,
@@ -4560,9 +4569,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     checkoutRequiresCustomerValidation,
     guestContactIsComplete,
     checkoutGuestIsUnknown,
-    paymentMethod,
     selectedMember?.id,
   ])
+
+  const checkoutResultHasCashChange = Boolean(
+    checkoutResult &&
+      checkoutResult.payment_method === 'cash' &&
+      checkoutResult.change_amount > 0 &&
+      checkoutResult.paid_amount > checkoutResult.total,
+  )
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -6501,7 +6516,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {checkoutConfirmationOpen && hasCartItems ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-          <div className="w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
+          <div className="w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
@@ -7317,19 +7332,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <p className="font-bold text-blue-700">RM {splitTotalPaid.toFixed(2)}</p>
                   </div>
                   <div className="flex justify-between sm:block">
-                    <span className="text-gray-500">Remaining</span>
-                    <p className={`font-bold ${splitOverpaid > 0 ? 'text-red-700' : splitRemaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
-                      {splitOverpaid > 0 ? `Overpaid RM ${splitOverpaid.toFixed(2)}` : `RM ${splitRemaining.toFixed(2)}`}
+                    <span className="text-gray-500">{splitCashOnlyOverpaid ? 'Change' : splitMixedOverpaid ? 'Overpaid' : 'Remaining'}</span>
+                    <p className={`font-bold ${splitMixedOverpaid ? 'text-red-700' : splitRemaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                      {splitCashOnlyOverpaid
+                        ? `RM ${splitChange.toFixed(2)}`
+                        : splitMixedOverpaid
+                          ? `RM ${splitOverpaid.toFixed(2)}`
+                          : `RM ${splitRemaining.toFixed(2)}`}
                     </p>
                   </div>
                 </div>
-                {splitOverpaid > 0 ? (
-                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total.</p>
+                {splitMixedOverpaid ? (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total for split/non-cash payment.</p>
                 ) : null}
               </div>
 
-              {hasQrPayAmount ? (
-                <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+              <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                   <label className="block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrUploadInputRef.current?.click()}>
@@ -7352,7 +7370,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                   ) : null}
                 </div>
-              ) : null}
 
               <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-sm overflow-hidden">
                 <label className="flex cursor-pointer items-center gap-3 px-5 py-4 select-none">
@@ -8626,7 +8643,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       {/* Checkout Success Modal with QR Code */}
       {checkoutResult && (
         <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
+          <div className={`w-full ${checkoutResultHasCashChange ? 'max-w-4xl' : 'max-w-lg'} rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden`}>
             <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex items-center justify-between">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8652,7 +8669,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </svg>
               </button>
             </div>
-            <div className="p-6 space-y-5">
+            <div className={checkoutResultHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}>
+              {checkoutResultHasCashChange ? (
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 shadow-inner">
+                  <p className="text-sm font-bold uppercase tracking-wide text-emerald-800">Cash Summary</p>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Grand Total</span>
+                      <span className="font-bold text-gray-900">RM {checkoutResult.total.toFixed(2)}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-4 rounded-xl bg-white/80 px-4 py-3">
+                      <span className="font-semibold text-gray-600">Cash Received</span>
+                      <span className="font-bold text-gray-900">RM {checkoutResult.paid_amount.toFixed(2)}</span>
+                    </div>
+                    <div className="rounded-2xl border-2 border-emerald-500 bg-white px-4 py-4 text-center shadow-sm">
+                      <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Change to Return</p>
+                      <p className="mt-1 text-4xl font-black text-emerald-700">RM {checkoutResult.change_amount.toFixed(2)}</p>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              <div className="space-y-5">
               <div className="text-center space-y-2">
                 <p className="text-sm font-medium text-gray-600">Order Number</p>
                 <p className="text-2xl font-bold text-gray-900">{checkoutResult.order_number}</p>
@@ -8731,6 +8768,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               )}
             </div>
           </div>
+        </div>
         </div>
       )}
 
