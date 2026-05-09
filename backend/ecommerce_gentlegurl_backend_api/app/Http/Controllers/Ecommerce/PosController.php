@@ -303,7 +303,7 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'staff:id,name']);
+        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'staff:id,name']);
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
@@ -445,7 +445,7 @@ class PosController extends Controller
         $booking = Booking::query()
             ->with([
                 'customer:id,name,phone,email',
-                'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min',
                 'staff:id,name',
                 'itemPhotos:id,booking_id,file_path,created_at',
             ])
@@ -481,6 +481,7 @@ class PosController extends Controller
                 'name' => (string) ($booking->service?->name ?? '-'),
                 'cn_name' => $booking->service?->cn_name,
                 'service_type' => (string) ($booking->service?->service_type ?? ''),
+                'duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)),
                 'price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
                 'price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
                 'price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
@@ -1182,7 +1183,7 @@ class PosController extends Controller
         }
 
         $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
-        $booking->load(['service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
+        $booking->load(['service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'customer:id,name,phone,email', 'staff:id,name']);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
 
         return $this->respond([
@@ -5446,6 +5447,7 @@ class PosController extends Controller
         $extraMainDurationMin = (int) $settlementItems
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
             ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
             ->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
 
         $topLevelAddonDurationMin = (int) $settlementItems

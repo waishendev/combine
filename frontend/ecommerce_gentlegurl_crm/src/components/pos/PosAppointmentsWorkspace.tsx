@@ -35,6 +35,13 @@ type StaffOption = {
   is_active?: boolean | number | string | null
 }
 
+function durationMinutesFromRange(startAt?: string | null, endAt?: string | null): number {
+  if (!startAt || !endAt) return 0
+  const ms = new Date(endAt).getTime() - new Date(startAt).getTime()
+  if (!Number.isFinite(ms) || ms <= 0) return 0
+  return Math.round(ms / 60000)
+}
+
 type BookingServiceOption = {
   id: number
   name: string
@@ -1454,10 +1461,24 @@ export default function PosAppointmentsWorkspace({
         setEditSettlementError(json?.message ?? 'Failed to update settlement.')
         return
       }
+      const updatedAppointment = (json?.data?.appointment ?? null) as Partial<PosAppointmentDetail> | null
+      if (updatedAppointment) {
+        setAppointmentDetail((current) => current ? {
+          ...current,
+          ...updatedAppointment,
+          service_total: Number(json?.data?.service_total ?? updatedAppointment.service_total ?? current.service_total ?? 0),
+          settled_service_amount: json?.data?.settled_service_amount ?? updatedAppointment.settled_service_amount ?? current.settled_service_amount,
+          requires_settled_amount: Boolean(json?.data?.requires_settled_amount ?? updatedAppointment.requires_settled_amount ?? current.requires_settled_amount ?? false),
+          main_services: (json?.data?.main_services ?? updatedAppointment.main_services ?? current.main_services) as PosAppointmentDetail['main_services'],
+          add_ons: (json?.data?.add_ons ?? updatedAppointment.add_ons ?? current.add_ons) as PosAppointmentDetail['add_ons'],
+          balance_due: Number(json?.data?.balance_due ?? updatedAppointment.balance_due ?? current.balance_due ?? 0),
+          amount_due_now: Number(json?.data?.amount_due_now ?? updatedAppointment.amount_due_now ?? current.amount_due_now ?? 0),
+        } : current)
+      }
       showMsg('Settlement updated.', 'success')
       setEditSettlementOpen(false)
-      await fetchAppointments()
       await refreshOpenedAppointmentDetail()
+      await fetchAppointments()
     } finally {
       setEditSettlementLoading(false)
     }
@@ -1878,25 +1899,10 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.service_total],
   )
 
-  const appointmentSettlementDurationMin = useMemo(() => {
-    if (!appointmentDetail) return 0
-    const mainDuration = appointmentDisplayMainServices.reduce((sum, service) => {
-      const own = Number(service.extra_duration_min ?? 0)
-      const addon = (service.add_ons ?? []).reduce((addonSum, addonRow) => addonSum + Number(addonRow.extra_duration_min ?? 0), 0)
-      return sum + own + addon
-    }, 0)
-    if (mainDuration > 0) return mainDuration
-    return Math.max(0, Number(formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at).replace(/[^\d]/g, '')) || 0)
-  }, [appointmentDetail, appointmentDisplayMainServices])
-
-  const appointmentSettlementDisplayEndAt = useMemo(() => {
-    const startAt = appointmentDetail?.appointment_start_at
-    if (!startAt) return appointmentDetail?.appointment_end_at ?? null
-    if (appointmentSettlementDurationMin <= 0) return appointmentDetail?.appointment_end_at ?? null
-    const start = new Date(startAt)
-    if (Number.isNaN(start.getTime())) return appointmentDetail?.appointment_end_at ?? null
-    return new Date(start.getTime() + appointmentSettlementDurationMin * 60 * 1000).toISOString()
-  }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, appointmentSettlementDurationMin])
+  const appointmentSettlementDurationMin = useMemo(
+    () => durationMinutesFromRange(appointmentDetail?.appointment_start_at, appointmentDetail?.appointment_end_at),
+    [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at],
+  )
 
   const editSettlementEstimatedDurationMin = useMemo(() => {
     if (!appointmentDetail) return 0
@@ -2364,7 +2370,7 @@ export default function PosAppointmentsWorkspace({
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</span>
                         <span className="min-w-0 text-slate-800">
-                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentSettlementDisplayEndAt)}
+                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
                       </div>
                       <div className="flex gap-3 text-sm">
