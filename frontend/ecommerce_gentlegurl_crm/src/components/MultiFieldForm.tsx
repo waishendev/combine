@@ -204,98 +204,101 @@ export default function MultiFieldForm({
   }
 
   return (
-    <>
-      {errorMessages.length > 0 && (
-        <div className="max-w-6xl mx-auto">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative text-sm mb-5">
-            {errorMessages.length === 1 ? (
-              <div>
-                <strong className="font-semibold">Error:</strong>{' '}
-                {errorMessages[0]}
-              </div>
-            ) : (
-              <>
-                <strong className="font-semibold block mb-1">Errors:</strong>
-                {errorMessages.map((msg, idx) => (
-                  <div key={idx}>
-                    {idx + 1}. {msg}
-                  </div>
-                ))}
-              </>
-            )}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-4">
+        {errorMessages.length > 0 && (
+          <div className="mb-5 max-w-6xl mx-auto">
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative text-sm">
+              {errorMessages.length === 1 ? (
+                <div>
+                  <strong className="font-semibold">Error:</strong>{' '}
+                  {errorMessages[0]}
+                </div>
+              ) : (
+                <>
+                  <strong className="font-semibold block mb-1">Errors:</strong>
+                  {errorMessages.map((msg, idx) => (
+                    <div key={idx}>
+                      {idx + 1}. {msg}
+                    </div>
+                  ))}
+                </>
+              )}
+            </div>
           </div>
-        </div>
-      )}
-      <div className="space-y-6">
-        {/* ✅ 美化字段选择 */}
-        <div>
-          <h3 className="text-md font-semibold text-gray-800 mb-3">
-            Select Fields to Update{' '}
-            <span className="text-gray-500">(you can choose more than one)</span>
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-            {FIELD_CONFIG.map((field) => {
-              const isSelected = selectedFields.includes(field.key)
-              return (
-                <button
-                  key={field.key}
-                  onClick={() => toggleField(field.key)}
-                  type="button"
-                  className={`group flex items-center gap-3 p-4 rounded-xl border transition shadow-sm ${
-                    isSelected
-                      ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300'
-                      : 'bg-white hover:bg-gray-50 border-gray-300'
-                  }`}
-                >
-                  {/* 图标区域（如果你愿意加） */}
-                  <div
-                    className={`w-6 h-6 flex items-center justify-center rounded-full text-white text-xs font-bold ${
-                      isSelected ? 'bg-indigo-500' : 'bg-gray-300 group-hover:bg-gray-400'
+        )}
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-md font-semibold text-gray-800 mb-3">
+              Select Fields to Update{' '}
+              <span className="text-gray-500">(you can choose more than one)</span>
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              {FIELD_CONFIG.map((field) => {
+                const isSelected = selectedFields.includes(field.key)
+                return (
+                  <button
+                    key={field.key}
+                    onClick={() => toggleField(field.key)}
+                    type="button"
+                    className={`group flex items-center gap-3 p-4 rounded-xl border transition shadow-sm ${
+                      isSelected
+                        ? 'bg-indigo-50 border-indigo-400 ring-2 ring-indigo-300'
+                        : 'bg-white hover:bg-gray-50 border-gray-300'
                     }`}
                   >
-                    ✓
-                  </div>
+                    <div
+                      className={`w-6 h-6 flex items-center justify-center rounded-full text-white text-xs font-bold ${
+                        isSelected ? 'bg-indigo-500' : 'bg-gray-300 group-hover:bg-gray-400'
+                      }`}
+                    >
+                      ✓
+                    </div>
+                    <span className="text-sm font-medium text-gray-800">{field.label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
 
-                  {/* Label */}
-                  <span className="text-sm font-medium text-gray-800">{field.label}</span>
-                </button>
+          <div className="space-y-4">
+            {selectedFields.map((key) => {
+              const config = FIELD_CONFIG.find((f) => f.key === key)
+              if (!config) return null
+              return (
+                <FieldRenderer
+                  key={key}
+                  field={config}
+                  value={values[key]}
+                  onChange={(val) => handleChange(key, val)}
+                  allValues={values}
+                  setValues={setValues}
+                  categories={categories}
+                />
               )
             })}
           </div>
         </div>
+      </div>
 
-        {/* ✅ 渲染字段输入框 */}
-        <div className="space-y-4">
-          {selectedFields.map((key) => {
-            const config = FIELD_CONFIG.find((f) => f.key === key)
-            if (!config) return null
-            return (
-              <FieldRenderer
-                key={key}
-                field={config}
-                value={values[key]}
-                onChange={(val) => handleChange(key, val)}
-                allValues={values}
-                setValues={setValues}
-                categories={categories}
-              />
-            )
-          })}
-        </div>
-
-        {/* ✅ 提交按钮 */}
+      <div className="relative z-20 shrink-0 border-t border-gray-200 bg-white px-0 py-4 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)]">
         <div className="flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm border rounded">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+          >
             Cancel
           </button>
           <button
+            type="button"
             onClick={handleSubmit}
-            className="px-4 py-2 text-sm bg-indigo-600 text-white rounded"
+            className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
           >
-            Confirm
+            Save
           </button>
         </div>
       </div>
-    </>
+    </div>
   )
 }

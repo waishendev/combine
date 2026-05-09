@@ -135,7 +135,7 @@ function CategoryMultiSelectField({
         </button>
 
         {open && (
-          <div className="absolute z-30 mt-2 w-full rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
+          <div className="absolute z-50 mt-2 w-full rounded-xl border border-gray-200 bg-white shadow-xl overflow-hidden">
             <div className="p-3 border-b border-gray-100 bg-gray-50">
               <div className="relative">
                 <i className="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs" />
