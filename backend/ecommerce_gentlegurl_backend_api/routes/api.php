@@ -474,6 +474,9 @@ $protectedRoutes = function () {
     Route::post('/orders/{orderId}/send-receipt-email', [PosController::class, 'sendReceiptEmail'])
         ->middleware(['permission:pos.checkout', 'throttle:6,1']);
 
+    Route::post('/admin/products/stock-movements/{id}/revoke', [ProductStockMovementController::class, 'revoke'])
+        ->middleware('permission:ecommerce.products.update');
+
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {
         // Categories
@@ -528,6 +531,10 @@ $protectedRoutes = function () {
 
         Route::get('/product-stock-movements', [ProductStockMovementController::class, 'index'])
             ->middleware('permission:ecommerce.stock-movements-logs.view');
+
+        Route::post('/product-stock-movements/{id}/revoke', [ProductStockMovementController::class, 'revoke'])
+            ->middleware('permission:ecommerce.products.update');
+
 
         Route::delete('/products/{product}', [ProductController::class, 'destroy'])
             ->middleware('permission:ecommerce.products.delete');

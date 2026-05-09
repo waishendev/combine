@@ -13,9 +13,16 @@ type ProductOption = {
   sku: string | null
 }
 
+type MovementSummary = {
+  id: number
+  type: 'stock_in' | 'stock_out' | 'reversal'
+  quantity_change: number
+  created_at: string
+}
+
 type MovementRow = {
   id: number
-  type: 'stock_in' | 'stock_out'
+  type: 'stock_in' | 'stock_out' | 'reversal'
   quantity_before: number
   quantity_change: number
   quantity_after: number
@@ -25,6 +32,17 @@ type MovementRow = {
   inventory_value_after: number
   input_cost_price_per_unit: number | null
   remark: string | null
+  is_revoked?: boolean
+  revoked_at?: string | null
+  revoked_by?: {
+    id: number
+    name?: string | null
+    email?: string | null
+  } | null
+  revoke_reason?: string | null
+  reversal_of_movement_id?: number | null
+  original_movement?: MovementSummary | null
+  reversal_movement?: MovementSummary | null
   created_at: string
   product?: {
     id: number
@@ -68,6 +86,24 @@ const toDateTime = (value?: string | null) => {
   return date.toLocaleString()
 }
 
+const movementTypeLabel = (movementType: MovementRow['type']) => {
+  if (movementType === 'stock_in') return 'Add Stock'
+  if (movementType === 'stock_out') return 'Reduce Stock'
+  return 'Reversal'
+}
+
+const movementTypeClass = (movementType: MovementRow['type']) => {
+  if (movementType === 'stock_in') return 'bg-emerald-100 text-emerald-700'
+  if (movementType === 'stock_out') return 'bg-rose-100 text-rose-700'
+  return 'bg-amber-100 text-amber-700'
+}
+
+const canRevokeMovement = (row: MovementRow) => {
+  if (row.is_revoked || row.reversal_of_movement_id || row.type === 'reversal') return false
+  if (row.type !== 'stock_in' && row.type !== 'stock_out') return false
+  return row.remark?.trim().toLowerCase() !== 'pos checkout'
+}
+
 export default function ProductStockMovementLogsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -78,6 +114,10 @@ export default function ProductStockMovementLogsPage() {
   const [meta, setMeta] = useState<ApiMeta>(DEFAULT_META)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [viewTarget, setViewTarget] = useState<MovementRow | null>(null)
+  const [revokeTarget, setRevokeTarget] = useState<MovementRow | null>(null)
+  const [revokeReason, setRevokeReason] = useState('')
+  const [revokeError, setRevokeError] = useState<string | null>(null)
+  const [isRevoking, setIsRevoking] = useState(false)
 
   const [productId, setProductId] = useState(searchParams.get('product_id') ?? '')
   const [type, setType] = useState(searchParams.get('type') ?? '')
@@ -219,6 +259,47 @@ export default function ProductStockMovementLogsPage() {
     void fetchRows(page)
   }
 
+  const openRevokeModal = (row: MovementRow) => {
+    setRevokeTarget(row)
+    setRevokeReason('')
+    setRevokeError(null)
+  }
+
+  const handleConfirmRevoke = async () => {
+    if (!revokeTarget || isRevoking) return
+
+    const reason = revokeReason.trim()
+    if (reason.length < 3) {
+      setRevokeError('Please enter a revoke reason with at least 3 characters.')
+      return
+    }
+
+    setIsRevoking(true)
+    setRevokeError(null)
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/product-stock-movements/${revokeTarget.id}/revoke`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      })
+      const json = await res.json().catch(() => null)
+
+      if (!res.ok) {
+        const validationMessage = json?.errors
+          ? Object.values(json.errors as Record<string, string[]>).flat().join(' ')
+          : null
+        setRevokeError(validationMessage || json?.message || 'Unable to revoke this stock movement.')
+        return
+      }
+
+      setRevokeTarget(null)
+      setRevokeReason('')
+      await fetchRows(meta.current_page || 1)
+    } finally {
+      setIsRevoking(false)
+    }
+  }
+
   const colCount = 8
   const totalPages = meta.last_page || 1
 
@@ -297,6 +378,7 @@ export default function ProductStockMovementLogsPage() {
                 <option value="">All</option>
                 <option value="stock_in">Add Stock</option>
                 <option value="stock_out">Reduce Stock</option>
+                <option value="reversal">Reversal</option>
               </select>
             </div>
             <div>
@@ -362,11 +444,9 @@ export default function ProductStockMovementLogsPage() {
               <TableLoadingRow colSpan={colCount} />
             ) : rows.length > 0 ? (
               rows.map((row) => {
-                const isStockIn = row.type === 'stock_in'
-                const typeLabel = isStockIn ? 'Add Stock' : 'Reduce Stock'
-                const typeClass = isStockIn
-                  ? 'bg-emerald-100 text-emerald-700'
-                  : 'bg-rose-100 text-rose-700'
+                const typeLabel = movementTypeLabel(row.type)
+                const typeClass = movementTypeClass(row.type)
+                const isRevokable = canRevokeMovement(row)
                 return (
                   <tr key={row.id} className="text-sm">
                     <td className="px-4 py-2 border border-gray-200 whitespace-nowrap">
@@ -381,9 +461,21 @@ export default function ProductStockMovementLogsPage() {
                       <p className="text-xs text-gray-500">{row.variant?.sku ?? '-'}</p>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${typeClass}`}>
-                        {typeLabel}
-                      </span>
+                      <div className="flex flex-wrap gap-1">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-semibold ${typeClass}`}>
+                          {typeLabel}
+                        </span>
+                        {row.is_revoked ? (
+                          <span className="inline-flex rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700">
+                            Revoked
+                          </span>
+                        ) : null}
+                      </div>
+                      {row.reversal_of_movement_id ? (
+                        <p className="mt-1 text-xs text-amber-700">Reverses #{row.reversal_of_movement_id}</p>
+                      ) : row.reversal_movement ? (
+                        <p className="mt-1 text-xs text-gray-500">Reversal #{row.reversal_movement.id}</p>
+                      ) : null}
                     </td>
                     <td className="px-4 py-2 border border-gray-200 text-right font-semibold">
                       {row.quantity_change}
@@ -393,6 +485,7 @@ export default function ProductStockMovementLogsPage() {
                       {row.created_by?.name || row.created_by?.email || 'System'}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
+                      <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
                         onClick={() => setViewTarget(row)}
@@ -402,6 +495,18 @@ export default function ProductStockMovementLogsPage() {
                       >
                         <i className="fa-solid fa-eye" />
                       </button>
+                      {isRevokable ? (
+                        <button
+                          type="button"
+                          onClick={() => openRevokeModal(row)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-amber-600 text-white hover:bg-amber-700"
+                          title="Revoke movement with reversal"
+                          aria-label="Revoke movement with reversal"
+                        >
+                          <i className="fa-solid fa-rotate-left" />
+                        </button>
+                      ) : null}
+                      </div>
                     </td>
                   </tr>
                 )
@@ -448,8 +553,20 @@ export default function ProductStockMovementLogsPage() {
             <div className="space-y-4 p-5 text-sm">
               <div className="rounded-lg border border-gray-200 p-3">
                 <p><span className="font-semibold">Date / Time:</span> {toDateTime(viewTarget.created_at)}</p>
-                <p><span className="font-semibold">Type:</span> {viewTarget.type === 'stock_in' ? 'Add Stock' : 'Reduce Stock'}</p>
+                <p><span className="font-semibold">Type:</span> {movementTypeLabel(viewTarget.type)}</p>
                 <p><span className="font-semibold">By User:</span> {viewTarget.created_by?.name || viewTarget.created_by?.email || 'System'}</p>
+                {viewTarget.is_revoked ? (
+                  <>
+                    <p><span className="font-semibold">Revoked At:</span> {toDateTime(viewTarget.revoked_at)}</p>
+                    <p><span className="font-semibold">Revoked By:</span> {viewTarget.revoked_by?.name || viewTarget.revoked_by?.email || 'System'}</p>
+                  </>
+                ) : null}
+                {viewTarget.reversal_of_movement_id ? (
+                  <p><span className="font-semibold">Reverses Movement:</span> #{viewTarget.reversal_of_movement_id}</p>
+                ) : null}
+                {viewTarget.reversal_movement ? (
+                  <p><span className="font-semibold">Reversal Movement:</span> #{viewTarget.reversal_movement.id}</p>
+                ) : null}
               </div>
 
               <div className="rounded-lg border border-gray-200 p-3">
@@ -480,6 +597,90 @@ export default function ProductStockMovementLogsPage() {
                 <p className="font-semibold">Remark</p>
                 <p className="mt-1 text-gray-700 whitespace-pre-wrap">{viewTarget.remark || '-'}</p>
               </div>
+
+              {viewTarget.revoke_reason ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="font-semibold text-amber-800">Revoke Reason</p>
+                  <p className="mt-1 whitespace-pre-wrap text-amber-800">{viewTarget.revoke_reason}</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {revokeTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-xl rounded-lg bg-white shadow-2xl">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-lg font-semibold text-gray-900">Revoke Stock Movement</h3>
+                <button
+                  type="button"
+                  className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  onClick={() => setRevokeTarget(null)}
+                  aria-label="Close revoke modal"
+                  disabled={isRevoking}
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4 p-5 text-sm">
+              <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                <p className="font-semibold">This will create a reversal record, not delete history.</p>
+                <p className="mt-1">The original movement will stay in the audit log and be marked as revoked.</p>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-3">
+                <p><span className="font-semibold">Movement:</span> #{revokeTarget.id}</p>
+                <p><span className="font-semibold">Date / Time:</span> {toDateTime(revokeTarget.created_at)}</p>
+                <p><span className="font-semibold">Type:</span> {movementTypeLabel(revokeTarget.type)}</p>
+                <p><span className="font-semibold">Product:</span> {revokeTarget.product?.name ?? '-'}</p>
+                <p><span className="font-semibold">Variant:</span> {revokeTarget.variant?.title ?? '-'}</p>
+                <p><span className="font-semibold">Quantity Change:</span> {revokeTarget.quantity_change}</p>
+                <p><span className="font-semibold">Input Cost / Unit:</span> {revokeTarget.input_cost_price_per_unit === null ? '-' : toCurrency(revokeTarget.input_cost_price_per_unit)}</p>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-gray-700" htmlFor="revoke-reason">
+                  Revoke Reason <span className="text-red-600">*</span>
+                </label>
+                <textarea
+                  id="revoke-reason"
+                  value={revokeReason}
+                  onChange={(event) => setRevokeReason(event.target.value)}
+                  className="min-h-28 w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  placeholder="Explain why this stock movement must be reversed..."
+                  disabled={isRevoking}
+                />
+              </div>
+
+              {revokeError ? (
+                <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">
+                  {revokeError}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setRevokeTarget(null)}
+                className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                disabled={isRevoking}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRevoke}
+                className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                disabled={isRevoking}
+              >
+                {isRevoking ? 'Revoking...' : 'Confirm Revoke'}
+              </button>
             </div>
           </div>
         </div>
