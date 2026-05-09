@@ -6516,7 +6516,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {checkoutConfirmationOpen && hasCartItems ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-          <div className="w-full max-w-5xl max-h-[90vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
+          <div className="w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6 flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
@@ -7347,8 +7347,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 ) : null}
               </div>
 
-              {hasQrPayAmount ? (
-                <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
+              <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                   <label className="block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrUploadInputRef.current?.click()}>
@@ -7371,7 +7370,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                   ) : null}
                 </div>
-              ) : null}
 
               <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-sm overflow-hidden">
                 <label className="flex cursor-pointer items-center gap-3 px-5 py-4 select-none">

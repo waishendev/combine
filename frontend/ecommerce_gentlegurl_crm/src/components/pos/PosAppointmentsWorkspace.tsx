@@ -1165,10 +1165,11 @@ export default function PosAppointmentsWorkspace({
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
+      setAppointmentQrProofFile(null)
       setAppointmentQrProofPreviewUrl(null)
       setAppointmentQrProofFileName(null)
       await fetchAppointments()
-      await refreshOpenedAppointmentDetail()
+      setAppointmentDetail(null)
     } finally {
       setAppointmentActionLoading(false)
     }
@@ -1182,7 +1183,6 @@ export default function PosAppointmentsWorkspace({
     appointmentQrProofPreviewUrl,
     appointmentSettlementPaymentAmounts,
     fetchAppointments,
-    refreshOpenedAppointmentDetail,
     showMsg,
   ])
 
@@ -2052,7 +2052,6 @@ export default function PosAppointmentsWorkspace({
   const appointmentSettlementChange = appointmentSettlementCashOnlyOverpaid ? appointmentSettlementOverpaid : 0
   const appointmentSettlementMatchesDue = appointmentSettlementTotalPaidCents === appointmentDueAfterDiscountCents
   const appointmentSettlementPaymentValid = appointmentSettlementPaymentRows.length > 0 && (appointmentSettlementMatchesDue || appointmentSettlementCashOnlyOverpaid)
-  const appointmentSettlementHasQrPay = appointmentSettlementQrPayCents > 0
   const appointmentSettlementHasCashChange = Boolean(
     appointmentSettlementResult &&
       appointmentSettlementResult.payment_method === 'cash' &&
@@ -4181,7 +4180,7 @@ export default function PosAppointmentsWorkspace({
 
       {appointmentCheckoutConfirmationOpen && appointmentDetail && (
         <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Checkout Confirmation</h4>
@@ -4204,7 +4203,7 @@ export default function PosAppointmentsWorkspace({
                 </svg>
               </button>
             </div>
-            <div className="space-y-4 px-6 py-5">
+            <div className="space-y-4 overflow-y-auto px-6 py-5">
               {appointmentCheckoutError ? (
                 <div
                   role="alert"
@@ -4338,8 +4337,7 @@ export default function PosAppointmentsWorkspace({
                   ) : null}
                 </div>
               ) : null}
-              {appointmentSettlementHasQrPay ? (
-                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button" className="h-10 rounded-lg border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-700 hover:border-blue-500 hover:bg-blue-50" onClick={() => appointmentQrUploadInputRef.current?.click()}>Upload</button>
@@ -4356,7 +4354,6 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   ) : null}
                 </div>
-              ) : null}
               <div className="flex justify-end gap-2">
                 <button
                   type="button"
