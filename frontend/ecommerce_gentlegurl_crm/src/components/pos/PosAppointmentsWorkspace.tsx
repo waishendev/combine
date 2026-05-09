@@ -7,6 +7,7 @@ import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
+  posAppointmentBlocksActiveSchedule,
   formatAppointmentCustomerDisplayName,
   formatAppointmentReceiptDefaultEmail,
   formatBookingAddonSummary,
@@ -511,7 +512,7 @@ export default function PosAppointmentsWorkspace({
       }
 
       const paged = extractPaged<PosAppointmentListItem>(json)
-      setAppointments(paged.data)
+      setAppointments(paged.data.filter(posAppointmentBlocksActiveSchedule))
       setPendingCancellationRequestsCount(paged.pending_cancellation_requests_count)
     } catch {
       setAppointments([])
@@ -2155,7 +2156,7 @@ export default function PosAppointmentsWorkspace({
                     <option value="">ALL</option>
                     <option value="HOLD">HOLD</option>
                     <option value="CONFIRMED">CONFIRMED</option>
-                    <option value="COMPLETED">COMPLETED</option>
+                    <option value="COMPLETED">COMPLETED (UNPAID)</option>
                   </select>
                 </div>
               )}

@@ -332,14 +332,38 @@ class PosController extends Controller
             $builder->where('status', 'COMPLETED')->where('payment_status', 'UNPAID');
         } elseif ($request->filled('status')) {
             $status = strtoupper(trim((string) $request->query('status')));
-            if (in_array($status, ['HOLD', 'CONFIRMED', 'COMPLETED'], true)) {
+            if (in_array($status, ['HOLD', 'CONFIRMED'], true)) {
                 $builder->where('status', $status);
+            } elseif ($status === 'COMPLETED') {
+                $builder->where('status', 'COMPLETED')
+                    ->where(function ($payment) {
+                        $payment->whereNull('payment_status')
+                            ->orWhere('payment_status', '!=', 'PAID');
+                    });
             } else {
-                $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'COMPLETED']);
+                $builder->where(function ($active) {
+                    $active->whereIn('status', ['HOLD', 'CONFIRMED'])
+                        ->orWhere(function ($completedUnpaid) {
+                            $completedUnpaid->where('status', 'COMPLETED')
+                                ->where(function ($payment) {
+                                    $payment->whereNull('payment_status')
+                                        ->orWhere('payment_status', '!=', 'PAID');
+                                });
+                        });
+                });
             }
         } else {
-            // POS appointments (no status filter / "ALL"): show only active staff-facing bookings.
-            $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'COMPLETED']);
+            // POS appointments is the active schedule: hide completed+paid and terminal statuses.
+            $builder->where(function ($active) {
+                $active->whereIn('status', ['HOLD', 'CONFIRMED'])
+                    ->orWhere(function ($completedUnpaid) {
+                        $completedUnpaid->where('status', 'COMPLETED')
+                            ->where(function ($payment) {
+                                $payment->whereNull('payment_status')
+                                    ->orWhere('payment_status', '!=', 'PAID');
+                            });
+                    });
+            });
         }
 
         $paginator = $builder->orderBy('start_at')->paginate($perPage, ['*'], 'page', $page);
@@ -1267,7 +1291,7 @@ class PosController extends Controller
 
         $newStart = Carbon::parse($validated['start_at']);
         $newEnd = $newStart->copy()->addMinutes((int) $booking->service->duration_min);
-        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min)) {
+        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id)) {
             return $this->respondError(__('Selected slot is not available.'), 409);
         }
 

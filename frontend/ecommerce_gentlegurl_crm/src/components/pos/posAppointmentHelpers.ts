@@ -104,7 +104,7 @@ export function posAppointmentRegisterPaid(
 
 export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): PosAppointmentVisualTone {
   const s = String(row.status ?? '').toUpperCase()
-  if (s === 'CANCELLED' || s === 'NO_SHOW' || s === 'LATE_CANCELLATION') return 'inactive'
+  if (['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'].includes(s)) return 'inactive'
   if (s === 'HOLD') return 'hold'
   if (s === 'COMPLETED') {
     return posAppointmentRegisterPaid(row) ? 'completedPaid' : 'completedUnpaid'
@@ -112,12 +112,18 @@ export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): Po
   return 'active'
 }
 
+/** Rows that should still occupy the active POS schedule calendar. Historical/terminal rows stay queryable elsewhere. */
+export function posAppointmentBlocksActiveSchedule(row: PosAppointmentListItem): boolean {
+  const tone = posAppointmentVisualToneFromRow(row)
+  return tone !== 'inactive' && tone !== 'completedPaid'
+}
+
 /** When only `status` is known (no payment fields); completed is shown as unpaid until row data loads. */
 export function posAppointmentVisualTone(status: string | null | undefined): PosAppointmentVisualTone {
   const s = String(status ?? '').toUpperCase()
   if (s === 'COMPLETED') return 'completedUnpaid'
   if (s === 'HOLD') return 'hold'
-  if (s === 'CANCELLED' || s === 'NO_SHOW' || s === 'LATE_CANCELLATION') return 'inactive'
+  if (['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'].includes(s)) return 'inactive'
   return 'active'
 }
 

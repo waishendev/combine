@@ -147,12 +147,22 @@ class BookingAvailabilityService
         return $visible;
     }
 
-    public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin): bool
+    public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null): bool
     {
         $blockEnd = $endAt->copy()->addMinutes($bufferMin);
 
         $hasBookingConflict = Booking::where('staff_id', $staffId)
-            ->whereNotIn('status', ['EXPIRED', 'CANCELLED'])
+            ->when($ignoreBookingId !== null, fn ($query) => $query->where('id', '!=', $ignoreBookingId))
+            ->where(function ($query) {
+                $query->whereIn('status', ['HOLD', 'CONFIRMED'])
+                    ->orWhere(function ($completed) {
+                        $completed->where('status', 'COMPLETED')
+                            ->where(function ($payment) {
+                                $payment->whereNull('payment_status')
+                                    ->orWhere('payment_status', '!=', 'PAID');
+                            });
+                    });
+            })
             ->where(function ($query) use ($startAt, $blockEnd) {
                 $query->where('start_at', '<', $blockEnd)
                     ->whereRaw("end_at + (buffer_min * interval '1 minute') > ?", [$startAt->toDateTimeString()]);
