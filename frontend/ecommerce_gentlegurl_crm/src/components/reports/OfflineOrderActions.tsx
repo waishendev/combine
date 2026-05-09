@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 
 type StaffOption = { id: number; name: string }
+type PaymentMethodKey = 'cash' | 'qrpay' | 'credit_card'
+type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null }
 
 type SplitRow = {
   id: string
@@ -26,24 +28,28 @@ type OfflineOrderActionsProps = {
   orderId: number
   channel: string
   currentPaymentMethod?: string | null
+  orderAmount?: number
+  paymentBreakdown?: PaymentBreakdownRow[] | null
   staffActionLabel?: 'sales_person' | 'worker'
   hideStaffAction?: boolean
   onDone: () => void
 }
 
-const PAYMENT_OPTIONS = [
-  'cash',
-  'card',
-  'qrpay',
-  'online_banking',
-  'manual_transfer',
-  'billplz_fpx',
-  'billplz_card',
-  'billplz_online_banking',
-  'billplz_credit_card',
+const PAYMENT_METHODS: Array<{ method: PaymentMethodKey; label: string }> = [
+  { method: 'cash', label: 'Cash' },
+  { method: 'qrpay', label: 'QRPay' },
+  { method: 'credit_card', label: 'Credit Card' },
 ]
 
-const labelize = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+const emptyPaymentAmounts = (): Record<PaymentMethodKey, string> => ({ cash: '', qrpay: '', credit_card: '' })
+
+const normalizePaymentEditorMethod = (value?: string | null): PaymentMethodKey | null => {
+  const key = String(value ?? '').trim().toLowerCase()
+  if (key === 'cash') return 'cash'
+  if (key === 'qrpay' || key === 'qr_pay' || key === 'qr pay') return 'qrpay'
+  if (['credit_card', 'billplz_credit_card', 'billplz_card', 'card', 'credit-card', 'credit card'].includes(key)) return 'credit_card'
+  return null
+}
 
 const money = (amount: number) => amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
@@ -61,7 +67,7 @@ const isFinalSettlementType = (value?: string | null) => {
   return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
 }
 
-export default function OfflineOrderActions({ orderId, channel, currentPaymentMethod, staffActionLabel = 'sales_person', hideStaffAction = false, onDone }: OfflineOrderActionsProps) {
+export default function OfflineOrderActions({ orderId, channel, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, onDone }: OfflineOrderActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [modal, setModal] = useState<'sales_person' | 'payment_method' | 'void' | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -71,9 +77,50 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [draftItems, setDraftItems] = useState<ItemSplitDraft[]>([])
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
-  const [paymentMethod, setPaymentMethod] = useState(currentPaymentMethod ?? 'cash')
+  const [paymentAmounts, setPaymentAmounts] = useState<Record<PaymentMethodKey, string>>(emptyPaymentAmounts)
   const [remark, setRemark] = useState('')
   const [autoBalanceByItem, setAutoBalanceByItem] = useState<Record<number, boolean>>({})
+
+
+  const orderTotalCents = useMemo(() => Math.round(Number(orderAmount || 0) * 100), [orderAmount])
+  const paymentRows = useMemo(() => PAYMENT_METHODS
+    .map(({ method }) => ({ method, amount: Number(paymentAmounts[method] || 0) }))
+    .filter((row) => Number.isFinite(row.amount) && row.amount > 0), [paymentAmounts])
+  const assignedCents = useMemo(() => paymentRows.reduce((sum, row) => sum + Math.round(row.amount * 100), 0), [paymentRows])
+  const assignedAmount = assignedCents / 100
+  const balanceCents = orderTotalCents - assignedCents
+  const paymentTotalMatches = balanceCents === 0 && paymentRows.length > 0
+
+  const buildInitialPaymentAmounts = () => {
+    const next = emptyPaymentAmounts()
+    const rows = Array.isArray(paymentBreakdown) ? paymentBreakdown : []
+    let hasBreakdown = false
+
+    for (const row of rows) {
+      const method = normalizePaymentEditorMethod(row.method ?? row.payment_method)
+      const amount = Number(row.amount ?? 0)
+      if (!method || !Number.isFinite(amount) || amount <= 0) continue
+      next[method] = String(((Number(next[method] || 0) * 100) + Math.round(amount * 100)) / 100)
+      hasBreakdown = true
+    }
+
+    if (!hasBreakdown) {
+      const fallbackMethod = normalizePaymentEditorMethod(currentPaymentMethod)
+      if (fallbackMethod && orderTotalCents > 0) {
+        next[fallbackMethod] = (orderTotalCents / 100).toFixed(2)
+      }
+    }
+
+    return next
+  }
+
+  const openPaymentModal = () => {
+    setPaymentAmounts(buildInitialPaymentAmounts())
+    setRemark('')
+    setError(null)
+    setModal('payment_method')
+    setMenuOpen(false)
+  }
 
   useEffect(() => {
     if (!toast) return
@@ -211,8 +258,13 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
           remark: remark.trim() || null,
         }
       } else if (modal === 'payment_method') {
+        if (!paymentTotalMatches) {
+          setError(balanceCents > 0 ? `Remaining RM ${money(balanceCents / 100)}` : `Overpaid RM ${money(Math.abs(balanceCents) / 100)}`)
+          setSubmitting(false)
+          return
+        }
         endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/payment-method`
-        payload = { payment_method: paymentMethod.trim(), remark: remark.trim() || null }
+        payload = { payments: paymentRows, remark: remark.trim() || null, remarks: remark.trim() || null }
       } else {
         if (!remark.trim()) {
           setError('Remarks are required to void this order.')
@@ -298,7 +350,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
             {canShowStaffAction ? (
               <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('sales_person'); setMenuOpen(false) }}>{staffActionButtonLabel}</button>
             ) : null}
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('payment_method'); setMenuOpen(false) }}>Edit Payment Method</button>
+            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
             <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={() => { setModal('void'); setMenuOpen(false) }}>Void Order</button>
           </div>
         ) : null}
@@ -350,9 +402,40 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
               ) : null}
 
               {modal === 'payment_method' ? (
-                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value)} className="h-10 w-full rounded border border-slate-300 px-3">
-                  {PAYMENT_OPTIONS.map((item) => <option key={item} value={item}>{labelize(item)}</option>)}
-                </select>
+                <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                    <span className="text-sm font-semibold text-slate-700">Order total / net amount</span>
+                    <span className="text-base font-bold text-slate-900">RM {money(orderTotalCents / 100)}</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {PAYMENT_METHODS.map(({ method, label }) => (
+                      <div key={method}>
+                        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">{label} Amount</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={paymentAmounts[method]}
+                          onChange={(event) => {
+                            setError(null)
+                            setPaymentAmounts((prev) => ({ ...prev, [method]: event.target.value }))
+                          }}
+                          className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm font-semibold text-slate-900 focus:border-blue-500 focus:outline-none"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-2 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-slate-700 sm:grid-cols-3">
+                    <span>Total assigned: RM {money(assignedAmount)}</span>
+                    <span className={balanceCents === 0 ? 'text-emerald-700' : balanceCents > 0 ? 'text-amber-700' : 'text-rose-700'}>
+                      {balanceCents === 0 ? 'Balanced' : balanceCents > 0 ? `Remaining RM ${money(balanceCents / 100)}` : `Overpaid RM ${money(Math.abs(balanceCents) / 100)}`}
+                    </span>
+                    <span>Payment rows: {paymentRows.length}</span>
+                  </div>
+                </div>
               ) : null}
 
               {modal === 'void' ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">Warning: This will void the offline order and invalidate related payments.</p> : null}
@@ -364,7 +447,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
 
             <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
               <button type="button" onClick={closeModal} className="rounded border border-slate-300 px-3 py-2 text-xs">Cancel</button>
-              <button type="button" onClick={() => void submit()} disabled={submitting} className={`rounded px-3 py-2 text-xs text-white ${modal === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60`}>
+              <button type="button" onClick={() => void submit()} disabled={submitting || (modal === 'payment_method' && !paymentTotalMatches)} className={`rounded px-3 py-2 text-xs text-white ${modal === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60`}>
                 {submitting ? 'Saving...' : modal === 'void' ? 'Confirm Void' : 'Save'}
               </button>
             </div>

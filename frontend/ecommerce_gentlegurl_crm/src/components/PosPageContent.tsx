@@ -14,6 +14,14 @@ import {
   isBluetoothPrinterConnected,
   type ReceiptLineItem,
 } from '@/utils/printReceipt'
+type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
+
+const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
+  { method: 'cash', label: 'Cash' },
+  { method: 'qrpay', label: 'QRPay' },
+  { method: 'credit_card', label: 'Credit Card' },
+]
+
 type CartItem = {
   id: number
   item_type?: 'PRODUCT' | 'BOOKING_PRODUCT'
@@ -774,7 +782,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('cash')
+  const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
   const [cashReceived, setCashReceived] = useState('')
+  const [qrProofFile, setQrProofFile] = useState<File | null>(null)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
   const [checkingOut, setCheckingOut] = useState(false)
@@ -787,7 +797,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     order_number: string
     receipt_public_url: string | null
     total: number
-    payment_method: 'cash' | 'qrpay' | 'billplz_credit_card'
+    payment_method: 'cash' | 'qrpay' | 'billplz_credit_card' | 'split'
     paid_amount: number
     change_amount: number
   }>(null)
@@ -3694,6 +3704,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [cart, cartVariantFetched, cartVariantOptions, cartVariantLoading])
 
   const cashReceivedAmount = Number(cashReceived || 0)
+  const checkoutPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(splitPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [splitPaymentAmounts])
+  const splitTotalPaid = useMemo(() => checkoutPaymentRows.reduce((sum, row) => sum + row.amount, 0), [checkoutPaymentRows])
+  const hasQrPayAmount = checkoutPaymentRows.some((row) => row.method === 'qrpay' && row.amount > 0)
+  const splitRemaining = Math.max(0, cartTotal - splitTotalPaid)
+  const splitOverpaid = Math.max(0, splitTotalPaid - cartTotal)
+  const splitPaymentMatchesTotal = Math.round(splitTotalPaid * 100) === Math.round(cartTotal * 100)
   const cashChange = Math.max(0, cashReceivedAmount - cartTotal)
 
   const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
@@ -3758,11 +3774,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           }
         : {}
 
-    const res = await fetch('/api/proxy/pos/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        payment_method: paymentMethod,
+    const checkoutPayload = {
+        payment_method: checkoutPaymentRows.length === 1 ? (checkoutPaymentRows[0].method === 'credit_card' ? 'billplz_credit_card' : checkoutPaymentRows[0].method) : 'split',
+        payments: checkoutPaymentRows,
         member_id: checkoutGuestIsUnknown ? null : (selectedMember?.id ?? null),
         ...guestCheckoutPayload,
         items: cartItems.map((item) => ({
@@ -3799,8 +3813,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             share_percent: split.share_percent,
           })),
         })),
-      }),
-    })
+      }
+
+    const checkoutBody = qrProofFile && hasQrPayAmount ? new FormData() : null
+    if (checkoutBody) {
+      checkoutBody.append('payload', JSON.stringify(checkoutPayload))
+      checkoutBody.append('qr_payment_proof', qrProofFile as File)
+    }
+
+    const res = await fetch('/api/proxy/pos/checkout', checkoutBody
+      ? { method: 'POST', body: checkoutBody }
+      : {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(checkoutPayload),
+        })
     const json = await res.json()
 
     if (!res.ok) {
@@ -3838,7 +3865,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       order_number: json.data.order.order_number,
       receipt_public_url: json.data.receipt_public_url,
       total: Number(json.data.order.grand_total ?? 0),
-      payment_method: paymentMethod,
+      payment_method: checkoutPaymentRows.length > 1 ? 'split' : paymentMethod,
       paid_amount: meta.paid_amount,
       change_amount: meta.change_amount,
     })
@@ -3876,6 +3903,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
+    setQrProofFile(null)
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
     setCheckoutConfirmationOpen(false)
@@ -3975,29 +4003,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     }
 
-    if (paymentMethod === 'qrpay' || paymentMethod === 'billplz_credit_card') {
-      await finalizeCheckout({ paid_amount: cartTotal, change_amount: 0 })
+    if (!splitPaymentMatchesTotal || checkoutPaymentRows.length === 0) {
+      setCheckoutError(splitOverpaid > 0 ? 'Total paid cannot exceed grand total.' : 'Total paid must equal grand total.')
       return
     }
 
-    // Handle cash flow a bit more like retail POS:
-    // - If staff didn't key in anything, suggest a rounded cash amount automatically
-    // - Still validate that received cash covers the total
-    let effectiveCashReceived = cashReceivedAmount
-
-    if (!cashReceived || !cashReceived.trim()) {
-      const suggested = Math.ceil(cartTotal || 0)
-      effectiveCashReceived = suggested
-      setCashReceived(suggested.toFixed(2))
-    }
-
-    if (!Number.isFinite(effectiveCashReceived) || effectiveCashReceived < cartTotal) {
-      setCheckoutError('Cash received must be equal or more than total.')
-      return
-    }
-
-    const effectiveChange = Math.max(0, effectiveCashReceived - cartTotal)
-    await finalizeCheckout({ paid_amount: effectiveCashReceived, change_amount: effectiveChange })
+    await finalizeCheckout({ paid_amount: splitTotalPaid, change_amount: 0 })
   }
 
   const checkout = async () => {
@@ -4191,6 +4202,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     const url = URL.createObjectURL(file)
+    setQrProofFile(file)
     setQrProofFileName(file.name)
     setQrProofPreviewUrl(url)
     event.currentTarget.value = ''
@@ -4200,6 +4212,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (qrProofPreviewUrl) {
       URL.revokeObjectURL(qrProofPreviewUrl)
     }
+    setQrProofFile(null)
     setQrProofPreviewUrl(null)
     setQrProofFileName(null)
   }
@@ -4515,14 +4528,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return next
     })
 
+    setSplitPaymentAmounts({ cash: cartTotal > 0 ? cartTotal.toFixed(2) : '', qrpay: '', credit_card: '' })
     setCheckoutConfirmationOpen(true)
   }
 
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
-    if (paymentMethod === 'cash') {
-      if (!Number.isFinite(cashReceivedAmount) || cashReceivedAmount < cartTotal) return false
-    }
+    if (checkoutPaymentRows.length === 0 || !splitPaymentMatchesTotal) return false
 
     if (checkoutRequiresCustomerValidation) {
       if (checkoutRequiresMemberOnly) {
@@ -4538,7 +4550,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     return true
   }, [
-    cashReceivedAmount,
+    checkoutPaymentRows.length,
+    splitPaymentMatchesTotal,
     cartTotal,
     checkingOut,
     checkoutAllowsGuestToggle,
@@ -7259,100 +7272,87 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
-                <p className="mb-4 text-sm font-bold text-gray-800">Payment Method</p>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all ${paymentMethod === 'cash' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
-                    <div className="flex items-center gap-2">
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
-                      </svg>
-                      <span className={paymentMethod === 'cash' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Cash</span>
-                    </div>
-                    <input type="radio" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} className="h-5 w-5 text-blue-600" />
-                  </label>
-                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all ${paymentMethod === 'qrpay' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
-                    <div className="flex items-center gap-2">
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
-                      </svg>
-                      <span className={paymentMethod === 'qrpay' ? 'text-blue-700 font-bold' : 'text-gray-700'}>QRPay</span>
-                    </div>
-                    <input type="radio" checked={paymentMethod === 'qrpay'} onChange={() => setPaymentMethod('qrpay')} className="h-5 w-5 text-blue-600" />
-                  </label>
-                  <label className={`flex cursor-pointer items-center justify-between rounded-xl border-2 px-5 py-4 text-sm font-semibold transition-all ${paymentMethod === 'billplz_credit_card' ? 'border-blue-500 bg-blue-50 shadow-md' : 'border-gray-200 hover:bg-gray-50 hover:border-gray-300'}`}>
-                    <div className="flex items-center gap-2">
-                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7h18a2 2 0 012 2v6a2 2 0 01-2 2H3a2 2 0 01-2-2V9a2 2 0 012-2z" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2 10h20" />
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 15h4" />
-                      </svg>
-                      <span className={paymentMethod === 'billplz_credit_card' ? 'text-blue-700 font-bold' : 'text-gray-700'}>Credit Card</span>
-                    </div>
-                    <input type="radio" checked={paymentMethod === 'billplz_credit_card'} onChange={() => setPaymentMethod('billplz_credit_card')} className="h-5 w-5 text-blue-600" />
-                  </label>
+                <div className="mb-4 flex items-center justify-between gap-3">
+                  <p className="text-sm font-bold text-gray-800">Split Payment</p>
+                  <p className="text-xs font-semibold text-gray-500">Enter paid amount per method</p>
                 </div>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                    <div key={method} className="rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSplitPaymentAmounts({ cash: '', qrpay: '', credit_card: '', [method]: cartTotal.toFixed(2) })
+                          setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
+                          setCheckoutError(null)
+                        }}
+                        className="mb-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
+                      >
+                        {label}
+                      </button>
+                      <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label} Amount</label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={splitPaymentAmounts[method]}
+                        onChange={(e) => {
+                          setSplitPaymentAmounts((prev) => ({ ...prev, [method]: e.target.value }))
+                          setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
+                          setCheckoutError(null)
+                        }}
+                        className="mt-1 h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                        placeholder="0.00"
+                      />
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm sm:grid-cols-3">
+                  <div className="flex justify-between sm:block">
+                    <span className="text-gray-500">Grand Total</span>
+                    <p className="font-bold text-gray-900">RM {cartTotal.toFixed(2)}</p>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="text-gray-500">Total Paid</span>
+                    <p className="font-bold text-blue-700">RM {splitTotalPaid.toFixed(2)}</p>
+                  </div>
+                  <div className="flex justify-between sm:block">
+                    <span className="text-gray-500">Remaining</span>
+                    <p className={`font-bold ${splitOverpaid > 0 ? 'text-red-700' : splitRemaining > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                      {splitOverpaid > 0 ? `Overpaid RM ${splitOverpaid.toFixed(2)}` : `RM ${splitRemaining.toFixed(2)}`}
+                    </p>
+                  </div>
+                </div>
+                {splitOverpaid > 0 ? (
+                  <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total.</p>
+                ) : null}
               </div>
 
-              {paymentMethod === 'cash' && (
-                <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
-                  <label className="block text-sm font-bold text-gray-900">Cash Received</label>
-                  <input type="number" min="0" step="0.01" value={cashReceived} onChange={(e) => setCashReceived(e.target.value)} className="h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" placeholder="0.00" />
-                  {cashChange > 0 && (
-                    <div className="flex items-center justify-between rounded-xl bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-200 px-4 py-3 shadow-sm">
-                      <span className="text-sm font-semibold text-green-800">Change:</span>
-                      <span className="text-lg font-bold text-green-700">RM {cashChange.toFixed(2)}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {paymentMethod === 'qrpay' && (
+              {hasQrPayAmount ? (
                 <div className="mt-6 space-y-3 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                   <label className="block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                     <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrUploadInputRef.current?.click()}>
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                        </svg>
-                        Upload
-                      </span>
+                      Upload
                     </button>
                     <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrCameraBackInputRef.current?.click()}>
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        Back Camera
-                      </span>
+                      Back Camera
                     </button>
                     <button type="button" className="h-11 rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 active:scale-95 shadow-sm" onClick={() => qrCameraFrontInputRef.current?.click()}>
-                      <span className="flex items-center justify-center gap-2">
-                        <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-                        </svg>
-                        Front Camera
-                      </span>
+                      Front Camera
                     </button>
                   </div>
                   <input ref={qrUploadInputRef} type="file" accept="image/*" onChange={onSelectQrProof} className="sr-only" />
                   <input ref={qrCameraBackInputRef} type="file" accept="image/*" capture="environment" onChange={onSelectQrProof} className="sr-only" />
                   <input ref={qrCameraFrontInputRef} type="file" accept="image/*" capture="user" onChange={onSelectQrProof} className="sr-only" />
-                  {qrProofFileName && (
+                  {qrProofFileName ? (
                     <div className="flex items-center justify-between rounded-xl border-2 border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 px-4 py-3 shadow-sm">
-                      <p className="truncate pr-2 text-sm font-medium text-green-800 flex items-center gap-2">
-                        <svg className="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                        </svg>
-                        {qrProofFileName}
-                      </p>
+                      <p className="truncate pr-2 text-sm font-medium text-green-800">{qrProofFileName}</p>
                       <button type="button" className="text-sm font-semibold text-red-600 hover:text-red-700 underline transition-colors" onClick={clearQrProof}>Clear</button>
                     </div>
-                  )}
+                  ) : null}
                 </div>
-              )}
+              ) : null}
 
               <div className="mt-5 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 shadow-sm overflow-hidden">
                 <label className="flex cursor-pointer items-center gap-3 px-5 py-4 select-none">

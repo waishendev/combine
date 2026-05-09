@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
 import SalesChannelReportPage from '@/components/SalesChannelReportPage'
@@ -23,6 +23,7 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const didInit = useRef(false)
+  const [visualRefreshKey, setVisualRefreshKey] = useState(0)
 
   const modeParam = searchParams.get('mode')
   const mode: 'ecommerce' | 'booking' | 'all' =
@@ -86,6 +87,8 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
     router.push(`${pathname}?${q.toString()}`)
   }
 
+  const refreshVisualSummary = () => setVisualRefreshKey((prev) => prev + 1)
+
   const subtitle =
     mode === 'ecommerce'
       ? 'Product orders and channel split — daily cards and transaction table.'
@@ -121,7 +124,7 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
         </div>
       </div>
 
-      <SalesVisualDailyDashboard mode={mode} />
+      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} />
 
       <h3 className="text-lg font-semibold text-slate-800 mb-4">Transactions</h3>
       {mode === 'all' ? (
@@ -132,16 +135,16 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
               Product-line orders only. Booking deposits and other booking lines appear under Booking below (same as POS rows with
               booking line types).
             </p>
-            <SalesChannelReportPage mode="ecommerce" canExport={canExport} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} />
+            <SalesChannelReportPage mode="ecommerce" canExport={canExport} defaultDatePreset="today" paramPrefix="ec_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
           </section>
           <section>
             <h4 className="text-base font-semibold text-slate-800">Booking</h4>
             <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — one row per booking line.</p>
-            <SalesChannelReportPage mode="booking" canExport={canExport} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} />
+            <SalesChannelReportPage mode="booking" canExport={canExport} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
           </section>
         </div>
       ) : (
-        <SalesChannelReportPage mode={mode} canExport={canExport} defaultDatePreset="today" showDateInputsInFilterModal={false} />
+        <SalesChannelReportPage mode={mode} canExport={canExport} defaultDatePreset="today" showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
       )}
     </div>
   )

@@ -457,7 +457,7 @@ class OfflineOrderManagementService
         return $order->fresh();
     }
 
-    public function updatePaymentMethod(Order $order, string $paymentMethod, ?string $remark, ?int $actorId): Order
+    public function updatePaymentMethod(Order $order, string $paymentMethod, ?string $remark, ?int $actorId, ?array $payments = null): Order
     {
         $this->ensureOfflineOrder($order);
 
@@ -465,14 +465,64 @@ class OfflineOrderManagementService
             'payment_method' => $order->payment_method,
         ];
 
-        $order->payment_method = trim($paymentMethod);
+        $paymentRows = $this->normalizePaymentRows($payments, (float) $order->grand_total, $paymentMethod);
+
+        $order->payment_method = count($paymentRows) > 1 ? 'split' : (string) ($paymentRows[0]['method'] ?? trim($paymentMethod));
         $order->save();
+        $order->payments()->delete();
+        foreach ($paymentRows as $row) {
+            $order->payments()->create([
+                'payment_method' => (string) $row['method'],
+                'amount' => round((float) $row['amount'], 2),
+                'meta' => ['source' => 'edit_payment_method'],
+            ]);
+        }
 
         $this->log('order', (int) $order->id, 'edit_payment_method', $before, [
             'payment_method' => $order->payment_method,
         ], $remark, $actorId);
 
         return $order->fresh();
+    }
+
+    private function normalizePaymentRows(?array $payments, float $expectedTotal, string $fallbackMethod): array
+    {
+        $allowed = ['cash', 'qrpay', 'credit_card'];
+        $rows = collect($payments ?? [])
+            ->map(function (array $row) {
+                $method = strtolower(trim((string) ($row['method'] ?? '')));
+                if ($method === 'billplz_credit_card') {
+                    $method = 'credit_card';
+                }
+                return ['method' => $method, 'amount' => round((float) ($row['amount'] ?? 0), 2)];
+            })
+            ->filter(fn (array $row) => $row['method'] !== '' && $row['amount'] > 0)
+            ->groupBy('method')
+            ->map(fn ($group, string $method) => [
+                'method' => $method,
+                'amount' => round((float) $group->sum('amount'), 2),
+            ])
+            ->values();
+
+        if ($rows->isEmpty()) {
+            $method = strtolower(trim($fallbackMethod));
+            if ($method === 'billplz_credit_card') {
+                $method = 'credit_card';
+            }
+            $rows = collect([['method' => $method, 'amount' => round($expectedTotal, 2)]]);
+        }
+
+        foreach ($rows as $row) {
+            if (! in_array((string) $row['method'], $allowed, true)) {
+                throw new RuntimeException('Unsupported payment method.');
+            }
+        }
+
+        if ((int) $rows->sum(fn (array $row) => (int) round(((float) $row['amount']) * 100)) !== (int) round($expectedTotal * 100)) {
+            throw new RuntimeException('Payment total must equal order total.');
+        }
+
+        return $rows->all();
     }
 
     public function voidOrder(Order $order, string $remark, ?int $actorId): Order

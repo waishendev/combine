@@ -20,6 +20,15 @@ function formatDate(value?: string | null) {
   }).format(date);
 }
 
+function formatPaymentMethod(method?: string | null) {
+  const key = String(method ?? '').toLowerCase();
+  if (key === 'cash') return 'Cash';
+  if (key === 'qrpay') return 'QRPay';
+  if (key === 'credit_card' || key === 'billplz_credit_card') return 'Credit Card';
+  if (key === 'split') return 'Split';
+  return method || 'N/A';
+}
+
 function resolveLineLabel(item: NonNullable<PublicAccountOrder["items"]>[number]) {
   const lineType = String(item.line_type ?? "").toLowerCase();
   if (lineType === "booking_addon") return `Booking Add-on Deposit - ${item.name || "Add-on"}`;
@@ -144,7 +153,18 @@ export default function BookingAccountOrdersPage() {
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Payment</p>
-                    <p className="text-base font-medium text-[var(--foreground)]">{order.payment_status}</p>
+                    <div className="text-base font-medium text-[var(--foreground)]">
+                      <p>{order.payment_status}</p>
+                      {order.payments?.length ? (
+                        <div className="mt-1 text-xs text-[var(--foreground)]/70">
+                          {order.payments.map((payment) => (
+                            <p key={`${payment.method}-${payment.amount}`}>{formatPaymentMethod(payment.method)} {money(payment.amount)}</p>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-1 text-xs text-[var(--foreground)]/70">{formatPaymentMethod(order.payment_method)}</p>
+                      )}
+                    </div>
                   </div>
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Total Amount</p>

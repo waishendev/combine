@@ -15,7 +15,8 @@ class SalesReportService
 
     /**
      * Orders may store Billplz as billplz_online_banking / billplz_credit_card while payment_gateways use billplz_fpx / billplz_card.
-     * Accept either form when matching o.payment_method (visual payment rows, channel filters, exports).
+     * POS/offline credit-card payments are normalized to credit_card but should roll up under Credit Card (Billplz).
+     * Accept either form when matching o.payment_method/order_payments.payment_method (visual payment rows, channel filters, exports).
      *
      * @return list<string>
      */
@@ -25,7 +26,7 @@ class SalesReportService
 
         return match ($k) {
             'billplz_fpx', 'billplz_online_banking', 'online_banking' => ['billplz_fpx', 'billplz_online_banking'],
-            'billplz_card', 'billplz_credit_card', 'card' => ['billplz_card', 'billplz_credit_card'],
+            'billplz_card', 'billplz_credit_card', 'card' => ['billplz_card', 'billplz_credit_card', 'credit_card'],
             default => [$k],
         };
     }

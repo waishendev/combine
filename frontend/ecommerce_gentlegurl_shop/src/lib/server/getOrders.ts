@@ -31,6 +31,7 @@ export type OrderSummary = {
   status: string;
   payment_status: string;
   payment_method?: string | null;
+  payments?: Array<{ method: string; amount: number }>;
   grand_total: string | number;
   created_at: string;
   reserve_expires_at?: string | null;

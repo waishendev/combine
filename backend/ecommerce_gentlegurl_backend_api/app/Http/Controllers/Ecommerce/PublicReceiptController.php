@@ -20,7 +20,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items.bookingService:id,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name'])
+            ->with(['order.items.bookingService:id,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
             ->first();
 
         if (!$receiptToken) {
@@ -176,6 +176,11 @@ class PublicReceiptController extends Controller
             'status' => $order->status,
             'payment_status' => $order->payment_status,
             'payment_method' => $order->payment_method,
+            'payments' => $order->payments->map(fn ($payment) => [
+                'method' => (string) $payment->payment_method,
+                'amount' => (float) $payment->amount,
+                'reference_no' => $payment->reference_no,
+            ])->values(),
             'created_at' => $order->created_at,
             'subtotal' => $summarySubtotal,
             'discount_total' => $order->discount_total,
@@ -247,7 +252,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items.bookingService:id,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name'])
+            ->with(['order.items.bookingService:id,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
             ->first();
 
         if (! $receiptToken) {

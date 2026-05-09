@@ -66,14 +66,14 @@
   @endphp
 
   <style>
-    @foreach($resolvedFonts as $font)
+    <?php foreach($resolvedFonts as $font): ?>
       @font-face {
         font-family: "{{ $font['name'] }}";
         font-style: normal;
         font-weight: 400;
         src: url("{{ $font['url'] }}") format("{{ $font['format'] }}");
       }
-    @endforeach
+    <?php endforeach; ?>
 
     @page { margin: 24px; }
 
@@ -335,16 +335,27 @@
     }
   }
 
-  $paymentMethodRaw = $order->payment_method ?? '';
   $paymentMethodMap = [
     'manual_transfer' => 'Manual Transfer',
     'billplz' => 'Billplz',
+    'cash' => 'Cash',
+    'qrpay' => 'QRPay',
+    'credit_card' => 'Credit Card',
+    'billplz_credit_card' => 'Credit Card',
+    'split' => 'Split',
   ];
-  $paymentMethodLabel = $paymentMethodMap[$paymentMethodRaw] ?? ($paymentMethodRaw ?: '-');
-  $paymentMethodDisplay = $paymentMethodLabel;
-  if ($paymentMethodRaw && $paymentMethodLabel !== $paymentMethodRaw) {
-    $paymentMethodDisplay ;
-  }
+  $paymentRows = collect($order->payments ?? [])
+    ->map(function ($payment) {
+      return [
+        'method' => data_get($payment, 'payment_method') ?: data_get($payment, 'method'),
+        'amount' => (float) data_get($payment, 'amount', 0),
+        'reference_no' => data_get($payment, 'reference_no') ?: data_get($payment, 'reference'),
+      ];
+    })
+    ->filter(fn ($payment) => trim((string) ($payment['method'] ?? '')) !== '' && (float) ($payment['amount'] ?? 0) > 0)
+    ->values();
+  $paymentMethodRaw = (string) ($order->payment_method ?? '');
+  $paymentMethodDisplay = $paymentMethodMap[$paymentMethodRaw] ?? ($paymentMethodRaw ?: '-');
 
   // ✅ Business-grade logic: Paid => RECEIPT, Unpaid => INVOICE
   $isPaid = (bool) $order->paid_at;
@@ -378,37 +389,37 @@
           <td style="width:60%;">
             <table style="width:100%;">
               <tr>
-                @if(!empty($profile['company_logo_url']))
+                <?php if(!empty($profile['company_logo_url'])): ?>
                   <td style="width:150px; padding-right:10px; vertical-align:top;">
                     <img class="company-logo" src="{{ $profile['company_logo_url'] }}" alt="Company Logo" />
                   </td>
-                @endif
+                <?php endif; ?>
                 <td style="vertical-align:top;">
                   <div class="company-name">{{ $profile['company_name'] ?? 'Company Name' }}</div>
 
                   <div class="company-meta muted">
-                    @if(!empty($profile['company_reg_no']))
+                    <?php if(!empty($profile['company_reg_no'])): ?>
                       <div>Reg No: {{ $profile['company_reg_no'] }}</div>
-                    @endif
-                    @if(!empty($profile['company_phone']))
+                    <?php endif; ?>
+                    <?php if(!empty($profile['company_phone'])): ?>
                       <div>Phone: {{ $profile['company_phone'] }}</div>
-                    @endif
-                    @if(!empty($profile['company_email']))
+                    <?php endif; ?>
+                    <?php if(!empty($profile['company_email'])): ?>
                       <div>Email: {{ $profile['company_email'] }}</div>
-                    @endif
-                    @if(!empty($profile['company_website']))
+                    <?php endif; ?>
+                    <?php if(!empty($profile['company_website'])): ?>
                       <div>Website: {{ $profile['company_website'] }}</div>
-                    @endif
+                    <?php endif; ?>
                   </div>
                 </td>
               </tr>
             </table>
 
-            @if(!empty($profile['company_address']))
+            <?php if(!empty($profile['company_address'])): ?>
               <div class="muted" style="margin-top:8px;">
                 {!! nl2br(e($profile['company_address'])) !!}
               </div>
-            @endif
+            <?php endif; ?>
           </td>
 
           <td style="width:40%; text-align:right;">
@@ -432,7 +443,21 @@
               </tr>
               <tr>
                 <td>Payment Method</td>
-                <td>{{ $paymentMethodDisplay }}</td>
+                <td>
+                  <?php if($paymentRows->isNotEmpty()): ?>
+                    <?php foreach($paymentRows as $payment): ?>
+                      <?php $pm = $paymentMethodMap[$payment['method']] ?? $payment['method']; ?>
+                      <div>
+                        {{ $pm }} {{ $currency }} {{ number_format((float) $payment['amount'], 2) }}
+                        <?php if(!empty($payment['reference_no'])): ?>
+                          <span class="muted small">({{ $payment['reference_no'] }})</span>
+                        <?php endif; ?>
+                      </div>
+                    <?php endforeach; ?>
+                  <?php else: ?>
+                    {{ $paymentMethodDisplay }}
+                  <?php endif; ?>
+                </td>
               </tr>
             </table>
           </td>
@@ -442,7 +467,7 @@
 
     <!-- Addresses -->
     <div class="section">
-      @if($order->pickup_or_shipping === 'in_store')
+      <?php if($order->pickup_or_shipping === 'in_store'): ?>
         <table class="info-table">
           <tr>
             <th>Bill To</th>
@@ -450,28 +475,28 @@
           <tr>
             <td style="width:100%;">
               <div class="addr-title">{{ $billingName ?? '-' }}</div>
-              @if($billingPhone)
+              <?php if($billingPhone): ?>
                 <div class="addr-line muted">Phone: {{ $billingPhone }}</div>
-              @endif
-              @if($billingEmail)
+              <?php endif; ?>
+              <?php if($billingEmail): ?>
                 <div class="addr-line muted">Email: {{ $billingEmail }}</div>
-              @endif
-              @if($billingLine1)
+              <?php endif; ?>
+              <?php if($billingLine1): ?>
                 <div class="addr-line">{{ $billingLine1 }}</div>
-              @endif
-              @if($billingLine2)
+              <?php endif; ?>
+              <?php if($billingLine2): ?>
                 <div class="addr-line">{{ $billingLine2 }}</div>
-              @endif
+              <?php endif; ?>
               <div class="addr-line">
                 {{ trim(collect([$billingPostcode, $billingCity, $billingState])->filter()->implode(' ')) }}
               </div>
-              @if(trim((string) ($billingCountry ?? '')) && $billingCountry !== '-')
+              <?php if(trim((string) ($billingCountry ?? '')) && $billingCountry !== '-'): ?>
                 <div class="addr-line">{{ $billingCountry }}</div>
-              @endif
+              <?php endif; ?>
             </td>
           </tr>
         </table>
-      @else
+      <?php else: ?>
         <table class="info-table">
           <tr>
             <th>Bill To</th>
@@ -481,18 +506,18 @@
           <tr>
             <td>
               <div class="addr-title">{{ $billingName ?? '-' }}</div>
-              @if($billingPhone)
+              <?php if($billingPhone): ?>
                 <div class="addr-line muted">Phone: {{ $billingPhone }}</div>
-              @endif
-              @if($billingEmail)
+              <?php endif; ?>
+              <?php if($billingEmail): ?>
                 <div class="addr-line muted">Email: {{ $billingEmail }}</div>
-              @endif
-              @if($billingLine1)
+              <?php endif; ?>
+              <?php if($billingLine1): ?>
                 <div class="addr-line">{{ $billingLine1 }}</div>
-              @endif
-              @if($billingLine2)
+              <?php endif; ?>
+              <?php if($billingLine2): ?>
                 <div class="addr-line">{{ $billingLine2 }}</div>
-              @endif
+              <?php endif; ?>
               <div class="addr-line">
                 {{ trim(collect([$billingPostcode, $billingCity, $billingState])->filter()->implode(' ')) }}
               </div>
@@ -500,50 +525,50 @@
             </td>
 
             <td>
-              @if($order->pickup_or_shipping === 'pickup')
-                @if($order->pickupStore)
+              <?php if($order->pickup_or_shipping === 'pickup'): ?>
+                <?php if($order->pickupStore): ?>
                   <div class="addr-title">{{ $order->pickupStore->name }}</div>
-                  @if($order->pickupStore->address_line1)
+                  <?php if($order->pickupStore->address_line1): ?>
                     <div class="addr-line">{{ $order->pickupStore->address_line1 }}</div>
-                  @endif
-                  @if($order->pickupStore->address_line2)
+                  <?php endif; ?>
+                  <?php if($order->pickupStore->address_line2): ?>
                     <div class="addr-line">{{ $order->pickupStore->address_line2 }}</div>
-                  @endif
+                  <?php endif; ?>
                   <div class="addr-line">
                     {{ trim(collect([$order->pickupStore->postcode, $order->pickupStore->city, $order->pickupStore->state])->filter()->implode(' ')) }}
                   </div>
-                  @if($order->pickupStore->country)
+                  <?php if($order->pickupStore->country): ?>
                     <div class="addr-line">{{ $order->pickupStore->country }}</div>
-                  @endif
-                @endif
+                  <?php endif; ?>
+                <?php endif; ?>
 
                 <div style="margin-top:8px;" class="muted small">
                   <strong style="color:#111827;">{{ $order->shipping_name ?: ($customerName ?? '-') }}</strong>
                 </div>
-                @if($order->shipping_phone || $customerPhone)
+                <?php if($order->shipping_phone || $customerPhone): ?>
                   <div class="muted small">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
-                @endif
+                <?php endif; ?>
 
-              @else
+              <?php else: ?>
                 <div class="addr-title">{{ $order->shipping_name ?: ($customerName ?? '-') }}</div>
-                @if($order->shipping_phone || $customerPhone)
+                <?php if($order->shipping_phone || $customerPhone): ?>
                   <div class="addr-line muted">Phone: {{ $order->shipping_phone ?: $customerPhone }}</div>
-                @endif
-                @if($order->shipping_address_line1)
+                <?php endif; ?>
+                <?php if($order->shipping_address_line1): ?>
                   <div class="addr-line">{{ $order->shipping_address_line1 }}</div>
-                @endif
-                @if($order->shipping_address_line2)
+                <?php endif; ?>
+                <?php if($order->shipping_address_line2): ?>
                   <div class="addr-line">{{ $order->shipping_address_line2 }}</div>
-                @endif
+                <?php endif; ?>
                 <div class="addr-line">
                   {{ trim(collect([$order->shipping_postcode, $order->shipping_city, $order->shipping_state])->filter()->implode(' ')) }}
                 </div>
                 <div class="addr-line">{{ $order->shipping_country ?? '-' }}</div>
-              @endif
+              <?php endif; ?>
             </td>
           </tr>
         </table>
-      @endif
+      <?php endif; ?>
     </div>
 
     <!-- Items -->
@@ -558,62 +583,56 @@
           </tr>
         </thead>
         <tbody>
-          @foreach($items as $item)
+          <?php foreach($items as $item): ?>
             <tr>
               <td>
                 <div class="item-name">{{ $item['product_name'] }}</div>
-                @if(!empty($item['product_cn_name']))
+                <?php if(!empty($item['product_cn_name'])): ?>
                   <div class="sku" style="margin-top:1px;">{{ $item['product_cn_name'] }}</div>
-                @endif
+                <?php endif; ?>
 
                 @php
                   $sku = $item['variant_sku'] ?? $item['product_sku'];
                 @endphp
-                @if($sku)
+                <?php if($sku): ?>
                   <div class="sku">SKU: {{ $sku }}</div>
-                @endif
-                @if($item['variant_name'])
+                <?php endif; ?>
+                <?php if($item['variant_name']): ?>
                   <div class="sku">
                     Variant: {{ $item['variant_name'] }}
-                    @if($item['variant_sku'])
+                    <?php if($item['variant_sku']): ?>
                       ({{ $item['variant_sku'] }})
-                    @endif
+                    <?php endif; ?>
                   </div>
-                @endif
-                @if(!empty($item['promotion_summary']))
+                <?php endif; ?>
+                <?php if(!empty($item['promotion_summary'])): ?>
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
-                @endif
-                @if(((float) ($item['discount_amount'] ?? 0)) > 0)
+                <?php endif; ?>
+                <?php if(((float) ($item['discount_amount'] ?? 0)) > 0): ?>
                   <div class="sku" style="color:#92400e;margin-top:2px;">
                     Original: {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
                   </div>
                   <div class="sku" style="color:#92400e;">
                     Discount
-                    @if(($item['discount_type'] ?? '') === 'percentage')
+                    <?php if(($item['discount_type'] ?? '') === 'percentage'): ?>
                       ({{ number_format((float) ($item['discount_value'] ?? 0), 2) }}%)
-                    @elseif(($item['discount_type'] ?? '') === 'fixed')
+                    <?php elseif(($item['discount_type'] ?? '') === 'fixed'): ?>
                       ({{ $currency }} {{ number_format((float) ($item['discount_value'] ?? 0), 2) }})
-                    @endif
+                    <?php endif; ?>
                     : - {{ $currency }} {{ number_format((float) ($item['discount_amount'] ?? 0), 2) }}
                   </div>
-                @endif
-                @if(!empty($item['is_staff_free_applied']))
+                <?php endif; ?>
+                <?php if(!empty($item['is_staff_free_applied'])): ?>
                   <div class="sku" style="color:#047857;margin-top:2px;font-weight:600;">
                     Staff free
                   </div>
-                @endif
-                <!--  @if(!empty($item['is_staff_free_applied']))
-                  <div class="sku" style="color:#047857;font-weight:600;">
-                    Staff free
-                    : - {{ $currency }} {{ number_format((float) ($item['staff_free_list_line_total'] ?? 0), 2) }}
-                  </div>
-                @endif -->
-                @if(!empty($item['covered_by_package']))
+                <?php endif; ?>
+                <?php if(!empty($item['covered_by_package'])): ?>
               
-                  @if(!empty($item['package_applied_name']))
+                  <?php if(!empty($item['package_applied_name'])): ?>
                     <div class="sku" style="color:#065f46;">Package Applied: {{ $item['package_applied_name'] }}</div>
-                  @endif
-                @endif
+                  <?php endif; ?>
+                <?php endif; ?>
 
                 <!-- Optional: show price x qty in a friendly way -->
                 <!-- <div class="price-line">
@@ -625,15 +644,15 @@
               <td class="numeric">{{ (int) $item['quantity'] }}</td>
               <td class="numeric">{{ $currency }} {{ number_format((float) $item['unit_price'], 2) }}</td>
               <td class="numeric">
-                @if(((float) ($item['discount_amount'] ?? 0)) > 0)
+                <?php if(((float) ($item['discount_amount'] ?? 0)) > 0): ?>
                   <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
                     {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
                   </div>
-                @endif
+                <?php endif; ?>
                 <div>{{ $currency }} {{ number_format((float) $item['line_total'], 2) }}</div>
               </td>
             </tr>
-          @endforeach
+          <?php endforeach; ?>
         </tbody>
       </table>
     </div>
@@ -654,12 +673,12 @@
           <td>Shipping</td>
           <td>{{ $currency }} {{ number_format($shippingDisplay, 2) }}</td>
         </tr>
-        @if($coveredByPackage && $packageOffsetDisplay > 0)
+        <?php if($coveredByPackage && $packageOffsetDisplay > 0): ?>
           <tr>
             <td>Package Offset</td>
             <td>- {{ $currency }} {{ number_format($packageOffsetDisplay, 2) }}</td>
           </tr>
-        @endif
+        <?php endif; ?>
         <tr class="grand">
           <td>Grand Total</td>
           <td>{{ $currency }} {{ number_format($grandTotalDisplay, 2) }}</td>
@@ -671,21 +690,21 @@
     <div class="footer">
       <div class="thanks">Thank you for shopping with {{ $profile['company_name'] ?? 'us' }}.</div>
 
-      @if($supportEmail)
+      <?php if($supportEmail): ?>
         <div class="line">Support Email: {{ $supportEmail }}</div>
-      @endif
-      @if($supportPhone)
+      <?php endif; ?>
+      <?php if($supportPhone): ?>
         <div class="line">Support Phone: {{ $supportPhone }}</div>
-      @endif
-      @if($companyWebsite)
+      <?php endif; ?>
+      <?php if($companyWebsite): ?>
         <div class="line">Website: {{ $companyWebsite }}</div>
-      @endif
+      <?php endif; ?>
 
-      @if($footerNote)
+      <?php if($footerNote): ?>
         <div class="line" style="margin-top:6px;">{{ $footerNote }}</div>
-      @else
+      <?php else: ?>
         <div class="line" style="margin-top:6px;">This document is generated electronically and is valid without signature.</div>
-      @endif
+      <?php endif; ?>
     </div>
 
   </div>

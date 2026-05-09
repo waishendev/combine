@@ -464,9 +464,16 @@ class SalesVisualDailyReportService
 
         $q = $this->applyOrderScope(
             DB::table('orders as o')
+                ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
                 ->whereBetween('o.created_at', [$start, $end])
         )
-            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
+            ->where(function ($q) use ($methodVariants) {
+                $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
+                    ->orWhere(function ($fallback) use ($methodVariants) {
+                        $fallback->whereNull('op.id')
+                            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
+                    });
+            });
 
         if ($online) {
             $q->whereNull('o.created_by_user_id');
@@ -490,7 +497,7 @@ class SalesVisualDailyReportService
             });
         }
 
-        return (float) $q->sum('o.grand_total');
+        return (float) $q->sum(DB::raw('COALESCE(op.amount, o.grand_total)'));
     }
 
     /**
@@ -608,9 +615,16 @@ class SalesVisualDailyReportService
 
         $q = $this->applyOrderScope(
             DB::table('orders as o')
+                ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
                 ->whereBetween('o.created_at', [$start, $end])
         )
-            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
+            ->where(function ($q) use ($methodVariants) {
+                $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
+                    ->orWhere(function ($fallback) use ($methodVariants) {
+                        $fallback->whereNull('op.id')
+                            ->whereIn(DB::raw('LOWER(TRIM(COALESCE(o.payment_method, \'\')))'), $methodVariants);
+                    });
+            });
 
         if ($online) {
             $q->whereNull('o.created_by_user_id');
@@ -632,7 +646,7 @@ class SalesVisualDailyReportService
             });
         });
 
-        return (float) $q->sum('o.grand_total');
+        return (float) $q->sum(DB::raw('COALESCE(op.amount, o.grand_total)'));
     }
 
     private function completedBookingsByStaff(Carbon $start, Carbon $end): array

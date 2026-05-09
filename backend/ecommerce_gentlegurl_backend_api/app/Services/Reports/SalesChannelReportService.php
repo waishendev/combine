@@ -55,7 +55,9 @@ class SalesChannelReportService
             ->orderByDesc('order_datetime')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $rows = collect($paginator->items())->map(function ($row) {
+        $paymentRowsByOrder = $this->paymentRowsByOrderIds(collect($paginator->items())->pluck('order_id')->all());
+
+        $rows = collect($paginator->items())->map(function ($row) use ($paymentRowsByOrder) {
             return [
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
@@ -63,6 +65,8 @@ class SalesChannelReportService
                 'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
                 'channel' => (string) $row->channel,
                 'payment_method' => (string) ($row->payment_method ?: 'unknown'),
+                'payments' => $paymentRowsByOrder->get((int) $row->order_id, []),
+                'order_total' => (float) $row->order_total,
                 'item_count' => (int) $row->item_count,
                 'product_amount' => (float) $row->product_amount,
                 'discount' => (float) $row->discount,
@@ -148,8 +152,9 @@ class SalesChannelReportService
             ->paginate($perPage, ['*'], 'page', $page);
 
         $cnNames = $this->resolveOrderItemCnNames(collect($paginator->items())->pluck('order_item_id')->all());
+        $paymentRowsByOrder = $this->paymentRowsByOrderIds(collect($paginator->items())->pluck('order_id')->all());
 
-        $rows = collect($paginator->items())->map(function ($row) use ($cnNames) {
+        $rows = collect($paginator->items())->map(function ($row) use ($cnNames, $paymentRowsByOrder) {
             return [
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
@@ -157,6 +162,8 @@ class SalesChannelReportService
                 'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
                 'channel' => (string) $row->channel,
                 'payment_method' => (string) ($row->payment_method ?: 'unknown'),
+                'payments' => $paymentRowsByOrder->get((int) $row->order_id, []),
+                'order_total' => (float) $row->order_total,
                 'type' => (string) $row->type,
                 'booking_id' => $row->booking_id ? (int) $row->booking_id : null,
                 'booking_no' => $row->booking_no,
@@ -261,13 +268,14 @@ class SalesChannelReportService
                 ->whereBetween('o.created_at', [$start, $end])
         )
             ->where('oi.line_type', 'product')
-            ->groupBy('o.id', 'o.order_number', 'order_datetime', 'c.name', 'channel', 'o.payment_method', 'o.status')
+            ->groupBy('o.id', 'o.order_number', 'order_datetime', 'c.name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total')
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
             ->selectRaw('o.created_at as order_datetime')
             ->selectRaw('c.name as customer_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
+            ->selectRaw('o.grand_total as order_total')
             ->selectRaw('o.status')
             ->selectRaw('COALESCE(SUM(oi.quantity), 0) as item_count')
             ->selectRaw('COALESCE(SUM(oi.line_total), 0) as product_amount')
@@ -316,6 +324,7 @@ class SalesChannelReportService
             ->selectRaw('c.name as customer_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
+            ->selectRaw('o.grand_total as order_total')
             ->selectRaw('o.status')
             ->selectRaw('oi.id AS order_item_id')
             ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as type")
@@ -352,6 +361,32 @@ class SalesChannelReportService
         }
 
         return DB::query()->fromSub($query, 'rows');
+    }
+
+
+    private function paymentRowsByOrderIds(array $orderIds)
+    {
+        $ids = collect($orderIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return collect();
+        }
+
+        return DB::table('order_payments')
+            ->whereIn('order_id', $ids)
+            ->orderBy('id')
+            ->get(['order_id', 'payment_method', 'amount', 'reference_no'])
+            ->groupBy(fn ($row) => (int) $row->order_id)
+            ->map(fn ($rows) => $rows->map(fn ($row) => [
+                'method' => (string) $row->payment_method,
+                'amount' => (float) $row->amount,
+                'reference_no' => $row->reference_no,
+            ])->values()->all());
     }
 
     private function resolveOrderItemCnNames(array $ids)

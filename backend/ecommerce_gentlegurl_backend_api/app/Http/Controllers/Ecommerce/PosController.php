@@ -13,6 +13,7 @@ use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderItemStaffSplit;
 use App\Models\Ecommerce\OrderReceiptToken;
+use App\Models\Ecommerce\OrderUpload;
 use App\Models\Ecommerce\PosCart;
 use App\Models\Ecommerce\PosCartAppointmentSettlementItem;
 use App\Models\Ecommerce\PosCartItem;
@@ -23,6 +24,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
+use App\Models\Booking\BookingPayment;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingProduct;
 use App\Models\Booking\BookingServiceQuestion;
@@ -602,8 +604,17 @@ class PosController extends Controller
 
     public function collectAppointmentPayment(Request $request, int $id)
     {
+        $this->mergeJsonPayload($request);
+        $hasPaymentsPayload = is_array($request->input('payments')) && count((array) $request->input('payments')) > 0;
+
         $validated = $request->validate([
-            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card'],
+            'payment_method' => $hasPaymentsPayload
+                ? ['nullable', 'string', 'max:50']
+                : ['required', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
+            'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'discount_type' => ['nullable', 'in:percentage,fixed'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'discount_remark' => ['nullable', 'string', 'max:255'],
@@ -654,8 +665,9 @@ class PosController extends Controller
         if ($amount <= 0) {
             return $this->respondError(__('Payment amount must be greater than 0.'), 422);
         }
+        $paymentRows = $this->resolveOrderPaymentRows($validated, $amount);
 
-        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $discountType, $discountValue, $discountRemark, $totalDiscount, $balanceDue) {
+        [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $discountType, $discountValue, $discountRemark, $totalDiscount, $balanceDue, $paymentRows) {
             $serviceBalanceDue = max(0, (float) ($summary['service_balance_due'] ?? 0));
             $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
             $lineGrossAmounts = collect();
@@ -694,7 +706,7 @@ class PosController extends Controller
                 'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
-                'payment_method' => $validated['payment_method'],
+                'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
                 'payment_provider' => 'manual',
                 'subtotal' => $balanceDue,
                 'discount_total' => $totalDiscount,
@@ -760,6 +772,17 @@ class PosController extends Controller
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
                     'booking_service_id' => (int) $booking->service_id,
+                ]);
+            }
+
+            $this->replaceOrderPayments($order, $paymentRows, 'pos_appointment_settlement');
+            if ($request->hasFile('qr_payment_proof')) {
+                OrderUpload::query()->create([
+                    'order_id' => (int) $order->id,
+                    'type' => 'payment_slip',
+                    'file_path' => $request->file('qr_payment_proof')->store('payment-slips', 'public'),
+                    'note' => 'POS appointment QRPay proof',
+                    'status' => 'approved',
                 ]);
             }
 
@@ -904,6 +927,10 @@ class PosController extends Controller
             'staff_splits' => ['nullable', 'array', 'min:1'],
             'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
+            'deposit_amount' => ['nullable', 'numeric', 'min:0'],
+            'deposit_payments' => ['nullable', 'array'],
+            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
         ]);
 
         if ($isRangePriced && isset($validated['settled_service_amount'])) {
@@ -1564,6 +1591,10 @@ class PosController extends Controller
             'staff_splits' => ['nullable', 'array'],
             'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
+            'deposit_amount' => ['nullable', 'numeric', 'min:0'],
+            'deposit_payments' => ['nullable', 'array'],
+            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -1924,6 +1955,8 @@ class PosController extends Controller
      */
     public function createAppointment(Request $request)
     {
+        $this->mergeJsonPayload($request);
+
         $validated = $request->validate([
             'booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
@@ -1942,6 +1975,11 @@ class PosController extends Controller
             'staff_splits' => ['nullable', 'array'],
             'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
+            'deposit_amount' => ['nullable', 'numeric', 'min:0'],
+            'deposit_payments' => ['nullable', 'array'],
+            'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
+            'deposit_qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -2163,6 +2201,8 @@ class PosController extends Controller
             ->all();
 
         $primaryStaffId = (int) ($normalizedSplits[0]['staff_id'] ?? $staff->id);
+        $depositAmount = round(max(0, (float) ($validated['deposit_amount'] ?? 0)), 2);
+        $depositPayments = $depositAmount > 0 ? $this->resolveDepositPaymentRows($validated, $depositAmount) : [];
 
         $booking = DB::transaction(function () use (
             $request,
@@ -2179,7 +2219,9 @@ class PosController extends Controller
             $addonPrice,
             $addonItems,
             $normalizedSplits,
-            $validated
+            $validated,
+            $depositAmount,
+            $depositPayments
         ) {
             $booking = Booking::query()->create([
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -2194,14 +2236,33 @@ class PosController extends Controller
                 'end_at' => $endAt,
                 'buffer_min' => $bufferMin,
                 'status' => 'CONFIRMED',
-                'deposit_amount' => 0,
+                'deposit_amount' => $depositAmount,
                 'addon_duration_min' => $addonDurationMin,
                 'addon_price' => $addonPrice,
                 'addon_items_json' => $addonItems,
-                'payment_status' => 'UNPAID',
+                'payment_status' => $depositAmount > 0 ? 'PARTIAL' : 'UNPAID',
                 'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
                 'notes' => $validated['notes'] ?? null,
             ]);
+
+            $depositProofPath = $request->hasFile('deposit_qr_payment_proof')
+                ? $request->file('deposit_qr_payment_proof')->store('booking-payment-proofs', 'public')
+                : null;
+
+            foreach ($depositPayments as $paymentRow) {
+                BookingPayment::query()->create([
+                    'booking_id' => (int) $booking->id,
+                    'provider' => (string) $paymentRow['method'],
+                    'ref' => null,
+                    'amount' => round((float) $paymentRow['amount'], 2),
+                    'status' => 'PAID',
+                    'raw_response' => array_filter([
+                        'source' => 'pos_create_appointment_deposit',
+                        'payment_method' => (string) $paymentRow['method'],
+                        'proof_path' => (string) $paymentRow['method'] === 'qrpay' ? $depositProofPath : null,
+                    ]),
+                ]);
+            }
 
             DB::table('booking_service_staff_splits')->insert(
                 collect($normalizedSplits)
@@ -3125,8 +3186,18 @@ class PosController extends Controller
 
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
     {
+        $this->mergeJsonPayload($request);
+
+        $hasPaymentsPayload = is_array($request->input('payments')) && count((array) $request->input('payments')) > 0;
+
         $validated = $request->validate([
-            'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card'],
+            'payment_method' => $hasPaymentsPayload
+                ? ['nullable', 'string', 'max:50']
+                : ['nullable', 'in:cash,qrpay,billplz_credit_card,credit_card'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
+            'qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
             'member_id' => ['nullable', 'integer', 'exists:customers,id'],
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:32'],
@@ -3408,6 +3479,7 @@ class PosController extends Controller
             }
 
             $grandTotal = max(0, $subtotal - $discountTotal);
+            $paymentRows = $this->resolveOrderPaymentRows($validated, $grandTotal);
 
             $guestName = trim((string) ($validated['guest_name'] ?? ''));
             $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
@@ -3495,7 +3567,7 @@ class PosController extends Controller
                 'created_by_user_id' => $request->user()->id,
                 'status' => 'completed',
                 'payment_status' => 'paid',
-                'payment_method' => $validated['payment_method'],
+                'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
                 'payment_provider' => 'manual',
                 'subtotal' => $subtotal,
                 'discount_total' => $discountTotal,
@@ -4071,6 +4143,16 @@ class PosController extends Controller
             }
 
             $this->deductPosCheckoutStock($cart, (int) $request->user()->id);
+            $this->replaceOrderPayments($order, $paymentRows, 'pos_checkout');
+            if ($request->hasFile('qr_payment_proof')) {
+                OrderUpload::query()->create([
+                    'order_id' => (int) $order->id,
+                    'type' => 'payment_slip',
+                    'file_path' => $request->file('qr_payment_proof')->store('payment-slips', 'public'),
+                    'note' => 'POS QRPay proof',
+                    'status' => 'approved',
+                ]);
+            }
             $orderPaymentService->handlePaid($order);
 
             $receiptUrl = $this->buildReceiptUrl($order, $request);
@@ -4092,12 +4174,118 @@ class PosController extends Controller
                 'order_number' => $order->order_number,
                 'grand_total' => $order->grand_total,
                 'payment_method' => $order->payment_method,
+                'payments' => $order->payments()->get()->map(fn ($payment) => [
+                    'method' => (string) $payment->payment_method,
+                    'amount' => (float) $payment->amount,
+                ])->values(),
             ],
             'status' => $order->status,
             'payment_status' => $order->payment_status,
             'receipt_public_url' => $receiptUrl,
             'package_items' => $purchasedPackageLines,
         ]);
+    }
+
+    private function mergeJsonPayload(Request $request): void
+    {
+        if (! $request->filled('payload')) {
+            return;
+        }
+
+        $payload = json_decode((string) $request->input('payload'), true);
+        if (is_array($payload)) {
+            $request->merge($payload);
+        }
+    }
+
+    private function normalizePosPaymentMethod(string $method): string
+    {
+        return match (strtolower(trim($method))) {
+            'billplz_credit_card', 'credit-card', 'credit card', 'card' => 'credit_card',
+            'cash' => 'cash',
+            'qrpay', 'qr_pay', 'qr pay' => 'qrpay',
+            default => strtolower(trim($method)),
+        };
+    }
+
+    private function resolveOrderPaymentRows(array $validated, float $expectedTotal): array
+    {
+        $expectedCents = (int) round($expectedTotal * 100);
+        if ($expectedCents <= 0) {
+            return [];
+        }
+
+        $rows = collect($validated['payments'] ?? [])
+            ->map(function (array $row) {
+                return [
+                    'method' => $this->normalizePosPaymentMethod((string) ($row['method'] ?? '')),
+                    'amount' => round((float) ($row['amount'] ?? 0), 2),
+                ];
+            })
+            ->filter(fn (array $row) => $row['method'] !== '' && $row['amount'] > 0)
+            ->groupBy('method')
+            ->map(fn ($group, string $method) => [
+                'method' => $method,
+                'amount' => round((float) $group->sum('amount'), 2),
+            ])
+            ->values();
+
+        if ($rows->isEmpty() && ! empty($validated['payment_method'])) {
+            $rows = collect([[
+                'method' => $this->normalizePosPaymentMethod((string) $validated['payment_method']),
+                'amount' => round($expectedTotal, 2),
+            ]]);
+        }
+
+        $allowed = ['cash', 'qrpay', 'credit_card'];
+        foreach ($rows as $row) {
+            if (! in_array((string) $row['method'], $allowed, true)) {
+                throw ValidationException::withMessages(['payments' => __('Unsupported payment method.')]);
+            }
+            if ((int) round(((float) $row['amount']) * 100) <= 0) {
+                throw ValidationException::withMessages(['payments' => __('Payment amount must be greater than 0.')]);
+            }
+        }
+
+        if ($rows->isEmpty()) {
+            throw ValidationException::withMessages(['payments' => __('Payment is required for checkout.')]);
+        }
+
+        $paidCents = (int) $rows->sum(fn (array $row) => (int) round(((float) $row['amount']) * 100));
+        if ($paidCents !== $expectedCents) {
+            throw ValidationException::withMessages(['payments' => __('Payment total must equal the order total.')]);
+        }
+
+        return $rows->all();
+    }
+
+    private function resolveDepositPaymentRows(array $validated, float $depositAmount): array
+    {
+        return $this->resolveOrderPaymentRows([
+            'payments' => $validated['deposit_payments'] ?? [],
+            'payment_method' => null,
+        ], $depositAmount);
+    }
+
+    private function orderPaymentMethodForRows(array $paymentRows): ?string
+    {
+        if (count($paymentRows) === 0) {
+            return null;
+        }
+
+        return count($paymentRows) === 1 ? (string) $paymentRows[0]['method'] : 'split';
+    }
+
+    private function replaceOrderPayments(Order $order, array $paymentRows, string $source): void
+    {
+        $order->payments()->delete();
+        foreach ($paymentRows as $row) {
+            $order->payments()->create([
+                'payment_method' => (string) $row['method'],
+                'amount' => round((float) $row['amount'], 2),
+                'meta' => ['source' => $source],
+            ]);
+        }
     }
 
     protected function deductPosCheckoutStock(PosCart $cart, ?int $actorUserId = null): void

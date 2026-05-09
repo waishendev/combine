@@ -44,7 +44,7 @@ class PublicOrderHistoryController extends Controller
 
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
-            ->with(['items.product.images', 'items.review', 'items.bookingService:id,cn_name', 'items.booking:id,addon_items_json'])
+            ->with(['items.product.images', 'items.review', 'items.bookingService:id,cn_name', 'items.booking:id,addon_items_json', 'payments'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
@@ -77,6 +77,10 @@ class PublicOrderHistoryController extends Controller
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
                 'payment_method' => $order->payment_method,
+                'payments' => $order->payments->map(fn ($payment) => [
+                    'method' => (string) $payment->payment_method,
+                    'amount' => (float) $payment->amount,
+                ])->values(),
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
@@ -166,6 +170,7 @@ class PublicOrderHistoryController extends Controller
             'returns',
             'bankAccount',
             'pickupStore',
+            'payments',
         ])
             ->where('id', $id)
             ->where('customer_id', $customer->id)
@@ -231,6 +236,10 @@ class PublicOrderHistoryController extends Controller
                 'payment_status' => $order->payment_status,
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'payment_method' => $order->payment_method,
+                'payments' => $order->payments->map(fn ($payment) => [
+                    'method' => (string) $payment->payment_method,
+                    'amount' => (float) $payment->amount,
+                ])->values(),
                 'payment_provider' => $order->payment_provider,
                 'subtotal' => $order->subtotal,
                 'discount_total' => $order->discount_total,
