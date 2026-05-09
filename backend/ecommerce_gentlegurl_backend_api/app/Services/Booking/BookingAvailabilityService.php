@@ -151,12 +151,26 @@ class BookingAvailabilityService
         return $visible;
     }
 
-    public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null): bool
+    public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null, ?Booking $ignoreBooking = null): bool
     {
         $blockEnd = $endAt->copy()->addMinutes($bufferMin);
+        $ignoreBookingIds = collect([$ignoreBookingId, $ignoreBooking?->id])
+            ->filter(fn ($id) => $id !== null && (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+        $ignoreBookingCode = trim((string) ($ignoreBooking?->booking_code ?? ''));
 
         $hasBookingConflict = Booking::where('staff_id', $staffId)
-            ->when($ignoreBookingId !== null, fn ($query) => $query->where('id', '!=', $ignoreBookingId))
+            ->when(! empty($ignoreBookingIds), fn ($query) => $query->whereNotIn('id', $ignoreBookingIds))
+            ->when($ignoreBookingCode !== '', function ($query) use ($ignoreBookingCode) {
+                $query->where(function ($nested) use ($ignoreBookingCode) {
+                    $nested->whereNull('booking_code')
+                        ->orWhere('booking_code', '')
+                        ->orWhere('booking_code', '!=', $ignoreBookingCode);
+                });
+            })
             ->where(function ($query) {
                 $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
                     ->orWhere(function ($completed) {
@@ -181,6 +195,19 @@ class BookingAvailabilityService
         $hasCartItemConflict = BookingCartItem::where('staff_id', $staffId)
             ->where('status', 'active')
             ->where('expires_at', '>', now())
+            ->when($ignoreBooking !== null, function ($query) use ($ignoreBooking) {
+                $ignoreStartAt = $ignoreBooking->start_at ? $ignoreBooking->start_at->toDateTimeString() : null;
+                $ignoreEndAt = $ignoreBooking->end_at ? $ignoreBooking->end_at->toDateTimeString() : null;
+                $ignoreServiceId = (int) ($ignoreBooking->service_id ?? 0);
+
+                if ($ignoreStartAt && $ignoreEndAt && $ignoreServiceId > 0) {
+                    $query->where(function ($nested) use ($ignoreStartAt, $ignoreEndAt, $ignoreServiceId) {
+                        $nested->where('service_id', '!=', $ignoreServiceId)
+                            ->orWhere('start_at', '!=', $ignoreStartAt)
+                            ->orWhere('end_at', '!=', $ignoreEndAt);
+                    });
+                }
+            })
             ->where('start_at', '<', $blockEnd)
             ->whereRaw("end_at > ?", [$startAt->toDateTimeString()])
             ->exists();

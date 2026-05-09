@@ -1148,7 +1148,7 @@ class PosController extends Controller
                 $bufferMin = (int) ($lockedBooking->buffer_min ?? $booking->buffer_min ?? 0);
 
                 if (! $this->availabilityService->isWithinStaffAvailability($staffId, $startAt, $transactionNewEndAt)
-                    || $this->availabilityService->hasConflict($staffId, $startAt, $transactionNewEndAt, $bufferMin, (int) $lockedBooking->id)) {
+                    || $this->availabilityService->hasConflict($staffId, $startAt, $transactionNewEndAt, $bufferMin, (int) $lockedBooking->id, $lockedBooking)) {
                     throw ValidationException::withMessages([
                         'appointment_end_at' => __('This update extends the appointment time and conflicts with another booking or staff availability.'),
                     ]);
