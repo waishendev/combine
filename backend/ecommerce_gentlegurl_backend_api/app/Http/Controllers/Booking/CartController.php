@@ -93,7 +93,8 @@ class CartController extends Controller
             $cart = $this->resolveActiveCart($request);
             $this->cleanupExpiredItems($cart);
 
-            if ($this->availabilityService->hasConflict((int) $validated['staff_id'], $startAt, $endAt, (int) $service->buffer_min)) {
+            if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)
+                || $this->availabilityService->hasConflict((int) $validated['staff_id'], $startAt, $endAt, (int) $service->buffer_min)) {
                 return $this->respondError('Selected slot is no longer available.', 409);
             }
 
@@ -1020,14 +1021,38 @@ class CartController extends Controller
 
     private function isItemStillAvailable(BookingCartItem $item, int $bufferMin, array $ignoreCartItemIds): bool
     {
-        $blockEnd = $item->end_at->copy()->addMinutes($bufferMin);
+        if (! $this->availabilityService->isWithinStaffAvailability((int) $item->staff_id, $item->start_at, $item->end_at)) {
+            return false;
+        }
+
+        $startAt = $item->start_at->copy()->setTimezone((string) config('app.timezone', 'Asia/Kuala_Lumpur'))->toDateTimeString();
+        $blockEndAt = $item->end_at->copy()->addMinutes($bufferMin)->setTimezone((string) config('app.timezone', 'Asia/Kuala_Lumpur'))->toDateTimeString();
 
         $bookingConflict = Booking::query()
             ->where('staff_id', $item->staff_id)
-            ->whereNotIn('status', ['EXPIRED', 'CANCELLED'])
-            ->where('start_at', '<', $blockEnd)
-            ->whereRaw("end_at + (buffer_min * interval '1 minute') > ?", [$item->start_at->toDateTimeString()])
-            ->exists();
+            ->where(function ($query) {
+                $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
+                    ->orWhere(function ($completed) {
+                        $completed->where('status', 'COMPLETED')
+                            ->where(function ($payment) {
+                                $payment->whereNull('payment_status')
+                                    ->orWhere('payment_status', '!=', 'PAID');
+                            });
+                    });
+            })
+            ->where('start_at', '<', $blockEndAt)
+            ->get(['end_at', 'buffer_min'])
+            ->contains(function (Booking $booking) use ($startAt) {
+                if (! $booking->end_at) {
+                    return false;
+                }
+
+                return $booking->end_at
+                    ->copy()
+                    ->setTimezone((string) config('app.timezone', 'Asia/Kuala_Lumpur'))
+                    ->addMinutes(max(0, (int) ($booking->buffer_min ?? 0)))
+                    ->gt(Carbon::parse($startAt, (string) config('app.timezone', 'Asia/Kuala_Lumpur')));
+            });
 
         if ($bookingConflict) {
             return false;
@@ -1038,8 +1063,8 @@ class CartController extends Controller
             ->where('status', 'active')
             ->where('expires_at', '>', now())
             ->whereNotIn('id', $ignoreCartItemIds)
-            ->where('start_at', '<', $blockEnd)
-            ->whereRaw('end_at > ?', [$item->start_at->toDateTimeString()])
+            ->where('start_at', '<', $blockEndAt)
+            ->where('end_at', '>', $startAt)
             ->exists();
 
         return ! $cartConflict;

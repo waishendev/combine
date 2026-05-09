@@ -7,9 +7,12 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPhoto;
 use App\Models\Ecommerce\CustomerVoucher;
+use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Models\Booking\BookingPayment;
+use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -39,6 +42,192 @@ class AppointmentController extends Controller
         }
 
         return $this->respond($query->orderBy('start_at')->paginate($request->integer('per_page', 20)));
+    }
+
+
+    public function history(Request $request)
+    {
+        $query = Booking::query()->with(['service', 'staff', 'customer']);
+
+        if ($request->filled('from_date')) {
+            $query->whereDate('start_at', '>=', $request->string('from_date'));
+        }
+        if ($request->filled('to_date')) {
+            $query->whereDate('start_at', '<=', $request->string('to_date'));
+        }
+        if ($request->filled('date')) {
+            $query->whereDate('start_at', $request->string('date'));
+        }
+        if ($request->filled('staff_id')) {
+            $query->where('staff_id', (int) $request->staff_id);
+        }
+        if ($request->filled('status')) {
+            $query->where('status', strtoupper(trim((string) $request->string('status'))));
+        }
+        if ($request->filled('q')) {
+            $search = trim((string) $request->string('q'));
+            $query->where(function ($nested) use ($search) {
+                $nested->where('booking_code', 'like', "%{$search}%")
+                    ->orWhere('guest_name', 'like', "%{$search}%")
+                    ->orWhere('guest_phone', 'like', "%{$search}%")
+                    ->orWhere('guest_email', 'like', "%{$search}%")
+                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                        $customerQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $paymentStatus = strtolower(trim((string) $request->query('payment_status', '')));
+        $needsComputedFilter = in_array($paymentStatus, ['paid', 'unpaid', 'partial'], true);
+        $perPage = max(1, min(100, $request->integer('per_page', 25)));
+        $page = max(1, $request->integer('page', 1));
+
+        if (! $needsComputedFilter) {
+            $paginator = $query->orderByDesc('start_at')->paginate($perPage, ['*'], 'page', $page);
+
+            return $this->respond([
+                'data' => collect($paginator->items())->map(fn (Booking $booking) => $this->mapHistoryBooking($booking))->values(),
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+            ]);
+        }
+
+        $rows = $query->orderByDesc('start_at')->get()
+            ->map(fn (Booking $booking) => $this->mapHistoryBooking($booking))
+            ->filter(fn (array $row) => strtolower((string) $row['computed_payment_status']) === $paymentStatus)
+            ->values();
+
+        $total = $rows->count();
+        $pageRows = $rows->forPage($page, $perPage)->values();
+
+        return $this->respond([
+            'data' => $pageRows,
+            'current_page' => $page,
+            'last_page' => max(1, (int) ceil($total / $perPage)),
+            'per_page' => $perPage,
+            'total' => $total,
+        ]);
+    }
+
+    public function historyShow(int $id)
+    {
+        $booking = Booking::with(['service', 'staff', 'customer'])->findOrFail($id);
+        $row = $this->mapHistoryBooking($booking);
+        $logs = BookingLog::query()
+            ->where('booking_id', $booking->id)
+            ->orderByDesc('created_at')
+            ->limit(100)
+            ->get(['id', 'actor_type', 'actor_id', 'action', 'meta', 'created_at'])
+            ->map(fn (BookingLog $log) => [
+                'id' => (int) $log->id,
+                'actor_type' => (string) $log->actor_type,
+                'actor_id' => $log->actor_id ? (int) $log->actor_id : null,
+                'action' => (string) $log->action,
+                'meta' => $log->meta ?? [],
+                'created_at' => $log->created_at ? Carbon::parse((string) $log->created_at)->toIso8601String() : null,
+            ])->values();
+
+        return $this->respond(array_merge($row, [
+            'notes' => $booking->notes,
+            'source' => $booking->source,
+            'logs' => $logs,
+        ]));
+    }
+
+    private function mapHistoryBooking(Booking $booking): array
+    {
+        $financial = $this->resolveHistoryFinancials($booking);
+        $addonItems = $this->mapAddonItems($booking->addon_items_json);
+        $guestName = trim((string) ($booking->guest_name ?? ''));
+
+        return [
+            'id' => (int) $booking->id,
+            'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+            'customer' => $booking->customer ? [
+                'id' => (int) $booking->customer->id,
+                'name' => (string) $booking->customer->name,
+                'phone' => $booking->customer->phone,
+                'email' => $booking->customer->email,
+            ] : null,
+            'guest_name' => $booking->guest_name,
+            'guest_phone' => $booking->guest_phone,
+            'guest_email' => $booking->guest_email,
+            'customer_display_name' => $booking->customer?->name
+                ?: ($guestName !== '' ? ($guestName . ' (GUEST)') : 'Walk-in / Unknown'),
+            'service' => $booking->service ? [
+                'id' => (int) $booking->service->id,
+                'name' => (string) $booking->service->name,
+                'cn_name' => $booking->service->cn_name,
+                'duration_min' => (int) ($booking->service->duration_min ?? 0),
+            ] : null,
+            'add_ons' => $addonItems,
+            'staff' => $booking->staff ? [
+                'id' => (int) $booking->staff->id,
+                'name' => (string) $booking->staff->name,
+            ] : null,
+            'start_at' => optional($booking->start_at)?->toIso8601String(),
+            'end_at' => optional($booking->end_at)?->toIso8601String(),
+            'created_at' => optional($booking->created_at)?->toIso8601String(),
+            'completed_at' => optional($booking->completed_at)?->toIso8601String(),
+            'cancelled_at' => optional($booking->cancelled_at)?->toIso8601String(),
+            'status' => (string) $booking->status,
+            'payment_status' => (string) $booking->payment_status,
+            ...$financial,
+        ];
+    }
+
+    private function resolveHistoryFinancials(Booking $booking): array
+    {
+        $addonTotal = collect($this->mapAddonItems($booking->addon_items_json))->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0));
+        $serviceTotal = $booking->settled_service_amount !== null
+            ? (float) $booking->settled_service_amount
+            : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+        $totalAmount = round(max(0, $serviceTotal + $addonTotal), 2);
+
+        $orderItems = OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->get(['line_type', 'line_total', 'variant_name_snapshot']);
+        $orderDepositPaid = (float) $orderItems->where('line_type', 'booking_deposit')->sum(fn (OrderItem $item) => (float) ($item->line_total ?? 0));
+        $settlementPaid = (float) $orderItems
+            ->filter(fn (OrderItem $item) => in_array((string) $item->line_type, ['booking_settlement', 'booking_addon'], true))
+            ->sum(fn (OrderItem $item) => (float) ($item->line_total ?? 0));
+        $bookingPaymentPaid = (float) BookingPayment::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('status', 'PAID')
+            ->sum('amount');
+        $depositPaid = max($orderDepositPaid, $bookingPaymentPaid, (float) ($booking->payment_status === 'PAID' ? $booking->deposit_amount : 0));
+
+        $packageUsage = CustomerServicePackageUsage::query()
+            ->where(function ($query) use ($booking) {
+                $query->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($posQuery) use ($booking) {
+                        $posQuery->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id);
+                    });
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->first();
+        $packageOffset = $packageUsage ? max(0, $serviceTotal) : 0.0;
+        $paidAmount = round(max(0, $depositPaid + $settlementPaid), 2);
+        $balanceDue = round(max(0, $totalAmount - $paidAmount - $packageOffset), 2);
+        $computedPaymentStatus = $balanceDue <= 0.0001
+            ? 'paid'
+            : ($paidAmount > 0.0001 || $packageOffset > 0.0001 ? 'partial' : 'unpaid');
+
+        return [
+            'total_amount' => $totalAmount,
+            'paid_amount' => $paidAmount,
+            'deposit_paid' => round($depositPaid, 2),
+            'settlement_paid' => round($settlementPaid, 2),
+            'package_offset' => round($packageOffset, 2),
+            'balance_due' => $balanceDue,
+            'computed_payment_status' => $computedPaymentStatus,
+        ];
     }
 
     public function show(int $id)

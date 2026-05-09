@@ -20,6 +20,7 @@ export type PosAppointmentListItem = {
   staff_id?: number | null
   staff_name?: string | null
   status: string
+  payment_status?: string | null
   deposit_contribution?: number
   deposit_paid: number
   linked_booking_deposit?: number
@@ -45,6 +46,7 @@ export type PosAppointmentDetail = {
   id: number
   booking_code: string
   status: string
+  payment_status?: string | null
   appointment_start_at?: string | null
   appointment_end_at?: string | null
   /** Present when booked under a member; guest walk-ins use `guest_*` instead. */
@@ -52,7 +54,7 @@ export type PosAppointmentDetail = {
   guest_name?: string | null
   guest_phone?: string | null
   guest_email?: string | null
-  service?: { id: number; name: string; cn_name?: string | null; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }
+  service?: { id: number; name: string; cn_name?: string | null; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; duration_min?: number | null }
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
@@ -63,6 +65,7 @@ export type PosAppointmentDetail = {
   requires_settled_amount?: boolean
   add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
   addon_total_duration_min?: number
+  estimated_duration_min?: number
   addon_total_price?: number
   addon_paid_online?: number
   addon_paid_settlement?: number

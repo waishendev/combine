@@ -571,6 +571,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           //   requiredPermission: 'booking.appointments.view',
           // },
           {
+            key: 'booking-appointment-history',
+            label: 'Appointment History',
+            href: '/booking/appointment-history',
+            requiredPermission: 'booking.appointments.view',
+          },
+          {
             key: 'booking-services',
             label: 'Services',
             href: '/booking/services',
@@ -791,7 +797,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
         ],
       },
     ],
-    [],
+    [staffId],
   )
 
   const menuItems = useMemo(
@@ -842,6 +848,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- keep active sidebar parents expanded after route/workspace changes.
     setOpenMenus((prev) => {
       const next = { ...prev }
       activeParentKeys.forEach((key) => {

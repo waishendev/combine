@@ -209,13 +209,10 @@ export default function PosAppointmentsSchedule({
           Confirmed, pending
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-3 w-6 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
-          Completed · paid
-        </span>
-        <span className="inline-flex items-center gap-1.5">
           <span className="h-3 w-6 shrink-0 rounded border-2 border-amber-900 bg-amber-600" aria-hidden />
           Completed · unpaid
         </span>
+        <span className="text-slate-500">Completed paid and terminal statuses are hidden from this active schedule.</span>
       </div>
 
       {viewMode === 'month' ? (

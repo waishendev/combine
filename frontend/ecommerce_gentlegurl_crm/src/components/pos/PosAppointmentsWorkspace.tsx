@@ -7,6 +7,7 @@ import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
+  posAppointmentBlocksActiveSchedule,
   formatAppointmentCustomerDisplayName,
   formatAppointmentReceiptDefaultEmail,
   formatBookingAddonSummary,
@@ -32,6 +33,13 @@ type StaffOption = {
   code?: string | null
   service_commission_rate?: number
   is_active?: boolean | number | string | null
+}
+
+function durationMinutesFromRange(startAt?: string | null, endAt?: string | null): number {
+  if (!startAt || !endAt) return 0
+  const ms = new Date(endAt).getTime() - new Date(startAt).getTime()
+  if (!Number.isFinite(ms) || ms <= 0) return 0
+  return Math.round(ms / 60000)
 }
 
 type BookingServiceOption = {
@@ -511,7 +519,7 @@ export default function PosAppointmentsWorkspace({
       }
 
       const paged = extractPaged<PosAppointmentListItem>(json)
-      setAppointments(paged.data)
+      setAppointments(paged.data.filter(posAppointmentBlocksActiveSchedule))
       setPendingCancellationRequestsCount(paged.pending_cancellation_requests_count)
     } catch {
       setAppointments([])
@@ -1174,6 +1182,21 @@ export default function PosAppointmentsWorkspace({
     return rows.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(primaryShare) } : row))
   }, [])
 
+  const appointmentDisplayMainServices = useMemo(() => {
+    const originalServiceId = Number(appointmentDetail?.service?.id ?? 0)
+    const seenAdded = new Set<number>()
+    return (appointmentDetail?.main_services ?? []).filter((service) => {
+      const serviceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
+      if (service.is_original) return true
+      if (originalServiceId > 0 && serviceId === originalServiceId) return false
+      if (serviceId > 0) {
+        if (seenAdded.has(serviceId)) return false
+        seenAdded.add(serviceId)
+      }
+      return true
+    })
+  }, [appointmentDetail?.main_services, appointmentDetail?.service?.id])
+
   const openEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.service?.id) return
     setEditSettlementError(null)
@@ -1185,7 +1208,7 @@ export default function PosAppointmentsWorkspace({
         .filter((id): id is number => id != null),
     )
     setEditSelectedAddonIds(currentAddonIds)
-    const addedMainBlocksSeed = (appointmentDetail.main_services ?? [])
+    const addedMainBlocksSeed = appointmentDisplayMainServices
       .filter((service) => !service.is_original)
       .map((service) => ({
         tmp_id: `seed-${Number(service.linked_booking_service_id ?? service.id ?? 0)}-${Math.random()}`,
@@ -1257,7 +1280,7 @@ export default function PosAppointmentsWorkspace({
       setEditAddonOptionsLoading(false)
       setEditMainServiceCatalogLoading(false)
     }
-  }, [appointmentDetail, rebalanceEditSettlementPrimaryShare])
+  }, [appointmentDetail, appointmentDisplayMainServices, rebalanceEditSettlementPrimaryShare])
 
   const toggleEditAddon = useCallback((optionId: number) => {
     setEditSelectedAddonIds((prev) => {
@@ -1273,6 +1296,7 @@ export default function PosAppointmentsWorkspace({
 
   const addEditMainServiceBlock = useCallback(async (service: BookingServiceOption) => {
     if (!service?.id) return
+    if (appointmentDetail?.service?.id === service.id) return
     if (editAddedMainBlocks.some((block) => block.service_id === service.id)) return
     let questions: ServiceAddonQuestion[] = []
     try {
@@ -1294,7 +1318,7 @@ export default function PosAppointmentsWorkspace({
       staff_splits: [{ staff_id: null, share_percent: '100' }],
       auto_balance: true,
     }])
-  }, [editAddedMainBlocks])
+  }, [appointmentDetail?.service?.id, editAddedMainBlocks])
 
   const openEditMainServicePicker = useCallback(() => {
     setEditMainServiceQuery('')
@@ -1437,10 +1461,24 @@ export default function PosAppointmentsWorkspace({
         setEditSettlementError(json?.message ?? 'Failed to update settlement.')
         return
       }
+      const updatedAppointment = (json?.data?.appointment ?? null) as Partial<PosAppointmentDetail> | null
+      if (updatedAppointment) {
+        setAppointmentDetail((current) => current ? {
+          ...current,
+          ...updatedAppointment,
+          service_total: Number(json?.data?.service_total ?? updatedAppointment.service_total ?? current.service_total ?? 0),
+          settled_service_amount: json?.data?.settled_service_amount ?? updatedAppointment.settled_service_amount ?? current.settled_service_amount,
+          requires_settled_amount: Boolean(json?.data?.requires_settled_amount ?? updatedAppointment.requires_settled_amount ?? current.requires_settled_amount ?? false),
+          main_services: (json?.data?.main_services ?? updatedAppointment.main_services ?? current.main_services) as PosAppointmentDetail['main_services'],
+          add_ons: (json?.data?.add_ons ?? updatedAppointment.add_ons ?? current.add_ons) as PosAppointmentDetail['add_ons'],
+          balance_due: Number(json?.data?.balance_due ?? updatedAppointment.balance_due ?? current.balance_due ?? 0),
+          amount_due_now: Number(json?.data?.amount_due_now ?? updatedAppointment.amount_due_now ?? current.amount_due_now ?? 0),
+        } : current)
+      }
       showMsg('Settlement updated.', 'success')
       setEditSettlementOpen(false)
-      await fetchAppointments()
       await refreshOpenedAppointmentDetail()
+      await fetchAppointments()
     } finally {
       setEditSettlementLoading(false)
     }
@@ -1861,25 +1899,41 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.service_total],
   )
 
-  const appointmentSettlementDurationMin = useMemo(() => {
-    if (!appointmentDetail) return 0
-    const mainDuration = (appointmentDetail.main_services ?? []).reduce((sum, service) => {
-      const own = Number(service.extra_duration_min ?? 0)
-      const addon = (service.add_ons ?? []).reduce((addonSum, addonRow) => addonSum + Number(addonRow.extra_duration_min ?? 0), 0)
-      return sum + own + addon
-    }, 0)
-    if (mainDuration > 0) return mainDuration
-    return Math.max(0, Number(formatDurationFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at).replace(/[^\d]/g, '')) || 0)
-  }, [appointmentDetail])
+  const appointmentSettlementDurationMin = useMemo(
+    () => durationMinutesFromRange(appointmentDetail?.appointment_start_at, appointmentDetail?.appointment_end_at),
+    [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at],
+  )
 
-  const appointmentSettlementDisplayEndAt = useMemo(() => {
+  const editSettlementEstimatedDurationMin = useMemo(() => {
+    if (!appointmentDetail) return 0
+    const originalDuration = appointmentDisplayMainServices
+      .filter((service) => service.is_original)
+      .reduce((sum, service) => sum + Number(service.extra_duration_min ?? 0), 0)
+    const fallbackOriginalDuration = Number(appointmentDetail.estimated_duration_min ?? 0) > 0
+      ? Number(appointmentDetail.estimated_duration_min ?? 0) - Number(appointmentDetail.addon_total_duration_min ?? 0)
+      : appointmentSettlementDurationMin
+    const baseDuration = originalDuration > 0 ? originalDuration : Math.max(0, fallbackOriginalDuration)
+    const originalAddonDuration = editAddonQuestions
+      .flatMap((question) => question.options)
+      .filter((option) => editSelectedAddonIds.has(option.id))
+      .reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0)
+    const addedBlockDuration = editAddedMainBlocks.reduce((sum, block) => {
+      const blockAddonDuration = block.addon_questions
+        .flatMap((question) => question.options)
+        .filter((option) => block.selected_addon_ids.has(option.id))
+        .reduce((addonSum, option) => addonSum + Number(option.extra_duration_min ?? 0), 0)
+      return sum + Number(block.duration_min ?? 0) + blockAddonDuration
+    }, 0)
+    return Math.max(0, baseDuration + originalAddonDuration + addedBlockDuration)
+  }, [appointmentDetail, appointmentDisplayMainServices, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editSelectedAddonIds])
+
+  const editSettlementEstimatedEndAt = useMemo(() => {
     const startAt = appointmentDetail?.appointment_start_at
-    if (!startAt) return appointmentDetail?.appointment_end_at ?? null
-    if (appointmentSettlementDurationMin <= 0) return appointmentDetail?.appointment_end_at ?? null
+    if (!startAt || editSettlementEstimatedDurationMin <= 0) return appointmentDetail?.appointment_end_at ?? null
     const start = new Date(startAt)
     if (Number.isNaN(start.getTime())) return appointmentDetail?.appointment_end_at ?? null
-    return new Date(start.getTime() + appointmentSettlementDurationMin * 60 * 1000).toISOString()
-  }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, appointmentSettlementDurationMin])
+    return new Date(start.getTime() + editSettlementEstimatedDurationMin * 60 * 1000).toISOString()
+  }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, editSettlementEstimatedDurationMin])
 
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
@@ -1910,10 +1964,10 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
+  const appointmentPaymentStatusUpper = String(appointmentDetail?.payment_status ?? '').toUpperCase()
   const appointmentPackageApplied = ['reserved', 'consumed'].includes(
     String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
   )
-  const appointmentCheckoutCompleted = appointmentSettlementPaid > 0
   /** Package reserved on booking but settlement not recorded yet — treat as unpaid until POS/main checkout finalises. */
   const packageReservedPendingRegister = useMemo(
     () =>
@@ -1921,6 +1975,12 @@ export default function PosAppointmentsWorkspace({
       appointmentSettlementPaid <= 0.0001,
     [appointmentDetail?.package_status?.status, appointmentSettlementPaid],
   )
+  /** Reserved package, remaining balance, or non-PAID status ⇒ still unpaid at register. */
+  const appointmentPaymentBadgeIsPaid =
+    !packageReservedPendingRegister &&
+    appointmentDueAmountNow <= 0.0001 &&
+    (appointmentPaymentStatusUpper.length === 0 || appointmentPaymentStatusUpper === 'PAID')
+  const appointmentCheckoutCompleted = appointmentPaymentBadgeIsPaid
   const appointmentShowApplyPackageButton = useMemo(
     () =>
       !appointmentPackageApplied &&
@@ -1934,10 +1994,6 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentShowPaymentBadge =
     !appointmentIsTerminalCancelled && ['CONFIRMED', 'COMPLETED'].includes(appointmentStatusUpper)
-  /** Reserved package + no settlement order yet ⇒ still “unpaid” at register (same as completed-but-unpaid). */
-  const appointmentPaymentBadgeIsPaid =
-    !packageReservedPendingRegister && appointmentDueAmountNow <= 0.0001
-
   const canMarkAppointmentCompleted =
     !appointmentActionLoading &&
     !appointmentIsTerminalCancelled &&
@@ -2155,7 +2211,7 @@ export default function PosAppointmentsWorkspace({
                     <option value="">ALL</option>
                     <option value="HOLD">HOLD</option>
                     <option value="CONFIRMED">CONFIRMED</option>
-                    <option value="COMPLETED">COMPLETED</option>
+                    <option value="COMPLETED">COMPLETED (UNPAID)</option>
                   </select>
                 </div>
               )}
@@ -2249,11 +2305,11 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     ) : null} */}
 
-                    {(appointmentDetail.main_services ?? []).length > 0 ? (
+                    {appointmentDisplayMainServices.length > 0 ? (
                       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 shadow-sm ring-1 ring-slate-200/80">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Service</p>
                         <div className="mt-2 space-y-2">
-                          {(appointmentDetail.main_services ?? []).map((service, serviceIdx) => (
+                          {appointmentDisplayMainServices.map((service, serviceIdx) => (
                             <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
@@ -2314,7 +2370,7 @@ export default function PosAppointmentsWorkspace({
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</span>
                         <span className="min-w-0 text-slate-800">
-                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentSettlementDisplayEndAt)}
+                          {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
                       </div>
                       <div className="flex gap-3 text-sm">
@@ -3581,6 +3637,22 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             <div className="flex-1 overflow-y-auto px-5 py-4">
+              <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-bold">Estimated duration after save: {editSettlementEstimatedDurationMin > 0 ? `${editSettlementEstimatedDurationMin} min` : '—'}</p>
+                    <p className="text-xs text-amber-800">Backend will validate the updated time range before saving.</p>
+                  </div>
+                  <div className="text-xs font-semibold tabular-nums text-amber-950">
+                    {formatTimeRange(appointmentDetail.appointment_start_at, editSettlementEstimatedEndAt)}
+                  </div>
+                </div>
+                {appointmentDetail.appointment_end_at && editSettlementEstimatedEndAt && new Date(editSettlementEstimatedEndAt).getTime() > new Date(appointmentDetail.appointment_end_at).getTime() ? (
+                  <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900">
+                    This settlement extends the appointment. Save will be blocked if the new end time conflicts with another booking or staff availability.
+                  </p>
+                ) : null}
+              </div>
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
               {appointmentDetail.is_range_priced ? (
@@ -3927,7 +3999,7 @@ export default function PosAppointmentsWorkspace({
                   const originalServiceAmt = isRange && Number.isFinite(settledAmt)
                     ? settledAmt
                     : Number(
-                      (appointmentDetail.main_services ?? [])
+                      appointmentDisplayMainServices
                         .find((service) => service.is_original)?.extra_price
                         ?? appointmentDetail.service_total
                         ?? 0,

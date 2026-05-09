@@ -303,7 +303,7 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'staff:id,name']);
+        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'staff:id,name']);
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
@@ -328,23 +328,30 @@ class PosController extends Controller
         if ($request->filled('staff_id')) {
             $builder->where('staff_id', (int) $request->query('staff_id'));
         }
+        $statusFilterNeedsActiveCheck = false;
         if ($unpaidOnly) {
-            $builder->where('status', 'COMPLETED')->where('payment_status', 'UNPAID');
+            $builder->where('status', 'COMPLETED');
+            $statusFilterNeedsActiveCheck = true;
         } elseif ($request->filled('status')) {
             $status = strtoupper(trim((string) $request->query('status')));
-            if (in_array($status, ['HOLD', 'CONFIRMED', 'COMPLETED'], true)) {
+            if (in_array($status, ['HOLD', 'CONFIRMED', 'PENDING'], true)) {
                 $builder->where('status', $status);
+            } elseif ($status === 'COMPLETED') {
+                // Payment_status can be stale; classify completed paid/unpaid from the resolved balances below.
+                $builder->where('status', 'COMPLETED');
+                $statusFilterNeedsActiveCheck = true;
             } else {
-                $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'COMPLETED']);
+                $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED']);
+                $statusFilterNeedsActiveCheck = true;
             }
         } else {
-            // POS appointments (no status filter / "ALL"): show only active staff-facing bookings.
-            $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'COMPLETED']);
+            // POS appointments is the active schedule: hide completed+paid and terminal statuses.
+            // Completed paid/unpaid is decided from financial fields after resolving the appointment summary.
+            $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED']);
+            $statusFilterNeedsActiveCheck = true;
         }
 
-        $paginator = $builder->orderBy('start_at')->paginate($perPage, ['*'], 'page', $page);
-
-        $rows = collect($paginator->items())->map(function (Booking $booking) {
+        $allRows = $builder->orderBy('start_at')->get()->map(function (Booking $booking) {
             $summary = $this->resolveAppointmentFinancialSummary($booking);
             $guestName = trim((string) ($booking->guest_name ?? ''));
             $guestPhone = trim((string) ($booking->guest_phone ?? ''));
@@ -366,6 +373,7 @@ class PosController extends Controller
                 'staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'status' => (string) $booking->status,
+                'payment_status' => (string) ($booking->payment_status ?? ''),
                 'deposit_contribution' => (float) $summary['deposit_contribution'],
                 'deposit_paid' => (float) $summary['deposit_contribution'],
                 'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
@@ -387,7 +395,13 @@ class PosController extends Controller
                 'add_ons' => $summary['add_ons'] ?? [],
                 'package_status' => $summary['package_status'],
             ];
+        })->when($statusFilterNeedsActiveCheck, function ($rows) {
+            return $rows->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row));
         })->values();
+
+        $totalRows = $allRows->count();
+        $rows = $allRows->forPage($page, $perPage)->values();
+        $lastPage = max(1, (int) ceil($totalRows / $perPage));
 
         $pendingCancellationRequestsCount = BookingCancellationRequest::query()
             ->where('status', 'pending')
@@ -395,10 +409,10 @@ class PosController extends Controller
 
         return $this->respond([
             'data' => $rows,
-            'current_page' => $paginator->currentPage(),
-            'last_page' => $paginator->lastPage(),
-            'per_page' => $paginator->perPage(),
-            'total' => $paginator->total(),
+            'current_page' => $page,
+            'last_page' => $lastPage,
+            'per_page' => $perPage,
+            'total' => $totalRows,
             'pending_cancellation_requests_count' => $pendingCancellationRequestsCount,
         ]);
     }
@@ -431,7 +445,7 @@ class PosController extends Controller
         $booking = Booking::query()
             ->with([
                 'customer:id,name,phone,email',
-                'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type',
+                'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min',
                 'staff:id,name',
                 'itemPhotos:id,booking_id,file_path,created_at',
             ])
@@ -467,6 +481,7 @@ class PosController extends Controller
                 'name' => (string) ($booking->service?->name ?? '-'),
                 'cn_name' => $booking->service?->cn_name,
                 'service_type' => (string) ($booking->service?->service_type ?? ''),
+                'duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)),
                 'price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
                 'price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
                 'price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
@@ -495,6 +510,7 @@ class PosController extends Controller
             'amount_due_now' => (float) $summary['amount_due_now'],
             'add_ons' => $summary['add_ons'],
             'addon_total_duration_min' => (int) $summary['addon_total_duration_min'],
+            'estimated_duration_min' => (int) ($summary['estimated_duration_min'] ?? $this->recalculateAppointmentDurationMin($booking)),
             'addon_total_price' => (float) $summary['addon_total_price'],
             'addon_paid_online' => (float) $summary['addon_paid_online'],
             'addon_paid_settlement' => (float) $summary['addon_paid_settlement'],
@@ -984,6 +1000,8 @@ class PosController extends Controller
 
             $existingMainByServiceId = $existingSettlementItems
                 ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+                ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+                ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
                 ->keyBy(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0));
 
             $mainServiceRows = $serviceIds
@@ -1086,6 +1104,8 @@ class PosController extends Controller
 
             $existingMainRows = $existingSettlementItems
                 ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+                ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+                ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
                 ->values()
                 ->all();
             $booking->addon_items_json = array_values([...$existingMainRows, ...$newAddonItems]);
@@ -1098,6 +1118,20 @@ class PosController extends Controller
         $booking->addon_price = round((float) $addonRowsForBooking->sum(fn ($item) => max(0, (float) ($item['extra_price'] ?? 0))), 2);
         $booking->addon_duration_min = (int) $addonRowsForBooking->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
 
+        $recalculatedDurationMin = $this->recalculateAppointmentDurationMin($booking);
+        if ($recalculatedDurationMin <= 0) {
+            return $this->respondError(__('Appointment duration is invalid.'), 422);
+        }
+
+        $newEndAt = $booking->start_at
+            ? Carbon::parse($booking->start_at)->addMinutes($recalculatedDurationMin)
+            : null;
+        if (! $newEndAt) {
+            return $this->respondError(__('Appointment start time is required.'), 422);
+        }
+
+        $booking->end_at = $newEndAt;
+
         $normalizedSplits = $this->normalizeBookingStaffSplits(
             collect($validated['staff_splits'] ?? []),
             (int) ($booking->staff_id ?? 0),
@@ -1106,13 +1140,50 @@ class PosController extends Controller
             return $this->respondError((string) $normalizedSplits['error'], 422);
         }
 
-        DB::transaction(function () use ($booking, $normalizedSplits) {
-            $booking->save();
-            $this->persistBookingStaffSplits($booking, collect($normalizedSplits['splits'] ?? []));
-        });
+        $settlementConflictDiagnostics = null;
+        try {
+            DB::transaction(function () use ($booking, $normalizedSplits, $recalculatedDurationMin, &$settlementConflictDiagnostics) {
+                $lockedBooking = Booking::query()
+                    ->whereKey((int) $booking->id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+
+                $startAt = Carbon::parse($lockedBooking->start_at ?? $booking->start_at);
+                $transactionNewEndAt = $startAt->copy()->addMinutes($recalculatedDurationMin);
+                $staffId = (int) ($lockedBooking->staff_id ?? $booking->staff_id ?? 0);
+                $bufferMin = (int) ($lockedBooking->buffer_min ?? $booking->buffer_min ?? 0);
+                $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $transactionNewEndAt);
+                $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($staffId, $startAt, $transactionNewEndAt, $bufferMin, (int) $lockedBooking->id, $lockedBooking);
+
+                if (! (bool) ($scheduleDiagnostics['is_available'] ?? false) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                    $settlementConflictDiagnostics = [
+                        ...$conflictDiagnostics,
+                        'staff_schedule' => $scheduleDiagnostics,
+                        'current_booking_id' => (int) $lockedBooking->id,
+                        'current_appointment_id' => (int) $lockedBooking->id,
+                    ];
+                    Log::warning('POS edit settlement appointment duration conflict', $settlementConflictDiagnostics);
+
+                    throw ValidationException::withMessages([
+                        'appointment_end_at' => $this->formatSettlementConflictMessage($settlementConflictDiagnostics),
+                    ]);
+                }
+
+                $booking->start_at = $lockedBooking->start_at;
+                $booking->end_at = $transactionNewEndAt;
+                $booking->save();
+                $this->persistBookingStaffSplits($booking, collect($normalizedSplits['splits'] ?? []));
+            });
+        } catch (ValidationException $e) {
+            return $this->respondError(
+                (string) (collect($e->errors())->flatten()->first() ?: __('This update extends the appointment time and conflicts with another booking or staff availability.')),
+                409,
+                ['conflict_debug' => $settlementConflictDiagnostics]
+            );
+        }
 
         $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
-        $booking->load(['service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type', 'customer:id,name,phone,email', 'staff:id,name']);
+        $booking->load(['service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'customer:id,name,phone,email', 'staff:id,name']);
         $summary = $this->resolveAppointmentFinancialSummary($booking);
 
         return $this->respond([
@@ -1266,8 +1337,9 @@ class PosController extends Controller
         }
 
         $newStart = Carbon::parse($validated['start_at']);
-        $newEnd = $newStart->copy()->addMinutes((int) $booking->service->duration_min);
-        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min)) {
+        $newEnd = $newStart->copy()->addMinutes($this->recalculateAppointmentDurationMin($booking));
+        if (! $this->availabilityService->isWithinStaffAvailability($targetStaffId, $newStart, $newEnd)
+            || $this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
             return $this->respondError(__('Selected slot is not available.'), 409);
         }
 
@@ -1478,6 +1550,35 @@ class PosController extends Controller
         return $this->respond([
             'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
+    }
+
+
+    protected function appointmentRowBlocksActiveSchedule(array $row): bool
+    {
+        $status = strtoupper((string) ($row['status'] ?? ''));
+        if (in_array($status, ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'], true)) {
+            return false;
+        }
+
+        if ($status !== 'COMPLETED') {
+            return in_array($status, ['HOLD', 'CONFIRMED', 'PENDING'], true);
+        }
+
+        $amountDueNow = (float) ($row['amount_due_now'] ?? 0);
+        $balanceDue = (float) ($row['balance_due'] ?? 0);
+        $settlementPaid = (float) ($row['settlement_paid'] ?? 0);
+        $paymentStatus = strtoupper((string) ($row['payment_status'] ?? ''));
+        $packageStatus = strtolower((string) data_get($row, 'package_status.status', ''));
+
+        if ($amountDueNow > 0.0001 || $balanceDue > 0.0001) {
+            return true;
+        }
+
+        if ($packageStatus === 'reserved' && $settlementPaid <= 0.0001) {
+            return true;
+        }
+
+        return $paymentStatus !== 'PAID';
     }
 
     /**
@@ -1924,7 +2025,8 @@ class PosController extends Controller
         $startAt = Carbon::parse((string) $validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
-        if ($availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, (int) $service->buffer_min)) {
+        if (! $availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
+            || $availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, (int) $service->buffer_min)) {
             return $this->respondError(__('Selected slot is no longer available.'), 409);
         }
 
@@ -2136,7 +2238,8 @@ class PosController extends Controller
 
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
+        if (! $this->availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
+            || $this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
             return $this->respondError(__('Selected slot is no longer available.'), 409);
         }
 
@@ -3772,7 +3875,9 @@ class PosController extends Controller
                 $endAt = $serviceItem->end_at ? Carbon::parse((string) $serviceItem->end_at) : $startAt->copy()->addMinutes((int) ($serviceItem->bookingService->duration_min ?? 0));
                 $bufferMin = (int) ($serviceItem->bookingService->buffer_min ?? 0);
 
-                if ($serviceItem->assigned_staff_id && $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin)) {
+                if ($serviceItem->assigned_staff_id
+                    && (! $this->availabilityService->isWithinStaffAvailability((int) $serviceItem->assigned_staff_id, $startAt, $endAt)
+                        || $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin))) {
                     abort(409, __('Selected slot is no longer available.'));
                 }
 
@@ -5299,6 +5404,65 @@ class PosController extends Controller
         return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
     }
 
+
+
+    protected function formatSettlementConflictMessage(array $diagnostics): string
+    {
+        $base = __('This update extends the appointment time and conflicts with another booking or staff availability.');
+        $parts = [];
+
+        $bookingIds = collect($diagnostics['conflicting_booking_ids'] ?? [])->filter()->values()->all();
+        if (! empty($bookingIds)) {
+            $parts[] = 'Conflicting booking IDs: ' . implode(', ', $bookingIds);
+        }
+
+        $cartItemIds = collect($diagnostics['conflicting_cart_item_ids'] ?? [])->filter()->values()->all();
+        if (! empty($cartItemIds)) {
+            $parts[] = 'Conflicting cart hold IDs: ' . implode(', ', $cartItemIds);
+        }
+
+        $leaveIds = collect($diagnostics['detected_leave_ids'] ?? [])->filter()->values()->all();
+        if (! empty($leaveIds)) {
+            $parts[] = 'Staff leave/time-off IDs: ' . implode(', ', $leaveIds);
+        }
+
+        $blockIds = collect($diagnostics['detected_block_ids'] ?? [])->filter()->values()->all();
+        if (! empty($blockIds)) {
+            $parts[] = 'Booking block IDs: ' . implode(', ', $blockIds);
+        }
+
+        $schedule = (array) ($diagnostics['staff_schedule'] ?? []);
+        if (($schedule['is_available'] ?? true) === false) {
+            $parts[] = 'Staff schedule failure: ' . (string) ($schedule['failure_reason'] ?? 'unknown');
+        }
+
+        return empty($parts) ? $base : $base . ' ' . implode(' | ', $parts);
+    }
+
+    protected function recalculateAppointmentDurationMin(Booking $booking): int
+    {
+        $baseDurationMin = max(0, (int) ($booking->service?->duration_min ?? 0));
+
+        $settlementItems = collect($booking->addon_items_json ?? []);
+        $extraMainDurationMin = (int) $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
+            ->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
+
+        $topLevelAddonDurationMin = (int) $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
+            ->sum(fn ($item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
+
+        $nestedAddonDurationMin = (int) $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
+            ->sum(fn ($item) => collect($item['addon_items'] ?? [])->sum(fn ($addon) => max(0, (int) ($addon['extra_duration_min'] ?? 0))));
+
+        return $baseDurationMin + $extraMainDurationMin + $topLevelAddonDurationMin + $nestedAddonDurationMin;
+    }
+
     protected function resolveAppointmentSnapshot(Booking $booking): array
     {
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -5310,6 +5474,7 @@ class PosController extends Controller
             'id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'status' => (string) $booking->status,
+            'payment_status' => (string) ($booking->payment_status ?? ''),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
@@ -5401,6 +5566,8 @@ class PosController extends Controller
         $settlementItems = collect($booking->addon_items_json ?? []);
         $extraMainServices = $settlementItems
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
             ->map(fn ($item) => [
                 'id' => isset($item['id']) ? (int) $item['id'] : null,
                 'name' => (string) ($item['name'] ?? $item['label'] ?? 'Service'),
@@ -5652,6 +5819,7 @@ class PosController extends Controller
             'add_ons' => $addonItems->all(),
             'addon_settlement_items' => $addonSettlementItems->all(),
             'addon_total_duration_min' => $addonTotalDurationMin,
+            'estimated_duration_min' => $this->recalculateAppointmentDurationMin($booking),
             'addon_total_price' => round($addonTotalPrice, 2),
             'deposit_contribution' => round($depositPaid, 2),
             'deposit_paid' => round($depositPaid, 2),

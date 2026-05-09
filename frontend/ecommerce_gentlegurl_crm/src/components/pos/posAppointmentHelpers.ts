@@ -81,8 +81,13 @@ export function formatTimeRange(startAt?: string | null, endAt?: string | null) 
 export function formatDateTimeRange(startAt?: string | null, endAt?: string | null) {
   if (!startAt) return '-'
   const start = new Date(startAt)
-  if (!endAt) return start.toLocaleString()
-  return `${start.toLocaleString()} - ${new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  if (Number.isNaN(start.getTime())) return '-'
+  const date = start.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  const startTime = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  if (!endAt) return `${date}, ${startTime}`
+  const end = new Date(endAt)
+  const endTime = Number.isNaN(end.getTime()) ? '' : end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
+  return endTime ? `${date}, ${startTime} - ${endTime}` : `${date}, ${startTime}`
 }
 
 /** Visual grouping for schedule blocks (month preview + day grid). */
@@ -93,18 +98,22 @@ export type PosAppointmentVisualTone = 'active' | 'hold' | 'completedPaid' | 'co
  * and no amount due.
  */
 export function posAppointmentRegisterPaid(
-  row: Pick<PosAppointmentListItem, 'amount_due_now' | 'balance_due' | 'package_status' | 'settlement_paid'>,
+  row: Pick<PosAppointmentListItem, 'amount_due_now' | 'balance_due' | 'package_status' | 'settlement_paid' | 'payment_status'>,
 ): boolean {
   const settlementPaid = Number(row.settlement_paid ?? 0)
   const pkg = String(row.package_status?.status ?? '').toLowerCase()
   const packageReservedPending = pkg === 'reserved' && settlementPaid <= 0.0001
-  const due = Number(row.amount_due_now ?? row.balance_due ?? 0)
-  return !packageReservedPending && due <= 0.0001
+  const amountDueNow = Number(row.amount_due_now ?? 0)
+  const balanceDue = Number(row.balance_due ?? 0)
+  const paymentStatus = String(row.payment_status ?? '').toUpperCase()
+  const hasPaymentStatus = paymentStatus.length > 0
+
+  return !packageReservedPending && amountDueNow <= 0.0001 && balanceDue <= 0.0001 && (!hasPaymentStatus || paymentStatus === 'PAID')
 }
 
 export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): PosAppointmentVisualTone {
   const s = String(row.status ?? '').toUpperCase()
-  if (s === 'CANCELLED' || s === 'NO_SHOW' || s === 'LATE_CANCELLATION') return 'inactive'
+  if (['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'].includes(s)) return 'inactive'
   if (s === 'HOLD') return 'hold'
   if (s === 'COMPLETED') {
     return posAppointmentRegisterPaid(row) ? 'completedPaid' : 'completedUnpaid'
@@ -112,12 +121,18 @@ export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): Po
   return 'active'
 }
 
+/** Rows that should still occupy the active POS schedule calendar. Historical/terminal rows stay queryable elsewhere. */
+export function posAppointmentBlocksActiveSchedule(row: PosAppointmentListItem): boolean {
+  const tone = posAppointmentVisualToneFromRow(row)
+  return tone !== 'inactive' && tone !== 'completedPaid'
+}
+
 /** When only `status` is known (no payment fields); completed is shown as unpaid until row data loads. */
 export function posAppointmentVisualTone(status: string | null | undefined): PosAppointmentVisualTone {
   const s = String(status ?? '').toUpperCase()
   if (s === 'COMPLETED') return 'completedUnpaid'
   if (s === 'HOLD') return 'hold'
-  if (s === 'CANCELLED' || s === 'NO_SHOW' || s === 'LATE_CANCELLATION') return 'inactive'
+  if (['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'].includes(s)) return 'inactive'
   return 'active'
 }
 
