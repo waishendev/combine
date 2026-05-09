@@ -1,11 +1,20 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import {
+  ChangeEvent,
+  FormEvent,
+  type MouseEvent,
+  useEffect,
+  useRef,
+  useState,
+} from 'react'
 
 import type { CategoryRowData } from './CategoryRow'
 import { mapCategoryApiItemToRow, type CategoryApiItem } from './categoryUtils'
 import MenuSelector from './MenuSelector'
+import { IMAGE_ACCEPT } from './mediaAccept'
 import { useI18n } from '@/lib/i18n'
+import { resolvePublicStorageUrl } from '@/utils/resolveImageUrl'
 
 interface CategoryEditModalProps {
   categoryId: number
@@ -55,6 +64,15 @@ export default function CategoryEditModal({
   const [loadedCategory, setLoadedCategory] = useState<CategoryRowData | null>(null)
   const [menus, setMenus] = useState<MenuOption[]>([])
   const [menusLoading, setMenusLoading] = useState(false)
+  const [ogFile, setOgFile] = useState<File | null>(null)
+  const [ogPreview, setOgPreview] = useState<string | null>(null)
+  const [removeOgImage, setRemoveOgImage] = useState(false)
+  /** Browser-ready URL for existing OG (API absolute URL or resolved /storage path). */
+  const [serverOgDisplayUrl, setServerOgDisplayUrl] = useState<string | null>(null)
+  const ogInputRef = useRef<HTMLInputElement>(null)
+
+  const displayOgUrl =
+    ogPreview || (!removeOgImage ? serverOgDisplayUrl : null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -100,6 +118,11 @@ export default function CategoryEditModal({
 
         const mappedCategory = mapCategoryApiItemToRow(category)
         setLoadedCategory(mappedCategory)
+        setServerOgDisplayUrl(
+          mappedCategory.metaOgImageUrl?.trim() ||
+            resolvePublicStorageUrl(mappedCategory.metaOgImage) ||
+            null,
+        )
 
         setForm({
           name: typeof category.name === 'string' ? category.name : '',
@@ -130,6 +153,17 @@ export default function CategoryEditModal({
     })
 
     return () => controller.abort()
+  }, [categoryId])
+
+  useEffect(() => {
+    setOgFile(null)
+    setOgPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    setRemoveOgImage(false)
+    setServerOgDisplayUrl(null)
+    if (ogInputRef.current) ogInputRef.current.value = ''
   }, [categoryId])
 
   useEffect(() => {
@@ -184,8 +218,14 @@ export default function CategoryEditModal({
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (ogPreview) URL.revokeObjectURL(ogPreview)
+    }
+  }, [ogPreview])
+
   const handleChange = (
-    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
@@ -193,6 +233,35 @@ export default function CategoryEditModal({
 
   const handleMenuSelectionChange = (menuIds: number[]) => {
     setForm((prev) => ({ ...prev, menuIds }))
+  }
+
+  const handleOgFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    setRemoveOgImage(false)
+    setOgPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    if (!file) {
+      setOgFile(null)
+      return
+    }
+    setOgFile(file)
+    setOgPreview(URL.createObjectURL(file))
+  }
+
+  const clearOgSelection = () => {
+    setOgFile(null)
+    setOgPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    if (ogInputRef.current) ogInputRef.current.value = ''
+  }
+
+  const markRemoveOgImage = () => {
+    clearOgSelection()
+    setRemoveOgImage(true)
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -210,27 +279,30 @@ export default function CategoryEditModal({
     setError(null)
 
     try {
-      const payload: Record<string, unknown> = {
-        parent_id: null,
-        name: trimmedName,
-        slug: trimmedSlug,
-        description: form.description.trim() || null,
-        meta_title: form.metaTitle.trim() || null,
-        meta_description: form.metaDescription.trim() || null,
-        meta_keywords: form.metaKeywords.trim() || null,
-        meta_og_image: form.metaOgImage.trim() || null,
-        is_active: form.isActive === 'true',
-        menu_ids: form.menuIds.length > 0 ? form.menuIds : [],
+      const fd = new FormData()
+      fd.append('name', trimmedName)
+      fd.append('slug', trimmedSlug)
+      if (form.description.trim()) fd.append('description', form.description.trim())
+      if (form.metaTitle.trim()) fd.append('meta_title', form.metaTitle.trim())
+      if (form.metaDescription.trim()) fd.append('meta_description', form.metaDescription.trim())
+      if (form.metaKeywords.trim()) fd.append('meta_keywords', form.metaKeywords.trim())
+      fd.append('is_active', form.isActive === 'true' ? '1' : '0')
+      form.menuIds.forEach((id) => fd.append('menu_ids[]', String(id)))
+
+      if (ogFile) {
+        fd.append('meta_og_image_file', ogFile)
+      } else if (removeOgImage) {
+        fd.append('meta_og_image', '')
       }
 
+      // POST (not PUT): PHP/Laravel only receive uploaded files on multipart POST.
       const res = await fetch(`/api/proxy/ecommerce/categories/${categoryId}`, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           Accept: 'application/json',
           'Accept-Language': 'en',
         },
-        body: JSON.stringify(payload),
+        body: fd,
       })
 
       const data = await res.json().catch(() => null)
@@ -292,6 +364,18 @@ export default function CategoryEditModal({
           }
 
       setLoadedCategory(categoryRow)
+      setServerOgDisplayUrl(
+        categoryRow.metaOgImageUrl?.trim() ||
+          resolvePublicStorageUrl(categoryRow.metaOgImage) ||
+          null,
+      )
+      clearOgSelection()
+      setRemoveOgImage(false)
+      if (categoryRow.metaOgImage) {
+        setForm((prev) => ({ ...prev, metaOgImage: categoryRow.metaOgImage }))
+      } else {
+        setForm((prev) => ({ ...prev, metaOgImage: '' }))
+      }
       onSuccess(categoryRow)
     } catch (err) {
       console.error(err)
@@ -303,6 +387,20 @@ export default function CategoryEditModal({
 
   const disableForm = loading || submitting
 
+  const handleOgZoneClick = () => {
+    if (!disableForm) ogInputRef.current?.click()
+  }
+
+  const handleOgTrash = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation()
+    if (ogPreview) {
+      clearOgSelection()
+      setRemoveOgImage(false)
+    } else {
+      markRemoveOgImage()
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
@@ -311,7 +409,7 @@ export default function CategoryEditModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">Edit Category</h2>
           <button
@@ -330,170 +428,221 @@ export default function CategoryEditModal({
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (
-            <>
-              <div>
-                <label
-                  htmlFor="edit-name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-name"
-                  name="name"
-                  type="text"
-                  value={form.name}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Category name"
+            <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
+              <div className="space-y-4 md:border-r md:border-gray-100 md:pr-8">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SEO</p>
+
+                <div>
+                  <label
+                    htmlFor="edit-metaTitle"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Meta Title
+                  </label>
+                  <input
+                    id="edit-metaTitle"
+                    name="metaTitle"
+                    type="text"
+                    value={form.metaTitle}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Meta title"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-metaDescription"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Meta Description
+                  </label>
+                  <textarea
+                    id="edit-metaDescription"
+                    name="metaDescription"
+                    value={form.metaDescription}
+                    onChange={handleChange}
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[80px]"
+                    placeholder="Meta description"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-metaKeywords"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Meta Keywords
+                  </label>
+                  <input
+                    id="edit-metaKeywords"
+                    name="metaKeywords"
+                    type="text"
+                    value={form.metaKeywords}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="keyword1, keyword2"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <span className="block text-sm font-medium text-gray-700 mb-1">Meta OG Image</span>
+                  <p className="text-xs text-gray-500 mb-2">
+                    JPEG, PNG, GIF or WebP (max 5MB). Preview uses the API public URL for stored files.
+                  </p>
+                  {removeOgImage && !ogPreview ? (
+                    <p className="mb-2 text-sm text-amber-700">Image will be removed when you save.</p>
+                  ) : null}
+                  <div
+                    onClick={handleOgZoneClick}
+                    className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                      displayOgUrl ? 'border-gray-300' : 'border-gray-300 hover:border-blue-400'
+                    } ${disableForm ? 'opacity-60 pointer-events-none' : ''}`}
+                  >
+                    <input
+                      ref={ogInputRef}
+                      type="file"
+                      accept={IMAGE_ACCEPT}
+                      onChange={handleOgFileChange}
+                      className="hidden"
+                      disabled={disableForm}
+                    />
+                    {displayOgUrl ? (
+                      <div className="relative group">
+                        <img
+                          src={displayOgUrl}
+                          alt="Open Graph"
+                          className="w-full h-48 object-contain rounded bg-gray-50"
+                        />
+                        <div className="absolute top-2 right-2 flex items-center gap-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleOgZoneClick()
+                            }}
+                            className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600"
+                            aria-label="Replace Open Graph image"
+                            disabled={disableForm}
+                          >
+                            <i className="fa-solid fa-image text-xs" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleOgTrash}
+                            className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600"
+                            aria-label={
+                              ogPreview ? 'Cancel new upload' : 'Remove Open Graph image'
+                            }
+                            disabled={disableForm}
+                          >
+                            <i className="fa-solid fa-trash-can text-xs" />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-8">
+                        <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                        <p className="text-sm text-gray-600">Click to upload</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Category</p>
+
+                <div>
+                  <label
+                    htmlFor="edit-name"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-name"
+                    name="name"
+                    type="text"
+                    value={form.name}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Category name"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-slug"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Slug <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    id="edit-slug"
+                    name="slug"
+                    type="text"
+                    value={form.slug}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="category-slug"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-isActive"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Status <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    id="edit-isActive"
+                    name="isActive"
+                    value={form.isActive}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    disabled={disableForm}
+                  >
+                    <option value="true">{t('common.active')}</option>
+                    <option value="false">{t('common.inactive')}</option>
+                  </select>
+                </div>
+
+                <MenuSelector
+                  menus={menus}
+                  selectedMenuIds={form.menuIds}
+                  onSelectionChange={handleMenuSelectionChange}
                   disabled={disableForm}
+                  loading={menusLoading}
                 />
+
+                <div>
+                  <label
+                    htmlFor="edit-description"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Description
+                  </label>
+                  <textarea
+                    id="edit-description"
+                    name="description"
+                    value={form.description}
+                    onChange={handleChange}
+                    rows={5}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[100px]"
+                    placeholder="Category description"
+                    disabled={disableForm}
+                  />
+                </div>
               </div>
-
-              <div>
-                <label
-                  htmlFor="edit-slug"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Slug <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-slug"
-                  name="slug"
-                  type="text"
-                  value={form.slug}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="category-slug"
-                  disabled={disableForm}
-                />
-              </div>
-
-
-
-              <div>
-                <label
-                  htmlFor="edit-isActive"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Status <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-isActive"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="true">{t('common.active')}</option>
-                  <option value="false">{t('common.inactive')}</option>
-                </select>
-              </div>
-
-              <MenuSelector
-                menus={menus}
-                selectedMenuIds={form.menuIds}
-                onSelectionChange={handleMenuSelectionChange}
-                disabled={disableForm}
-                loading={menusLoading}
-              />
-
-              <div>
-                <label
-                  htmlFor="edit-description"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Description
-                </label>
-                <input
-                  id="edit-description"
-                  name="description"
-                  type="text"
-                  value={form.description}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Category description"
-                  disabled={disableForm}
-                />
-              </div>
-              
-              <div>
-                <label
-                  htmlFor="edit-metaTitle"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Meta Title
-                </label>
-                <input
-                  id="edit-metaTitle"
-                  name="metaTitle"
-                  type="text"
-                  value={form.metaTitle}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Meta title"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-metaDescription"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Meta Description
-                </label>
-                <input
-                  id="edit-metaDescription"
-                  name="metaDescription"
-                  type="text"
-                  value={form.metaDescription}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Meta description"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-metaKeywords"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Meta Keywords
-                </label>
-                <input
-                  id="edit-metaKeywords"
-                  name="metaKeywords"
-                  type="text"
-                  value={form.metaKeywords}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="keyword1, keyword2"
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-metaOgImage"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Meta OG Image
-                </label>
-                <input
-                  id="edit-metaOgImage"
-                  name="metaOgImage"
-                  type="text"
-                  value={form.metaOgImage}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="/uploads/seo/image.jpg"
-                  disabled={disableForm}
-                />
-              </div>
-            </>
+            </div>
           )}
 
           {error && (

@@ -498,6 +498,10 @@ $protectedRoutes = function () {
         Route::put('/categories/{category}', [CategoryController::class, 'update'])
             ->middleware('permission:ecommerce.categories.update');
 
+        // POST for multipart updates: PHP only populates $_FILES on POST, not PUT.
+        Route::post('/categories/{category}', [CategoryController::class, 'update'])
+            ->middleware('permission:ecommerce.categories.update');
+
         Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])
             ->middleware('permission:ecommerce.categories.delete');
 

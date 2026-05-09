@@ -1,10 +1,11 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { CategoryRowData } from './CategoryRow'
 import { mapCategoryApiItemToRow, type CategoryApiItem } from './categoryUtils'
 import MenuSelector from './MenuSelector'
+import { IMAGE_ACCEPT } from './mediaAccept'
 import { useI18n } from '@/lib/i18n'
 
 interface CategoryCreateModalProps {
@@ -24,7 +25,7 @@ interface FormState {
   metaTitle: string
   metaDescription: string
   metaKeywords: string
-  metaOgImage: string
+  isActive: 'true' | 'false'
   menuIds: number[]
 }
 
@@ -35,7 +36,7 @@ const initialFormState: FormState = {
   metaTitle: '',
   metaDescription: '',
   metaKeywords: '',
-  metaOgImage: '',
+  isActive: 'true',
   menuIds: [],
 }
 
@@ -49,6 +50,9 @@ export default function CategoryCreateModal({
   const [error, setError] = useState<string | null>(null)
   const [menus, setMenus] = useState<MenuOption[]>([])
   const [menusLoading, setMenusLoading] = useState(false)
+  const [ogFile, setOgFile] = useState<File | null>(null)
+  const [ogPreview, setOgPreview] = useState<string | null>(null)
+  const ogInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -102,8 +106,14 @@ export default function CategoryCreateModal({
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    return () => {
+      if (ogPreview) URL.revokeObjectURL(ogPreview)
+    }
+  }, [ogPreview])
+
   const handleChange = (
-    event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
+    event: ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>,
   ) => {
     const { name, value } = event.target
     setForm((prev) => ({ ...prev, [name]: value }))
@@ -111,6 +121,33 @@ export default function CategoryCreateModal({
 
   const handleMenuSelectionChange = (menuIds: number[]) => {
     setForm((prev) => ({ ...prev, menuIds }))
+  }
+
+  const handleOgFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    setOgPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    if (!file) {
+      setOgFile(null)
+      return
+    }
+    setOgFile(file)
+    setOgPreview(URL.createObjectURL(file))
+  }
+
+  const clearOgImage = () => {
+    setOgFile(null)
+    setOgPreview((prev) => {
+      if (prev) URL.revokeObjectURL(prev)
+      return null
+    })
+    if (ogInputRef.current) ogInputRef.current.value = ''
+  }
+
+  const handleOgZoneClick = () => {
+    if (!submitting) ogInputRef.current?.click()
   }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -128,24 +165,25 @@ export default function CategoryCreateModal({
     setError(null)
 
     try {
+      const fd = new FormData()
+      fd.append('name', trimmedName)
+      fd.append('slug', trimmedSlug)
+      if (form.description.trim()) fd.append('description', form.description.trim())
+      if (form.metaTitle.trim()) fd.append('meta_title', form.metaTitle.trim())
+      if (form.metaDescription.trim()) fd.append('meta_description', form.metaDescription.trim())
+      if (form.metaKeywords.trim()) fd.append('meta_keywords', form.metaKeywords.trim())
+      fd.append('is_active', form.isActive === 'true' ? '1' : '0')
+      form.menuIds.forEach((id) => fd.append('menu_ids[]', String(id)))
+      if (ogFile) {
+        fd.append('meta_og_image_file', ogFile)
+      }
+
       const res = await fetch('/api/proxy/ecommerce/categories', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
           Accept: 'application/json',
         },
-        body: JSON.stringify({
-          parent_id: null,
-          name: trimmedName,
-          slug: trimmedSlug,
-          description: form.description.trim() || null,
-          meta_title: form.metaTitle.trim() || null,
-          meta_description: form.metaDescription.trim() || null,
-          meta_keywords: form.metaKeywords.trim() || null,
-          meta_og_image: form.metaOgImage.trim() || null,
-          is_active: true,
-          menu_ids: form.menuIds.length > 0 ? form.menuIds : [],
-        }),
+        body: fd,
       })
 
       const data = await res.json().catch(() => null)
@@ -187,8 +225,8 @@ export default function CategoryCreateModal({
             metaTitle: form.metaTitle.trim(),
             metaDescription: form.metaDescription.trim(),
             metaKeywords: form.metaKeywords.trim(),
-            metaOgImage: form.metaOgImage.trim(),
-            isActive: true,
+            metaOgImage: '',
+            isActive: form.isActive === 'true',
             sortOrder: 0,
             menuIds: form.menuIds,
             menuNames: menus.filter(m => form.menuIds.includes(m.id)).map(m => m.name).join(', ') || '-',
@@ -196,6 +234,7 @@ export default function CategoryCreateModal({
             updatedAt: new Date().toISOString(),
           }
 
+      clearOgImage()
       setForm({ ...initialFormState })
       onSuccess(categoryRow)
     } catch (err) {
@@ -214,7 +253,7 @@ export default function CategoryCreateModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
+      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">Create Category</h2>
           <button
@@ -230,147 +269,218 @@ export default function CategoryCreateModal({
         </div>
 
         <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          <div>
-            <label
-              htmlFor="name"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="name"
-              name="name"
-              type="text"
-              value={form.name}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Category name"
-              disabled={submitting}
-            />
-          </div>
+          <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
+            <div className="space-y-4 md:border-r md:border-gray-100 md:pr-8">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SEO</p>
 
-          <div>
-            <label
-              htmlFor="slug"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Slug <span className="text-red-500">*</span>
-            </label>
-            <input
-              id="slug"
-              name="slug"
-              type="text"
-              value={form.slug}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="category-slug"
-              disabled={submitting}
-            />
-          </div>
+              <div>
+                <label
+                  htmlFor="metaTitle"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Meta Title
+                </label>
+                <input
+                  id="metaTitle"
+                  name="metaTitle"
+                  type="text"
+                  value={form.metaTitle}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Meta title"
+                  disabled={submitting}
+                />
+              </div>
 
-         
-          <MenuSelector
-            menus={menus}
-            selectedMenuIds={form.menuIds}
-            onSelectionChange={handleMenuSelectionChange}
-            disabled={submitting}
-            loading={menusLoading}
-          />
+              <div>
+                <label
+                  htmlFor="metaDescription"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Meta Description
+                </label>
+                <textarea
+                  id="metaDescription"
+                  name="metaDescription"
+                  value={form.metaDescription}
+                  onChange={handleChange}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[80px]"
+                  placeholder="Meta description"
+                  disabled={submitting}
+                />
+              </div>
 
-          
-          <div>
-            <label
-              htmlFor="description"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Description
-            </label>
-            <input
-              id="description"
-              name="description"
-              type="text"
-              value={form.description}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Category description"
-              disabled={submitting}
-            />
-          </div>
+              <div>
+                <label
+                  htmlFor="metaKeywords"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Meta Keywords
+                </label>
+                <input
+                  id="metaKeywords"
+                  name="metaKeywords"
+                  type="text"
+                  value={form.metaKeywords}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="keyword1, keyword2"
+                  disabled={submitting}
+                />
+              </div>
 
-          <div>
-            <label
-              htmlFor="metaTitle"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Meta Title
-            </label>
-            <input
-              id="metaTitle"
-              name="metaTitle"
-              type="text"
-              value={form.metaTitle}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Meta title"
-              disabled={submitting}
-            />
-          </div>
+              <div>
+                <span className="block text-sm font-medium text-gray-700 mb-1">Meta OG Image</span>
+                <p className="text-xs text-gray-500 mb-2">
+                  JPEG, PNG, GIF or WebP (max 5MB). Click the area below to choose a file.
+                </p>
+                <div
+                  onClick={handleOgZoneClick}
+                  className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
+                    ogPreview ? 'border-gray-300' : 'border-gray-300 hover:border-blue-400'
+                  } ${submitting ? 'opacity-60 pointer-events-none' : ''}`}
+                >
+                  <input
+                    ref={ogInputRef}
+                    type="file"
+                    accept={IMAGE_ACCEPT}
+                    onChange={handleOgFileChange}
+                    className="hidden"
+                    disabled={submitting}
+                  />
+                  {ogPreview ? (
+                    <div className="relative group">
+                      <img
+                        src={ogPreview}
+                        alt="Open Graph preview"
+                        className="w-full h-48 object-contain rounded bg-gray-50"
+                      />
+                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleOgZoneClick()
+                          }}
+                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600"
+                          aria-label="Replace Open Graph image"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            clearOgImage()
+                          }}
+                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600"
+                          aria-label="Remove image"
+                          disabled={submitting}
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-8">
+                      <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
+                      <p className="text-sm text-gray-600">Click to upload</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
 
-          <div>
-            <label
-              htmlFor="metaDescription"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Meta Description
-            </label>
-            <input
-              id="metaDescription"
-              name="metaDescription"
-              type="text"
-              value={form.metaDescription}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="Meta description"
-              disabled={submitting}
-            />
-          </div>
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Category</p>
 
-          <div>
-            <label
-              htmlFor="metaKeywords"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Meta Keywords
-            </label>
-            <input
-              id="metaKeywords"
-              name="metaKeywords"
-              type="text"
-              value={form.metaKeywords}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="keyword1, keyword2"
-              disabled={submitting}
-            />
-          </div>
+              <div>
+                <label
+                  htmlFor="name"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  value={form.name}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Category name"
+                  disabled={submitting}
+                />
+              </div>
 
-          <div>
-            <label
-              htmlFor="metaOgImage"
-              className="block text-sm font-medium text-gray-700 mb-1"
-            >
-              Meta OG Image
-            </label>
-            <input
-              id="metaOgImage"
-              name="metaOgImage"
-              type="text"
-              value={form.metaOgImage}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-              placeholder="/uploads/seo/image.jpg"
-              disabled={submitting}
-            />
+              <div>
+                <label
+                  htmlFor="slug"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Slug <span className="text-red-500">*</span>
+                </label>
+                <input
+                  id="slug"
+                  name="slug"
+                  type="text"
+                  value={form.slug}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="category-slug"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="create-isActive"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  id="create-isActive"
+                  name="isActive"
+                  value={form.isActive}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  disabled={submitting}
+                >
+                  <option value="true">{t('common.active')}</option>
+                  <option value="false">{t('common.inactive')}</option>
+                </select>
+              </div>
+
+              <MenuSelector
+                menus={menus}
+                selectedMenuIds={form.menuIds}
+                onSelectionChange={handleMenuSelectionChange}
+                disabled={submitting}
+                loading={menusLoading}
+              />
+
+              <div>
+                <label
+                  htmlFor="description"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  Description
+                </label>
+                <textarea
+                  id="description"
+                  name="description"
+                  value={form.description}
+                  onChange={handleChange}
+                  rows={5}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500 resize-y min-h-[100px]"
+                  placeholder="Category description"
+                  disabled={submitting}
+                />
+              </div>
+            </div>
           </div>
 
           {error && (

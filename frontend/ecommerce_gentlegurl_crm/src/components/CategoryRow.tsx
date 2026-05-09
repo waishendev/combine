@@ -12,6 +12,8 @@ export interface CategoryRowData {
   metaDescription: string
   metaKeywords: string
   metaOgImage: string
+  /** Absolute URL from API for image preview (`img` src). */
+  metaOgImageUrl?: string
   isActive: boolean
   sortOrder: number
   menuIds: number[]

@@ -6,6 +6,7 @@ use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\ShopMenuItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 
@@ -40,6 +41,7 @@ class CategoryController extends Controller
             'meta_description' => ['nullable', 'string'],
             'meta_keywords' => ['nullable', 'string'],
             'meta_og_image' => ['nullable', 'string', 'max:255'],
+            'meta_og_image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
             'menu_ids' => ['array', 'nullable'],
@@ -47,10 +49,12 @@ class CategoryController extends Controller
         ]);
 
         $menuIds = $validated['menu_ids'] ?? [];
-        unset($validated['menu_ids']);
+        unset($validated['menu_ids'], $validated['meta_og_image_file']);
 
         $category = Category::create($validated + ['is_active' => $validated['is_active'] ?? true]);
         $category->shopMenus()->sync($menuIds);
+
+        $this->handleCategoryMetaOgImageUpload($category, $request);
 
         return $this->respond(
             $this->formatCategory($category->fresh(['shopMenus'])),
@@ -439,6 +443,7 @@ class CategoryController extends Controller
             'meta_description' => ['nullable', 'string'],
             'meta_keywords' => ['nullable', 'string'],
             'meta_og_image' => ['nullable', 'string', 'max:255'],
+            'meta_og_image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
             'is_active' => ['sometimes', 'boolean'],
             'sort_order' => ['sometimes', 'integer'],
             'menu_ids' => ['array', 'nullable'],
@@ -446,11 +451,13 @@ class CategoryController extends Controller
         ]);
 
         $menuIds = $validated['menu_ids'] ?? [];
-        unset($validated['menu_ids']);
+        unset($validated['menu_ids'], $validated['meta_og_image_file']);
 
         $category->fill($validated);
         $category->save();
         $category->shopMenus()->sync($menuIds);
+
+        $this->handleCategoryMetaOgImageUpload($category, $request);
 
         return $this->respond(
             $this->formatCategory($category->fresh(['shopMenus'])),
@@ -477,6 +484,9 @@ class CategoryController extends Controller
             'meta_description' => $category->meta_description,
             'meta_keywords' => $category->meta_keywords,
             'meta_og_image' => $category->meta_og_image,
+            'meta_og_image_url' => $category->meta_og_image
+                ? Storage::disk('public')->url($category->meta_og_image)
+                : null,
             'is_active' => $category->is_active,
             'sort_order' => $category->sort_order,
             'menu_ids' => $category->shopMenus->pluck('id')->all(),
@@ -493,5 +503,49 @@ class CategoryController extends Controller
             'created_at' => $category->created_at ? $category->created_at->format('Y-m-d H:i:s') : null,
             'updated_at' => $category->updated_at ? $category->updated_at->format('Y-m-d H:i:s') : null,
         ];
+    }
+
+    /**
+     * Store or replace category Open Graph image from upload; optional string path / clear via meta_og_image.
+     */
+    protected function handleCategoryMetaOgImageUpload(Category $category, Request $request): void
+    {
+        if ($request->hasFile('meta_og_image_file')) {
+            $file = $request->file('meta_og_image_file');
+
+            $oldMetaOgImage = $category->getRawOriginal('meta_og_image');
+            if ($oldMetaOgImage && str_starts_with((string) $oldMetaOgImage, 'categories/')) {
+                if (Storage::disk('public')->exists($oldMetaOgImage)) {
+                    Storage::disk('public')->delete($oldMetaOgImage);
+                }
+            }
+
+            $relative = 'categories/' . $category->id . '/og_' . uniqid() . '.' . $file->getClientOriginalExtension();
+            $path = $file->storeAs('', $relative, 'public');
+
+            $category->meta_og_image = $path;
+            $category->save();
+        } elseif ($request->has('meta_og_image')) {
+            $metaOgImage = $request->input('meta_og_image');
+            $oldMetaOgImage = $category->getRawOriginal('meta_og_image');
+
+            if ($metaOgImage === null || $metaOgImage === '') {
+                if ($oldMetaOgImage && str_starts_with((string) $oldMetaOgImage, 'categories/')) {
+                    if (Storage::disk('public')->exists($oldMetaOgImage)) {
+                        Storage::disk('public')->delete($oldMetaOgImage);
+                    }
+                }
+                $category->meta_og_image = null;
+                $category->save();
+            } elseif ((string) $metaOgImage !== (string) $oldMetaOgImage) {
+                if ($oldMetaOgImage && str_starts_with((string) $oldMetaOgImage, 'categories/')) {
+                    if (Storage::disk('public')->exists($oldMetaOgImage)) {
+                        Storage::disk('public')->delete($oldMetaOgImage);
+                    }
+                }
+                $category->meta_og_image = $metaOgImage;
+                $category->save();
+            }
+        }
     }
 }

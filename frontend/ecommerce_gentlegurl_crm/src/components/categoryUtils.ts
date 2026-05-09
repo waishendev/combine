@@ -16,6 +16,8 @@ export type CategoryApiItem = {
   meta_description?: string | null
   meta_keywords?: string | null
   meta_og_image?: string | null
+  /** Public URL for uploaded OG image (Laravel storage URL). */
+  meta_og_image_url?: string | null
   is_active?: boolean | number | string | null
   sort_order?: number | string | null
   menu_ids?: (number | string)[] | null
@@ -51,7 +53,13 @@ export const mapCategoryApiItemToRow = (item: CategoryApiItem): CategoryRowData 
     metaTitle: item.meta_title ?? '-',
     metaDescription: item.meta_description ?? '-',
     metaKeywords: item.meta_keywords ?? '-',
-    metaOgImage: item.meta_og_image ?? '-',
+    metaOgImage: item.meta_og_image != null && String(item.meta_og_image).trim() !== ''
+      ? String(item.meta_og_image).trim()
+      : '',
+    metaOgImageUrl:
+      item.meta_og_image_url != null && String(item.meta_og_image_url).trim() !== ''
+        ? String(item.meta_og_image_url).trim()
+        : undefined,
     isActive,
     sortOrder: typeof item.sort_order === 'number' ? item.sort_order : (item.sort_order ? Number(item.sort_order) : 0),
     menuIds: Array.isArray(item.menu_ids) ? item.menu_ids.map(id => typeof id === 'number' ? id : Number(id)).filter(id => Number.isFinite(id)) : [],
