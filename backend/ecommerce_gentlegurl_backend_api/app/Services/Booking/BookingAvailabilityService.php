@@ -208,6 +208,7 @@ class BookingAvailabilityService
         $blockEnd = $endAt->copy()->addMinutes($bufferMin);
         $queryStartAt = $this->normalizeForStorage($startAt);
         $queryEndAt = $this->normalizeForStorage($endAt);
+        $queryBlockEndAt = $this->normalizeForStorage($blockEnd);
         $ignoreBookingIds = collect([$ignoreBookingId, $ignoreBooking?->id])
             ->filter(fn ($id) => $id !== null && (int) $id > 0)
             ->map(fn ($id) => (int) $id)
@@ -237,10 +238,16 @@ class BookingAvailabilityService
                             });
                     });
             })
-            ->where(function ($query) use ($queryStartAt, $queryEndAt) {
-                $this->whereOverlaps($query, $queryStartAt, $queryEndAt);
+            ->where('start_at', '<', $queryBlockEndAt->toDateTimeString())
+            ->get(['id', 'booking_code', 'start_at', 'end_at', 'buffer_min', 'status', 'payment_status'])
+            ->filter(function (Booking $candidate) use ($queryStartAt) {
+                $candidateBufferedEnd = $candidate->end_at
+                    ? $this->normalizeForStorage($candidate->end_at)->addMinutes(max(0, (int) ($candidate->buffer_min ?? 0)))
+                    : null;
+
+                return $candidateBufferedEnd !== null && $candidateBufferedEnd->gt($queryStartAt);
             })
-            ->get(['id', 'booking_code', 'start_at', 'end_at', 'status', 'payment_status']);
+            ->values();
 
         $cartConflicts = BookingCartItem::where('staff_id', $staffId)
             ->where('status', 'active')
@@ -254,8 +261,8 @@ class BookingAvailabilityService
                         ->orWhere('start_at', '!=', $ignoreStartAt);
                 });
             })
-            ->where(function ($query) use ($queryStartAt, $queryEndAt) {
-                $this->whereOverlaps($query, $queryStartAt, $queryEndAt);
+            ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
+                $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
             ->get(['id', 'start_at', 'end_at', 'service_id', 'status'])
             ->map(fn (BookingCartItem $item) => [
@@ -269,8 +276,8 @@ class BookingAvailabilityService
             ->all();
 
         $timeoffConflicts = BookingStaffTimeoff::where('staff_id', $staffId)
-            ->where(function ($query) use ($queryStartAt, $queryEndAt) {
-                $this->whereOverlaps($query, $queryStartAt, $queryEndAt);
+            ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
+                $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
             ->get(['id', 'start_at', 'end_at'])
             ->map(fn (BookingStaffTimeoff $timeoff) => [
@@ -287,8 +294,8 @@ class BookingAvailabilityService
                     $nested->where('scope', 'STAFF')->where('staff_id', $staffId);
                 });
         })
-            ->where(function ($query) use ($queryStartAt, $queryEndAt) {
-                $this->whereOverlaps($query, $queryStartAt, $queryEndAt);
+            ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
+                $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
             ->get(['id', 'scope', 'staff_id', 'start_at', 'end_at'])
             ->map(fn (BookingBlock $block) => [
@@ -306,6 +313,10 @@ class BookingAvailabilityService
             'booking_code' => (string) ($conflict->booking_code ?? ''),
             'start_at' => optional($conflict->start_at)?->toDateTimeString(),
             'end_at' => optional($conflict->end_at)?->toDateTimeString(),
+            'buffer_min' => (int) ($conflict->buffer_min ?? 0),
+            'buffered_end_at' => $conflict->end_at
+                ? $this->normalizeForStorage($conflict->end_at)->addMinutes(max(0, (int) ($conflict->buffer_min ?? 0)))->toDateTimeString()
+                : null,
             'status' => (string) ($conflict->status ?? ''),
             'payment_status' => (string) ($conflict->payment_status ?? ''),
             'blocks_time' => true,
@@ -324,7 +335,7 @@ class BookingAvailabilityService
             'requested_end' => $queryEndAt->toDateTimeString(),
             'requested_start_original_timezone' => $startAt->toIso8601String(),
             'requested_end_original_timezone' => $endAt->toIso8601String(),
-            'block_end' => $this->normalizeForStorage($blockEnd)->toDateTimeString(),
+            'block_end' => $queryBlockEndAt->toDateTimeString(),
             'business_timezone' => $this->businessTimezone(),
             'ignored_booking_ids' => $ignoreBookingIds,
             'ignored_booking_code' => $ignoreBookingCode !== '' ? $ignoreBookingCode : null,

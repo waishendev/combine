@@ -13,24 +13,52 @@ const SLOT_MINUTES = 15
 const DAY_START_MIN = 8 * 60
 const DAY_END_MIN = 21 * 60
 const SLOT_PX = 22
-
-const formatYmd = (d: Date) =>
-  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const SCHEDULE_TZ = process.env.NEXT_PUBLIC_TIMEZONE || 'Asia/Kuala_Lumpur'
 
 const parseIsoToLocalYmd = (iso: string | null | undefined): string | null => {
   if (!iso) return null
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return null
-  return formatYmd(d)
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCHEDULE_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d)
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${read('year')}-${read('month')}-${read('day')}`
 }
 
-const minutesFromMidnight = (d: Date) => d.getHours() * 60 + d.getMinutes()
+const getTimePartsInScheduleTz = (iso: string) => {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: SCHEDULE_TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).formatToParts(new Date(iso))
+
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
+  return { hour, minute }
+}
+
+const minutesFromIsoInScheduleTz = (iso: string) => {
+  const { hour, minute } = getTimePartsInScheduleTz(iso)
+  return hour * 60 + minute
+}
+
+const durationMinutesFromIsoRange = (startIso: string, endIso: string) => {
+  const start = new Date(startIso)
+  const end = new Date(endIso)
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
+}
 
 const formatTimeLabel = (iso: string | null | undefined) => {
   if (!iso) return ''
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: SCHEDULE_TZ })
 }
 
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
@@ -238,13 +266,15 @@ export default function PosAppointmentsDayGrid({
               const endIso = row.appointment_end_at ?? row.appointment_start_at
               if (!startIso) return null
               const startD = new Date(startIso)
-              const endD = endIso ? new Date(endIso) : new Date(startD.getTime() + 30 * 60 * 1000)
+              const effectiveEndIso = endIso || new Date(startD.getTime() + 30 * 60 * 1000).toISOString()
+              const endD = new Date(effectiveEndIso)
               if (Number.isNaN(startD.getTime()) || Number.isNaN(endD.getTime())) return null
-              let startMin = minutesFromMidnight(startD)
-              let endMin = minutesFromMidnight(endD)
-              if (endMin <= startMin) endMin = startMin + SLOT_MINUTES
+              const actualDurationMin = durationMinutesFromIsoRange(startIso, effectiveEndIso)
+              if (actualDurationMin <= 0) return null
+              let startMin = minutesFromIsoInScheduleTz(startIso)
+              const unclampedEndMin = startMin + actualDurationMin
               startMin = Math.max(DAY_START_MIN, startMin)
-              endMin = Math.min(DAY_END_MIN, endMin)
+              const endMin = Math.min(DAY_END_MIN, unclampedEndMin)
               if (endMin <= startMin) return null
               return {
                 id: row.id,
