@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
+import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import OrderViewPanel from './OrderViewPanel'
 import {
   printReceipt,
@@ -611,6 +612,7 @@ type PosPageContentProps = {
 }
 
 export default function PosPageContent({ currentUser }: PosPageContentProps) {
+  const { hasOpenShift, cashShiftLoading } = usePosCashShift()
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
   const productsGridRef = useRef<HTMLDivElement | null>(null)
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -3861,7 +3863,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const splitPaymentValid = checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
 
   const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
-  const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart
+  const cashShiftBlocksCheckout = cashShiftLoading || !hasOpenShift
+  const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart && !cashShiftBlocksCheckout
 
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
@@ -5909,6 +5912,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 'Checkout'
               )}
             </button>
+            {!hasOpenShift && !cashShiftLoading ? (
+              <p className="mt-2 text-center text-xs font-semibold text-amber-700">Open a cash shift before checkout.</p>
+            ) : cashShiftLoading ? (
+              <p className="mt-2 text-center text-xs font-semibold text-blue-700">Checking current cash shift…</p>
+            ) : null}
               </>
             </div>
         </div>

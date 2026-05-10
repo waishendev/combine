@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 type PosCashShift = {
   id: number
@@ -31,6 +31,25 @@ type StaffOption = {
 type PosCashShiftGateProps = {
   children: ReactNode
   defaultStaffId?: number | null
+}
+
+type PosCashShiftContextValue = {
+  shift: PosCashShift | null
+  hasOpenShift: boolean
+  cashShiftLoading: boolean
+  requireOpenShiftMessage: string
+}
+
+const CASH_SHIFT_REQUIRED_MESSAGE = 'Open a cash shift to use this action.'
+const PosCashShiftContext = createContext<PosCashShiftContextValue>({
+  shift: null,
+  hasOpenShift: true,
+  cashShiftLoading: false,
+  requireOpenShiftMessage: CASH_SHIFT_REQUIRED_MESSAGE,
+})
+
+export function usePosCashShift() {
+  return useContext(PosCashShiftContext)
 }
 
 const currency = (value: number | null | undefined) => `RM ${Number(value ?? 0).toFixed(2)}`
@@ -67,6 +86,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   const [remark, setRemark] = useState('')
   const [opening, setOpening] = useState(false)
   const [closing, setClosing] = useState(false)
+  const [openShiftModalOpen, setOpenShiftModalOpen] = useState(false)
   const [closeModalOpen, setCloseModalOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -116,8 +136,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   const closeDifference = useMemo(() => Number(closingAmountInput || 0) - expectedCash, [closingAmountInput, expectedCash])
   const openStaffMissing = !openedStaffId
   const closeStaffMissing = !closedStaffId
-  const blocked = cashShiftLoading || !shift
-  const cashShiftOverlayActive = cashShiftLoading || !shift || closeModalOpen
+  const hasOpenShift = Boolean(shift)
+  const cashShiftOverlayActive = openShiftModalOpen || closeModalOpen
 
   useEffect(() => {
     if (cashShiftOverlayActive) {
@@ -130,6 +150,13 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       delete document.body.dataset.posCashShiftModalOpen
     }
   }, [cashShiftOverlayActive])
+
+  const contextValue = useMemo<PosCashShiftContextValue>(() => ({
+    shift,
+    hasOpenShift,
+    cashShiftLoading,
+    requireOpenShiftMessage: CASH_SHIFT_REQUIRED_MESSAGE,
+  }), [cashShiftLoading, hasOpenShift, shift])
 
   const openShift = async () => {
     const amount = Number(openingAmount)
@@ -157,6 +184,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       setShift(openedShift)
       if (openedShift?.opened_staff_id) setClosedStaffId(String(openedShift.opened_staff_id))
       setOpeningAmount('')
+      setOpenShiftModalOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to open cash shift.')
     } finally {
@@ -218,9 +246,14 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   )
 
   return (
+    <PosCashShiftContext.Provider value={contextValue}>
     <div className="relative">
       <div className="mb-3 flex flex-wrap items-center justify-end gap-3">
-        {shift ? (
+        {cashShiftLoading ? (
+          <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800 shadow-sm">
+            Checking current cash shift…
+          </div>
+        ) : shift ? (
           <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm shadow-sm">
             <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white">Current Shift: OPEN</span>
             <span><b>Staff:</b> {shift.opened_staff_name ?? '—'}</span>
@@ -242,21 +275,23 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
               Close Shift
             </button>
           </div>
-        ) : null}
+        ) : (
+          <button
+            type="button"
+            onClick={() => {
+              setError(null)
+              setOpenShiftModalOpen(true)
+            }}
+            className="rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-blue-700"
+          >
+            Open Shift
+          </button>
+        )}
       </div>
 
-      <div className={blocked ? 'pointer-events-none select-none opacity-40 blur-[1px]' : ''}>{children}</div>
+      <div>{children}</div>
 
-      {cashShiftLoading ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-white/75 p-4 backdrop-blur-sm">
-          <div className="rounded-2xl border border-gray-200 bg-white px-6 py-5 text-center shadow-2xl">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600" />
-            <p className="mt-3 text-sm font-semibold text-gray-700">Checking current cash shift…</p>
-          </div>
-        </div>
-      ) : null}
-
-      {!cashShiftLoading && !shift ? (
+      {openShiftModalOpen ? (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="bg-slate-900 px-6 py-5 text-white">
@@ -282,15 +317,25 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
                   autoFocus
                 />
               </label>
-              <button
-                type="button"
-                onClick={() => void openShift()}
-                disabled={staffLoading || openStaffMissing || opening}
-                className="h-11 w-full rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {opening ? 'Opening…' : 'Confirm Open Shift'}
-              </button>
-              <p className="text-xs text-gray-500">This modal cannot be skipped. Close shifts manually when cash drawer counting is complete.</p>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOpenShiftModalOpen(false)}
+                  disabled={opening}
+                  className="h-11 flex-1 rounded-xl border border-gray-300 px-4 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void openShift()}
+                  disabled={staffLoading || openStaffMissing || opening}
+                  className="h-11 flex-1 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {opening ? 'Opening…' : 'Confirm Open Shift'}
+                </button>
+              </div>
+              <p className="text-xs text-gray-500">Open a shift when you are ready to perform checkout or operational payment actions.</p>
             </div>
           </div>
         </div>
@@ -343,5 +388,6 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
         </div>
       ) : null}
     </div>
+    </PosCashShiftContext.Provider>
   )
 }
