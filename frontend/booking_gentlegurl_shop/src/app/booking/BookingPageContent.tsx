@@ -153,59 +153,51 @@ export default function BookingPageContent() {
           ))}
         </div>
       ) : (
-        <div className="mt-6 grid grid-cols-2 gap-3 sm:mt-8 sm:gap-4 md:grid-cols-3">
+        <div className="mt-6 grid grid-cols-1 gap-3 sm:mt-8 sm:grid-cols-2 sm:gap-4 md:grid-cols-3">
           {services.map((service) => (
             <Link
               key={service.id}
               href={`/booking/service/${service.id}?category_id=${selectedCategory.id}`}
-              className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
+              className="group relative flex h-full flex-row gap-3 overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg sm:flex-col sm:gap-0 sm:p-0"
             >
-              <div className="aspect-[4/3] shrink-0 bg-gray-100">
+              <div className="relative h-[104px] w-[104px] shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:aspect-[4/3] sm:h-auto sm:w-full sm:rounded-none">
                 {(service.image_url || service.image_path) ? (
                   <img src={(service.image_url || service.image_path) as string} alt={service.name} className="h-full w-full object-cover" />
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center text-gray-400">No image</div>
+                  <div className="flex h-full w-full items-center justify-center text-gray-400">No image</div>
                 )}
               </div>
-              <div className="relative flex flex-1 flex-col p-3 sm:p-4">
-                <div className="flex items-center justify-between">
+              <div className="relative flex min-w-0 flex-1 flex-col sm:flex-1 sm:p-4">
+                <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
-                    <h2 className="line-clamp-2 font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
+                    <h2 className="break-words font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:line-clamp-2 sm:text-base">
                       {service.name}
                     </h2>
                     {service.cn_name ? (
-                      <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-[var(--text-muted)] sm:text-[13px]">{service.cn_name}</p>
+                      <p className="mt-0.5 break-words text-xs leading-snug text-[var(--text-muted)] sm:line-clamp-1 sm:text-[13px]">
+                        {service.cn_name}
+                      </p>
                     ) : null}
                   </div>
-                  <span className="hidden rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
+                  <span className="hidden shrink-0 rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
                     {service.service_type}
                   </span>
                 </div>
-                <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
+                <p className="mt-1 break-words text-[13px] leading-snug text-[var(--text-muted)] sm:line-clamp-2 sm:text-sm">
                   {service.description || "Professional treatment service."}
                 </p>
-                <div className="mt-2 border-t border-[var(--card-border)] pt-3">
-                  {/* Mobile: compact pills (cleaner than a 2-row table) */}
-                  <div className="flex flex-col items-start gap-2 sm:hidden">
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
-                      <i className="fa-regular fa-clock text-[10px]" aria-hidden />
-                      <span className="tabular-nums">{service.duration_minutes} min</span>
+                <div className="mt-2 border-t border-[var(--card-border)] pt-3 sm:mt-2">
+                  {/* Mobile: plain lines, wrap freely — duration / price / tier */}
+                  <div className="flex flex-col gap-1.5 text-[13px] leading-snug sm:hidden">
+                    <span className="tabular-nums text-[var(--foreground)]">{service.duration_minutes} min</span>
+                    <span className="font-semibold tabular-nums text-[var(--foreground)]">
+                      {service.price_mode === "range" && service.price_range_min != null && service.price_range_max != null
+                        ? `RM ${Number(service.price_range_min).toFixed(0)}–${Number(service.price_range_max).toFixed(0)}`
+                        : `RM ${Number(service.price).toFixed(0)}`}
                     </span>
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
-                      <i className="fa-solid fa-tag text-[10px]" aria-hidden />
-                      <span className="tabular-nums">
-                        {service.price_mode === "range" && service.price_range_min != null && service.price_range_max != null
-                          ? `RM ${Number(service.price_range_min).toFixed(0)}-${Number(service.price_range_max).toFixed(0)}`
-                          : `RM ${Number(service.price).toFixed(0)}`}
-                      </span>
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded-full border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-[11px] font-semibold capitalize text-[var(--text-muted)]">
-                      <i className="fa-regular fa-gem text-[10px]" aria-hidden />
-                      {service.service_type}
-                    </span>
+                    <span className="break-words capitalize text-[var(--text-muted)]">{service.service_type}</span>
                   </div>
 
-                  {/* Desktop: keep detailed layout */}
                   <div className="hidden space-y-1 text-sm sm:block">
                     <p className="flex justify-between gap-2">
                       <span className="text-[var(--text-muted)]">Duration</span>

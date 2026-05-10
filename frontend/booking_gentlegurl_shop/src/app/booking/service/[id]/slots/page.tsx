@@ -453,9 +453,9 @@ function SlotPageContent() {
                         key={startAt + idx}
                         type="button"
                         onClick={() => handleSlotClick(slot)}
-                        className="w-full rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-3 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md sm:w-auto sm:min-w-[108px] sm:px-4"
+                        className="w-full rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-2 py-2.5 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md sm:w-auto sm:min-w-[100px] sm:px-3 sm:py-3"
                       >
-                        <div className="font-[var(--font-heading)] text-sm font-semibold sm:text-base">
+                        <div className="whitespace-nowrap font-[var(--font-heading)] text-[11px] font-semibold tabular-nums tracking-tight leading-none sm:text-xs">
                           {formatTime(startAt)} — {formatTime(endAt)}
                         </div>
                         {/* {slot.slot_kind === "fallback" && (
@@ -486,9 +486,9 @@ function SlotPageContent() {
                         key={startAt + idx}
                         type="button"
                         onClick={() => handleSlotClick(slot)}
-                        className="w-full rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-3 py-3 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md sm:w-auto sm:min-w-[108px] sm:px-4"
+                        className="w-full rounded-2xl border border-[var(--card-border)] bg-[var(--background)] px-2 py-2.5 text-center shadow-sm transition-all hover:-translate-y-0.5 hover:border-[var(--accent-strong)] hover:shadow-md sm:w-auto sm:min-w-[100px] sm:px-3 sm:py-3"
                       >
-                        <div className="font-[var(--font-heading)] text-sm font-semibold sm:text-base">
+                        <div className="whitespace-nowrap font-[var(--font-heading)] text-[11px] font-semibold tabular-nums tracking-tight leading-none sm:text-xs">
                           {formatTime(startAt)} — {formatTime(endAt)}
                         </div>
                         {/* {slot.slot_kind === "fallback" && (

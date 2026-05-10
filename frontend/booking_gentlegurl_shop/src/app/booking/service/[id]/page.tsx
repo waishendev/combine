@@ -362,7 +362,7 @@ export default function ServiceAddonsPage() {
                       </p>
                     ) : null}
                     {q.description ? <p className="mt-1 text-sm text-[var(--text-muted)]">{q.description}</p> : null}
-                    <div className="mt-4 grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-3 md:grid-cols-3">
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3">
                       {q.options.map((opt) => {
                         const checked = selectedOptionIds.includes(opt.id);
                         const imgSrc = (opt.image_url || opt.image_path) as string | undefined;
@@ -376,7 +376,7 @@ export default function ServiceAddonsPage() {
                             onClick={() => toggleOption(q, opt)}
                             aria-pressed={checked}
                             className={[
-                              "group relative w-full overflow-hidden rounded-2xl text-left transition-all duration-300",
+                              "group relative flex w-full flex-row gap-3 overflow-hidden rounded-2xl p-3 text-left transition-all duration-300 sm:flex-col sm:gap-0 sm:p-0",
                               "border-2 bg-[var(--card)] shadow-sm",
                               checked
                                 ? "border-[3px] border-[var(--accent-strong)] bg-[var(--accent)]/10 shadow-lg ring-4 ring-[var(--accent)]/35"
@@ -389,45 +389,45 @@ export default function ServiceAddonsPage() {
                                 <span className="sr-only">Selected</span>
                               </div>
                             ) : null}
-                            <div className="aspect-[4/3] bg-gray-100">
+                            <div className="relative h-[104px] w-[104px] shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:aspect-[4/3] sm:h-auto sm:w-full sm:rounded-none">
                               {imgSrc ? (
                                 <img src={imgSrc} alt={opt.label} className="h-full w-full object-cover" />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">No image</div>
                               )}
                             </div>
-                            <div className="relative p-3 sm:p-4">
-                              <div className="flex items-start justify-between gap-2">
-                                <div><h3 className="font-[var(--font-heading)] font-semibold leading-snug">{opt.label}</h3>{opt.linked_cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{opt.linked_cn_name}</p> : null}</div>
+                            <div className="relative flex min-w-0 flex-1 flex-col py-0.5 sm:p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <h3 className="break-words font-[var(--font-heading)] font-semibold leading-snug">
+                                    {opt.label}
+                                  </h3>
+                                  {opt.linked_cn_name ? (
+                                    <p className="mt-0.5 break-words text-xs text-[var(--text-muted)]">
+                                      {opt.linked_cn_name}
+                                    </p>
+                                  ) : null}
+                                </div>
                                 {opt.linked_service_type ? (
-                                  <span className="hidden shrink-0 rounded-full bg-[var(--muted)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--accent-strong)] sm:inline-flex">
+                                  <span className="hidden max-w-full shrink-0 break-words rounded-xl bg-[var(--muted)] px-2 py-0.5 text-left text-xs font-medium capitalize leading-snug text-[var(--accent-strong)] sm:inline-block">
                                     {opt.linked_service_type}
                                   </span>
                                 ) : null}
                               </div>
-                              <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
+                              <p className="mt-1 break-words text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
                                 {addonDesc}
                               </p>
 
-                              {/* Mobile: compact pills (stacked, cleaner) */}
-                              <div className="mt-3 flex flex-col items-start gap-2 sm:hidden">
-                                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
-                                  <i className="fa-regular fa-clock text-[10px]" aria-hidden />
-                                  <span className="tabular-nums">+{opt.extra_duration_min} min</span>
-                                </span>
-                                <span className="inline-flex items-center gap-1 rounded-full bg-[var(--muted)]/60 px-2 py-1 text-[11px] font-semibold text-[var(--foreground)]">
-                                  <i className="fa-solid fa-tag text-[10px]" aria-hidden />
-                                  <span className="tabular-nums">
-                                    {String(opt.linked_price_mode ?? '') === 'range' && opt.linked_price_range_min != null && opt.linked_price_range_max != null
-                                      ? `+RM ${Number(opt.linked_price_range_min).toFixed(0)}-${Number(opt.linked_price_range_max).toFixed(0)}`
-                                      : `+RM ${Number(opt.extra_price).toFixed(0)}`}
-                                  </span>
+                              {/* Mobile: plain lines — extra time / price / tier (wrap freely) */}
+                              <div className="mt-2 flex flex-col gap-1.5 border-t border-[var(--card-border)] pt-3 text-[13px] leading-snug sm:hidden">
+                                <span className="tabular-nums text-[var(--foreground)]">+{opt.extra_duration_min} min</span>
+                                <span className="font-semibold tabular-nums text-[var(--foreground)]">
+                                  {String(opt.linked_price_mode ?? '') === 'range' && opt.linked_price_range_min != null && opt.linked_price_range_max != null
+                                    ? `+RM ${Number(opt.linked_price_range_min).toFixed(0)}–${Number(opt.linked_price_range_max).toFixed(0)}`
+                                    : `+RM ${Number(opt.extra_price).toFixed(0)}`}
                                 </span>
                                 {opt.linked_service_type ? (
-                                  <span className="inline-flex items-center gap-1 rounded-full border border-[var(--card-border)] bg-[var(--background)] px-2 py-1 text-[11px] font-semibold capitalize text-[var(--text-muted)]">
-                                    <i className="fa-regular fa-gem text-[10px]" aria-hidden />
-                                    {opt.linked_service_type}
-                                  </span>
+                                  <span className="break-words capitalize text-[var(--text-muted)]">{opt.linked_service_type}</span>
                                 ) : null}
                               </div>
 
@@ -654,13 +654,21 @@ export default function ServiceAddonsPage() {
               />
             </section>
 
-            <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-6">
-              <h2 className="font-[var(--font-heading)] text-lg font-semibold">Booking Summary</h2>
-              <p className="mt-1 text-sm text-[var(--text-muted)]">
-                Review duration, deposit, listed prices, and add-ons before choosing your nail technician.
-              </p>
+            <section
+              id="booking-summary"
+              className="overflow-hidden rounded-2xl border-2 border-[var(--status-warning-border)] bg-[var(--card)] shadow-md ring-1 ring-[var(--status-warning)]/25"
+            >
+              <div className="border-b-2 border-[var(--status-warning-border)] bg-[var(--status-warning-border)]/40  px-4 py-4 sm:px-6 sm:py-5">
+                <h2 className="font-[var(--font-heading)] text-xl font-semibold leading-tight text-[var(--foreground)] sm:text-2xl">
+                  Booking summary
+                </h2>
+                <p className="mt-2 text-sm leading-relaxed text-[var(--foreground)]/90">
+                  If you scrolled past the options above, pause here: this section shows duration, deposit, listed prices, and add-ons. Next you’ll choose your nail technician.
+                </p>
+              </div>
 
-              <div className="mt-5 space-y-5 border-t border-[var(--card-border)] pt-5">
+              <div className="px-4 pb-4 pt-0 sm:px-6 sm:pb-6">
+              <div className="space-y-5 pt-5">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Main service</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -744,7 +752,7 @@ export default function ServiceAddonsPage() {
                   </ul>
                 </div> */}
 
-                <div className="rounded-xl border-2 border-[var(--accent-strong)]/20 bg-[var(--card)] p-4">
+                <div className="rounded-xl border-2 border-[var(--status-warning-border)]/80 bg-[var(--card)] p-4">
                   <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">How payment usually works</p>
                   <p className="mt-1 text-xs text-[var(--text-muted)]">
                     You’ll only pay a deposit now.
@@ -830,6 +838,7 @@ export default function ServiceAddonsPage() {
                 >
                   Choose date & time
                 </button>
+              </div>
               </div>
             </section>
           </>

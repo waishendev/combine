@@ -130,6 +130,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const [maxPriceInput, setMaxPriceInput] = useState<string>(queryMaxPrice);
   const [appliedMinPrice, setAppliedMinPrice] = useState<string>(queryMinPrice);
   const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>(queryMaxPrice);
+  /** When browsing all menus, main menu titles can collapse their sub-categories. */
+  const [collapsedMenuSlugs, setCollapsedMenuSlugs] = useState<Set<string>>(() => new Set());
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -437,6 +439,15 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
     pushParams({ nextCategory: null, nextPage: 1 });
   };
 
+  const toggleMenuCollapsed = useCallback((menuKey: string) => {
+    setCollapsedMenuSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(menuKey)) next.delete(menuKey);
+      else next.add(menuKey);
+      return next;
+    });
+  }, []);
+
   const mobileCategoryValue = selectedCategory
     ? `${menuSlug ?? ""}::${selectedCategory}`
     : "all";
@@ -522,37 +533,54 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                   {allLabel}
                 </button>
 
-                {sidebarMenus.map((menu) => (
-                  <div key={menu.slug} className="space-y-2">
-                    {!menuSlug && (
-                      <p className="text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--text-muted)]">
-                        {menu.title}
-                      </p>
-                    )}
-                    <div className="flex flex-col gap-2">
-                      {menu.categories.map((category) => {
-                        const isActive = selectedCategory === category.slug;
-                        return (
-                          <button
-                            key={category.slug}
-                            type="button"
-                            onClick={() => {
-                              setSelectedCategory(category.slug);
-                              pushParams({ nextCategory: category.slug, nextPage: 1 });
-                            }}
-                            className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
-                              isActive
-                                ? "bg-gradient-to-r from-[var(--background-soft)] to-[var(--card)] text-[var(--accent-strong)] shadow-sm"
-                                : "text-[color:var(--text-muted)] hover:bg-[var(--background-soft)]"
-                            }`}
+                {sidebarMenus.map((menu) => {
+                  const menuKey = String(menu.slug);
+                  const isMenuCollapsed = !menuSlug && collapsedMenuSlugs.has(menuKey);
+                  return (
+                    <div key={menu.slug} className="space-y-2">
+                      {!menuSlug && (
+                        <button
+                          type="button"
+                          onClick={() => toggleMenuCollapsed(menuKey)}
+                          aria-expanded={!isMenuCollapsed}
+                          className="flex w-full items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--text-muted)] transition hover:bg-[var(--background-soft)]"
+                        >
+                          <span>{menu.title}</span>
+                          <span
+                            className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-[var(--card-border)]/80 text-[10px] leading-none text-[color:var(--text-muted)]"
+                            aria-hidden
                           >
-                            {category.name}
-                          </button>
-                        );
-                      })}
+                            {isMenuCollapsed ? "▶" : "▼"}
+                          </span>
+                        </button>
+                      )}
+                      {!isMenuCollapsed && (
+                        <div className="flex flex-col gap-2">
+                          {menu.categories.map((category) => {
+                            const isActive = selectedCategory === category.slug;
+                            return (
+                              <button
+                                key={category.slug}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedCategory(category.slug);
+                                  pushParams({ nextCategory: category.slug, nextPage: 1 });
+                                }}
+                                className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                                  isActive
+                                    ? "bg-gradient-to-r from-[var(--background-soft)] to-[var(--card)] text-[var(--accent-strong)] shadow-sm"
+                                    : "text-[color:var(--text-muted)] hover:bg-[var(--background-soft)]"
+                                }`}
+                              >
+                                {category.name}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </aside>
 

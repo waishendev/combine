@@ -374,21 +374,38 @@ export default function ServiceStaffPage() {
               </div>
             </div> */}
 
-            <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-3 lg:grid-cols-4">
-              {eligibleStaff.map((staff) => (
-                <button
-                  key={staff.id}
-                  type="button"
-                  onClick={() => setConfirmStaff(staff)}
-                  className="group rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 text-left  shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow sm:p-6"
-                >
-                  <p className="font-semibold text-[var(--foreground)]">{staff.name}</p>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">{staff.description || "Available nail technician"}</p>
-                  <span className="mt-5 inline-flex rounded-full bg-[var(--accent-strong)] px-4 py-2 text-xs font-semibold text-white">
-                    Select
-                  </span>
-                </button>
-              ))}
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 md:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+              {eligibleStaff.map((staff) => {
+                const avatarSrc = (staff.avatar_url || staff.avatar_path) as string | undefined;
+                const initial = (staff.name?.trim()?.[0] || "?").toUpperCase();
+                return (
+                  <button
+                    key={staff.id}
+                    type="button"
+                    onClick={() => setConfirmStaff(staff)}
+                    className="group flex w-full flex-row items-center gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-3 text-left shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow md:flex-col md:items-stretch md:p-6"
+                  >
+                    {/* <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--muted)] ring-1 ring-[var(--card-border)] md:mx-auto md:mb-1 md:h-24 md:w-24 md:ring-0">
+                      {avatarSrc ? (
+                        <img src={avatarSrc} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <span className="flex h-full w-full items-center justify-center text-base font-semibold text-[var(--text-muted)] md:text-2xl">
+                          {initial}
+                        </span>
+                      )}
+                    </div> */}
+                    <div className="min-w-0 flex-1 md:flex-none md:text-center">
+                      <p className="font-semibold leading-snug text-[var(--foreground)]">{staff.name}</p>
+                      <p className="mt-0.5 line-clamp-2 text-xs leading-snug text-[var(--text-muted)] md:mt-1 md:line-clamp-none">
+                        {staff.description || "Available nail technician"}
+                      </p>
+                    </div>
+                    <span className="inline-flex shrink-0 items-center justify-center self-center rounded-full bg-[var(--accent-strong)] px-3 py-2 text-xs font-semibold text-white md:mt-4 md:w-full md:px-4 md:py-2">
+                      Select
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </section>
         )}
@@ -401,24 +418,25 @@ export default function ServiceStaffPage() {
           onClick={() => !adding && setConfirmStaff(null)}
         >
           <div
-            className="relative w-full max-w-md overflow-hidden rounded-t-[1.75rem] border border-[var(--card-border)] bg-[var(--card)] shadow-[0_-8px_40px_-12px_rgba(60,36,50,0.2)] ring-1 ring-black/[0.04] sm:rounded-3xl sm:shadow-2xl"
+            className="relative flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--card-border)] bg-[var(--card)] shadow-[0_-8px_40px_-12px_rgba(60,36,50,0.2)] ring-1 ring-black/[0.04] sm:max-h-[min(92dvh,880px)] sm:rounded-3xl sm:shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="staff-confirm-title"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="h-1 bg-gradient-to-r from-[var(--accent)] via-[var(--accent-strong)] to-[var(--accent-stronger)]" />
+            <div className="h-1 shrink-0 bg-gradient-to-r from-[var(--accent)] via-[var(--accent-strong)] to-[var(--accent-stronger)]" />
             <button
               type="button"
               onClick={() => !adding && setConfirmStaff(null)}
               disabled={adding}
-              className="absolute right-3 top-4 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40 sm:right-4 sm:top-5"
+              className="absolute right-3 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40 sm:right-4 sm:top-5"
               aria-label="Close"
             >
               <i className="fa-solid fa-xmark text-sm" />
             </button>
 
-            <div className="px-6 pb-6 pt-7 sm:px-8 sm:pb-8 sm:pt-8">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-7 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8">
               <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Almost there</p>
               <h3 id="staff-confirm-title" className="font-[var(--font-heading)] pr-10 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
                 Confirm your slot
@@ -529,8 +547,10 @@ export default function ServiceStaffPage() {
               </ul>
 
               {error && confirmStaff ? <p className="mt-3 text-sm text-[var(--status-error)]">{error}</p> : null}
+            </div>
 
-              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row">
+            <div className="shrink-0 border-t border-[var(--card-border)] bg-[var(--card)] px-6 pb-6 pt-4 sm:px-8">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row">
                 <button
                   type="button"
                   onClick={() => !adding && setConfirmStaff(null)}
@@ -558,6 +578,7 @@ export default function ServiceStaffPage() {
                   )}
                 </button>
               </div>
+            </div>
             </div>
           </div>
         </div>
