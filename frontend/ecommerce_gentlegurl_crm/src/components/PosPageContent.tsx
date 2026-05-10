@@ -122,7 +122,7 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   main_service_settlement_items?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   addon_total_price?: number
   deposit_contribution?: number
@@ -200,7 +200,7 @@ type ServiceCartItem = {
     extra_price?: number
     linked_booking_service_id?: number | null
     is_original?: boolean
-    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>
+    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>
     staff_splits?: Array<{ staff_id: number; share_percent: number }>
   }>
 }
@@ -241,12 +241,55 @@ function getPosServiceMainBlocks(item: ServiceCartItem): NonNullable<ServiceCart
         cn_name: addon.cn_name ?? null,
         extra_duration_min: Number(addon.extra_duration_min ?? 0),
         extra_price: Number(addon.extra_price ?? 0),
+        linked_deposit_amount: Number(addon.linked_deposit_amount ?? 0),
       })),
     staff_splits: item.staff_splits?.map((split) => ({
       staff_id: Number(split.staff_id),
       share_percent: Number(split.share_percent),
     })),
   }]
+}
+
+function getPosServiceAddonDeposit(item: ServiceCartItem, addonId?: number | null): number {
+  const id = Number(addonId ?? 0)
+  if (id <= 0) return 0
+
+  const depositLine = (item.deposit_addon_lines ?? []).find((line) => Number(line.id ?? 0) === id)
+  if (depositLine) return Number(depositLine.deposit ?? 0)
+
+  const addonSnapshot = (item.addon_items ?? []).find((addon) => Number(addon.id ?? 0) === id)
+  return Number(addonSnapshot?.linked_deposit_amount ?? 0)
+}
+
+function getPosServiceDepositBlocks(item: ServiceCartItem) {
+  return getPosServiceMainBlocks(item).map((service, idx) => ({
+    ...service,
+    deposit: (service.is_original ?? idx === 0) ? Number(item.deposit_contribution ?? 0) : 0,
+    add_ons: (service.add_ons ?? []).map((addon) => ({
+      ...addon,
+      deposit: getPosServiceAddonDeposit(item, addon.id),
+    })),
+  }))
+}
+
+function formatPosServiceStaffSplitSummary(item: ServiceCartItem): string {
+  const splits = (item.staff_splits ?? [])
+    .map((split) => ({
+      staff_id: Number(split.staff_id),
+      share_percent: Number(split.share_percent),
+    }))
+    .filter((split) => split.staff_id > 0 && split.share_percent > 0)
+
+  if (splits.length === 0) {
+    return item.assigned_staff_name ? `${item.assigned_staff_name} 100%` : '—'
+  }
+
+  return splits.map((split) => {
+    const staffName = split.staff_id === Number(item.assigned_staff_id ?? 0) && item.assigned_staff_name
+      ? item.assigned_staff_name
+      : `Staff #${split.staff_id}`
+    return `${staffName} ${split.share_percent}%`
+  }).join(' · ')
 }
 
 type PackageCartItem = {
@@ -5473,21 +5516,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const depPayable = Number(
                     serviceItem.deposit_payable_total ?? depMain + depAddonTotal,
                   )
-                  const svcType = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
                   const identityLine = formatPosServiceCartIdentity(serviceItem, selectedMember)
                   const isPkgClaimed =
                     !!serviceItem.claimed_by_package ||
                     serviceItem.package_claim_status === 'reserved' ||
                     serviceItem.package_claim_status === 'consumed'
-                  const mainDepositRef = Number(serviceItem.deposit_main_reference ?? 0)
-                  const visibleAddons = (serviceItem.addon_items ?? []).filter((addon) => {
-                    if (Number(addon.id ?? 0) <= 0) return false
-                    if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
-                    if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
-                    return true
-                  })
-                  const hasAddons = visibleAddons.length > 0
-                  const serviceBlocks = getPosServiceMainBlocks(serviceItem)
+                  const depositBlocks = getPosServiceDepositBlocks(serviceItem)
+                  const hasAddons = depositBlocks.some((block) => (block.add_ons ?? []).length > 0)
+                  const staffSplitSummary = formatPosServiceStaffSplitSummary(serviceItem)
                   const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
 
                   return (
@@ -5544,107 +5580,38 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           </button>
                         </div>
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-bold text-gray-900" />
-                        <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
-                          {svcType}
-                        </span>
-                        <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
-                      </div>
+                      <div className="mt-2 space-y-1 text-xs text-gray-600">
                       {serviceItem.start_at ? (
-                        <p className="mt-2 text-xs text-gray-600">
-                          Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
-                        </p>
+                        <p>Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
                       ) : null}
                       {serviceItem.assigned_staff_name ? (
-                        <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
+                        <p>Staff: {serviceItem.assigned_staff_name}</p>
                       ) : null}
                       {identityLine ? (
-                        <p className="text-xs text-gray-600">{identityLine}</p>
+                        <p>{identityLine}</p>
                       ) : null}
-
-                      <div className="mt-3 space-y-2 rounded-lg bg-white/80 p-2 ring-1 ring-emerald-100">
-                        <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Service blocks</p>
-                        {serviceBlocks.map((service, idx) => {
-                          const blockAddons = service.add_ons ?? []
-                          const duration = Number(service.extra_duration_min ?? 0)
-                          const price = Number(service.extra_price ?? 0)
-                          return (
-                            <div key={`svc-block-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="rounded-md border border-emerald-100 bg-white px-2 py-1.5">
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{service.is_original ? 'Service Block 1 / Original' : `Service Block ${idx + 1} / Added`}</p>
-                                  <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-bold text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                                </div>
-                                <p className="shrink-0 text-right text-[11px] font-semibold tabular-nums text-gray-800">
-                                  {duration > 0 ? `${duration} min · ` : ''}RM {price.toFixed(2)}
-                                </p>
-                              </div>
-                              {(service.staff_splits ?? []).length > 0 ? (
-                                <p className="mt-1 text-[10px] text-gray-500">Staff split: {(service.staff_splits ?? []).map((split) => `${split.share_percent}%`).join(' / ')}</p>
-                              ) : null}
-                              {blockAddons.length > 0 ? (
-                                <div className="mt-1 space-y-0.5 border-t border-gray-100 pt-1">
-                                  {blockAddons.map((addon, addonIdx) => (
-                                    <div key={`svc-block-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="flex justify-between gap-2 text-[11px] text-gray-600">
-                                      <span className="min-w-0"><span className="text-gray-400">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
-                                      <span className="shrink-0 tabular-nums">{Number(addon.extra_duration_min ?? 0) > 0 ? `${Number(addon.extra_duration_min ?? 0)} min · ` : ''}RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : null}
-                            </div>
-                          )
-                        })}
-                      </div>
+                    </div>
                     </div>
 
                     <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposit Service</p>
                       <div className="mt-2 space-y-2 text-[11px]">
-                        {mainCoveredByPkg ? (
-                          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 pb-2">
-                            <div className="min-w-0">
-                              <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                              <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
-                                Included in your package (main service)
-                              </p>
+                        {depositBlocks.map((service, idx) => (
+                          <div key={`dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="space-y-1 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+                            <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
+                              <span className="text-gray-500">{idx + 1}.</span>
+                              <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                              <span className="font-semibold text-gray-900">RM {Number(service.deposit ?? 0).toFixed(2)}</span>
                             </div>
-                            <div className="shrink-0 text-right tabular-nums">
-                              {mainDepositRef > 0.0001 ? (
-                                <span className="text-gray-400 line-through">RM {mainDepositRef.toFixed(2)}</span>
-                              ) : null}
-                              {mainDepositRef > 0.0001 ? ' ' : null}
-                              <span className="text-sm font-semibold text-gray-900">RM {depMain.toFixed(2)}</span>
-                            </div>
+                            {(service.add_ons ?? []).map((addon, addonIdx) => (
+                              <div key={`dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 pl-5 tabular-nums text-gray-700">
+                                <span className="text-gray-500">+</span>
+                                <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                <span className="font-semibold text-gray-900">RM {Number(addon.deposit ?? 0).toFixed(2)}</span>
+                              </div>
+                            ))}
                           </div>
-                        ) : (
-                          <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
-                            <span className="text-gray-700">Main service</span>
-                            <span className="font-semibold tabular-nums text-gray-900">RM {depMain.toFixed(2)}</span>
-                          </div>
-                        )}
-
-                        {hasAddons ? (
-                          <div className="space-y-1.5">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</p>
-                            {visibleAddons.map((addon, idx) => {
-                              const dep = Number(addon.linked_deposit_amount ?? 0)
-                              return (
-                                <div
-                                  key={`dep-addon-${addon.id ?? addon.name}-${idx}`}
-                                  className="flex justify-between gap-2 pl-1 tabular-nums text-gray-700"
-                                >
-                                  <span className="min-w-0">
-                                    <span className="text-gray-500">+</span> {addon.name}
-                                    {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
-                                  </span>
-                                  <span className="shrink-0 font-semibold text-gray-900">RM {dep.toFixed(2)}</span>
-                                </div>
-                              )
-                            })}
-                          </div>
-                        ) : null}
+                        ))}
 
                         {mainCoveredByPkg && hasAddons && depAddonTotal > 0.0001 ? (
                           <p className="text-[10px] leading-snug text-gray-600">
@@ -5654,11 +5621,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         ) : null}
 
                         <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-200 pt-2">
-                          <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-                            Total deposit
-                          </span>
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Total deposit</span>
                           <span className="text-sm font-bold tabular-nums text-orange-700">RM {depPayable.toFixed(2)}</span>
                         </div>
+                        <p className="text-[10px] font-medium text-gray-600">Staff split: {staffSplitSummary}</p>
                       </div>
                     </div>
                   </div>
@@ -6947,91 +6913,28 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       )
                     })}
                     {cartServiceItems.map((serviceItem) => {
-                      const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
-                        ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
-                        : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
+                      const splitSummary = formatPosServiceStaffSplitSummary(serviceItem)
                       const chkIdentity = formatPosServiceCartIdentity(serviceItem, selectedMember)
-                      const depMainChk = Number(serviceItem.deposit_contribution ?? 0)
+                      const depPayableChk = Number(serviceItem.deposit_payable_total ?? Number(serviceItem.deposit_contribution ?? 0) + Number(serviceItem.deposit_addon_total ?? 0))
                       const chkPkgClaimed =
                         !!serviceItem.claimed_by_package ||
                         serviceItem.package_claim_status === 'reserved' ||
                         serviceItem.package_claim_status === 'consumed'
-                      const chkMainRef = Number(serviceItem.deposit_main_reference ?? 0)
-                      const svcTypeChk = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
-                      const checkoutAddons = (serviceItem.addon_items ?? []).filter((addon) => {
-                        if (Number(addon.id ?? 0) <= 0) return false
-                        if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
-                        if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
-                        return true
-                      })
-                      const checkoutAddonCount = checkoutAddons.length
-                      const checkoutAddonSum = checkoutAddons.reduce(
-                        (s, a) => s + Number(a.linked_deposit_amount ?? 0),
-                        0,
-                      )
-                      const svcQty = Math.max(1, Number(serviceItem.qty) || 1)
-                      const mainLineDeposit = depMainChk
-                      const mainUnitDeposit = svcQty > 1 ? mainLineDeposit / svcQty : mainLineDeposit
-                      const checkoutServiceBlocks = getPosServiceMainBlocks(serviceItem)
-                      const mainCoveredByPkg = chkPkgClaimed && depMainChk < 0.0001
+                      const checkoutDepositBlocks = getPosServiceDepositBlocks(serviceItem)
+                      const checkoutHasAddons = checkoutDepositBlocks.some((block) => (block.add_ons ?? []).length > 0)
+                      const mainCoveredByPkg = chkPkgClaimed && Number(serviceItem.deposit_contribution ?? 0) < 0.0001
 
                       const checkoutServiceItemHeader = (
                         <>
                           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
-                          <div className="mt-1 flex flex-wrap items-start gap-x-2 gap-y-0.5">
-                            <ServiceNameStack
-                              name={serviceItem.service_name}
-                              cnName={serviceItem.service_cn_name}
-                              primaryClassName="text-base font-bold leading-snug text-gray-900"
-                              secondaryClassName="mt-0.5 text-xs font-normal text-gray-500"
-                            />
-                            <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
-                              {svcTypeChk}
-                            </span>
-                            <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
-                          </div>
-                          {serviceItem.start_at ? (
-                            <p className="mt-2 text-xs text-gray-600">
-                              Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
-                            </p>
-                          ) : null}
-                          {serviceItem.assigned_staff_name ? (
-                            <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
-                          ) : null}
-                          {chkIdentity ? <p className="text-xs font-medium text-gray-700 mt-1">{chkIdentity}</p> : null}
-                          <div className="mt-3 space-y-2 rounded-lg bg-white/80 p-2 ring-1 ring-emerald-100">
-                            <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Service blocks</p>
-                            {checkoutServiceBlocks.map((service, idx) => {
-                              const blockAddons = service.add_ons ?? []
-                              const duration = Number(service.extra_duration_min ?? 0)
-                              const price = Number(service.extra_price ?? 0)
-                              return (
-                                <div key={`checkout-svc-block-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="rounded-md border border-emerald-100 bg-white px-2 py-1.5">
-                                  <div className="flex flex-wrap items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{service.is_original ? 'Service Block 1 / Original' : `Service Block ${idx + 1} / Added`}</p>
-                                      <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-bold text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                                    </div>
-                                    <p className="shrink-0 text-right text-[11px] font-semibold tabular-nums text-gray-800">
-                                      {duration > 0 ? `${duration} min · ` : ''}RM {price.toFixed(2)}
-                                    </p>
-                                  </div>
-                                  {(service.staff_splits ?? []).length > 0 ? (
-                                    <p className="mt-1 text-[10px] text-gray-500">Staff split: {(service.staff_splits ?? []).map((split) => `${split.share_percent}%`).join(' / ')}</p>
-                                  ) : null}
-                                  {blockAddons.length > 0 ? (
-                                    <div className="mt-1 space-y-0.5 border-t border-gray-100 pt-1">
-                                      {blockAddons.map((addon, addonIdx) => (
-                                        <div key={`checkout-svc-block-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="flex justify-between gap-2 text-[11px] text-gray-600">
-                                          <span className="min-w-0"><span className="text-gray-400">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
-                                          <span className="shrink-0 tabular-nums">{Number(addon.extra_duration_min ?? 0) > 0 ? `${Number(addon.extra_duration_min ?? 0)} min · ` : ''}RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  ) : null}
-                                </div>
-                              )
-                            })}
+                          <div className="mt-2 space-y-0.5 text-xs text-gray-600">
+                            {serviceItem.start_at ? (
+                              <p>Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
+                            ) : null}
+                            {serviceItem.assigned_staff_name ? (
+                              <p>Staff: {serviceItem.assigned_staff_name}</p>
+                            ) : null}
+                            {chkIdentity ? <p className="font-medium text-gray-700">{chkIdentity}</p> : null}
                           </div>
                         </>
                       )
@@ -7052,80 +6955,42 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                           </tr>
                           <tr className={`${svcRowClass} align-top`}>
-                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposits</p>
-                              {mainCoveredByPkg ? (
-                                <div className="mt-1">
-                                  <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                                  <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
-                                    Included in your package (main service)
-                                  </p>
+                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8" colSpan={4}>
+                              <div className="rounded-lg bg-white/80 p-3 ring-1 ring-emerald-100">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposit Service</p>
+                                <div className="mt-2 space-y-2 text-[11px]">
+                                  {checkoutDepositBlocks.map((service, idx) => (
+                                    <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="space-y-1 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+                                      <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
+                                        <span className="text-gray-500">{idx + 1}.</span>
+                                        <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                        <span className="font-semibold text-gray-900">RM {Number(service.deposit ?? 0).toFixed(2)}</span>
+                                      </div>
+                                      {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                        <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 pl-5 tabular-nums text-gray-700">
+                                          <span className="text-gray-500">+</span>
+                                          <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                          <span className="font-semibold text-gray-900">RM {Number(addon.deposit ?? 0).toFixed(2)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ))}
+
+                                  {mainCoveredByPkg && checkoutHasAddons && Number(serviceItem.deposit_addon_total ?? 0) > 0.0001 ? (
+                                    <p className="text-[10px] leading-snug text-gray-600">
+                                      Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
+                                      only. Add-on deposits above are still due at checkout.
+                                    </p>
+                                  ) : null}
+
+                                  <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-200 pt-2">
+                                    <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Total deposit</span>
+                                    <span className="text-sm font-bold tabular-nums text-orange-700">RM {depPayableChk.toFixed(2)}</span>
+                                  </div>
                                 </div>
-                              ) : (
-                                <p className="mt-1 text-xs text-gray-700">Main service</p>
-                              )}
-                            </td>
-                            <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
-                            <td className="px-4 py-2.5 align-top text-xs tabular-nums text-gray-700">
-                              {mainCoveredByPkg && chkMainRef > 0.0001 ? (
-                                <span>
-                                  <span className="text-gray-400 line-through">RM {chkMainRef.toFixed(2)}</span>{' '}
-                                  <span className="font-medium">RM {mainUnitDeposit.toFixed(2)}</span>
-                                </span>
-                              ) : (
-                                <span className="font-medium">RM {mainUnitDeposit.toFixed(2)}</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                              <p className="text-lg font-bold leading-tight text-orange-700">
-                                RM {mainLineDeposit.toFixed(2)}
-                              </p>
+                              </div>
                             </td>
                           </tr>
-                          {checkoutAddonCount > 0 ? (
-                            <>
-                              <tr className={`${svcRowClass} align-top`}>
-                                <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
-                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-ons</p>
-                                </td>
-                                <td className="min-w-[260px] px-4 py-1.5" aria-hidden />
-                                <td className="px-4 py-1.5" colSpan={2} aria-hidden />
-                              </tr>
-                              {checkoutAddons.map((addon, idx) => {
-                                const dep = Number(addon.linked_deposit_amount ?? 0)
-                                return (
-                                  <tr key={`chk-dep-addon-${serviceItem.id}-${addon.id ?? addon.name}-${idx}`} className={`${svcRowClass} align-top`}>
-                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
-                                      <span className="text-gray-500">+</span> {addon.name}
-                                      {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
-                                    </td>
-                                    <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                                    <td className="px-4 py-2 text-xs tabular-nums text-gray-700">
-                                      <span className="font-medium">RM {dep.toFixed(2)}</span>
-                                    </td>
-                                    {idx === 0 ? (
-                                      <td
-                                        rowSpan={checkoutAddonCount}
-                                        className="px-4 py-2 text-right align-middle tabular-nums sm:px-5"
-                                      >
-                                        <p className="text-lg font-bold leading-tight text-orange-700">
-                                          RM {checkoutAddonSum.toFixed(2)}
-                                        </p>
-                                      </td>
-                                    ) : null}
-                                  </tr>
-                                )
-                              })}
-                              {mainCoveredByPkg && checkoutAddonSum > 0.0001 ? (
-                                <tr className={`${svcRowClass} align-top`}>
-                                  <td className="px-4 py-2 pl-7 text-[10px] leading-snug text-gray-600 sm:px-5 sm:pl-8" colSpan={4}>
-                                    Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
-                                    only. Add-on deposits above are still due at checkout.
-                                  </td>
-                                </tr>
-                              ) : null}
-                            </>
-                          ) : null}
                         </Fragment>
                       )
                     })}
