@@ -4065,28 +4065,30 @@ class PosController extends Controller
                     ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
                     : 0.0;
 
-                if ($depositContribution > 0) {
-                    OrderItem::create([
-                        'order_id' => $order->id,
-                        'line_type' => 'booking_deposit',
-                        'product_id' => null,
-                        'product_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
-                        'display_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
-                        'quantity' => 1,
-                        'price_snapshot' => $depositContribution,
-                        'unit_price_snapshot' => $depositContribution,
-                        'line_total' => $depositContribution,
-                        'line_total_snapshot' => $depositContribution,
-                        'effective_unit_price' => $depositContribution,
-                        'effective_line_total' => $depositContribution,
-                        'locked' => true,
-                        'booking_id' => $booking->id,
-                        'booking_service_id' => $serviceItem->booking_service_id,
-                    ]);
-                }
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'line_type' => 'booking_deposit',
+                    'product_id' => null,
+                    'product_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
+                    'display_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
+                    'quantity' => 1,
+                    'price_snapshot' => $depositContribution,
+                    'unit_price_snapshot' => $depositContribution,
+                    'line_total' => $depositContribution,
+                    'line_total_snapshot' => $depositContribution,
+                    'effective_unit_price' => $depositContribution,
+                    'effective_line_total' => $depositContribution,
+                    'locked' => true,
+                    'booking_id' => $booking->id,
+                    'booking_service_id' => $serviceItem->booking_service_id,
+                ]);
 
                 foreach (($depositAddonByServiceItemId[(int) $serviceItem->id] ?? []) as $addonRow) {
                     $addonDepositAmount = (float) ($addonRow['deposit_contribution'] ?? 0);
+                    $addonId = (int) ($addonRow['id'] ?? 0);
+                    if ($addonId <= 0 || strtolower((string) ($addonRow['item_kind'] ?? '')) === 'main_service') {
+                        continue;
+                    }
                     $addonName = (string) ($addonRow['name'] ?? $addonRow['label'] ?? 'Add-on');
                     OrderItem::create([
                         'order_id' => $order->id,
@@ -4990,13 +4992,14 @@ class PosController extends Controller
             $depositContribution = $claimedByPackage ? 0.0 : (float) ($depositByServiceItemId[(int) $item->id] ?? 0);
 
             $addonDepositLines = collect($depositAddonByServiceItemId[(int) $item->id] ?? [])
+                ->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) !== 'main_service')
                 ->map(fn ($row) => [
                     'id' => isset($row['id']) ? (int) $row['id'] : null,
                     'name' => (string) ($row['name'] ?? 'Add-on'),
                     'cn_name' => $row['cn_name'] ?? $row['cn_label'] ?? $row['linked_cn_name'] ?? null,
                     'deposit' => round((float) ($row['deposit_contribution'] ?? 0), 2),
                 ])
-                ->filter(fn (array $row) => ((float) ($row['deposit'] ?? 0)) > 0.0001)
+                ->filter(fn (array $row) => (int) ($row['id'] ?? 0) > 0)
                 ->values()
                 ->all();
             $depositAddonTotal = round(collect($addonDepositLines)->sum(fn (array $r) => (float) ($r['deposit'] ?? 0)), 2);
@@ -5014,14 +5017,17 @@ class PosController extends Controller
                 'line_total' => (float) $lineTotal,
                 'addon_duration_min' => (int) ($item->addon_duration_min ?? 0),
                 'addon_price' => (float) ($item->addon_price ?? 0),
-                'addon_items' => collect($item->addon_items_json ?? [])->map(fn ($addon) => [
-                    'id' => isset($addon['id']) ? (int) $addon['id'] : null,
-                    'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
-                    'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
-                    'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
-                    'extra_price' => (float) ($addon['extra_price'] ?? 0),
-                    'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
-                ])->values()->all(),
+                'addon_items' => collect($item->addon_items_json ?? [])
+                    ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
+                    ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
+                    ->map(fn ($addon) => [
+                        'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                        'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                        'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
+                        'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
+                        'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                        'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
+                    ])->values()->all(),
                 'deposit_contribution' => (float) $depositContribution,
                 'deposit_main_reference' => $claimedByPackage
                     ? max(0.0, (float) ($item->bookingService?->deposit_amount ?? 0))
@@ -5191,7 +5197,10 @@ class PosController extends Controller
             $itemId = (int) $item->id;
             $depositByServiceItem[$itemId] = 0.0;
             $depositByServiceItemAddons[$itemId] = collect((array) ($item->addon_items_json ?? []))
+                ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
+                ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
                 ->map(fn ($addon) => [
+                    'item_kind' => $addon['item_kind'] ?? null,
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
                     'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
@@ -5209,6 +5218,9 @@ class PosController extends Controller
             }
 
             foreach ((array) ($item->addon_items_json ?? []) as $addon) {
+                if (strtolower((string) ($addon['item_kind'] ?? '')) === 'main_service' || (int) ($addon['id'] ?? 0) <= 0) {
+                    continue;
+                }
                 $addonType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
                 if ($addonType === '') {
                     continue;

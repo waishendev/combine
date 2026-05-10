@@ -135,6 +135,7 @@ class OrderController extends Controller
     {
         $order->load([
             'items.product.images',
+            'items.bookingService:id,name,cn_name',
             'serviceItems.assignedStaff',
             'customer',
             'vouchers',
@@ -220,17 +221,20 @@ class OrderController extends Controller
                     'booking_service_id' => $item->booking_service_id,
                 ];
             }),
-            'booking_addon_items' => $orderLineItems->where('line_type', 'booking_addon')->values()->map(function ($item) {
-                return [
-                    'item_type' => 'booking_addon',
-                    'display_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
-                    'quantity' => (int) $item->quantity,
-                    'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
-                    'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
-                    'booking_id' => $item->booking_id,
-                    'booking_service_id' => $item->booking_service_id,
-                ];
-            }),
+            'booking_addon_items' => $orderLineItems->where('line_type', 'booking_addon')
+                ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
+                ->values()
+                ->map(function ($item) {
+                    return [
+                        'item_type' => 'booking_addon',
+                        'display_name' => $item->display_name_snapshot ?: $item->product_name_snapshot,
+                        'quantity' => (int) $item->quantity,
+                        'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
+                        'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
+                        'booking_id' => $item->booking_id,
+                        'booking_service_id' => $item->booking_service_id,
+                    ];
+                }),
             'service_items' => $order->serviceItems->values()->map(function ($item) use ($claimsByBooking) {
                 $claims = $item->booking_id ? ($claimsByBooking->get((int) $item->booking_id) ?? collect()) : collect();
                 $claimStatus = null;
@@ -658,6 +662,31 @@ class OrderController extends Controller
             'order_no' => $order->order_number,
             'booking_ids' => $bookingIds->all(),
         ]);
+    }
+
+
+    private function isFakeMainServiceBookingAddon($item): bool
+    {
+        if ((string) ($item->line_type ?? '') !== 'booking_addon') {
+            return false;
+        }
+
+        $amount = (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total ?? 0);
+        if ($amount > 0.0001) {
+            return false;
+        }
+
+        $serviceName = trim((string) ($item->bookingService?->name ?? ''));
+        $serviceCnName = trim((string) ($item->bookingService?->cn_name ?? ''));
+        if ($serviceName === '' && $serviceCnName === '') {
+            return false;
+        }
+
+        $displayName = trim((string) ($item->display_name_snapshot ?: $item->product_name_snapshot));
+        return $displayName !== '' && in_array(mb_strtolower($displayName), array_filter([
+            $serviceName !== '' ? mb_strtolower($serviceName) : null,
+            $serviceCnName !== '' ? mb_strtolower($serviceCnName) : null,
+        ]), true);
     }
 
     protected function sendBookingConfirmationEmail(?Booking $booking): void

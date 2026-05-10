@@ -166,6 +166,8 @@ type ServiceCartItem = {
     extra_duration_min: number
     extra_price: number
     linked_deposit_amount?: number
+    item_kind?: string | null
+    linked_booking_service_id?: number | null
   }>
   service_type?: string | null
   /** Main service deposit only (excludes add-on deposits) */
@@ -5439,7 +5441,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     serviceItem.package_claim_status === 'reserved' ||
                     serviceItem.package_claim_status === 'consumed'
                   const mainDepositRef = Number(serviceItem.deposit_main_reference ?? 0)
-                  const hasAddons = (serviceItem.addon_items?.length ?? 0) > 0
+                  const visibleAddons = (serviceItem.addon_items ?? []).filter((addon) => {
+                    if (Number(addon.id ?? 0) <= 0) return false
+                    if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
+                    if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
+                    return true
+                  })
+                  const hasAddons = visibleAddons.length > 0
                   const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
 
                   return (
@@ -5545,7 +5553,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         {hasAddons ? (
                           <div className="space-y-1.5">
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</p>
-                            {serviceItem.addon_items?.map((addon, idx) => {
+                            {visibleAddons.map((addon, idx) => {
                               const dep = Number(addon.linked_deposit_amount ?? 0)
                               return (
                                 <div
@@ -6875,7 +6883,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         serviceItem.package_claim_status === 'consumed'
                       const chkMainRef = Number(serviceItem.deposit_main_reference ?? 0)
                       const svcTypeChk = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
-                      const checkoutAddons = serviceItem.addon_items ?? []
+                      const checkoutAddons = (serviceItem.addon_items ?? []).filter((addon) => {
+                        if (Number(addon.id ?? 0) <= 0) return false
+                        if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
+                        if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
+                        return true
+                      })
                       const checkoutAddonCount = checkoutAddons.length
                       const checkoutAddonSum = checkoutAddons.reduce(
                         (s, a) => s + Number(a.linked_deposit_amount ?? 0),

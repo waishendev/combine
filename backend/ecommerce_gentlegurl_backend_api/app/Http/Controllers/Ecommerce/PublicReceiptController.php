@@ -20,7 +20,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items.bookingService:id,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
+            ->with(['order.items.bookingService:id,name,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
             ->first();
 
         if (!$receiptToken) {
@@ -33,7 +33,9 @@ class PublicReceiptController extends Controller
 
         $order = $receiptToken->order;
 
-        $mixedItems = $order->items->values();
+        $mixedItems = $order->items
+            ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
+            ->values();
         $bookingIdsForPackage = $order->serviceItems
             ->pluck('booking_id')
             ->filter()
@@ -230,6 +232,31 @@ class PublicReceiptController extends Controller
         ]);
     }
 
+
+    private function isFakeMainServiceBookingAddon($item): bool
+    {
+        if ((string) ($item->line_type ?? '') !== 'booking_addon') {
+            return false;
+        }
+
+        $amount = (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total ?? 0);
+        if ($amount > 0.0001) {
+            return false;
+        }
+
+        $serviceName = trim((string) ($item->bookingService?->name ?? ''));
+        $serviceCnName = trim((string) ($item->bookingService?->cn_name ?? ''));
+        if ($serviceName === '' && $serviceCnName === '') {
+            return false;
+        }
+
+        $displayName = trim((string) ($item->display_name_snapshot ?: $item->product_name_snapshot));
+        return $displayName !== '' && in_array(mb_strtolower($displayName), array_filter([
+            $serviceName !== '' ? mb_strtolower($serviceName) : null,
+            $serviceCnName !== '' ? mb_strtolower($serviceCnName) : null,
+        ]), true);
+    }
+
     private function isBookingCoveredByPackage(int $bookingId): bool
     {
         if ($bookingId <= 0) {
@@ -252,7 +279,7 @@ class PublicReceiptController extends Controller
     {
         $receiptToken = OrderReceiptToken::query()
             ->where('token', $token)
-            ->with(['order.items.bookingService:id,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
+            ->with(['order.items.bookingService:id,name,cn_name', 'order.items.booking:id,addon_items_json', 'order.serviceItems.bookingService:id,cn_name', 'order.payments'])
             ->first();
 
         if (! $receiptToken) {

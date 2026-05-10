@@ -44,7 +44,7 @@ class PublicOrderHistoryController extends Controller
 
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
-            ->with(['items.product.images', 'items.review', 'items.bookingService:id,cn_name', 'items.booking:id,addon_items_json', 'payments'])
+            ->with(['items.product.images', 'items.review', 'items.bookingService:id,name,cn_name', 'items.booking:id,addon_items_json', 'payments'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
@@ -85,19 +85,21 @@ class PublicOrderHistoryController extends Controller
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'receipt_public_url' => $this->resolveReceiptUrl($order, $request),
-                'items' => $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
-                    $thumbnail = $item->product?->cover_image_url;
-                    $productType = $item->product?->type;
-                    $review = $item->review;
-                    $reviewedAt = $review?->created_at?->toDateTimeString();
-                    $completedAt = $this->reviewService->resolveCompletionDate($order);
-                    $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
-                    $canReview = $reviewsEnabled
-                        && ! $review
-                        && $order->status === 'completed'
-                        && (! $deadlineAt || Carbon::now()->lessThanOrEqualTo($deadlineAt));
+                'items' => $order->items
+                    ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
+                    ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
+                        $thumbnail = $item->product?->cover_image_url;
+                        $productType = $item->product?->type;
+                        $review = $item->review;
+                        $reviewedAt = $review?->created_at?->toDateTimeString();
+                        $completedAt = $this->reviewService->resolveCompletionDate($order);
+                        $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
+                        $canReview = $reviewsEnabled
+                            && ! $review
+                            && $order->status === 'completed'
+                            && (! $deadlineAt || Carbon::now()->lessThanOrEqualTo($deadlineAt));
 
-                    return [
+                        return [
                         'id' => $item->id,
                         'product_id' => $item->product_id,
                         'product_variant_id' => $item->product_variant_id,
@@ -136,6 +138,31 @@ class PublicOrderHistoryController extends Controller
         return $this->respond($data);
     }
 
+
+    private function isFakeMainServiceBookingAddon($item): bool
+    {
+        if ((string) ($item->line_type ?? '') !== 'booking_addon') {
+            return false;
+        }
+
+        $amount = (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total ?? 0);
+        if ($amount > 0.0001) {
+            return false;
+        }
+
+        $serviceName = trim((string) ($item->bookingService?->name ?? ''));
+        $serviceCnName = trim((string) ($item->bookingService?->cn_name ?? ''));
+        if ($serviceName === '' && $serviceCnName === '') {
+            return false;
+        }
+
+        $displayName = trim((string) ($item->display_name_snapshot ?: $item->product_name_snapshot));
+        return $displayName !== '' && in_array(mb_strtolower($displayName), array_filter([
+            $serviceName !== '' ? mb_strtolower($serviceName) : null,
+            $serviceCnName !== '' ? mb_strtolower($serviceCnName) : null,
+        ]), true);
+    }
+
     protected function resolveReceiptUrl(Order $order, Request $request): ?string
     {
         $token = OrderReceiptToken::query()
@@ -163,7 +190,7 @@ class PublicOrderHistoryController extends Controller
         $order = Order::with([
             'items.product.images',
             'items.review',
-            'items.bookingService:id,cn_name',
+            'items.bookingService:id,name,cn_name',
             'items.booking:id,addon_items_json',
             'voucher',
             'uploads',
@@ -180,19 +207,21 @@ class PublicOrderHistoryController extends Controller
         $reviewsEnabled = (bool) ($reviewSettings['enabled'] ?? false);
         $reviewWindowDays = (int) ($reviewSettings['review_window_days'] ?? 30);
 
-        $items = $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
-            $thumbnail = $item->product?->cover_image_url;
-            $productType = $item->product?->type;
-            $review = $item->review;
-            $reviewedAt = $review?->created_at?->toDateTimeString();
-            $completedAt = $this->reviewService->resolveCompletionDate($order);
-            $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
-            $canReview = $reviewsEnabled
-                && ! $review
-                && $order->status === 'completed'
-                && (! $deadlineAt || Carbon::now()->lessThanOrEqualTo($deadlineAt));
+        $items = $order->items
+            ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
+            ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
+                $thumbnail = $item->product?->cover_image_url;
+                $productType = $item->product?->type;
+                $review = $item->review;
+                $reviewedAt = $review?->created_at?->toDateTimeString();
+                $completedAt = $this->reviewService->resolveCompletionDate($order);
+                $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);
+                $canReview = $reviewsEnabled
+                    && ! $review
+                    && $order->status === 'completed'
+                    && (! $deadlineAt || Carbon::now()->lessThanOrEqualTo($deadlineAt));
 
-            return [
+                return [
                 'id' => $item->id,
                 'product_id' => $item->product_id,
                 'product_variant_id' => $item->product_variant_id,
