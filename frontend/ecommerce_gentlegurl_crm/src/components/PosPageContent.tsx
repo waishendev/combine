@@ -5442,6 +5442,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     serviceItem.package_claim_status === 'consumed'
                   const mainDepositRef = Number(serviceItem.deposit_main_reference ?? 0)
                   const visibleAddons = (serviceItem.addon_items ?? []).filter((addon) => {
+                    if (Number(addon.id ?? 0) <= 0) return false
                     if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
                     if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
                     return true
@@ -6883,6 +6884,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const chkMainRef = Number(serviceItem.deposit_main_reference ?? 0)
                       const svcTypeChk = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
                       const checkoutAddons = (serviceItem.addon_items ?? []).filter((addon) => {
+                        if (Number(addon.id ?? 0) <= 0) return false
                         if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
                         if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
                         return true

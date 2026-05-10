@@ -135,6 +135,7 @@ class OrderController extends Controller
     {
         $order->load([
             'items.product.images',
+            'items.bookingService:id,name,cn_name',
             'serviceItems.assignedStaff',
             'customer',
             'vouchers',
@@ -221,7 +222,7 @@ class OrderController extends Controller
                 ];
             }),
             'booking_addon_items' => $orderLineItems->where('line_type', 'booking_addon')
-                ->filter(fn ($item) => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total ?? 0) > 0.0001)
+                ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
                 ->values()
                 ->map(function ($item) {
                     return [
@@ -661,6 +662,31 @@ class OrderController extends Controller
             'order_no' => $order->order_number,
             'booking_ids' => $bookingIds->all(),
         ]);
+    }
+
+
+    private function isFakeMainServiceBookingAddon($item): bool
+    {
+        if ((string) ($item->line_type ?? '') !== 'booking_addon') {
+            return false;
+        }
+
+        $amount = (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total ?? 0);
+        if ($amount > 0.0001) {
+            return false;
+        }
+
+        $serviceName = trim((string) ($item->bookingService?->name ?? ''));
+        $serviceCnName = trim((string) ($item->bookingService?->cn_name ?? ''));
+        if ($serviceName === '' && $serviceCnName === '') {
+            return false;
+        }
+
+        $displayName = trim((string) ($item->display_name_snapshot ?: $item->product_name_snapshot));
+        return $displayName !== '' && in_array(mb_strtolower($displayName), array_filter([
+            $serviceName !== '' ? mb_strtolower($serviceName) : null,
+            $serviceCnName !== '' ? mb_strtolower($serviceCnName) : null,
+        ]), true);
     }
 
     protected function sendBookingConfirmationEmail(?Booking $booking): void

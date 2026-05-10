@@ -4087,7 +4087,8 @@ class PosController extends Controller
 
                 foreach (($depositAddonByServiceItemId[(int) $serviceItem->id] ?? []) as $addonRow) {
                     $addonDepositAmount = (float) ($addonRow['deposit_contribution'] ?? 0);
-                    if ($addonDepositAmount <= 0.0001 || strtolower((string) ($addonRow['item_kind'] ?? '')) === 'main_service') {
+                    $addonId = (int) ($addonRow['id'] ?? 0);
+                    if ($addonId <= 0 || strtolower((string) ($addonRow['item_kind'] ?? '')) === 'main_service') {
                         continue;
                     }
                     $addonName = (string) ($addonRow['name'] ?? $addonRow['label'] ?? 'Add-on');
@@ -5000,7 +5001,7 @@ class PosController extends Controller
                     'cn_name' => $row['cn_name'] ?? $row['cn_label'] ?? $row['linked_cn_name'] ?? null,
                     'deposit' => round((float) ($row['deposit_contribution'] ?? 0), 2),
                 ])
-                ->filter(fn (array $row) => ((float) ($row['deposit'] ?? 0)) > 0.0001)
+                ->filter(fn (array $row) => (int) ($row['id'] ?? 0) > 0)
                 ->values()
                 ->all();
             $depositAddonTotal = round(collect($addonDepositLines)->sum(fn (array $r) => (float) ($r['deposit'] ?? 0)), 2);
@@ -5020,6 +5021,7 @@ class PosController extends Controller
                 'addon_price' => (float) ($item->addon_price ?? 0),
                 'addon_items' => collect($item->addon_items_json ?? [])
                     ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
+                    ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
                     ->map(fn ($addon) => [
                         'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                         'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
@@ -5198,6 +5200,7 @@ class PosController extends Controller
             $depositByServiceItem[$itemId] = 0.0;
             $depositByServiceItemAddons[$itemId] = collect((array) ($item->addon_items_json ?? []))
                 ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
+                ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
                 ->map(fn ($addon) => [
                     'item_kind' => $addon['item_kind'] ?? null,
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
@@ -5217,7 +5220,7 @@ class PosController extends Controller
             }
 
             foreach ((array) ($item->addon_items_json ?? []) as $addon) {
-                if (strtolower((string) ($addon['item_kind'] ?? '')) === 'main_service') {
+                if (strtolower((string) ($addon['item_kind'] ?? '')) === 'main_service' || (int) ($addon['id'] ?? 0) <= 0) {
                     continue;
                 }
                 $addonType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
