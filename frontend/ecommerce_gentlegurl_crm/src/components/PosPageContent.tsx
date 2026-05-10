@@ -192,6 +192,17 @@ type ServiceCartItem = {
   notes?: string | null
   staff_splits?: Array<{ staff_id: number; share_percent: number; service_commission_rate_snapshot?: number }>
   commission_rate_used?: number
+  main_services?: Array<{
+    id?: number | string | null
+    name: string
+    cn_name?: string | null
+    extra_duration_min?: number
+    extra_price?: number
+    linked_booking_service_id?: number | null
+    is_original?: boolean
+    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>
+    staff_splits?: Array<{ staff_id: number; share_percent: number }>
+  }>
 }
 
 function formatPosServiceCartIdentity(
@@ -208,6 +219,34 @@ function formatPosServiceCartIdentity(
   const g = item.guest_name?.trim()
   if (g) return `Guest: ${g}`
   return null
+}
+
+function getPosServiceMainBlocks(item: ServiceCartItem): NonNullable<ServiceCartItem['main_services']> {
+  const blocks = (item.main_services ?? []).filter((service) => String(service.name ?? '').trim() !== '')
+  if (blocks.length > 0) return blocks
+
+  return [{
+    id: item.booking_service_id,
+    name: item.service_name,
+    cn_name: item.service_cn_name ?? null,
+    extra_duration_min: undefined,
+    extra_price: item.unit_price,
+    linked_booking_service_id: item.booking_service_id,
+    is_original: true,
+    add_ons: (item.addon_items ?? [])
+      .filter((addon) => Number(addon.id ?? 0) > 0 && String(addon.item_kind ?? '').toLowerCase() !== 'main_service')
+      .map((addon) => ({
+        id: addon.id ?? null,
+        name: addon.name,
+        cn_name: addon.cn_name ?? null,
+        extra_duration_min: Number(addon.extra_duration_min ?? 0),
+        extra_price: Number(addon.extra_price ?? 0),
+      })),
+    staff_splits: item.staff_splits?.map((split) => ({
+      staff_id: Number(split.staff_id),
+      share_percent: Number(split.share_percent),
+    })),
+  }]
 }
 
 type PackageCartItem = {
@@ -5448,6 +5487,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     return true
                   })
                   const hasAddons = visibleAddons.length > 0
+                  const serviceBlocks = getPosServiceMainBlocks(serviceItem)
                   const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
 
                   return (
@@ -5522,6 +5562,41 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       {identityLine ? (
                         <p className="text-xs text-gray-600">{identityLine}</p>
                       ) : null}
+
+                      <div className="mt-3 space-y-2 rounded-lg bg-white/80 p-2 ring-1 ring-emerald-100">
+                        <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Service blocks</p>
+                        {serviceBlocks.map((service, idx) => {
+                          const blockAddons = service.add_ons ?? []
+                          const duration = Number(service.extra_duration_min ?? 0)
+                          const price = Number(service.extra_price ?? 0)
+                          return (
+                            <div key={`svc-block-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="rounded-md border border-emerald-100 bg-white px-2 py-1.5">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{service.is_original ? 'Service Block 1 / Original' : `Service Block ${idx + 1} / Added`}</p>
+                                  <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-bold text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
+                                </div>
+                                <p className="shrink-0 text-right text-[11px] font-semibold tabular-nums text-gray-800">
+                                  {duration > 0 ? `${duration} min · ` : ''}RM {price.toFixed(2)}
+                                </p>
+                              </div>
+                              {(service.staff_splits ?? []).length > 0 ? (
+                                <p className="mt-1 text-[10px] text-gray-500">Staff split: {(service.staff_splits ?? []).map((split) => `${split.share_percent}%`).join(' / ')}</p>
+                              ) : null}
+                              {blockAddons.length > 0 ? (
+                                <div className="mt-1 space-y-0.5 border-t border-gray-100 pt-1">
+                                  {blockAddons.map((addon, addonIdx) => (
+                                    <div key={`svc-block-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="flex justify-between gap-2 text-[11px] text-gray-600">
+                                      <span className="min-w-0"><span className="text-gray-400">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
+                                      <span className="shrink-0 tabular-nums">{Number(addon.extra_duration_min ?? 0) > 0 ? `${Number(addon.extra_duration_min ?? 0)} min · ` : ''}RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          )
+                        })}
+                      </div>
                     </div>
 
                     <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
@@ -6897,6 +6972,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const svcQty = Math.max(1, Number(serviceItem.qty) || 1)
                       const mainLineDeposit = depMainChk
                       const mainUnitDeposit = svcQty > 1 ? mainLineDeposit / svcQty : mainLineDeposit
+                      const checkoutServiceBlocks = getPosServiceMainBlocks(serviceItem)
                       const mainCoveredByPkg = chkPkgClaimed && depMainChk < 0.0001
 
                       const checkoutServiceItemHeader = (
@@ -6923,6 +6999,40 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
                           ) : null}
                           {chkIdentity ? <p className="text-xs font-medium text-gray-700 mt-1">{chkIdentity}</p> : null}
+                          <div className="mt-3 space-y-2 rounded-lg bg-white/80 p-2 ring-1 ring-emerald-100">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Service blocks</p>
+                            {checkoutServiceBlocks.map((service, idx) => {
+                              const blockAddons = service.add_ons ?? []
+                              const duration = Number(service.extra_duration_min ?? 0)
+                              const price = Number(service.extra_price ?? 0)
+                              return (
+                                <div key={`checkout-svc-block-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="rounded-md border border-emerald-100 bg-white px-2 py-1.5">
+                                  <div className="flex flex-wrap items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{service.is_original ? 'Service Block 1 / Original' : `Service Block ${idx + 1} / Added`}</p>
+                                      <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-bold text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
+                                    </div>
+                                    <p className="shrink-0 text-right text-[11px] font-semibold tabular-nums text-gray-800">
+                                      {duration > 0 ? `${duration} min · ` : ''}RM {price.toFixed(2)}
+                                    </p>
+                                  </div>
+                                  {(service.staff_splits ?? []).length > 0 ? (
+                                    <p className="mt-1 text-[10px] text-gray-500">Staff split: {(service.staff_splits ?? []).map((split) => `${split.share_percent}%`).join(' / ')}</p>
+                                  ) : null}
+                                  {blockAddons.length > 0 ? (
+                                    <div className="mt-1 space-y-0.5 border-t border-gray-100 pt-1">
+                                      {blockAddons.map((addon, addonIdx) => (
+                                        <div key={`checkout-svc-block-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="flex justify-between gap-2 text-[11px] text-gray-600">
+                                          <span className="min-w-0"><span className="text-gray-400">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
+                                          <span className="shrink-0 tabular-nums">{Number(addon.extra_duration_min ?? 0) > 0 ? `${Number(addon.extra_duration_min ?? 0)} min · ` : ''}RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ) : null}
+                                </div>
+                              )
+                            })}
+                          </div>
                         </>
                       )
 
