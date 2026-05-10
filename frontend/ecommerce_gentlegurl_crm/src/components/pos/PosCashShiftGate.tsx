@@ -63,7 +63,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   const [openedStaffId, setOpenedStaffId] = useState(defaultStaffId ? String(defaultStaffId) : '')
   const [closedStaffId, setClosedStaffId] = useState(defaultStaffId ? String(defaultStaffId) : '')
   const [openingAmount, setOpeningAmount] = useState('')
-  const [closingAmount, setClosingAmount] = useState('')
+  const [closingAmountInput, setClosingAmountInput] = useState('')
   const [remark, setRemark] = useState('')
   const [opening, setOpening] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -113,10 +113,23 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   }, [loadCurrentShift, loadStaffOptions])
 
   const expectedCash = Number(shift?.expected_cash ?? 0)
-  const closeDifference = useMemo(() => Number(closingAmount || 0) - expectedCash, [closingAmount, expectedCash])
+  const closeDifference = useMemo(() => Number(closingAmountInput || 0) - expectedCash, [closingAmountInput, expectedCash])
   const openStaffMissing = !openedStaffId
   const closeStaffMissing = !closedStaffId
   const blocked = cashShiftLoading || !shift
+  const cashShiftOverlayActive = cashShiftLoading || !shift || closeModalOpen
+
+  useEffect(() => {
+    if (cashShiftOverlayActive) {
+      document.body.dataset.posCashShiftModalOpen = 'true'
+    } else {
+      delete document.body.dataset.posCashShiftModalOpen
+    }
+
+    return () => {
+      delete document.body.dataset.posCashShiftModalOpen
+    }
+  }, [cashShiftOverlayActive])
 
   const openShift = async () => {
     const amount = Number(openingAmount)
@@ -152,13 +165,13 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   }
 
   const closeShift = async () => {
-    const amount = Number(closingAmount)
+    const amount = Number(closingAmountInput)
     const staffId = Number(closedStaffId)
     if (!Number.isFinite(staffId) || staffId <= 0) {
       setError('Please select staff closing this cash shift.')
       return
     }
-    if (!Number.isFinite(amount) || amount < 0) {
+    if (closingAmountInput.trim() === '' || !Number.isFinite(amount) || amount < 0) {
       setError('Closing amount must be 0 or greater.')
       return
     }
@@ -174,7 +187,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to close cash shift.')
       setShift(null)
-      setClosingAmount('')
+      setClosingAmountInput('')
       setRemark('')
       setCloseModalOpen(false)
     } catch (err) {
@@ -219,7 +232,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
                 setError(null)
                 void loadCurrentShift().then((currentShift) => {
                   const shiftForClose = currentShift ?? shift
-                  setClosingAmount(Number(shiftForClose.expected_cash ?? 0).toFixed(2))
+                  setClosingAmountInput(Number(shiftForClose.expected_cash ?? 0).toFixed(2))
                   setClosedStaffId(shiftForClose.opened_staff_id ? String(shiftForClose.opened_staff_id) : (defaultStaffId ? String(defaultStaffId) : ''))
                   setCloseModalOpen(true)
                 })
@@ -306,11 +319,10 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
               <label className="block text-sm font-semibold text-gray-700">
                 Closing Amount
                 <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={closingAmount}
-                  onChange={(event) => setClosingAmount(event.target.value)}
+                  type="text"
+                  inputMode="decimal"
+                  value={closingAmountInput}
+                  onChange={(event) => setClosingAmountInput(event.target.value)}
                   className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
               </label>

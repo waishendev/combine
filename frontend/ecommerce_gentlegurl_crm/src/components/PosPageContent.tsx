@@ -3535,7 +3535,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         voucherModalOpen ||
         itemSplitEditorOpen ||
         Boolean(checkoutResult) ||
-        qrCodeFullscreen
+        qrCodeFullscreen ||
+        document.body.dataset.posCashShiftModalOpen === 'true'
 
       if (hasOpenModal) return
 
