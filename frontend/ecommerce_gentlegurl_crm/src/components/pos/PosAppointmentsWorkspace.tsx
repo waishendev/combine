@@ -887,6 +887,29 @@ export default function PosAppointmentsWorkspace({
       }
 
       showMsg(createAppointmentDepositValue > 0 ? 'Appointment created and deposit collected.' : 'Appointment created successfully.', 'success')
+      const depositOrderId = Number(json?.data?.deposit_order_id ?? 0)
+      if (depositOrderId > 0) {
+        const depositPaymentMethod = createAppointmentDepositRows.length > 1
+          ? 'split'
+          : (createAppointmentDepositRows[0]?.method ?? 'cash')
+        const depositCashReceived = createAppointmentDepositRows
+          .filter((row) => row.method === 'cash')
+          .reduce((sum, row) => sum + Number(row.amount || 0), 0)
+        setAppointmentSettlementResult({
+          order_id: depositOrderId,
+          order_number: String(json?.data?.deposit_order_number ?? '-'),
+          receipt_public_url: json?.data?.receipt_public_url ?? null,
+          payment_method: depositPaymentMethod,
+          paid_amount: createAppointmentDepositValue,
+          cash_received: depositCashReceived,
+          change_amount: Math.max(0, depositCashReceived - createAppointmentDepositValue),
+        })
+        setAppointmentReceiptEmail(createAppointmentIdentityMode === 'guest' ? createAppointmentGuestEmail.trim() : '')
+        setAppointmentReceiptEmailError(null)
+        setAppointmentReceiptCooldownUntil(0)
+        setAppointmentQrCodeFullscreen(false)
+        setAppointmentReceiptQrLoaded(false)
+      }
       if (appointmentQrProofPreviewUrl) {
         URL.revokeObjectURL(appointmentQrProofPreviewUrl)
       }
@@ -4432,7 +4455,7 @@ export default function PosAppointmentsWorkspace({
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Settlement Completed
+                Order Completed
               </h4>
               <button
                 type="button"

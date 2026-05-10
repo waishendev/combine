@@ -2314,7 +2314,7 @@ class PosController extends Controller
         $depositAmount = round(max(0, (float) ($validated['deposit_amount'] ?? 0)), 2);
         $depositPayments = $depositAmount > 0 ? $this->resolveDepositPaymentRows($validated, $depositAmount) : [];
 
-        $booking = DB::transaction(function () use (
+        [$booking, $depositOrder, $depositReceiptUrl] = DB::transaction(function () use (
             $request,
             $service,
             $customer,
@@ -2374,6 +2374,64 @@ class PosController extends Controller
                 ]);
             }
 
+            $depositOrder = null;
+            $depositReceiptUrl = null;
+            if ($depositAmount > 0) {
+                $depositOrder = Order::query()->create([
+                    'order_number' => $this->generateOrderNumber(),
+                    'customer_id' => $customer?->id,
+                    'created_by_user_id' => $request->user()->id,
+                    'status' => 'completed',
+                    'payment_status' => 'paid',
+                    'payment_method' => $this->orderPaymentMethodForRows($depositPayments),
+                    'payment_provider' => 'manual',
+                    'subtotal' => $depositAmount,
+                    'discount_total' => 0,
+                    'shipping_fee' => 0,
+                    'grand_total' => $depositAmount,
+                    'pickup_or_shipping' => 'in_store',
+                    'pickup_store_id' => null,
+                    'billing_name' => $customer ? null : ($guestName !== '' ? $guestName : 'UNKNOWN'),
+                    'billing_phone' => $customer ? null : $guestPhone,
+                    'payment_meta' => $customer ? null : ['pos_billing_email' => (string) ($guestEmail ?? '')],
+                    'placed_at' => now(),
+                    'paid_at' => now(),
+                    'completed_at' => now(),
+                    'notes' => 'POS appointment deposit by staff #' . $request->user()->id . ' | booking_id=' . $booking->id,
+                ]);
+
+                OrderItem::query()->create([
+                    'order_id' => (int) $depositOrder->id,
+                    'line_type' => 'booking_deposit',
+                    'product_id' => null,
+                    'product_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?: 'Service'),
+                    'display_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?: 'Service'),
+                    'quantity' => 1,
+                    'price_snapshot' => $depositAmount,
+                    'unit_price_snapshot' => $depositAmount,
+                    'line_total' => $depositAmount,
+                    'line_total_snapshot' => $depositAmount,
+                    'effective_unit_price' => $depositAmount,
+                    'effective_line_total' => $depositAmount,
+                    'locked' => true,
+                    'booking_id' => (int) $booking->id,
+                    'booking_service_id' => (int) $service->id,
+                ]);
+
+                $this->replaceOrderPayments($depositOrder, $depositPayments, 'pos_create_appointment_deposit');
+                if ($depositProofPath) {
+                    OrderUpload::query()->create([
+                        'order_id' => (int) $depositOrder->id,
+                        'type' => 'payment_slip',
+                        'file_path' => $depositProofPath,
+                        'note' => 'POS appointment deposit QRPay proof',
+                        'status' => 'approved',
+                    ]);
+                }
+
+                $depositReceiptUrl = $this->buildReceiptUrl($depositOrder, $request);
+            }
+
             DB::table('booking_service_staff_splits')->insert(
                 collect($normalizedSplits)
                     ->map(fn (array $split) => [
@@ -2389,13 +2447,17 @@ class PosController extends Controller
                     ->all()
             );
 
-            return $booking;
+            return [$booking, $depositOrder, $depositReceiptUrl];
         });
 
         return $this->respond([
             'id' => (int) $booking->id,
+            'booking_id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?? ''),
             'status' => (string) $booking->status,
+            'deposit_order_id' => $depositOrder ? (int) $depositOrder->id : null,
+            'deposit_order_number' => $depositOrder ? (string) $depositOrder->order_number : null,
+            'receipt_public_url' => $depositReceiptUrl,
         ], __('Appointment created successfully.'));
     }
 
@@ -3989,6 +4051,9 @@ class PosController extends Controller
 
                 foreach (($depositAddonByServiceItemId[(int) $serviceItem->id] ?? []) as $addonRow) {
                     $addonDepositAmount = (float) ($addonRow['deposit_contribution'] ?? 0);
+                    if ($addonDepositAmount <= 0.0001 || strtolower((string) ($addonRow['item_kind'] ?? 'addon')) === 'main_service') {
+                        continue;
+                    }
                     $addonName = (string) ($addonRow['name'] ?? $addonRow['label'] ?? 'Add-on');
                     OrderItem::create([
                         'order_id' => $order->id,
@@ -5093,6 +5158,7 @@ class PosController extends Controller
             $itemId = (int) $item->id;
             $depositByServiceItem[$itemId] = 0.0;
             $depositByServiceItemAddons[$itemId] = collect((array) ($item->addon_items_json ?? []))
+                ->filter(fn ($addon) => is_array($addon) && strtolower((string) ($addon['item_kind'] ?? 'addon')) !== 'main_service')
                 ->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
@@ -5111,6 +5177,9 @@ class PosController extends Controller
             }
 
             foreach ((array) ($item->addon_items_json ?? []) as $addon) {
+                if (! is_array($addon) || strtolower((string) ($addon['item_kind'] ?? 'addon')) === 'main_service') {
+                    continue;
+                }
                 $addonType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
                 if ($addonType === '') {
                     continue;
