@@ -2059,10 +2059,10 @@ class PosController extends Controller
     }
 
     /**
-     * Directly create POS appointment without checkout/deposit collection.
+     * Directly create POS appointment, optionally collecting a deposit receipt/order.
      * Used by POS Appointments "Create Appointment" modal.
      */
-    public function createAppointment(Request $request)
+    public function createAppointment(Request $request, OrderPaymentService $orderPaymentService)
     {
         $this->mergeJsonPayload($request);
 
@@ -2314,8 +2314,9 @@ class PosController extends Controller
         $depositAmount = round(max(0, (float) ($validated['deposit_amount'] ?? 0)), 2);
         $depositPayments = $depositAmount > 0 ? $this->resolveDepositPaymentRows($validated, $depositAmount) : [];
 
-        $booking = DB::transaction(function () use (
+        [$booking, $depositOrder, $depositReceiptUrl] = DB::transaction(function () use (
             $request,
+            $orderPaymentService,
             $service,
             $customer,
             $guestName,
@@ -2374,6 +2375,88 @@ class PosController extends Controller
                 ]);
             }
 
+            $depositOrder = null;
+            $depositReceiptUrl = null;
+            if ($depositAmount > 0) {
+                $depositOrder = Order::query()->create([
+                    'order_number' => $this->generateOrderNumber(),
+                    'customer_id' => $customer?->id ? (int) $customer->id : null,
+                    'created_by_user_id' => (int) $request->user()->id,
+                    'status' => 'completed',
+                    'payment_status' => 'paid',
+                    'payment_method' => $this->orderPaymentMethodForRows($depositPayments),
+                    'payment_provider' => 'manual',
+                    'subtotal' => $depositAmount,
+                    'discount_total' => 0,
+                    'shipping_fee' => 0,
+                    'grand_total' => $depositAmount,
+                    'pickup_or_shipping' => 'in_store',
+                    'pickup_store_id' => null,
+                    'billing_name' => $customer ? null : ($guestName !== '' ? $guestName : 'UNKNOWN'),
+                    'billing_phone' => $customer ? null : $guestPhone,
+                    'payment_meta' => $customer ? null : array_filter(['pos_billing_email' => $guestEmail]),
+                    'placed_at' => now(),
+                    'paid_at' => now(),
+                    'completed_at' => now(),
+                    'notes' => 'POS create appointment deposit by staff #' . $request->user()->id . ' | booking_id=' . $booking->id . ' | booking_deposit=' . number_format($depositAmount, 2, '.', ''),
+                ]);
+
+                $serviceLineTotal = round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2);
+                $commissionRate = (float) ($normalizedSplits[0]['service_commission_rate_snapshot'] ?? 0);
+                OrderServiceItem::query()->create([
+                    'order_id' => (int) $depositOrder->id,
+                    'booking_id' => (int) $booking->id,
+                    'booking_service_id' => (int) $booking->service_id,
+                    'customer_id' => $customer?->id ? (int) $customer->id : null,
+                    'service_name_snapshot' => (string) ($service->name ?: 'Service'),
+                    'price_snapshot' => $serviceLineTotal,
+                    'qty' => 1,
+                    'line_total' => $serviceLineTotal,
+                    'assigned_staff_id' => $primaryStaffId,
+                    'start_at' => $startAt,
+                    'end_at' => $endAt,
+                    'notes' => $validated['notes'] ?? null,
+                    'staff_splits' => $normalizedSplits,
+                    'commission_rate_used' => $commissionRate,
+                    'commission_amount' => round($serviceLineTotal * $commissionRate, 2),
+                    'item_type' => 'service',
+                ]);
+
+                OrderItem::query()->create([
+                    'order_id' => (int) $depositOrder->id,
+                    'line_type' => 'booking_deposit',
+                    'product_id' => null,
+                    'product_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?: 'Service'),
+                    'display_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?: 'Service'),
+                    'quantity' => 1,
+                    'price_snapshot' => $depositAmount,
+                    'unit_price_snapshot' => $depositAmount,
+                    'line_total' => $depositAmount,
+                    'line_total_snapshot' => $depositAmount,
+                    'effective_unit_price' => $depositAmount,
+                    'effective_line_total' => $depositAmount,
+                    'line_total_after_discount' => $depositAmount,
+                    'locked' => true,
+                    'booking_id' => (int) $booking->id,
+                    'booking_service_id' => (int) $booking->service_id,
+                ]);
+
+                $this->replaceOrderPayments($depositOrder, $depositPayments, 'pos_create_appointment_deposit');
+
+                if ($depositProofPath) {
+                    OrderUpload::query()->create([
+                        'order_id' => (int) $depositOrder->id,
+                        'type' => 'payment_slip',
+                        'file_path' => $depositProofPath,
+                        'note' => 'POS create appointment deposit QRPay proof',
+                        'status' => 'approved',
+                    ]);
+                }
+
+                $orderPaymentService->handlePaid($depositOrder);
+                $depositReceiptUrl = $this->buildReceiptUrl($depositOrder, $request);
+            }
+
             DB::table('booking_service_staff_splits')->insert(
                 collect($normalizedSplits)
                     ->map(fn (array $split) => [
@@ -2389,14 +2472,29 @@ class PosController extends Controller
                     ->all()
             );
 
-            return $booking;
+            return [$booking, $depositOrder, $depositReceiptUrl];
         });
 
-        return $this->respond([
+        $response = [
             'id' => (int) $booking->id,
+            'booking_id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?? ''),
             'status' => (string) $booking->status,
-        ], __('Appointment created successfully.'));
+        ];
+
+        if ($depositOrder) {
+            $response['order_id'] = (int) $depositOrder->id;
+            $response['order_number'] = (string) $depositOrder->order_number;
+            $response['receipt_public_url'] = $depositReceiptUrl;
+            $response['order'] = [
+                'id' => (int) $depositOrder->id,
+                'order_number' => (string) $depositOrder->order_number,
+                'grand_total' => (float) $depositOrder->grand_total,
+                'payment_method' => (string) $depositOrder->payment_method,
+            ];
+        }
+
+        return $this->respond($response, __('Appointment created successfully.'));
     }
 
     public function addPackageToCart(Request $request)
@@ -5748,6 +5846,12 @@ class PosController extends Controller
         $linkedOrderIds = OrderServiceItem::query()
             ->where('booking_id', (int) $booking->id)
             ->pluck('order_id')
+            ->merge(
+                OrderItem::query()
+                    ->where('booking_id', (int) $booking->id)
+                    ->where('line_type', 'booking_deposit')
+                    ->pluck('order_id')
+            )
             ->filter()
             ->unique()
             ->values();
@@ -5819,6 +5923,13 @@ class PosController extends Controller
         } elseif ($standardBookings->isNotEmpty()) {
             $firstStandardBookingId = (int) ($standardBookings->first()?->booking_id ?? 0);
             $depositPaid = (int) $booking->id === $firstStandardBookingId ? $linkedBookingDeposit : 0.0;
+        }
+
+        if ($depositPaid <= 0.0001 && $actualAppointmentDepositCollected > 0.0001) {
+            $depositPaid = $actualAppointmentDepositCollected;
+        }
+        if ($linkedBookingDeposit <= 0.0001 && $actualAppointmentDepositCollected > 0.0001) {
+            $linkedBookingDeposit = $actualAppointmentDepositCollected;
         }
 
         $serviceSettlementPaid = (float) OrderItem::query()

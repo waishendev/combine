@@ -895,6 +895,28 @@ export default function PosAppointmentsWorkspace({
       setAppointmentQrProofPreviewUrl(null)
       closeCreateAppointmentMemberPicker()
       setCreateAppointmentModalOpen(false)
+
+      const depositOrderId = Number(json?.data?.order_id ?? json?.data?.order?.id ?? 0)
+      const depositOrderNumber = String(json?.data?.order_number ?? json?.data?.order?.order_number ?? '')
+      const depositReceiptUrl = json?.data?.receipt_public_url ?? json?.data?.order?.receipt_public_url ?? null
+      if (depositOrderId > 0 && depositOrderNumber) {
+        const depositCashPaid = Number(createAppointmentDepositPayments.cash || 0)
+        setAppointmentSettlementResult({
+          order_id: depositOrderId,
+          order_number: depositOrderNumber,
+          receipt_public_url: depositReceiptUrl,
+          payment_method: createAppointmentDepositRows.length > 1 ? 'split' : (createAppointmentDepositRows[0]?.method ?? 'cash'),
+          paid_amount: createAppointmentDepositValue,
+          cash_received: depositCashPaid,
+          change_amount: 0,
+        })
+        setAppointmentReceiptEmail(createAppointmentIdentityMode === 'guest' ? createAppointmentGuestEmail.trim() : '')
+        setAppointmentReceiptEmailError(null)
+        setAppointmentReceiptCooldownUntil(0)
+        setAppointmentQrCodeFullscreen(false)
+        setAppointmentReceiptQrLoaded(false)
+      }
+
       await fetchAppointments()
 
       const createdId = Number(json?.data?.id ?? json?.data?.booking_id ?? 0)
@@ -913,6 +935,7 @@ export default function PosAppointmentsWorkspace({
     appointmentQrProofFile,
     appointmentQrProofPreviewUrl,
     createAppointmentDepositHasQrPay,
+    createAppointmentDepositPayments,
     createAppointmentDepositRows,
     createAppointmentDepositValue,
     createAppointmentCustomerId,
@@ -4432,7 +4455,7 @@ export default function PosAppointmentsWorkspace({
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
-                Settlement Completed
+                Order Completed
               </h4>
               <button
                 type="button"
