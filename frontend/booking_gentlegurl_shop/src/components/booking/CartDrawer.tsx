@@ -733,7 +733,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                               <div key={opt.id} className="flex justify-between gap-2 pl-1">
                                 <span className="text-[var(--foreground)]">
                                   <span className="text-[var(--text-muted)]">+</span> {opt.label}
-                                  {opt.linked_cn_name ? <span className="block pl-3 text-[10px] text-[var(--text-muted)]">{opt.linked_cn_name}</span> : null}
+                                  {(opt.cn_label || opt.linked_cn_name) ? <span className="block pl-3 text-[10px] text-[var(--text-muted)]">{opt.cn_label || opt.linked_cn_name}</span> : null}
                                   {/* <span className="ml-1 text-[10px] text-[var(--text-muted)]">(not included in package)</span> */}
                                 </span>
                                 <span className="shrink-0 font-semibold tabular-nums text-[var(--foreground)]">RM {addonPart.toFixed(2)}</span>

@@ -154,7 +154,9 @@ class ServiceController extends Controller
                 ->map(fn ($question) => [
                     'id' => (int) $question->id,
                     'title' => (string) $question->title,
+                    'cn_title' => $question->cn_title,
                     'description' => $question->description,
+                    'cn_description' => $question->cn_description,
                     'question_type' => (string) $question->question_type,
                     'is_required' => (bool) $question->is_required,
                     'sort_order' => (int) $question->sort_order,
@@ -163,6 +165,7 @@ class ServiceController extends Controller
                         return [
                             'id' => (int) $option->id,
                             'label' => trim((string) $option->label) !== '' ? (string) $option->label : (string) optional($linkedService)->name,
+                            'cn_label' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $linkedService?->cn_name,
                             'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
                             'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : (int) $option->extra_duration_min,
                             'extra_price' => $linkedService ? (float) $linkedService->service_price : (float) $option->extra_price,

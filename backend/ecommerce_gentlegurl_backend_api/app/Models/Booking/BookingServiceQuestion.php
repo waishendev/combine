@@ -9,7 +9,9 @@ class BookingServiceQuestion extends Model
     protected $fillable = [
         'booking_service_id',
         'title',
+        'cn_title',
         'description',
+        'cn_description',
         'question_type',
         'sort_order',
         'is_required',

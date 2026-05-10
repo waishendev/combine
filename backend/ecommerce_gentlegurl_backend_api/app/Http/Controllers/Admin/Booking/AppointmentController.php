@@ -258,6 +258,7 @@ class AppointmentController extends Controller
                 return [
                     'id' => isset($item['id']) ? (int) $item['id'] : null,
                     'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                    'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
                     'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
                 ];

@@ -8,6 +8,7 @@ import BookingServiceLinkedBookingServicePicker from './BookingServiceLinkedBook
 export type QuestionOptionForm = {
   id?: number
   label: string
+  cn_label: string
   linked_booking_service_id: string
   sort_order: string
   is_active: boolean
@@ -16,7 +17,9 @@ export type QuestionOptionForm = {
 export type QuestionForm = {
   id?: number
   title: string
+  cn_title: string
   description: string
+  cn_description: string
   question_type: 'single_choice' | 'multi_choice'
   sort_order: string
   is_required: boolean
@@ -26,6 +29,7 @@ export type QuestionForm = {
 
 export const emptyQuestionOption = (): QuestionOptionForm => ({
   label: '',
+  cn_label: '',
   linked_booking_service_id: '',
   sort_order: '0',
   is_active: true,
@@ -33,7 +37,9 @@ export const emptyQuestionOption = (): QuestionOptionForm => ({
 
 export const emptyQuestion = (): QuestionForm => ({
   title: '',
+  cn_title: '',
   description: '',
+  cn_description: '',
   question_type: 'single_choice',
   sort_order: '0',
   is_required: false,
@@ -205,20 +211,46 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
             {!isCollapsed && (
               <>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <input
-                    value={question.title}
-                    disabled={disabled}
-                    onChange={(e) => setQuestion(qIndex, { title: e.target.value })}
-                    placeholder="Question title"
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                  />
-                  <input
-                    value={question.description}
-                    disabled={disabled}
-                    onChange={(e) => setQuestion(qIndex, { description: e.target.value })}
-                    placeholder="Description (optional)"
-                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-                  />
+                  <label className="grid gap-1">
+                    <span className="block text-sm font-medium text-gray-700">Question Title</span>
+                    <input
+                      value={question.title}
+                      disabled={disabled}
+                      onChange={(e) => setQuestion(qIndex, { title: e.target.value })}
+                      placeholder="Question title"
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="block text-sm font-medium text-gray-700">Chinese Question Title</span>
+                    <input
+                      value={question.cn_title}
+                      disabled={disabled}
+                      onChange={(e) => setQuestion(qIndex, { cn_title: e.target.value })}
+                      placeholder="Chinese question title (optional)"
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="block text-sm font-medium text-gray-700">Description</span>
+                    <input
+                      value={question.description}
+                      disabled={disabled}
+                      onChange={(e) => setQuestion(qIndex, { description: e.target.value })}
+                      placeholder="Description (optional)"
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                  <label className="grid gap-1">
+                    <span className="block text-sm font-medium text-gray-700">Chinese Description</span>
+                    <input
+                      value={question.cn_description}
+                      disabled={disabled}
+                      onChange={(e) => setQuestion(qIndex, { cn_description: e.target.value })}
+                      placeholder="Chinese description (optional)"
+                      className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                    />
+                  </label>
                   <select
                     value={question.question_type}
                     disabled={disabled}
@@ -327,12 +359,24 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
                             className="h-10 w-full rounded border border-gray-300 px-3 py-2 text-sm"
                           />
                         </label>
-                        <BookingServiceLinkedBookingServicePicker
-                          options={bookingServiceOptions}
-                          value={option.linked_booking_service_id}
-                          onChange={(next) => setOption(qIndex, oIndex, { linked_booking_service_id: next })}
-                          disabled={disabled}
-                        />
+                        <label className="grid gap-1">
+                          <span className="block text-sm font-medium text-gray-700">Chinese Label</span>
+                          <input
+                            value={option.cn_label}
+                            disabled={disabled}
+                            onChange={(e) => setOption(qIndex, oIndex, { cn_label: e.target.value })}
+                            placeholder="Chinese option label (optional)"
+                            className="h-10 w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                          />
+                        </label>
+                        <div className="md:col-span-2">
+                          <BookingServiceLinkedBookingServicePicker
+                            options={bookingServiceOptions}
+                            value={option.linked_booking_service_id}
+                            onChange={(next) => setOption(qIndex, oIndex, { linked_booking_service_id: next })}
+                            disabled={disabled}
+                          />
+                        </div>
                        
                         {(() => {
                           const selectedService = bookingServiceOptions.find(

@@ -319,9 +319,10 @@ export default function MyBookingsPage() {
                   <p className="text-sm font-semibold">Add-ons</p>
                   <div className="mt-1 space-y-1">
                     {booking.add_ons?.map((addon, index) => (
-                      <p key={`${addon.id ?? addon.name}-${index}`} className="text-sm text-[var(--text-muted)]">
-                        {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(Number(addon.extra_price ?? 0))})
-                      </p>
+                      <div key={`${addon.id ?? addon.name}-${index}`} className="text-sm text-[var(--text-muted)]">
+                        <p>{addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(Number(addon.extra_price ?? 0))})</p>
+                        {addon.cn_name ? <p className="mt-0.5 text-xs">{addon.cn_name}</p> : null}
+                      </div>
                     ))}
                     {/* <p className="pt-1 text-sm font-medium text-[var(--foreground)]">
                       Summary: +{Number(booking.addon_total_duration_min ?? 0)} mins, +{formatCurrency(booking.addon_total_price)}

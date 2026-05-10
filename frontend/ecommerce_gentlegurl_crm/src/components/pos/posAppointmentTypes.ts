@@ -93,6 +93,7 @@ export type ServiceAddonOption = {
   id: number
   label: string
   cn_name?: string | null
+  cn_label?: string | null
   linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
@@ -101,6 +102,9 @@ export type ServiceAddonOption = {
 export type ServiceAddonQuestion = {
   id: number
   title: string
+  cn_title?: string | null
+  description?: string | null
+  cn_description?: string | null
   question_type: string
   is_required: boolean
   options: ServiceAddonOption[]

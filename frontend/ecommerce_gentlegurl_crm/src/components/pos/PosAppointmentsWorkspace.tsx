@@ -610,6 +610,9 @@ export default function PosAppointmentsWorkspace({
           return {
             id: Number(record.id ?? 0),
             title: String(record.title ?? 'Question'),
+            cn_title: typeof record.cn_title === 'string' ? record.cn_title : null,
+            description: typeof record.description === 'string' ? record.description : null,
+            cn_description: typeof record.cn_description === 'string' ? record.cn_description : null,
             question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
             is_required: Boolean(record.is_required),
             options: optionsRaw
@@ -619,7 +622,8 @@ export default function PosAppointmentsWorkspace({
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
-                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
+                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.cn_label === 'string' ? option.cn_label : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
@@ -2848,7 +2852,7 @@ export default function PosAppointmentsWorkspace({
 
                   {createAppointmentQuestions.map((question) => (
                     <div key={question.id} className="rounded-lg border border-gray-200 bg-white p-3">
-                      <p className="text-sm font-semibold text-gray-900">{question.title}</p>
+                      <div><p className="text-sm font-semibold text-gray-900">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-xs text-gray-500">{question.cn_title}</p> : null}</div>
                       <div className="mt-2 space-y-1.5">
                         {question.options.map((option) => {
                           const checked = createAppointmentSelectedOptionIds.includes(option.id)
@@ -2933,6 +2937,9 @@ export default function PosAppointmentsWorkspace({
                                     return {
                                       id: Number(record.id ?? 0),
                                       title: String(record.title ?? 'Question'),
+                                      cn_title: typeof record.cn_title === 'string' ? record.cn_title : null,
+                                      description: typeof record.description === 'string' ? record.description : null,
+                                      cn_description: typeof record.cn_description === 'string' ? record.cn_description : null,
                                       question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
                                       is_required: Boolean(record.is_required),
                                       options: optionsRaw
@@ -2942,7 +2949,8 @@ export default function PosAppointmentsWorkspace({
                                           return {
                                             id: Number(option.id ?? 0),
                                             label: String(option.label ?? 'Add-on'),
-                                            cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                                            cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
+                                            cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.cn_label === 'string' ? option.cn_label : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                                             linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                                             extra_duration_min: Number(option.extra_duration_min ?? 0),
                                             extra_price: Number(option.extra_price ?? 0),
@@ -2981,6 +2989,7 @@ export default function PosAppointmentsWorkspace({
                             {question.title}
                             {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
                           </p>
+                          {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
                           <div className="mt-1 space-y-1">
                             {question.options.map((option) => {
                               const checked = block.selectedOptionIds.includes(option.id)
@@ -3747,7 +3756,7 @@ export default function PosAppointmentsWorkspace({
                   <div className="space-y-3">
                     {editAddonQuestions.map((question) => (
                       <div key={question.id}>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">{question.title}</p>
+                        <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
                         <div className="space-y-1.5">
                           {question.options.map((opt) => {
                             const checked = editSelectedAddonIds.has(opt.id)
@@ -3928,7 +3937,7 @@ export default function PosAppointmentsWorkspace({
                       <div className="space-y-1.5">
                       {block.addon_questions.map((question) => (
                         <div key={`added-q-${block.service_id}-${question.id}`}>
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>
+                          <div><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
                           {question.options.map((opt) => {
                             const checked = block.selected_addon_ids.has(opt.id)
                             return (
@@ -3946,7 +3955,7 @@ export default function PosAppointmentsWorkspace({
                                     }))}
                                     className="h-4 w-4 rounded border-gray-300 text-indigo-600"
                                   />
-                                  {opt.label}
+                                  <PosServiceNameStack name={opt.label} cnName={opt.cn_name ?? opt.cn_label ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
                                 <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
                               </label>

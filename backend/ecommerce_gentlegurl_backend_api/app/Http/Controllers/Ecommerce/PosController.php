@@ -1024,7 +1024,8 @@ class PosController extends Controller
                         ->filter()
                         ->map(fn (BookingServiceQuestionOption $option) => [
                             'id' => (int) $option->id,
-                            'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                            'name' => (string) ($option->label ?: $option->linkedBookingService?->name ?: 'Add-on'),
+                            'cn_name' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $option->linkedBookingService?->cn_name,
                             'extra_duration_min' => $option->linkedBookingService
                                 ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
                                 : max(0, (int) ($option->extra_duration_min ?? 0)),
@@ -1034,7 +1035,6 @@ class PosController extends Controller
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,
-                            'cn_name' => $option->linkedBookingService?->cn_name,
                             'linked_cn_name' => $option->linkedBookingService?->cn_name,
                         ])->values()->all();
                     $itemSplits = collect($itemPayload['staff_splits'] ?? [])->values();
@@ -1084,7 +1084,8 @@ class PosController extends Controller
                 ->filter()
                 ->map(fn (BookingServiceQuestionOption $option) => [
                     'id' => (int) $option->id,
-                    'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                    'name' => (string) ($option->label ?: $option->linkedBookingService?->name ?: 'Add-on'),
+                    'cn_name' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $option->linkedBookingService?->cn_name,
                     'extra_duration_min' => $option->linkedBookingService
                         ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
                         : max(0, (int) ($option->extra_duration_min ?? 0)),
@@ -1205,11 +1206,17 @@ class PosController extends Controller
         $questions = $service->questions->map(fn (BookingServiceQuestion $question) => [
             'id' => (int) $question->id,
             'title' => (string) $question->title,
+            'cn_title' => $question->cn_title,
+            'description' => $question->description,
+            'cn_description' => $question->cn_description,
             'question_type' => (string) $question->question_type,
             'is_required' => (bool) $question->is_required,
             'options' => $question->options->filter(fn ($opt) => $opt->is_active)->map(fn (BookingServiceQuestionOption $option) => [
                 'id' => (int) $option->id,
                 'label' => (string) $option->label,
+                'cn_label' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $option->linkedBookingService?->cn_name,
+                'linked_booking_service_id' => $option->linkedBookingService ? (int) $option->linkedBookingService->id : null,
+                'linked_cn_name' => $option->linkedBookingService?->cn_name,
                 'extra_duration_min' => $option->linkedBookingService
                     ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
                     : max(0, (int) ($option->extra_duration_min ?? 0)),
@@ -1797,7 +1804,8 @@ class PosController extends Controller
             }), 2);
             $addonItems = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
                 'id' => (int) $option->id,
-                'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                'name' => (string) ($option->label ?: $option->linkedBookingService?->name ?: 'Add-on'),
+                'cn_name' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $option->linkedBookingService?->cn_name,
                 'extra_duration_min' => $option->linkedBookingService
                     ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
                     : max(0, (int) ($option->extra_duration_min ?? 0)),
@@ -1807,7 +1815,6 @@ class PosController extends Controller
                 'linked_booking_service_id' => $option->linkedBookingService
                     ? (int) $option->linkedBookingService->id
                     : null,
-                'cn_name' => $option->linkedBookingService?->cn_name,
                 'linked_cn_name' => $option->linkedBookingService?->cn_name,
                 'linked_service_type' => $option->linkedBookingService
                     ? (string) $option->linkedBookingService->service_type
@@ -2183,7 +2190,8 @@ class PosController extends Controller
 
             $addonRows = $selectedOptions->map(fn (BookingServiceQuestionOption $option) => [
                 'id' => (int) $option->id,
-                'name' => (string) ($option->label ?? $option->linkedBookingService?->name ?? 'Add-on'),
+                'name' => (string) ($option->label ?: $option->linkedBookingService?->name ?: 'Add-on'),
+                'cn_name' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $option->linkedBookingService?->cn_name,
                 'extra_duration_min' => $option->linkedBookingService
                     ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
                     : max(0, (int) ($option->extra_duration_min ?? 0)),
@@ -2193,7 +2201,6 @@ class PosController extends Controller
                 'linked_booking_service_id' => $option->linkedBookingService
                     ? (int) $option->linkedBookingService->id
                     : null,
-                'cn_name' => $option->linkedBookingService?->cn_name,
                 'linked_cn_name' => $option->linkedBookingService?->cn_name,
                 'linked_service_type' => $option->linkedBookingService
                     ? (string) $option->linkedBookingService->service_type
