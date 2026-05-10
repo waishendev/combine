@@ -9,6 +9,7 @@ class BookingServiceQuestionOption extends Model
     protected $fillable = [
         'booking_service_question_id',
         'label',
+        'cn_label',
         'linked_booking_service_id',
         'extra_duration_min',
         'extra_price',

@@ -134,6 +134,9 @@ class CartController extends Controller
                             'label' => trim((string) $option->label) !== ''
                                 ? (string) $option->label
                                 : (string) optional($option->linkedBookingService)->name,
+                            'cn_label' => trim((string) ($option->cn_label ?? '')) !== ''
+                                ? (string) $option->cn_label
+                                : $option->linkedBookingService?->cn_name,
                             'extra_duration_min' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->duration_min
                                 : (int) $option->extra_duration_min,

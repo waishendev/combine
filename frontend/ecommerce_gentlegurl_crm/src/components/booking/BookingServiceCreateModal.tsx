@@ -314,13 +314,16 @@ export default function BookingServiceCreateModal({
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
+        fd.append(`questions[${questionIndex}][cn_title]`, question.cn_title.trim())
         fd.append(`questions[${questionIndex}][description]`, question.description.trim())
+        fd.append(`questions[${questionIndex}][cn_description]`, question.cn_description.trim())
         fd.append(`questions[${questionIndex}][question_type]`, question.question_type)
         fd.append(`questions[${questionIndex}][sort_order]`, String(questionIndex))
         fd.append(`questions[${questionIndex}][is_required]`, question.is_required ? '1' : '0')
         fd.append(`questions[${questionIndex}][is_active]`, question.is_active ? '1' : '0')
         question.options.forEach((option, optionIndex) => {
           fd.append(`questions[${questionIndex}][options][${optionIndex}][label]`, option.label.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][cn_label]`, option.cn_label.trim())
           fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
           fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(optionIndex))
           fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')

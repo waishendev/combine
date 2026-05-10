@@ -33,7 +33,9 @@ export type Service = {
 export type BookingServiceQuestion = {
   id: number;
   title: string;
+  cn_title?: string | null;
   description?: string | null;
+  cn_description?: string | null;
   question_type: "single_choice" | "multi_choice";
   is_required: boolean;
   sort_order: number;
@@ -43,6 +45,7 @@ export type BookingServiceQuestion = {
 export type BookingServiceQuestionOption = {
   id: number;
   label: string;
+  cn_label?: string | null;
   linked_booking_service_id?: number | null;
   linked_cn_name?: string | null;
   extra_duration_min: number;
@@ -169,6 +172,7 @@ export type BookingRecord = {
   add_ons?: Array<{
     id?: number | null;
     name: string;
+    cn_name?: string | null;
     extra_duration_min: number;
     extra_price: number;
   }>;

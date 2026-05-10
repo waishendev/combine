@@ -199,7 +199,7 @@ class OrderItem extends Model
                 continue;
             }
 
-            $cnName = trim((string) ($addon['cn_name'] ?? $addon['linked_cn_name'] ?? ''));
+            $cnName = trim((string) ($addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? ''));
 
             return $cnName !== '' ? $cnName : null;
         }

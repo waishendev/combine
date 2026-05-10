@@ -161,7 +161,9 @@ export default function BookingServiceEditModal({
                 questions?: Array<{
                   id?: number
                   title?: string
+                  cn_title?: string | null
                   description?: string | null
+                  cn_description?: string | null
                   question_type?: 'single_choice' | 'multi_choice'
                   sort_order?: number
                   is_required?: boolean
@@ -169,6 +171,7 @@ export default function BookingServiceEditModal({
                   options?: Array<{
                     id?: number
                     label?: string
+                    cn_label?: string | null
                     linked_booking_service_id?: number | null
                     extra_duration_min?: number
                     extra_price?: number
@@ -179,7 +182,9 @@ export default function BookingServiceEditModal({
               }).questions ?? []).map((question, questionIndex) => ({
                 id: question?.id,
                 title: question?.title ?? '',
+                cn_title: question?.cn_title ?? '',
                 description: question?.description ?? '',
+                cn_description: question?.cn_description ?? '',
                 question_type: question?.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
                 sort_order: String(question?.sort_order ?? questionIndex),
                 is_required: Boolean(question?.is_required),
@@ -188,6 +193,7 @@ export default function BookingServiceEditModal({
                   ? question.options.map((option, optionIndex) => ({
                     id: option?.id,
                     label: option?.label ?? '',
+                    cn_label: option?.cn_label ?? '',
                     linked_booking_service_id: option?.linked_booking_service_id ? String(option?.linked_booking_service_id) : '',
                     sort_order: String(option?.sort_order ?? optionIndex),
                     is_active: option?.is_active !== false,
@@ -448,13 +454,16 @@ export default function BookingServiceEditModal({
       form.primary_slots.split(',').map((time) => time.trim()).filter(Boolean).forEach((time) => fd.append('primary_slots[]', time))
       form.questions.forEach((question, questionIndex) => {
         fd.append(`questions[${questionIndex}][title]`, question.title.trim())
+        fd.append(`questions[${questionIndex}][cn_title]`, question.cn_title.trim())
         fd.append(`questions[${questionIndex}][description]`, question.description.trim())
+        fd.append(`questions[${questionIndex}][cn_description]`, question.cn_description.trim())
         fd.append(`questions[${questionIndex}][question_type]`, question.question_type)
         fd.append(`questions[${questionIndex}][sort_order]`, String(questionIndex))
         fd.append(`questions[${questionIndex}][is_required]`, question.is_required ? '1' : '0')
         fd.append(`questions[${questionIndex}][is_active]`, question.is_active ? '1' : '0')
         question.options.forEach((option, optionIndex) => {
           fd.append(`questions[${questionIndex}][options][${optionIndex}][label]`, option.label.trim())
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][cn_label]`, option.cn_label.trim())
           fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
           fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(optionIndex))
           fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')

@@ -11,7 +11,9 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('booking_service_id')->constrained('booking_services')->cascadeOnDelete();
             $table->string('title');
+            $table->string('cn_title')->nullable();
             $table->text('description')->nullable();
+            $table->text('cn_description')->nullable();
             $table->enum('question_type', ['single_choice', 'multi_choice'])->default('single_choice');
             $table->unsignedInteger('sort_order')->default(0);
             $table->boolean('is_required')->default(false);
@@ -25,6 +27,7 @@ return new class extends Migration {
             $table->id();
             $table->foreignId('booking_service_question_id')->constrained('booking_service_questions')->cascadeOnDelete();
             $table->string('label');
+            $table->string('cn_label')->nullable();
             $table->foreignId('linked_booking_service_id')->nullable()->constrained('booking_services')->nullOnDelete();
             $table->unsignedInteger('extra_duration_min')->default(0);
             $table->decimal('extra_price', 12, 2)->default(0);

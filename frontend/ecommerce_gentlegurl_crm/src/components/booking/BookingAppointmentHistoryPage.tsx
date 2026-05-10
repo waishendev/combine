@@ -18,7 +18,7 @@ type AppointmentHistoryRow = {
   guest_phone?: string | null
   guest_email?: string | null
   service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null } | null
-  add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number }>
   staff: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -158,10 +158,10 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Services + Add-ons</h4>
                 <dl className="mt-4 grid gap-4 md:grid-cols-2">
-                  <DetailField label="Service" value={row.service?.name ?? '—'} />
+                  <DetailField label="Service" value={<><span>{row.service?.name ?? '—'}</span>{row.service?.cn_name ? <span className="mt-0.5 block text-xs text-slate-500">{row.service.cn_name}</span> : null}</>} />
                   <DetailField label="Staff" value={row.staff?.name ?? '—'} />
                   <DetailField label="Schedule" value={`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`} />
-                  <DetailField label="Add-ons" value={(row.add_ons ?? []).length > 0 ? row.add_ons?.map((item) => `${item.name} (${formatMoney(item.extra_price)})`).join(', ') : '—'} />
+                  <DetailField label="Add-ons" value={(row.add_ons ?? []).length > 0 ? <div className="space-y-1">{row.add_ons?.map((item, index) => <div key={`${item.id ?? item.name}-${index}`}><p>{item.name} ({formatMoney(item.extra_price)})</p>{item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}</div>)}</div> : '—'} />
                 </dl>
               </section>
 

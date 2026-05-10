@@ -77,13 +77,16 @@ class ServiceController extends Controller
             'primary_slots.*' => ['date_format:H:i'],
             'questions' => ['nullable', 'array'],
             'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+            'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
             'questions.*.description' => ['nullable', 'string'],
+            'questions.*.cn_description' => ['nullable', 'string'],
             'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options' => ['nullable', 'array'],
             'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+            'questions.*.options.*.cn_label' => ['nullable', 'string', 'max:255'],
             'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
             'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
@@ -159,13 +162,16 @@ class ServiceController extends Controller
             'primary_slots.*' => ['date_format:H:i'],
             'questions' => ['nullable', 'array'],
             'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+            'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
             'questions.*.description' => ['nullable', 'string'],
+            'questions.*.cn_description' => ['nullable', 'string'],
             'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options' => ['nullable', 'array'],
             'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+            'questions.*.options.*.cn_label' => ['nullable', 'string', 'max:255'],
             'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
             'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
@@ -250,13 +256,16 @@ class ServiceController extends Controller
 
             'questions' => ['nullable', 'array'],
             'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+            'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
             'questions.*.description' => ['nullable', 'string'],
+            'questions.*.cn_description' => ['nullable', 'string'],
             'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
             'questions.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.is_required' => ['nullable', 'boolean'],
             'questions.*.is_active' => ['nullable', 'boolean'],
             'questions.*.options' => ['nullable', 'array'],
             'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+            'questions.*.options.*.cn_label' => ['nullable', 'string', 'max:255'],
             'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
             'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
@@ -380,7 +389,9 @@ class ServiceController extends Controller
                         ->values()
                         ->map(fn (BookingServiceQuestion $question) => [
                             'title' => (string) $question->title,
+                            'cn_title' => $question->cn_title,
                             'description' => $question->description,
+                            'cn_description' => $question->cn_description,
                             'question_type' => (string) $question->question_type,
                             'is_required' => (bool) $question->is_required,
                             'is_active' => (bool) $question->is_active,
@@ -389,6 +400,7 @@ class ServiceController extends Controller
                                 ->values()
                                 ->map(fn (BookingServiceQuestionOption $option) => [
                                     'label' => (string) ($option->label ?? ''),
+                                    'cn_label' => $option->cn_label,
                                     'linked_booking_service_id' => (int) ($option->linked_booking_service_id ?? 0),
                                     'extra_duration_min' => (int) ($option->extra_duration_min ?? 0),
                                     'extra_price' => (float) ($option->extra_price ?? 0),
@@ -532,12 +544,15 @@ class ServiceController extends Controller
                 'primary_slots.*' => ['date_format:H:i'],
                 'questions' => ['nullable', 'array'],
                 'questions.*.title' => ['required_with:questions', 'string', 'max:255'],
+                'questions.*.cn_title' => ['nullable', 'string', 'max:255'],
                 'questions.*.description' => ['nullable', 'string'],
+                'questions.*.cn_description' => ['nullable', 'string'],
                 'questions.*.question_type' => ['required_with:questions', 'in:single_choice,multi_choice'],
                 'questions.*.is_required' => ['nullable', 'boolean'],
                 'questions.*.is_active' => ['nullable', 'boolean'],
                 'questions.*.options' => ['nullable', 'array'],
                 'questions.*.options.*.label' => ['nullable', 'string', 'max:255'],
+                'questions.*.options.*.cn_label' => ['nullable', 'string', 'max:255'],
                 'questions.*.options.*.linked_booking_service_id' => ['required_with:questions.*.options', 'integer', 'exists:booking_services,id'],
                 'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
                 'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
@@ -585,6 +600,7 @@ class ServiceController extends Controller
                                 $options = collect($question['options'] ?? [])
                                     ->map(fn ($option) => [
                                         'label' => trim((string) ($option['label'] ?? '')),
+                                        'cn_label' => trim((string) ($option['cn_label'] ?? '')),
                                         'linked_booking_service_id' => (int) ($option['linked_booking_service_id'] ?? 0),
                                         'extra_duration_min' => max(0, (int) ($option['extra_duration_min'] ?? 0)),
                                         'extra_price' => max(0, (float) ($option['extra_price'] ?? 0)),
@@ -595,7 +611,9 @@ class ServiceController extends Controller
 
                                 return [
                                     'title' => trim((string) ($question['title'] ?? '')),
+                                    'cn_title' => trim((string) ($question['cn_title'] ?? '')),
                                     'description' => $question['description'] ?? null,
+                                    'cn_description' => $question['cn_description'] ?? null,
                                     'question_type' => (string) ($question['question_type'] ?? 'single_choice'),
                                     'is_required' => (bool) ($question['is_required'] ?? false),
                                     'is_active' => (bool) ($question['is_active'] ?? true),
@@ -611,7 +629,9 @@ class ServiceController extends Controller
                             ->map(function (BookingServiceQuestion $question) {
                                 return [
                                     'title' => trim((string) $question->title),
+                                    'cn_title' => trim((string) ($question->cn_title ?? '')),
                                     'description' => $question->description,
+                                    'cn_description' => $question->cn_description,
                                     'question_type' => (string) $question->question_type,
                                     'is_required' => (bool) $question->is_required,
                                     'is_active' => (bool) $question->is_active,
@@ -620,6 +640,7 @@ class ServiceController extends Controller
                                         ->values()
                                         ->map(fn (BookingServiceQuestionOption $option) => [
                                             'label' => trim((string) ($option->label ?? '')),
+                                            'cn_label' => trim((string) ($option->cn_label ?? '')),
                                             'linked_booking_service_id' => (int) ($option->linked_booking_service_id ?? 0),
                                             'extra_duration_min' => max(0, (int) ($option->extra_duration_min ?? 0)),
                                             'extra_price' => max(0, (float) ($option->extra_price ?? 0)),
@@ -780,7 +801,9 @@ class ServiceController extends Controller
             $question = BookingServiceQuestion::query()->create([
                 'booking_service_id' => $service->id,
                 'title' => (string) ($questionPayload['title'] ?? ''),
+                'cn_title' => trim((string) ($questionPayload['cn_title'] ?? '')) ?: null,
                 'description' => $questionPayload['description'] ?? null,
+                'cn_description' => trim((string) ($questionPayload['cn_description'] ?? '')) ?: null,
                 'question_type' => (string) ($questionPayload['question_type'] ?? 'single_choice'),
                 // Order is defined by the request array; ignore client-provided sort_order values.
                 'sort_order' => $index,
@@ -793,6 +816,7 @@ class ServiceController extends Controller
                 $linkedService = $linkedServiceId > 0 ? $linkedServices->get($linkedServiceId) : null;
                 $question->options()->create([
                     'label' => trim((string) ($optionPayload['label'] ?? '')) ?: (string) optional($linkedService)->name,
+                    'cn_label' => trim((string) ($optionPayload['cn_label'] ?? '')) ?: null,
                     'linked_booking_service_id' => $linkedServiceId ?: null,
                     'extra_duration_min' => $linkedService ? (int) $linkedService->duration_min : max(0, (int) ($optionPayload['extra_duration_min'] ?? 0)),
                     'extra_price' => $linkedService ? max(0, (float) $linkedService->service_price) : max(0, (float) ($optionPayload['extra_price'] ?? 0)),
@@ -840,7 +864,9 @@ class ServiceController extends Controller
                 ->map(fn (BookingServiceQuestion $question) => [
                     'id' => (int) $question->id,
                     'title' => (string) $question->title,
+                    'cn_title' => $question->cn_title,
                     'description' => $question->description,
+                    'cn_description' => $question->cn_description,
                     'question_type' => (string) $question->question_type,
                     'sort_order' => (int) $question->sort_order,
                     'is_required' => (bool) $question->is_required,
@@ -860,6 +886,7 @@ class ServiceController extends Controller
         return [
             'id' => (int) $option->id,
             'label' => trim((string) $option->label) !== '' ? (string) $option->label : (string) optional($linkedService)->name,
+            'cn_label' => trim((string) ($option->cn_label ?? '')) !== '' ? (string) $option->cn_label : $linkedService?->cn_name,
             'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
             'extra_duration_min' => $extraDuration,
             'extra_price' => $extraPrice,

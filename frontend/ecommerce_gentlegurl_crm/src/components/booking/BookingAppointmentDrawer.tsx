@@ -10,8 +10,8 @@ type BookingDetail = {
   guest_name: string | null
   guest_phone: string | null
   guest_email: string | null
-  service: { id: number; name: string; duration_min: number } | null
-  add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  service: { id: number; name: string; cn_name?: string | null; duration_min: number } | null
+  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number }>
   uploaded_item_photos?: Array<{ id: number; file_url: string; original_name?: string }>
   addon_total_duration_min?: number
   addon_total_price?: number
@@ -417,7 +417,7 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
 
                 <Section title="Appointment" description="Service, staff, and scheduled timing.">
                   <InfoGrid>
-                    <InfoField label="Service" value={data.service?.name || '-'} />
+                    <InfoField label="Service" value={<><span>{data.service?.name || '-'}</span>{data.service?.cn_name ? <span className="mt-0.5 block text-xs text-slate-500">{data.service.cn_name}</span> : null}</>} />
                     <InfoField label="Duration" value={data.service ? `${Number(data.service.duration_min ?? 0)} mins` : '-'} />
                     <InfoField label="Staff" value={data.staff?.name || '-'} />
                     <InfoField label="Start Time" value={formatDateTime(data.start_at)} />
@@ -440,7 +440,7 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
                           <tbody>
                             {data.add_ons?.map((addon, index) => (
                               <tr key={`${addon.id ?? addon.name}-${index}`} className="border-t border-slate-100">
-                                <td className="px-3 py-2 text-slate-900">{addon.name}</td>
+                                <td className="px-3 py-2 text-slate-900"><div>{addon.name}</div>{addon.cn_name ? <div className="mt-0.5 text-xs text-slate-500">{addon.cn_name}</div> : null}</td>
                                 <td className="px-3 py-2 text-right text-slate-700">
                                   +{Number(addon.extra_duration_min ?? 0)} mins
                                 </td>

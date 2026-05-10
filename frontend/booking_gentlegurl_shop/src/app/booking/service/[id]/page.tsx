@@ -128,12 +128,13 @@ export default function ServiceAddonsPage() {
     const rows: Array<{
       questionId: number;
       questionTitle: string;
+      questionCnTitle?: string | null;
       option: BookingServiceQuestionOption;
     }> = [];
     for (const q of service?.questions ?? []) {
       for (const opt of q.options) {
         if (selectedOptionIds.includes(opt.id)) {
-          rows.push({ questionId: q.id, questionTitle: q.title, option: opt });
+          rows.push({ questionId: q.id, questionTitle: q.title, questionCnTitle: q.cn_title, option: opt });
         }
       }
     }
@@ -353,15 +354,19 @@ export default function ServiceAddonsPage() {
                         : "border-[var(--card-border)]",
                     ].join(" ")}
                   >
-                    <p className="font-[var(--font-heading)] font-semibold">
-                      {q.title} {q.is_required ? "*" : ""}
-                    </p>
+                    <div>
+                      <p className="font-[var(--font-heading)] font-semibold">
+                        {q.title} {q.is_required ? "*" : ""}
+                      </p>
+                      {q.cn_title ? <p className="mt-0.5 text-sm text-[var(--text-muted)]">{q.cn_title}</p> : null}
+                    </div>
                     {q.is_required ? (
                       <p className="mt-1 text-sm font-medium text-[var(--status-error)]">
                         Required add-ons — please select {q.question_type === "single_choice" ? "1 option" : "at least 1 option"} to proceed.
                       </p>
                     ) : null}
                     {q.description ? <p className="mt-1 text-sm text-[var(--text-muted)]">{q.description}</p> : null}
+                    {q.cn_description ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{q.cn_description}</p> : null}
                     <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 md:grid-cols-3">
                       {q.options.map((opt) => {
                         const checked = selectedOptionIds.includes(opt.id);
@@ -402,9 +407,9 @@ export default function ServiceAddonsPage() {
                                   <h3 className="break-words font-[var(--font-heading)] font-semibold leading-snug">
                                     {opt.label}
                                   </h3>
-                                  {opt.linked_cn_name ? (
+                                  {(opt.cn_label || opt.linked_cn_name) ? (
                                     <p className="mt-0.5 break-words text-xs text-[var(--text-muted)]">
-                                      {opt.linked_cn_name}
+                                      {opt.cn_label || opt.linked_cn_name}
                                     </p>
                                   ) : null}
                                 </div>
@@ -700,14 +705,14 @@ export default function ServiceAddonsPage() {
                     </p>
                   ) : (
                     <ul className="mt-3 space-y-3">
-                      {selectedAddonLines.map(({ questionId, questionTitle, option: opt }) => (
+                      {selectedAddonLines.map(({ questionId, questionTitle, questionCnTitle, option: opt }) => (
                         <li
                           key={`${questionId}-${opt.id}`}
                           className="rounded-xl border border-[var(--card-border)] bg-[var(--muted)]/30 px-4 py-3 text-sm"
                         >
-                          <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]">{questionTitle}</p>
+                          <div className="text-xs font-medium uppercase tracking-wide text-[var(--text-muted)]"><p>{questionTitle}</p>{questionCnTitle ? <p className="mt-0.5 normal-case tracking-normal">{questionCnTitle}</p> : null}</div>
                           <div className="mt-1 flex flex-wrap items-center gap-2">
-                            <div><p className="font-[var(--font-heading)] font-semibold">{opt.label}</p>{opt.linked_cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{opt.linked_cn_name}</p> : null}</div>
+                            <div><p className="font-[var(--font-heading)] font-semibold">{opt.label}</p>{(opt.cn_label || opt.linked_cn_name) ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{opt.cn_label || opt.linked_cn_name}</p> : null}</div>
                             {opt.linked_service_type ? <ServiceTierBadge serviceType={opt.linked_service_type} /> : null}
                           </div>
                           <div className="mt-3 space-y-0 text-sm">
