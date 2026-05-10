@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
+import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
@@ -190,6 +191,9 @@ export default function PosAppointmentsWorkspace({
     [dismissToast],
   )
   const showMsg = useCallback((text: string, kind: ToastKind = 'info') => pushToast(kind, text), [pushToast])
+  const { hasOpenShift, cashShiftLoading, requireOpenShiftMessage } = usePosCashShift()
+  const cashShiftActionDisabled = cashShiftLoading || !hasOpenShift
+  const cashShiftActionTitle = cashShiftActionDisabled ? requireOpenShiftMessage : undefined
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [posApptViewMode, setPosApptViewMode] = useState<'month' | 'day'>('month')
@@ -632,6 +636,10 @@ export default function PosAppointmentsWorkspace({
   }, [])
 
   const openCreateAppointmentModal = useCallback(() => {
+    if (cashShiftActionDisabled) {
+      showMsg(requireOpenShiftMessage, 'warning')
+      return
+    }
     setCreateAppointmentError(null)
     setCreateAppointmentSubmitting(false)
     setCreateAppointmentServiceDraft(null)
@@ -663,7 +671,7 @@ export default function PosAppointmentsWorkspace({
     if (!createAppointmentServices.length) {
       void fetchCreateAppointmentServices()
     }
-  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, createAppointmentServices.length, currentUser.staff_id, fetchCreateAppointmentServices])
+  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, currentUser.staff_id, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg])
 
   const closeCreateAppointmentMemberPicker = useCallback(() => {
     setCreateAppointmentMemberPickerOpen(false)
@@ -2006,6 +2014,7 @@ export default function PosAppointmentsWorkspace({
   const appointmentShowPaymentBadge =
     !appointmentIsTerminalCancelled && ['CONFIRMED', 'COMPLETED'].includes(appointmentStatusUpper)
   const canMarkAppointmentCompleted =
+    !cashShiftActionDisabled &&
     !appointmentActionLoading &&
     !appointmentIsTerminalCancelled &&
     appointmentStatusUpper !== 'COMPLETED'
@@ -2140,14 +2149,18 @@ export default function PosAppointmentsWorkspace({
                 <button
                   type="button"
                   onClick={openCreateAppointmentModal}
-                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-blue-600 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700"
+                  disabled={cashShiftActionDisabled}
+                  title={cashShiftActionTitle}
+                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-blue-600 bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Create Appointment
                 </button>
                 <button
                   type="button"
                   onClick={() => setCancellationRequestsModalOpen(true)}
-                  className="relative inline-flex items-center gap-1.5 rounded-lg border-2 border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-amber-500 hover:bg-amber-50 hover:text-amber-950"
+                  disabled={cashShiftActionDisabled}
+                  title={cashShiftActionTitle}
+                  className="relative inline-flex items-center gap-1.5 rounded-lg border-2 border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-amber-500 hover:bg-amber-50 hover:text-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
                   aria-label={
                     pendingCancellationRequestsCount > 0
                       ? `Cancellation requests, ${pendingCancellationRequestsCount} pending`
@@ -2164,6 +2177,9 @@ export default function PosAppointmentsWorkspace({
                     </span>
                   ) : null}
                 </button>
+                {cashShiftActionDisabled ? (
+                  <p className="basis-full text-right text-xs font-semibold text-amber-700">{requireOpenShiftMessage}</p>
+                ) : null}
               </div>
             </h3>
             <PosAppointmentsSchedule
@@ -2520,6 +2536,7 @@ export default function PosAppointmentsWorkspace({
                           <button
                             type="button"
                             disabled={
+                              cashShiftActionDisabled ||
                               appointmentActionLoading ||
                               !!appointmentDetail?.requires_settled_amount ||
                               (appointmentDueAmountNow <= 0.0001 && !checkoutZeroPackageSettlement)
@@ -2536,7 +2553,9 @@ export default function PosAppointmentsWorkspace({
                             }}
                             className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
                             title={
-                              appointmentDetail?.requires_settled_amount
+                              cashShiftActionDisabled
+                                ? requireOpenShiftMessage
+                                : appointmentDetail?.requires_settled_amount
                                 ? 'Set the service amount via Edit Settlement first'
                                 : checkoutZeroPackageSettlement
                                   ? 'Confirm checkout and receipt'
@@ -2548,7 +2567,8 @@ export default function PosAppointmentsWorkspace({
                           {appointmentShowApplyPackageButton ? (
                             <button
                               type="button"
-                              disabled={appointmentActionLoading}
+                              disabled={cashShiftActionDisabled || appointmentActionLoading}
+                              title={cashShiftActionTitle}
                               onClick={() => void applyAppointmentPackage()}
                               className="min-h-[44px] rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:pointer-events-none disabled:opacity-50"
                             >
@@ -2557,7 +2577,8 @@ export default function PosAppointmentsWorkspace({
                           ) : packageReservedPendingRegister ? (
                             <button
                               type="button"
-                              disabled={appointmentActionLoading}
+                              disabled={cashShiftActionDisabled || appointmentActionLoading}
+                              title={cashShiftActionTitle}
                               onClick={() => void releaseAppointmentPackage()}
                               className="min-h-[44px] rounded-lg border-2 border-amber-600 bg-white py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:bg-amber-50 disabled:pointer-events-none disabled:opacity-50"
                             >
@@ -2575,9 +2596,7 @@ export default function PosAppointmentsWorkspace({
                         <button
                           type="button"
                           disabled={!canMarkAppointmentCompleted || appointmentActionLoading}
-                          title={
-                            canMarkAppointmentCompleted ? 'Mark appointment as completed' : 'Mark appointment as completed'
-                          }
+                          title={cashShiftActionDisabled ? requireOpenShiftMessage : 'Mark appointment as completed'}
                           onClick={() => void markAppointmentCompleted()}
                           className="flex min-h-[48px] w-full items-center justify-center rounded-lg bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:pointer-events-none disabled:opacity-50"
                         >
@@ -2603,7 +2622,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={appointmentActionLoading}
+                          disabled={cashShiftActionDisabled || appointmentActionLoading}
+                          title={cashShiftActionTitle}
                           onClick={() => void updateAppointmentStatus('CANCELLED')}
                           className="min-h-[48px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-white disabled:opacity-50"
                         >
@@ -2611,8 +2631,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={appointmentActionLoading}
-                          title="Customer did not attend the scheduled appointment (DNA / no-show)."
+                          disabled={cashShiftActionDisabled || appointmentActionLoading}
+                          title={cashShiftActionDisabled ? requireOpenShiftMessage : 'Customer did not attend the scheduled appointment (DNA / no-show).'}
                           onClick={() => void updateAppointmentStatus('NO_SHOW')}
                           className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
                         >
@@ -2620,7 +2640,8 @@ export default function PosAppointmentsWorkspace({
                         </button>
                         <button
                           type="button"
-                          disabled={appointmentActionLoading}
+                          disabled={cashShiftActionDisabled || appointmentActionLoading}
+                          title={cashShiftActionTitle}
                           onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')}
                           className="min-h-[48px] rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-semibold text-orange-900 shadow-sm transition hover:bg-orange-50 disabled:opacity-50"
                         >
@@ -3230,7 +3251,8 @@ export default function PosAppointmentsWorkspace({
               <button
                 type="button"
                 onClick={() => void submitCreateAppointment()}
-                disabled={createAppointmentSubmitting}
+                disabled={cashShiftActionDisabled || createAppointmentSubmitting}
+                title={cashShiftActionTitle}
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {createAppointmentSubmitting ? 'Creating...' : 'Confirm'}
@@ -3403,7 +3425,8 @@ export default function PosAppointmentsWorkspace({
                           <div className="flex shrink-0 flex-wrap gap-2 self-start">
                             <button
                               type="button"
-                              disabled={cancellationReviewSubmitting}
+                              disabled={cashShiftActionDisabled || cancellationReviewSubmitting}
+                              title={cashShiftActionTitle}
                               onClick={() => {
                                 setCancellationConfirmRow(row)
                                 setCancellationConfirmAction('approve')
@@ -3416,7 +3439,8 @@ export default function PosAppointmentsWorkspace({
                             </button>
                             <button
                               type="button"
-                              disabled={cancellationReviewSubmitting}
+                              disabled={cashShiftActionDisabled || cancellationReviewSubmitting}
+                              title={cashShiftActionTitle}
                               onClick={() => {
                                 setCancellationConfirmRow(row)
                                 setCancellationConfirmAction('reject')
@@ -4368,10 +4392,12 @@ export default function PosAppointmentsWorkspace({
                 <button
                   type="button"
                   disabled={
+                    cashShiftActionDisabled ||
                     appointmentActionLoading ||
                     (!checkoutZeroPackageSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}
+                  title={cashShiftActionTitle}
                   className="rounded-md bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                 >
                   Confirm Checkout

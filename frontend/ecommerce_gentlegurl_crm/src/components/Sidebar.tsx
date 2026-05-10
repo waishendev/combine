@@ -379,6 +379,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             requiredPermission: 'reports.pos-summary.view',
           },
           {
+            key: 'cash-shifts',
+            label: 'Cash Shift Report',
+            href: '/reports/cash-shifts',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
             key: 'wishlist-report',
             label: 'Wishlist Report',
             href: '/reports/wishlist',

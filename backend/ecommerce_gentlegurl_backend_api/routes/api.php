@@ -38,6 +38,7 @@ use App\Http\Controllers\Ecommerce\PublicWishlistController;
 use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
 use App\Http\Controllers\Ecommerce\PromotionController;
 use App\Http\Controllers\Ecommerce\PosController;
+use App\Http\Controllers\Ecommerce\PosCashShiftController;
 use App\Http\Controllers\Ecommerce\PublicReceiptController;
 use App\Http\Controllers\Ecommerce\PublicVoucherController;
 use App\Http\Controllers\Ecommerce\ProductStockMovementController;
@@ -420,6 +421,9 @@ $protectedRoutes = function () {
         ->middleware('permission:staff.delete');
 
     Route::prefix('pos')->middleware('permission:pos.checkout')->group(function () {
+        Route::get('/cash-shifts/current', [PosCashShiftController::class, 'current']);
+        Route::post('/cash-shifts/open', [PosCashShiftController::class, 'open']);
+        Route::post('/cash-shifts/close', [PosCashShiftController::class, 'close']);
         Route::get('/members/search', [PosController::class, 'memberSearch']);
         Route::get('/members/{memberId}', [PosController::class, 'memberDetail']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
@@ -1059,6 +1063,9 @@ $protectedRoutes = function () {
 
             Route::get('/pos-summary', [PosSummaryReportController::class, 'index'])
                 ->middleware('permission:reports.pos-summary.view');
+
+            Route::get('/cash-shifts', [PosCashShiftController::class, 'report'])
+                ->middleware('permission:ecommerce.reports.sales.view|reports.pos-summary.view|reports.my-pos-summary.view');
 
             Route::get('/wishlist', [WishlistReportController::class, 'index'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
