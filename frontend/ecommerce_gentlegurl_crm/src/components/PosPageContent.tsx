@@ -261,15 +261,84 @@ function getPosServiceAddonDeposit(item: ServiceCartItem, addonId?: number | nul
   return Number(addonSnapshot?.linked_deposit_amount ?? 0)
 }
 
+function getPosServiceAddonDepositReference(
+  item: ServiceCartItem,
+  addon: NonNullable<NonNullable<ServiceCartItem['main_services']>[number]['add_ons']>[number],
+): number {
+  const id = Number(addon.id ?? 0)
+  const addonSnapshot = id > 0
+    ? (item.addon_items ?? []).find((row) => Number(row.id ?? 0) === id)
+    : null
+  const linkedDeposit = Number(addonSnapshot?.linked_deposit_amount ?? addon.linked_deposit_amount ?? 0)
+  if (linkedDeposit > 0.0001) return linkedDeposit
+
+  const depositLine = id > 0
+    ? (item.deposit_addon_lines ?? []).find((line) => Number(line.id ?? 0) === id)
+    : null
+  return Number(depositLine?.deposit ?? 0)
+}
+
 function getPosServiceDepositBlocks(item: ServiceCartItem) {
-  return getPosServiceMainBlocks(item).map((service, idx) => ({
-    ...service,
-    deposit: (service.is_original ?? idx === 0) ? Number(item.deposit_contribution ?? 0) : 0,
-    add_ons: (service.add_ons ?? []).map((addon) => ({
-      ...addon,
-      deposit: getPosServiceAddonDeposit(item, addon.id),
-    })),
-  }))
+  const isMainPackageClaimed = Boolean(
+    item.claimed_by_package ||
+    item.package_claim_status === 'reserved' ||
+    item.package_claim_status === 'consumed',
+  )
+  const mainDepositReference = Number(item.deposit_main_reference ?? item.deposit_contribution ?? 0)
+
+  return getPosServiceMainBlocks(item).map((service, idx) => {
+    const isOriginal = service.is_original ?? idx === 0
+    const deposit = isOriginal ? Number(item.deposit_contribution ?? 0) : 0
+    const referenceDeposit = isOriginal && isMainPackageClaimed
+      ? Math.max(mainDepositReference, deposit)
+      : deposit
+    const coveredByPackage = isOriginal && isMainPackageClaimed && deposit < 0.0001
+
+    return {
+      ...service,
+      deposit,
+      reference_deposit: referenceDeposit,
+      covered_by_package: coveredByPackage,
+      package_note: coveredByPackage ? 'Included in your package (main service)' : null,
+      add_ons: (service.add_ons ?? []).map((addon) => {
+        const addonDeposit = getPosServiceAddonDeposit(item, addon.id)
+        const addonReferenceDeposit = getPosServiceAddonDepositReference(item, addon)
+        const addonCoveredByPackage = addonReferenceDeposit > addonDeposit + 0.0001 && addonDeposit < 0.0001
+
+        return {
+          ...addon,
+          deposit: addonDeposit,
+          reference_deposit: Math.max(addonReferenceDeposit, addonDeposit),
+          covered_by_package: addonCoveredByPackage,
+          package_note: addonCoveredByPackage ? 'Included in your package (add-on)' : null,
+        }
+      }),
+    }
+  })
+}
+
+function PosDepositAmount({
+  amount,
+  referenceAmount,
+  className = 'font-semibold text-gray-900',
+}: {
+  amount: number
+  referenceAmount?: number | null
+  className?: string
+}) {
+  const payable = Number(amount ?? 0)
+  const reference = Number(referenceAmount ?? payable)
+
+  if (reference > payable + 0.0001) {
+    return (
+      <span className={`inline-flex flex-wrap items-baseline justify-end gap-x-1.5 ${className}`}>
+        <span className="text-gray-400 line-through">RM {reference.toFixed(2)}</span>
+        <span>RM {payable.toFixed(2)}</span>
+      </span>
+    )
+  }
+
+  return <span className={className}>RM {payable.toFixed(2)}</span>
 }
 
 function formatPosServiceStaffSplitSummary(item: ServiceCartItem): string {
@@ -5532,9 +5601,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                          {serviceItem.package_claim_status === 'reserved' || (serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? (
-                            <span className="text-[10px] text-gray-500 tabular-nums">
-                              Pkg bal. {serviceAvailabilityMap[serviceItem.id] ?? 0}
+                          {isPkgClaimed || (serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${isPkgClaimed ? 'bg-emerald-100 text-emerald-800' : 'text-gray-500'}`}>
+                              {(serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? `Pkg bal. ${serviceAvailabilityMap[serviceItem.id] ?? 0}` : 'Package claimed'}
                             </span>
                           ) : null}
                           {serviceItem.package_claim_status === 'reserved' ? (
@@ -5597,17 +5666,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposit Service</p>
                       <div className="mt-2 space-y-2 text-[11px]">
                         {depositBlocks.map((service, idx) => (
-                          <div key={`dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="space-y-1 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+                          <div key={`dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                             <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                               <span className="text-gray-500">{idx + 1}.</span>
                               <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                              <span className="font-semibold text-gray-900">RM {Number(service.deposit ?? 0).toFixed(2)}</span>
+                              <PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />
                             </div>
+                            {service.package_note ? (
+                              <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
+                            ) : null}
                             {(service.add_ons ?? []).map((addon, addonIdx) => (
-                              <div key={`dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 pl-5 tabular-nums text-gray-700">
-                                <span className="text-gray-500">+</span>
-                                <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                <span className="font-semibold text-gray-900">RM {Number(addon.deposit ?? 0).toFixed(2)}</span>
+                              <div key={`dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
+                                <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
+                                  <span className="text-gray-500">+</span>
+                                  <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                  <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
+                                </div>
+                                {addon.package_note ? (
+                                  <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
+                                ) : null}
                               </div>
                             ))}
                           </div>
@@ -6960,17 +7037,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposit Service</p>
                                 <div className="mt-2 space-y-2 text-[11px]">
                                   {checkoutDepositBlocks.map((service, idx) => (
-                                    <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className="space-y-1 border-b border-gray-100 pb-2 last:border-b-0 last:pb-0">
+                                    <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                                       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                                         <span className="text-gray-500">{idx + 1}.</span>
                                         <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                        <span className="font-semibold text-gray-900">RM {Number(service.deposit ?? 0).toFixed(2)}</span>
+                                        <PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />
                                       </div>
+                                      {service.package_note ? (
+                                        <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
+                                      ) : null}
                                       {(service.add_ons ?? []).map((addon, addonIdx) => (
-                                        <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 pl-5 tabular-nums text-gray-700">
-                                          <span className="text-gray-500">+</span>
-                                          <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                          <span className="font-semibold text-gray-900">RM {Number(addon.deposit ?? 0).toFixed(2)}</span>
+                                        <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
+                                          <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
+                                            <span className="text-gray-500">+</span>
+                                            <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                            <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
+                                          </div>
+                                          {addon.package_note ? (
+                                            <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
+                                          ) : null}
                                         </div>
                                       ))}
                                     </div>
