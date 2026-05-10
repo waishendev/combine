@@ -122,7 +122,7 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   main_service_settlement_items?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   addon_total_price?: number
   deposit_contribution?: number
@@ -138,6 +138,7 @@ type AppointmentSettlementCartItem = {
   addon_settlement_items?: Array<{
     id?: number | null
     name: string
+    cn_name?: string | null
     extra_duration_min?: number
     extra_price: number
     paid_amount?: number
@@ -161,6 +162,7 @@ type ServiceCartItem = {
   addon_items?: Array<{
     id?: number | null
     name: string
+    cn_name?: string | null
     extra_duration_min: number
     extra_price: number
     linked_deposit_amount?: number
@@ -170,7 +172,7 @@ type ServiceCartItem = {
   deposit_contribution?: number
   /** When package covers main service: booking service deposit_amount for strikethrough UI */
   deposit_main_reference?: number | null
-  deposit_addon_lines?: Array<{ id?: number | null; name: string; deposit: number }>
+  deposit_addon_lines?: Array<{ id?: number | null; name: string; cn_name?: string | null; deposit: number }>
   deposit_addon_total?: number
   /** Main + add-on deposits due at checkout for this line */
   deposit_payable_total?: number
@@ -287,6 +289,7 @@ type BookingServiceQuestionOption = {
   id: number
   label: string
   cn_name?: string | null
+  cn_label?: string | null
   linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
@@ -295,7 +298,9 @@ type BookingServiceQuestionOption = {
 type BookingServiceQuestion = {
   id: number
   title: string
+  cn_title?: string | null
   description?: string | null
+  cn_description?: string | null
   question_type: 'single_choice' | 'multi_choice'
   is_required?: boolean
   options: BookingServiceQuestionOption[]
@@ -726,7 +731,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementServiceId, setCartEditSettlementServiceId] = useState<number | null>(null)
   const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
-  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>>([])
+  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
@@ -739,7 +744,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     service_cn_name?: string | null
     price: number
     duration_min: number
-    addon_questions: Array<{ id: number; title: string; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; extra_duration_min: number; extra_price: number }> }>
+    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number }> }>
     selected_addon_ids: Set<number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
@@ -2239,7 +2244,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return {
             id: Number(record.id ?? 0),
             title: String(record.title ?? 'Question'),
+            cn_title: typeof record.cn_title === 'string' ? record.cn_title : null,
             description: typeof record.description === 'string' ? record.description : null,
+            cn_description: typeof record.cn_description === 'string' ? record.cn_description : null,
             question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
             is_required: Boolean(record.is_required),
             options: optionsRaw
@@ -2249,7 +2256,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
-                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
+                  cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
@@ -2278,7 +2286,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return {
             id: Number(record.id ?? 0),
             title: String(record.title ?? 'Question'),
+            cn_title: typeof record.cn_title === 'string' ? record.cn_title : null,
             description: typeof record.description === 'string' ? record.description : null,
+            cn_description: typeof record.cn_description === 'string' ? record.cn_description : null,
             question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
             is_required: Boolean(record.is_required),
             options: optionsRaw
@@ -2288,7 +2298,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 return {
                   id: Number(option.id ?? 0),
                   label: String(option.label ?? 'Add-on'),
-                  cn_name: typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null),
+                  cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
+                  cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
@@ -5543,6 +5554,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 >
                                   <span className="min-w-0">
                                     <span className="text-gray-500">+</span> {addon.name}
+                                    {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                   </span>
                                   <span className="shrink-0 font-semibold text-gray-900">RM {dep.toFixed(2)}</span>
                                 </div>
@@ -5726,12 +5738,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   return (
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-800">
-                                        <span>{service.name}{service.is_original ? ' (Original)' : ''}</span>{service.cn_name ? <span className="block text-[10px] text-gray-500">{service.cn_name}</span> : null}
+                                        <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="text-xs font-medium text-gray-800" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
                                         <span className="font-semibold tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
                                       </div>
                                       {(service.add_ons ?? []).map((addon, addonIdx) => (
                                         <div key={`settlement-service-block-addon-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="mt-0.5 flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
-                                          <span>+ {addon.name}</span>
+                                          <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
                                           <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
                                         </div>
                                       ))}
@@ -6261,7 +6273,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <div className="space-y-3">
                     {cartEditAddonQuestions.map((question) => (
                       <div key={question.id}>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">{question.title}</p>
+                        <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
                         <div className="space-y-1.5">
                           {question.options.map((opt) => {
                             const checked = cartEditSelectedAddonIds.has(opt.id)
@@ -6281,7 +6293,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     onChange={() => toggleCartEditAddon(opt.id)}
                                     className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                                   />
-                                  <span className="text-sm font-medium text-gray-900">{opt.label}</span>
+                                  <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
                                 <span className="text-xs font-semibold tabular-nums text-gray-600">
                                   +RM {Number(opt.extra_price).toFixed(2)}
@@ -6421,7 +6433,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                     {block.addon_questions.map((question) => (
                       <div key={`cart-added-q-${block.service_id}-${question.id}`} className="mb-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>
+                        <div><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
                         {question.options.map((opt) => {
                           const checked = block.selected_addon_ids.has(opt.id)
                           return (
@@ -6439,7 +6451,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   }))}
                                   className="h-4 w-4 rounded border-gray-300 text-indigo-600"
                                 />
-                                {opt.label}
+                                <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                               </div>
                               <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
                             </label>
@@ -6962,6 +6974,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   <tr key={`chk-dep-addon-${serviceItem.id}-${addon.id ?? addon.name}-${idx}`} className={`${svcRowClass} align-top`}>
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
                                       <span className="text-gray-500">+</span> {addon.name}
+                                      {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                     </td>
                                     <td className="min-w-[260px] px-4 py-2" aria-hidden />
                                     <td className="px-4 py-2 text-xs tabular-nums text-gray-700">
@@ -7080,9 +7093,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <tr className={`${stRowClass} align-top`}>
                                       <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Services Block</p>
-                                        <p className="mt-1 text-xs text-gray-700">
-                                          {service.name}{service.is_original ? ' (Original)' : ''}
-                                        </p>
+                                        <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="mt-1 text-xs text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
                                       </td>
                                       <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
                                       <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-400">—</td>
@@ -7165,6 +7176,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   >
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
                                       <span className="text-gray-500">+</span> {addon.name}
+                                      {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                     </td>
                                     <td className="min-w-[260px] px-4 py-2" aria-hidden />
                                     <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
@@ -8124,7 +8136,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           {question.title}
                           {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
                         </p>
+                        {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
                         {question.description ? <p className="text-[11px] text-gray-500">{question.description}</p> : null}
+                        {question.cn_description ? <p className="text-[11px] text-gray-500">{question.cn_description}</p> : null}
                         <div className="mt-2 space-y-1">
                           {question.options.map((option) => {
                             const checked = bookingSelectedOptionIds.includes(option.id)
@@ -8148,7 +8162,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   <div className="min-w-0">
                                     <ServiceNameStack
                                       name={option.label}
-                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
                                       primaryClassName="block truncate font-medium text-gray-900"
                                       secondaryClassName="mt-0.5 block truncate text-[11px] font-normal text-gray-500"
                                     />
@@ -8230,7 +8244,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </button>
                     </div>
                     {block.service ? (
-                      <p className="text-xs font-semibold text-gray-600">
+                      <div className="text-xs font-semibold text-gray-600">
                         <ServiceNameStack
                           name={block.service.name}
                           cnName={block.service.cn_name}
@@ -8238,7 +8252,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           secondaryClassName="mt-0.5 text-xs text-gray-500"
                         />
                         <span className="text-xs text-gray-600">{Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}</span>
-                      </p>
+                      </div>
                     ) : null}
                     {block.questions.map((question) => (
                       <div key={`${block.id}-${question.id}`} className="rounded border border-gray-200 bg-white p-2">
@@ -8246,6 +8260,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           {question.title}
                           {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
                         </p>
+                        {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
                         <div className="mt-1 space-y-1">
                           {question.options.map((option) => {
                             const checked = block.selectedOptionIds.includes(option.id)
@@ -8268,7 +8283,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   />
                                   <ServiceNameStack
                                       name={option.label}
-                                      cnName={option.cn_name ?? option.linked_cn_name}
+                                      cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
                                       primaryClassName="text-xs text-gray-700"
                                       secondaryClassName="mt-0.5 text-[11px] text-gray-500"
                                     />

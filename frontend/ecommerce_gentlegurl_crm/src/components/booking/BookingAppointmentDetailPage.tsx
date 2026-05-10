@@ -11,8 +11,8 @@ type BookingDetail = {
   guest_name: string | null
   guest_phone: string | null
   guest_email: string | null
-  service: { id: number; name: string; duration_min: number } | null
-  add_ons?: Array<{ id?: number | null; name: string; extra_duration_min: number; extra_price: number }>
+  service: { id: number; name: string; cn_name?: string | null; duration_min: number } | null
+  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number }>
   uploaded_item_photos?: Array<{ id: number; file_url: string; original_name?: string }>
   addon_total_duration_min?: number
   addon_total_price?: number
@@ -220,7 +220,7 @@ export default function BookingAppointmentDetailPage({ bookingId, permissions }:
             <div><dt className="text-slate-500">Status</dt><dd className="font-medium">{data.status}</dd></div>
             <div><dt className="text-slate-500">Customer</dt><dd className="font-medium">{data.customer?.name || data.guest_name || '-'}</dd></div>
             <div><dt className="text-slate-500">Phone</dt><dd className="font-medium">{data.customer?.phone || data.guest_phone || '-'}</dd></div>
-            <div><dt className="text-slate-500">Main Service</dt><dd className="font-medium">{data.service?.name || '-'}</dd></div>
+            <div><dt className="text-slate-500">Main Service</dt><dd className="font-medium">{data.service?.name || '-'}</dd>{data.service?.cn_name ? <dd className="mt-0.5 text-xs text-slate-500">{data.service.cn_name}</dd> : null}</div>
             <div className="md:col-span-2">
               <dt className="text-slate-500">Add-ons</dt>
               <dd className="font-medium">
@@ -240,9 +240,10 @@ export default function BookingAppointmentDetailPage({ bookingId, permissions }:
                 {(data.add_ons?.length ?? 0) > 0 ? (
                   <div className="space-y-1">
                     {data.add_ons?.map((addon, index) => (
-                      <p key={`${addon.id ?? addon.name}-${index}`}>
-                        {addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(addon.extra_price)})
-                      </p>
+                      <div key={`${addon.id ?? addon.name}-${index}`}>
+                        <p>{addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(addon.extra_price)})</p>
+                        {addon.cn_name ? <p className="mt-0.5 text-xs text-slate-500">{addon.cn_name}</p> : null}
+                      </div>
                     ))}
                     <p className="text-slate-700">
                       Add-on summary: +{Number(data.addon_total_duration_min ?? 0)} mins, +{formatCurrency(data.addon_total_price)}

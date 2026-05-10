@@ -4895,6 +4895,7 @@ class PosController extends Controller
                 ->map(fn ($row) => [
                     'id' => isset($row['id']) ? (int) $row['id'] : null,
                     'name' => (string) ($row['name'] ?? 'Add-on'),
+                    'cn_name' => $row['cn_name'] ?? $row['cn_label'] ?? $row['linked_cn_name'] ?? null,
                     'deposit' => round((float) ($row['deposit_contribution'] ?? 0), 2),
                 ])
                 ->filter(fn (array $row) => ((float) ($row['deposit'] ?? 0)) > 0.0001)
@@ -4918,7 +4919,7 @@ class PosController extends Controller
                 'addon_items' => collect($item->addon_items_json ?? [])->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
-                    'cn_name' => $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
+                    'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                     'extra_price' => (float) ($addon['extra_price'] ?? 0),
                     'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
@@ -5095,6 +5096,7 @@ class PosController extends Controller
                 ->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                    'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'deposit_contribution' => 0.0,
                 ])
                 ->values()
@@ -5656,7 +5658,7 @@ class PosController extends Controller
                 'add_ons' => collect($item['addon_items'] ?? [])->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
-                    'cn_name' => $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
+                    'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
                     'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
                 ])->values()->all(),
@@ -5669,6 +5671,7 @@ class PosController extends Controller
         $mainServices = collect([[
             'id' => (int) ($booking->service_id ?? 0),
             'name' => (string) ($booking->service?->name ?? 'Service'),
+            'cn_name' => $booking->service?->cn_name,
             'extra_duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)),
             'extra_price' => round(max(0, $originalServiceAmount), 2),
             'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
@@ -5683,6 +5686,7 @@ class PosController extends Controller
             ->map(fn ($item) => [
             'id' => isset($item['id']) ? (int) $item['id'] : null,
             'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+            'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
             'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
             'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
             'service_ref' => 'original',
@@ -5701,6 +5705,7 @@ class PosController extends Controller
                     'add_ons' => $originalAddonItems->map(fn (array $addon) => [
                         'id' => $addon['id'] ?? null,
                         'name' => $addon['name'] ?? 'Add-on',
+                        'cn_name' => $addon['cn_name'] ?? null,
                         'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                         'extra_price' => (float) ($addon['extra_price'] ?? 0),
                     ])->values()->all(),
