@@ -2,6 +2,7 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,9 +17,11 @@ class PosCashShift extends Model
     protected $fillable = [
         'opening_amount',
         'opened_by',
+        'opened_staff_id',
         'opened_at',
         'closing_amount',
         'closed_by',
+        'closed_staff_id',
         'closed_at',
         'status',
         'remark',
@@ -42,5 +45,15 @@ class PosCashShift extends Model
     public function closer()
     {
         return $this->belongsTo(User::class, 'closed_by');
+    }
+
+    public function openedStaff()
+    {
+        return $this->belongsTo(Staff::class, 'opened_staff_id');
+    }
+
+    public function closedStaff()
+    {
+        return $this->belongsTo(Staff::class, 'closed_staff_id');
     }
 }

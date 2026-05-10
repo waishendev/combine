@@ -23,6 +23,7 @@ class PosCashShiftController extends Controller
     public function open(Request $request)
     {
         $validated = $request->validate([
+            'opened_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'opening_amount' => ['required', 'numeric', 'min:0'],
         ]);
 
@@ -35,19 +36,21 @@ class PosCashShiftController extends Controller
             return PosCashShift::query()->create([
                 'opening_amount' => round((float) $validated['opening_amount'], 2),
                 'opened_by' => $request->user()?->id,
+                'opened_staff_id' => (int) $validated['opened_staff_id'],
                 'opened_at' => now(),
                 'status' => PosCashShift::STATUS_OPEN,
             ]);
         });
 
         return $this->respond([
-            'shift' => $this->serializeShift($shift->fresh(['opener', 'closer'])),
+            'shift' => $this->serializeShift($shift->fresh(['opener', 'closer', 'openedStaff', 'closedStaff'])),
         ], __('Cash shift is open.'));
     }
 
     public function close(Request $request)
     {
         $validated = $request->validate([
+            'closed_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'closing_amount' => ['required', 'numeric', 'min:0'],
             'remark' => ['nullable', 'string'],
         ]);
@@ -56,6 +59,7 @@ class PosCashShiftController extends Controller
             $shift = $this->currentOpenShiftQuery($request)->lockForUpdate()->firstOrFail();
             $shift->closing_amount = round((float) $validated['closing_amount'], 2);
             $shift->closed_by = $request->user()?->id;
+            $shift->closed_staff_id = (int) $validated['closed_staff_id'];
             $shift->closed_at = now();
             $shift->status = PosCashShift::STATUS_CLOSED;
             $shift->remark = $validated['remark'] ?? null;
@@ -65,7 +69,7 @@ class PosCashShiftController extends Controller
         });
 
         return $this->respond([
-            'shift' => $this->serializeShift($shift->fresh(['opener', 'closer'])),
+            'shift' => $this->serializeShift($shift->fresh(['opener', 'closer', 'openedStaff', 'closedStaff'])),
         ], __('Cash shift closed.'));
     }
 
@@ -76,12 +80,13 @@ class PosCashShiftController extends Controller
             'date_to' => ['nullable', 'date'],
             'status' => ['nullable', Rule::in([PosCashShift::STATUS_OPEN, PosCashShift::STATUS_CLOSED])],
             'user_id' => ['nullable', 'integer'],
+            'staff_id' => ['nullable', 'integer'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
         $query = PosCashShift::query()
-            ->with(['opener:id,name,email', 'closer:id,name,email'])
+            ->with(['opener:id,name,email', 'closer:id,name,email', 'openedStaff:id,name,email,phone', 'closedStaff:id,name,email,phone'])
             ->when(! empty($validated['date_from']), fn (Builder $q) => $q->whereDate('opened_at', '>=', $validated['date_from']))
             ->when(! empty($validated['date_to']), fn (Builder $q) => $q->whereDate('opened_at', '<=', $validated['date_to']))
             ->when(! empty($validated['status']), fn (Builder $q) => $q->where('status', $validated['status']))
@@ -89,6 +94,12 @@ class PosCashShiftController extends Controller
                 $q->where(function (Builder $inner) use ($validated) {
                     $inner->where('opened_by', (int) $validated['user_id'])
                         ->orWhere('closed_by', (int) $validated['user_id']);
+                });
+            })
+            ->when(! empty($validated['staff_id']), function (Builder $q) use ($validated) {
+                $q->where(function (Builder $inner) use ($validated) {
+                    $inner->where('opened_staff_id', (int) $validated['staff_id'])
+                        ->orWhere('closed_staff_id', (int) $validated['staff_id']);
                 });
             })
             ->orderByDesc('opened_at');
@@ -102,7 +113,7 @@ class PosCashShiftController extends Controller
     private function currentOpenShiftQuery(Request $request): Builder
     {
         return PosCashShift::query()
-            ->with(['opener:id,name,email', 'closer:id,name,email'])
+            ->with(['opener:id,name,email', 'closer:id,name,email', 'openedStaff:id,name,email,phone', 'closedStaff:id,name,email,phone'])
             ->where('status', PosCashShift::STATUS_OPEN)
             ->where('opened_by', $request->user()?->id)
             ->latest('opened_at');
@@ -120,10 +131,14 @@ class PosCashShiftController extends Controller
             'opening_amount' => round($openingAmount, 2),
             'opened_by' => $shift->opened_by ? (int) $shift->opened_by : null,
             'opened_by_name' => $shift->opener?->name,
+            'opened_staff_id' => $shift->opened_staff_id ? (int) $shift->opened_staff_id : null,
+            'opened_staff_name' => $shift->openedStaff?->name,
             'opened_at' => optional($shift->opened_at)?->toDateTimeString(),
             'closing_amount' => $closingAmount !== null ? round($closingAmount, 2) : null,
             'closed_by' => $shift->closed_by ? (int) $shift->closed_by : null,
             'closed_by_name' => $shift->closer?->name,
+            'closed_staff_id' => $shift->closed_staff_id ? (int) $shift->closed_staff_id : null,
+            'closed_staff_name' => $shift->closedStaff?->name,
             'closed_at' => optional($shift->closed_at)?->toDateTimeString(),
             'status' => (string) $shift->status,
             'remark' => $shift->remark,
