@@ -4087,6 +4087,9 @@ class PosController extends Controller
 
                 foreach (($depositAddonByServiceItemId[(int) $serviceItem->id] ?? []) as $addonRow) {
                     $addonDepositAmount = (float) ($addonRow['deposit_contribution'] ?? 0);
+                    if ($addonDepositAmount <= 0.0001 || strtolower((string) ($addonRow['item_kind'] ?? '')) === 'main_service') {
+                        continue;
+                    }
                     $addonName = (string) ($addonRow['name'] ?? $addonRow['label'] ?? 'Add-on');
                     OrderItem::create([
                         'order_id' => $order->id,
@@ -4990,6 +4993,7 @@ class PosController extends Controller
             $depositContribution = $claimedByPackage ? 0.0 : (float) ($depositByServiceItemId[(int) $item->id] ?? 0);
 
             $addonDepositLines = collect($depositAddonByServiceItemId[(int) $item->id] ?? [])
+                ->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) !== 'main_service')
                 ->map(fn ($row) => [
                     'id' => isset($row['id']) ? (int) $row['id'] : null,
                     'name' => (string) ($row['name'] ?? 'Add-on'),
@@ -5014,14 +5018,16 @@ class PosController extends Controller
                 'line_total' => (float) $lineTotal,
                 'addon_duration_min' => (int) ($item->addon_duration_min ?? 0),
                 'addon_price' => (float) ($item->addon_price ?? 0),
-                'addon_items' => collect($item->addon_items_json ?? [])->map(fn ($addon) => [
-                    'id' => isset($addon['id']) ? (int) $addon['id'] : null,
-                    'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
-                    'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
-                    'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
-                    'extra_price' => (float) ($addon['extra_price'] ?? 0),
-                    'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
-                ])->values()->all(),
+                'addon_items' => collect($item->addon_items_json ?? [])
+                    ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
+                    ->map(fn ($addon) => [
+                        'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                        'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                        'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
+                        'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
+                        'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                        'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
+                    ])->values()->all(),
                 'deposit_contribution' => (float) $depositContribution,
                 'deposit_main_reference' => $claimedByPackage
                     ? max(0.0, (float) ($item->bookingService?->deposit_amount ?? 0))
@@ -5191,7 +5197,9 @@ class PosController extends Controller
             $itemId = (int) $item->id;
             $depositByServiceItem[$itemId] = 0.0;
             $depositByServiceItemAddons[$itemId] = collect((array) ($item->addon_items_json ?? []))
+                ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
                 ->map(fn ($addon) => [
+                    'item_kind' => $addon['item_kind'] ?? null,
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
                     'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
@@ -5209,6 +5217,9 @@ class PosController extends Controller
             }
 
             foreach ((array) ($item->addon_items_json ?? []) as $addon) {
+                if (strtolower((string) ($addon['item_kind'] ?? '')) === 'main_service') {
+                    continue;
+                }
                 $addonType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
                 if ($addonType === '') {
                     continue;

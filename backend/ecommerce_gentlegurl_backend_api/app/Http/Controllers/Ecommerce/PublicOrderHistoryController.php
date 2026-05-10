@@ -85,10 +85,12 @@ class PublicOrderHistoryController extends Controller
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'receipt_public_url' => $this->resolveReceiptUrl($order, $request),
-                'items' => $order->items->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
-                    $thumbnail = $item->product?->cover_image_url;
-                    $productType = $item->product?->type;
-                    $review = $item->review;
+                'items' => $order->items
+                    ->filter(fn ($item) => (string) ($item->line_type ?? '') !== 'booking_addon' || (float) ($item->line_total ?? 0) > 0.0001)
+                    ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
+                        $thumbnail = $item->product?->cover_image_url;
+                        $productType = $item->product?->type;
+                        $review = $item->review;
                     $reviewedAt = $review?->created_at?->toDateTimeString();
                     $completedAt = $this->reviewService->resolveCompletionDate($order);
                     $deadlineAt = $completedAt?->copy()->addDays($reviewWindowDays);

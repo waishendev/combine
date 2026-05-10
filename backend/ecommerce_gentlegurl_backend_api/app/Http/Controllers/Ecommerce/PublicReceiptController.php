@@ -33,7 +33,9 @@ class PublicReceiptController extends Controller
 
         $order = $receiptToken->order;
 
-        $mixedItems = $order->items->values();
+        $mixedItems = $order->items
+            ->filter(fn ($item) => (string) ($item->line_type ?? '') !== 'booking_addon' || (float) ($item->line_total ?? 0) > 0.0001)
+            ->values();
         $bookingIdsForPackage = $order->serviceItems
             ->pluck('booking_id')
             ->filter()
