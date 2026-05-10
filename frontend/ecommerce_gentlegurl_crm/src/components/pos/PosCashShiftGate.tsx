@@ -40,7 +40,7 @@ type PosCashShiftContextValue = {
   requireOpenShiftMessage: string
 }
 
-const CASH_SHIFT_REQUIRED_MESSAGE = 'Open a cash shift to use this action.'
+const CASH_SHIFT_REQUIRED_MESSAGE = ''
 const PosCashShiftContext = createContext<PosCashShiftContextValue>({
   shift: null,
   hasOpenShift: true,
