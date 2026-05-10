@@ -2401,6 +2401,27 @@ class PosController extends Controller
                     'notes' => 'POS create appointment deposit by staff #' . $request->user()->id . ' | booking_id=' . $booking->id . ' | booking_deposit=' . number_format($depositAmount, 2, '.', ''),
                 ]);
 
+                $serviceLineTotal = round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2);
+                $commissionRate = (float) ($normalizedSplits[0]['service_commission_rate_snapshot'] ?? 0);
+                OrderServiceItem::query()->create([
+                    'order_id' => (int) $depositOrder->id,
+                    'booking_id' => (int) $booking->id,
+                    'booking_service_id' => (int) $booking->service_id,
+                    'customer_id' => $customer?->id ? (int) $customer->id : null,
+                    'service_name_snapshot' => (string) ($service->name ?: 'Service'),
+                    'price_snapshot' => $serviceLineTotal,
+                    'qty' => 1,
+                    'line_total' => $serviceLineTotal,
+                    'assigned_staff_id' => $primaryStaffId,
+                    'start_at' => $startAt,
+                    'end_at' => $endAt,
+                    'notes' => $validated['notes'] ?? null,
+                    'staff_splits' => $normalizedSplits,
+                    'commission_rate_used' => $commissionRate,
+                    'commission_amount' => round($serviceLineTotal * $commissionRate, 2),
+                    'item_type' => 'service',
+                ]);
+
                 OrderItem::query()->create([
                     'order_id' => (int) $depositOrder->id,
                     'line_type' => 'booking_deposit',
@@ -5825,6 +5846,12 @@ class PosController extends Controller
         $linkedOrderIds = OrderServiceItem::query()
             ->where('booking_id', (int) $booking->id)
             ->pluck('order_id')
+            ->merge(
+                OrderItem::query()
+                    ->where('booking_id', (int) $booking->id)
+                    ->where('line_type', 'booking_deposit')
+                    ->pluck('order_id')
+            )
             ->filter()
             ->unique()
             ->values();
@@ -5896,6 +5923,13 @@ class PosController extends Controller
         } elseif ($standardBookings->isNotEmpty()) {
             $firstStandardBookingId = (int) ($standardBookings->first()?->booking_id ?? 0);
             $depositPaid = (int) $booking->id === $firstStandardBookingId ? $linkedBookingDeposit : 0.0;
+        }
+
+        if ($depositPaid <= 0.0001 && $actualAppointmentDepositCollected > 0.0001) {
+            $depositPaid = $actualAppointmentDepositCollected;
+        }
+        if ($linkedBookingDeposit <= 0.0001 && $actualAppointmentDepositCollected > 0.0001) {
+            $linkedBookingDeposit = $actualAppointmentDepositCollected;
         }
 
         $serviceSettlementPaid = (float) OrderItem::query()
