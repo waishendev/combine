@@ -204,7 +204,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           staffId={staffId}
           onToggleSidebar={toggleSidebar}
         />
-        <main className="flex-1 overflow-y-auto bg-slate-100">{children}</main>
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100">{children}</main>
       </div>
     </LogoLoader>
   )

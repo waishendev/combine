@@ -8161,8 +8161,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
-            <div className="border-b border-gray-200 bg-white px-5 py-4">
+          <div className="flex max-h-[min(90vh,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+            <div className="shrink-0 border-b border-gray-200 bg-white px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
@@ -8177,7 +8177,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </p>
               </div>
             </div>
-            <div className="p-5 overflow-y-auto max-h-[calc(90vh-120px)]">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 overscroll-contain">
             {bookingModalError ? (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {bookingModalError}
@@ -8559,7 +8559,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
               <button
                 type="button"
                 onClick={() => {
@@ -8578,7 +8579,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               >
                 {bookingSubmitting ? 'Creating...' : 'Add Service to Cart'}
               </button>
-            </div>
             </div>
           </div>
         </div>
