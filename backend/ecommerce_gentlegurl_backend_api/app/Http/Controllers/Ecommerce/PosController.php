@@ -4065,25 +4065,23 @@ class PosController extends Controller
                     ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
                     : 0.0;
 
-                if ($depositContribution > 0) {
-                    OrderItem::create([
-                        'order_id' => $order->id,
-                        'line_type' => 'booking_deposit',
-                        'product_id' => null,
-                        'product_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
-                        'display_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
-                        'quantity' => 1,
-                        'price_snapshot' => $depositContribution,
-                        'unit_price_snapshot' => $depositContribution,
-                        'line_total' => $depositContribution,
-                        'line_total_snapshot' => $depositContribution,
-                        'effective_unit_price' => $depositContribution,
-                        'effective_line_total' => $depositContribution,
-                        'locked' => true,
-                        'booking_id' => $booking->id,
-                        'booking_service_id' => $serviceItem->booking_service_id,
-                    ]);
-                }
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'line_type' => 'booking_deposit',
+                    'product_id' => null,
+                    'product_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
+                    'display_name_snapshot' => 'Booking Deposit - ' . (string) ($serviceItem->service_name_snapshot ?: 'Service'),
+                    'quantity' => 1,
+                    'price_snapshot' => $depositContribution,
+                    'unit_price_snapshot' => $depositContribution,
+                    'line_total' => $depositContribution,
+                    'line_total_snapshot' => $depositContribution,
+                    'effective_unit_price' => $depositContribution,
+                    'effective_line_total' => $depositContribution,
+                    'locked' => true,
+                    'booking_id' => $booking->id,
+                    'booking_service_id' => $serviceItem->booking_service_id,
+                ]);
 
                 foreach (($depositAddonByServiceItemId[(int) $serviceItem->id] ?? []) as $addonRow) {
                     $addonDepositAmount = (float) ($addonRow['deposit_contribution'] ?? 0);
