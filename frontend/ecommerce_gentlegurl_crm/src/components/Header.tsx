@@ -105,12 +105,13 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
   }
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 flex h-16 items-center gap-2 border-b border-slate-100/80 bg-white px-2 shadow-sm sm:gap-3 sm:px-4 md:px-6">
-      <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
+    <header className="fixed top-0 left-0 right-0 z-[100] flex h-16 items-center gap-2 border-b border-slate-100/80 bg-white px-2 shadow-sm sm:gap-3 sm:px-4 md:px-6">
+      <div className="relative z-[1] flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
         <button
           aria-label="Toggle sidebar"
+          type="button"
           onClick={onToggleSidebar}
-          className="inline-flex h-10 w-10 shrink-0 items-center justify-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+          className="inline-flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
         >
           <i className="fa-solid fa-bars text-lg" />
         </button>
@@ -127,10 +128,10 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
         </div>
       </div>
 
-      <div className="flex min-h-0 min-w-0 flex-1 items-center justify-end gap-1 sm:gap-3">
-        <div className="min-w-0 flex-1 overflow-hidden lg:flex-none lg:overflow-visible">
+      <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 items-center justify-end gap-1 sm:gap-3">
+        <div className="min-w-0 flex-1 overflow-visible sm:overflow-hidden lg:flex-none lg:overflow-visible">
           <div
-            className="-mr-1 flex justify-end overflow-x-auto overflow-y-hidden py-0.5 pl-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:mr-0 lg:overflow-visible lg:py-0 [&::-webkit-scrollbar]:hidden"
+            className="-mr-1 flex touch-pan-x justify-end overflow-visible py-0.5 pl-1 sm:overflow-x-auto sm:overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] lg:mr-0 lg:overflow-visible lg:py-0 sm:[&::-webkit-scrollbar]:hidden"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
             <WorkspaceSwitcher permissions={permissions} />
@@ -141,7 +142,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
           <button
             type="button"
             onClick={() => setAccountOpen((open) => !open)}
-            className="flex items-center gap-1.5 rounded-full border border-transparent bg-white px-1 py-1.5 text-left transition hover:bg-slate-100 sm:gap-3 sm:px-2 sm:py-2"
+            className="flex touch-manipulation items-center gap-1.5 rounded-full border border-transparent bg-white px-1 py-1.5 text-left transition hover:bg-slate-100 sm:gap-3 sm:px-2 sm:py-2"
           >
             <Image
               src="/images/default_user_image.jpg"
@@ -159,7 +160,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
             <i className="fa-solid fa-chevron-down text-xs text-slate-400" />
           </button>
           {accountOpen && (
-            <div className="absolute right-0 z-[60] mt-2 w-52 max-w-[calc(100vw-1rem)] rounded-xl border border-slate-200 bg-white py-2 shadow-lg sm:max-w-none sm:w-48">
+            <div className="absolute right-0 z-[110] mt-2 w-52 max-w-[calc(100vw-1rem)] rounded-xl border border-slate-200 bg-white py-2 shadow-lg sm:max-w-none sm:w-48">
               {userEmail ? (
                 <div className="border-b border-slate-100 px-4 py-2 md:hidden">
                   <p className="truncate text-xs font-medium text-slate-700" title={userEmail}>
