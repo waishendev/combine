@@ -145,10 +145,7 @@ export default function Slider({ items }: SliderProps) {
   };
 
   return (
-    <div className="relative overflow-hidden border rounded-md  border-[var(--card-border)]/80 bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[var(--shadow)]">
-      <div className="pointer-events-none absolute -left-10 top-8 h-32 w-32  bg-[color:var(--accent)]/30 blur-3xl" />
-      <div className="pointer-events-none absolute -right-16 bottom-4 h-40 w-40 bg-[color:var(--muted)]/70 blur-3xl" />
-
+    <div className="relative overflow-hidden rounded-md border border-[var(--card-border)]/80 bg-transparent shadow-[var(--shadow)]">
       <div
         className="relative h-[380px] sm:h-[420px] lg:h-[480px] cursor-grab active:cursor-grabbing"
         onTouchStart={onTouchStart}
@@ -191,26 +188,23 @@ export default function Slider({ items }: SliderProps) {
                     className="object-cover sm:hidden"
                   />
                 </div>
-                {hasContent && (
-                  <>
-                    <div className="absolute inset-0 bg-gradient-to-r from-black/55 via-black/35 to-transparent" />
-                    <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(255,255,255,0.45)_0%,_rgba(255,255,255,0)_45%)]" />
-                  </>
-                )}
               </div>
 
               {hasContent && (
                 <div className={`relative z-10 flex h-full px-6 py-10 sm:px-10 lg:px-14 ${getVAlign(item.content_vertical)} ${getHAlign(item.content_align)}`}>
-                  <div className="flex w-full max-w-md flex-col space-y-4 text-white sm:space-y-6">
-
+                  <div className="flex w-full max-w-md flex-col space-y-4 sm:space-y-6">
                     {item.title && (
-                      <h2 className={`${justBreathe.className} text-3xl font-semibold leading-tight drop-shadow-sm sm:text-4xl lg:text-5xl`}>
+                      <h2
+                        className={`${justBreathe.className} text-3xl font-semibold leading-tight text-white [text-shadow:0_1px_2px_rgba(0,0,0,0.9),0_2px_16px_rgba(0,0,0,0.55)] sm:text-4xl lg:text-5xl`}
+                      >
                         {item.title}
                       </h2>
                     )}
 
                     {item.subtitle && (
-                      <p className={`${justBreathe.className} text-sm font-medium uppercase tracking-[0.22em] text-white/80`}>
+                      <p
+                        className={`${justBreathe.className} text-sm font-medium uppercase tracking-[0.22em] text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_2px_12px_rgba(0,0,0,0.45)]`}
+                      >
                         {item.subtitle}
                       </p>
                     )}
@@ -240,7 +234,7 @@ export default function Slider({ items }: SliderProps) {
         })}
 
         {slides.length > 1 && (
-          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2 rounded-full bg-black/30 px-3 py-2 text-white backdrop-blur">
+          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2 rounded-full bg-white/50 px-3 py-2 shadow-sm backdrop-blur-sm dark:bg-[var(--card)]/70">
             {slides.map((item, index) => (
               <button
                 key={item.id}
@@ -248,8 +242,8 @@ export default function Slider({ items }: SliderProps) {
                 onClick={() => goTo(index)}
                 className={`h-2.5 rounded-full transition ${
                   index === activeIndex
-                    ? "w-7 bg-[var(--card)]"
-                    : "w-2.5 bg-[var(--card)]/60 hover:bg-[var(--card)]/80"
+                    ? "w-7 bg-[var(--foreground)]/80"
+                    : "w-2.5 bg-[var(--foreground)]/35 hover:bg-[var(--foreground)]/55"
                 }`}
                 aria-label={`Go to slide ${index + 1}`}
               />

@@ -82,23 +82,23 @@ export default function BookingPageContent() {
               >
                 <i className="fa-solid fa-arrow-left" /> Back
               </button>
-              <div className="px-16 text-center">
-                <h1 className="font-[var(--font-heading)] text-lg font-semibold leading-snug sm:text-xl">
+              <div className="min-w-0 max-w-full px-16 text-center">
+                <h1 className="break-words font-[var(--font-heading)] text-lg font-semibold leading-snug sm:text-xl">
                   {selectedCategory.name}
                 </h1>
                 {selectedCategory.cn_name ? (
-                  <p className="mt-1 text-sm leading-snug text-[var(--text-muted)]">{selectedCategory.cn_name}</p>
+                  <p className="mt-1 break-words text-sm leading-snug text-[var(--text-muted)]">{selectedCategory.cn_name}</p>
                 ) : null}
               </div>
             </div>
 
             {/* Mobile: keep just title here (Back is in stepper) */}
-            <div className="text-center sm:hidden">
-              <h1 className="font-[var(--font-heading)] text-lg font-semibold leading-snug">
+            <div className="min-w-0 text-center sm:hidden">
+              <h1 className="break-words font-[var(--font-heading)] text-lg font-semibold leading-snug">
                 {selectedCategory.name}
               </h1>
               {selectedCategory.cn_name ? (
-                <p className="mt-1 text-sm leading-snug text-[var(--text-muted)]">{selectedCategory.cn_name}</p>
+                <p className="mt-1 break-words text-sm leading-snug text-[var(--text-muted)]">{selectedCategory.cn_name}</p>
               ) : null}
             </div>
 
@@ -127,24 +127,29 @@ export default function BookingPageContent() {
               onClick={() => {
                 router.replace(`/booking?category_id=${category.id}`);
               }}
-              className="group relative flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] text-left shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
+              className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] text-left shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
-              <div className="aspect-[4/3] shrink-0 bg-gray-100">
+              {/* Match product cards: fixed crop box + overflow-hidden so tall/portrait images never stretch the layout */}
+              <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-gray-100">
                 {(category.image_url || category.image_path) ? (
-                  <img src={(category.image_url || category.image_path) as string} alt={category.name} className="h-full w-full object-cover" />
+                  <img
+                    src={(category.image_url || category.image_path) as string}
+                    alt={category.name}
+                    className="h-full w-full object-cover object-center"
+                  />
                 ) : (
-                  <div className="h-full w-full flex items-center justify-center text-gray-400">No image</div>
+                  <div className="flex h-full w-full items-center justify-center text-gray-400">No image</div>
                 )}
               </div>
-              <div className="flex flex-1 flex-col p-3 sm:p-4">
-                <h2 className="line-clamp-2 font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
+              <div className="flex min-w-0 flex-1 flex-col p-3 sm:p-4">
+                <h2 className="break-words font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:text-base">
                   {category.name}
                 </h2>
                 {category.cn_name ? (
-                  <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-[var(--text-muted)] sm:text-[13px]">{category.cn_name}</p>
+                  <p className="mt-0.5 break-words text-xs leading-snug text-[var(--text-muted)] sm:text-[13px]">{category.cn_name}</p>
                 ) : null}
                 {category.description ? (
-                  <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
+                  <p className="mt-1 break-words text-[13px] leading-snug text-[var(--text-muted)] sm:text-sm">
                     {category.description}
                   </p>
                 ) : null}

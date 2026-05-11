@@ -437,38 +437,38 @@ export default function ServiceStaffPage() {
 
             <div className="flex min-h-0 flex-1 flex-col">
               <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-7 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8">
-              <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Almost there</p>
-              <h3 id="staff-confirm-title" className="font-[var(--font-heading)] pr-10 text-2xl font-semibold tracking-tight text-[var(--foreground)]">
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Almost there</p>
+              <h3 id="staff-confirm-title" className="font-[var(--font-heading)] pr-10 text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:text-3xl">
                 Confirm your slot
               </h3>
-              <p className="mt-2 text-sm leading-relaxed text-[var(--text-muted)]">
+              <p className="mt-2 text-base leading-relaxed text-[var(--text-muted)]">
                 Review the details below, then add this appointment to your cart. You&apos;ll return to the booking start — open the cart icon when you&apos;re ready to pay.
               </p>
 
-              <div className="mt-6 rounded-2xl bg-gradient-to-br from-[var(--muted)]/90 to-[var(--background-soft)]/50 p-5 ring-1 ring-[var(--card-border)]/80">
-                <div className="flex items-center justify-center gap-2 text-[var(--text-muted)]">
-                  <i className="fa-regular fa-clock text-sm" />
-                  <span className="text-xs font-semibold uppercase tracking-wider">Your time</span>
+              <div className="mt-6 rounded-2xl bg-gradient-to-br from-[var(--muted)]/90 to-[var(--background-soft)]/50 p-5 ring-1 ring-[var(--card-border)]/80 sm:p-6">
+                <div className="flex items-center justify-center gap-2.5 text-[var(--text-muted)]">
+                  <i className="fa-regular fa-clock text-base" />
+                  <span className="text-sm font-semibold uppercase tracking-wider">Your time</span>
                 </div>
-                <p className="mt-2 text-center font-[var(--font-heading)] text-2xl font-semibold tabular-nums text-[var(--foreground)] sm:text-[1.65rem]">
-                  {formatTime(startAt)}
-                  <span className="mx-2 font-normal text-[var(--text-muted)]">–</span>
-                  {formatTime(endAt)}
-                </p>
-                <p className="mt-1 text-center text-xs text-[var(--text-muted)]">
-                  {new Date(slotDate).toLocaleDateString("en-MY", {
+                <p className="mt-3 text-center font-[var(--font-heading)] text-lg font-semibold tabular-nums leading-snug text-[var(--foreground)] sm:text-xl md:text-2xl">
+                  {new Date(startAt).toLocaleDateString("en-MY", {
                     weekday: "long",
                     day: "numeric",
                     month: "long",
                     year: "numeric",
+                    timeZone: TZ,
                   })}
-                  {" · "}
-                  {durationMin} min
+                </p>
+                <p className="mt-2 text-center text-base font-medium leading-snug text-[var(--text-muted)] sm:text-lg">
+                  {formatTime(startAt)} – {formatTime(endAt)}
+                </p>
+                <p className="mt-1.5 text-center text-sm tabular-nums leading-snug text-[var(--text-muted)] sm:text-base">
+                  · {durationMin} min
                 </p>
               </div>
 
               <ul className="mt-5 space-y-0 divide-y divide-[var(--card-border)] rounded-2xl border border-[var(--card-border)] bg-[var(--background)]/60 px-1">
-                <li className="flex items-start justify-between gap-4 px-4 py-3.5 text-sm">
+                <li className="flex items-start justify-between gap-4 px-4 py-4 text-base">
                   <span className="flex shrink-0 items-center gap-2 text-[var(--text-muted)]">
                     <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-spa text-xs" />
@@ -480,12 +480,12 @@ export default function ServiceStaffPage() {
                     <ServiceTierBadge serviceType={service.service_type} />
                   </span>
                 </li>
-                <li className="flex items-start justify-between gap-4 px-4 py-3.5 text-sm">
+                <li className="flex items-start justify-between gap-4 px-4 py-4 text-base">
                   <span className="flex shrink-0 items-start gap-2 text-[var(--text-muted)]">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-layer-group text-xs" />
                     </span>
-                    <span className="max-w-[4.5rem] pt-1 text-[10px] font-semibold uppercase leading-tight tracking-wide">ADD ON</span>
+                    <span className="max-w-[5rem] pt-0.5 text-xs font-semibold uppercase leading-tight tracking-wide">ADD ON</span>
                   </span>
                   <div className="flex max-w-[65%] flex-col items-end gap-2 text-right font-medium leading-snug text-[var(--foreground)]">
                     {selectedAddonDetails.length > 0 ? (
@@ -500,7 +500,7 @@ export default function ServiceStaffPage() {
                     )}
                   </div>
                 </li>
-                <li className="flex items-start justify-between gap-4 px-4 py-3.5 text-sm">
+                <li className="flex items-start justify-between gap-4 px-4 py-4 text-base">
                   <span className="flex shrink-0 items-center gap-2 text-[var(--text-muted)]">
                     <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-user text-xs" />
@@ -509,7 +509,7 @@ export default function ServiceStaffPage() {
                   </span>
                   <span className="text-right font-medium text-[var(--foreground)]">{confirmStaff.name}</span>
                 </li>
-                <li className="flex flex-col gap-2 px-4 py-3.5 text-sm">
+                <li className="flex flex-col gap-2 px-4 py-4 text-base">
                   <div className="flex items-start justify-between gap-3">
                     <span className="flex items-center gap-2 text-[var(--text-muted)]">
                       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
@@ -546,7 +546,7 @@ export default function ServiceStaffPage() {
                 </li> */}
               </ul>
 
-              {error && confirmStaff ? <p className="mt-3 text-sm text-[var(--status-error)]">{error}</p> : null}
+              {error && confirmStaff ? <p className="mt-3 text-base text-[var(--status-error)]">{error}</p> : null}
             </div>
 
             <div className="shrink-0 border-t border-[var(--card-border)] bg-[var(--card)] px-6 pb-6 pt-4 sm:px-8">
@@ -555,7 +555,7 @@ export default function ServiceStaffPage() {
                   type="button"
                   onClick={() => !adding && setConfirmStaff(null)}
                   disabled={adding}
-                  className="w-full rounded-full border-2 border-[var(--card-border)] bg-transparent py-3.5 text-sm font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)] hover:bg-[var(--muted)]/40 disabled:opacity-50"
+                  className="w-full rounded-full border-2 border-[var(--card-border)] bg-transparent py-3.5 text-base font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)] hover:bg-[var(--muted)]/40 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -563,7 +563,7 @@ export default function ServiceStaffPage() {
                   type="button"
                   onClick={handleConfirmAdd}
                   disabled={adding}
-                  className="w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:opacity-70"
+                  className="w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-base font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:opacity-70"
                 >
                   {adding ? (
                     <span className="inline-flex items-center justify-center gap-2">
@@ -600,11 +600,11 @@ export default function ServiceStaffPage() {
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-[var(--status-success-bg)] text-[var(--status-success)] ring-2 ring-[var(--status-success-border)]/40">
                 <i className="fa-solid fa-check text-2xl" aria-hidden />
               </div>
-              <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Add success</p>
+              <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Add success</p>
               {/* <h3 id="cart-add-success-title" className="mt-1 font-[var(--font-heading)] text-xl font-semibold text-[var(--foreground)]">
                 Added to your cart
               </h3> */}
-              <p className="mt-2 text-sm text-[var(--text-muted)]">
+              <p className="mt-2 text-base text-[var(--text-muted)]">
                 Next we&apos;ll take you back to choose a category. Use the cart icon when you&apos;re ready to pay.
               </p>
               <button
@@ -613,7 +613,7 @@ export default function ServiceStaffPage() {
                   setCartAddSuccessOpen(false);
                   router.push("/booking");
                 }}
-                className="mt-6 w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-sm font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)]"
+                className="mt-6 w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-base font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)]"
               >
                 Confirm
               </button>
