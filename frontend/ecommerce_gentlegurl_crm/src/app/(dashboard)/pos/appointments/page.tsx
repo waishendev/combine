@@ -19,7 +19,7 @@ export default async function PosAppointmentsPage() {
   }
 
   return (
-z    <div className="min-h-0 h-full overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8 xl:px-10">
+    <div className="min-h-0 h-full overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8 xl:px-10">
       <PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
         <PosAppointmentsWorkspace
           currentUser={{
