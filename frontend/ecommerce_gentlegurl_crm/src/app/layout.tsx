@@ -21,7 +21,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const branding = await getCrmBranding();
 
   return {
-    title: 'Gentlegurls Admin',
+    title: 'Gentlegurls Management App',
     description: 'Ecommerce administration dashboard',
     manifest: '/manifest.webmanifest',
     icons: buildMetadataIcons(branding?.crm_favicon_icons, branding?.crm_favicon_url ?? '/images/logo.png'),

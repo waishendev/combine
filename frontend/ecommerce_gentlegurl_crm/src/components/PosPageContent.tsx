@@ -4884,17 +4884,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
-          <p className="mt-2 text-sm text-gray-600 flex items-center gap-2">
-            <svg className="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-            </svg>
-            <span className="font-medium">Barcode Listener Active</span> - System is listening for barcode scans. Scan items to add them to cart automatically.
+          <p className="mt-2 flex flex-col gap-1.5 text-sm text-gray-600 sm:flex-row sm:items-start sm:gap-2">
+            <span className="inline-flex shrink-0 items-center gap-2">
+              <svg className="h-4 w-4 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              <span className="font-medium">Barcode Listener Active</span>
+            </span>
+            <span className="min-w-0 text-pretty text-gray-600">
+              System listens for barcode scans; scan items to add them to the cart automatically.
+            </span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
           {/* <Link
             href="/pos/appointments"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
@@ -4911,8 +4916,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
-        <div className="space-y-5 xl:col-span-3 xl:min-h-0">
+      <div className="pos-split-layout grid min-w-0 grid-cols-1 gap-5">
+        <div className="pos-split-catalog min-w-0 space-y-5">
           {/* Hidden barcode scanner input for listening */}
           <input
             ref={scannerInputRef}
@@ -4928,7 +4933,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           />
 
           {/* Products / Services Section */}
-          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
+          <div className="@container pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -4942,7 +4947,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               )}
             </h3>
 
-            <div className="mb-4 inline-flex w-fit rounded-lg border border-gray-200 bg-gray-100 p-1">
+            <div className="mb-4 flex max-w-full flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1">
               <button
                 type="button"
                 onClick={() => setCatalogTab('products')}
@@ -4987,8 +4992,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <>
             
             {/* Search + Category Filters */}
-            <div className="mb-5 space-y-3">
-              <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+            <div className="mb-5 min-w-0 space-y-3">
+              <div className="grid min-w-0 gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
                 <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
                   <button
                     type="button"
@@ -5019,8 +5024,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               </div>
 
-              <div className="border-b border-gray-200 pb-2">
-                <div className="flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:thin]">
+              <div className="min-w-0 border-b border-gray-200 pb-2">
+                <div className="-mx-1 flex min-w-0 flex-nowrap gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap px-1 pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
                   <button
                     type="button"
                     onClick={() => setSelectedCategoryId(null)}
@@ -5047,7 +5052,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             {/* Products Grid */}
-            <div ref={productsGridRef} className="grid min-h-[260px] flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
+            <div ref={productsGridRef} className="pos-split-product-grid grid min-h-[260px] min-w-0 flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 @min-[640px]:grid-cols-2">
               {visibleProductHits.map((hit, idx) => {
                 const item = hit.product
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
@@ -5192,7 +5197,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
                   {filteredBookingProducts.map((item) => (
                     <button key={item.id} type="button" onClick={() => addBookingProductToCart(item)} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
@@ -5433,9 +5438,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
 
 
-        <div className="space-y-5 xl:col-span-2 xl:min-h-0">
+        <div className="pos-split-cart min-w-0 space-y-5">
 
-            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
+            <div className="pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5">
               <>
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5444,7 +5449,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               Shopping Cart
             </h3>
             {hasCartItems ? (
-              <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
+              <div className="pos-split-cart-scroll mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
                 {cartItems.map((item) => {
                   // Get current variant stock info
                   const currentVariant = item.variant_id 
@@ -5460,11 +5465,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const canIncreaseQty = !hasStockLimit || (stockValue !== null && item.qty < stockValue)
                   
                   return (
-                    <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-3 shadow-sm hover:shadow-md transition-shadow sm:p-4">
+                      <div className="flex min-w-0 flex-col gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
-                          <p className="mt-0.5 text-xs font-mono text-gray-600 truncate sm:max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
+                          <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
+                          <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
@@ -5481,7 +5486,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </div>
                           ) : null}
                         </div>
-                        <div className="flex w-fit items-center gap-2 rounded-lg bg-gray-100 p-1">
+                        <div className="flex min-w-0 w-full flex-wrap items-center gap-x-3 gap-y-2 border-t border-gray-100 pt-3 sm:border-t-0 sm:pt-0">
+                          <div className="flex shrink-0 items-center gap-2 rounded-lg bg-gray-100 p-1">
                           <button
                             type="button"
                             title={item.qty <= 1 ? 'Remove item' : 'Decrease quantity'}
@@ -5497,14 +5503,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             -
                           </button>
                           <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
-                          <button 
+                          <button
+                            type="button"
                             onClick={() => void updateQty(item.id, item.qty + 1)} 
                             disabled={!canIncreaseQty}
                             className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-gray-100 disabled:hover:border-gray-200"
                           >+</button>
                         </div>
-                        <div className="flex items-center justify-between gap-3 sm:justify-end">
-                          <div className="min-w-[140px] text-left sm:text-right">
+                          <div className="min-w-0 flex-1 text-right tabular-nums sm:max-w-[11rem] sm:flex-none sm:text-right">
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
@@ -5527,8 +5533,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             )}
                           </div>
                           <button 
+                            type="button"
                             onClick={() => void removeItem(item.id)} 
-                            className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
+                            className="ml-auto flex shrink-0 items-center justify-center rounded-md p-2 text-red-600 transition-colors hover:bg-red-50 sm:ml-0"
                             title="Remove item"
                           >
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5536,45 +5543,45 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </svg>
                           </button>
                         </div>
+                        {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) ? (
+                          <div className="mt-2 w-full min-w-0 border-t border-gray-100 pt-3 sm:border-t-0 sm:pt-0">
+                            <select
+                              className={`h-9 w-full max-w-full rounded-lg border px-2 text-xs ${
+                                cartVariantLoading[item.id] 
+                                  ? 'border-slate-300 bg-gray-50 text-gray-400 cursor-wait' 
+                                  : (cartVariantOptions[item.id] ?? []).length === 0
+                                  ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  : 'border-slate-300 bg-white text-gray-900'
+                              }`}
+                              value={item.variant_id ? String(item.variant_id) : ''}
+                              onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
+                              onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
+                              disabled={cartVariantLoading[item.id] || (cartVariantOptions[item.id] ?? []).length === 0}
+                            >
+                              <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
+                              {(cartVariantOptions[item.id] ?? []).map((variant) => {
+                                const variantTrackStock = variant.track_stock ?? null
+                                const variantStock =
+                                  typeof variant.stock === 'number' && Number.isFinite(variant.stock)
+                                    ? variant.stock
+                                    : null
+                                const variantHasStock = variantHasSellableStock(variantTrackStock, variantStock)
+                                const isDisabled = !variantHasStock || !variant.is_active
+                                
+                                return (
+                                  <option 
+                                    key={variant.id} 
+                                    value={String(variant.id)}
+                                    disabled={isDisabled}
+                                  >
+                                    {variant.name} ({variant.sku}){!variantHasStock ? ' - Out of Stock' : ''}
+                                  </option>
+                                )
+                              })}
+                            </select>
+                          </div>
+                        ) : null}
                       </div>
-                      {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) && (
-                        <div className="mt-2">
-                          <select
-                            className={`h-9 w-full rounded-lg border px-2 text-xs ${
-                              cartVariantLoading[item.id] 
-                                ? 'border-slate-300 bg-gray-50 text-gray-400 cursor-wait' 
-                                : (cartVariantOptions[item.id] ?? []).length === 0
-                                ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'border-slate-300 bg-white text-gray-900'
-                            }`}
-                            value={item.variant_id ? String(item.variant_id) : ''}
-                            onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
-                            onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
-                            disabled={cartVariantLoading[item.id] || (cartVariantOptions[item.id] ?? []).length === 0}
-                          >
-                            <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
-                            {(cartVariantOptions[item.id] ?? []).map((variant) => {
-                              const variantTrackStock = variant.track_stock ?? null
-                              const variantStock =
-                                typeof variant.stock === 'number' && Number.isFinite(variant.stock)
-                                  ? variant.stock
-                                  : null
-                              const variantHasStock = variantHasSellableStock(variantTrackStock, variantStock)
-                              const isDisabled = !variantHasStock || !variant.is_active
-                              
-                              return (
-                                <option 
-                                  key={variant.id} 
-                                  value={String(variant.id)}
-                                  disabled={isDisabled}
-                                >
-                                  {variant.name} ({variant.sku}){!variantHasStock ? ' - Out of Stock' : ''}
-                                </option>
-                              )
-                            })}
-                          </select>
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -5922,17 +5929,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 {cartPackageItems.map((packageItem) => (
                   <div
                     key={`package-${packageItem.id}`}
-                    className="rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                    className="rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white p-3 shadow-sm transition-shadow hover:shadow-md sm:p-4"
                   >
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    <div className="flex min-w-0 flex-col gap-3">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Service Package</p>
-                        <h4 className="mt-0.5 truncate text-sm font-bold text-gray-900" title={packageItem.package_name}>
+                        <h4 className="mt-0.5 break-words text-sm font-bold text-gray-900" title={packageItem.package_name}>
                           {packageItem.package_name}
                         </h4>
-                        <p className="mt-1.5 text-xs text-gray-600">{formatPosPackageMemberLabel(packageItem, selectedMember)}</p>
+                        <p className="mt-1.5 break-words text-xs text-gray-600">{formatPosPackageMemberLabel(packageItem, selectedMember)}</p>
                       </div>
-                      <div className="flex w-fit items-center gap-2 rounded-lg bg-purple-100/90 p-1 ring-1 ring-purple-200/80">
+                      <div className="flex min-w-0 w-full flex-wrap items-center gap-x-3 gap-y-2 border-t border-purple-100 pt-3 sm:border-t-0 sm:pt-0">
+                      <div className="flex shrink-0 items-center gap-2 rounded-lg bg-purple-100/90 p-1 ring-1 ring-purple-200/80">
                         <button
                           type="button"
                           title={packageItem.qty <= 1 ? 'Remove package' : 'Decrease quantity'}
@@ -5958,8 +5966,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           +
                         </button>
                       </div>
-                      <div className="flex items-center justify-between gap-3 sm:justify-end">
-                        <div className="min-w-[120px] text-left sm:text-right">
+                        <div className="min-w-0 flex-1 text-right tabular-nums sm:max-w-[11rem] sm:flex-none sm:text-right">
                           {(packageItem.discount_amount ?? 0) > 0 ? (
                             <div className="space-y-0.5">
                               <p className="text-[11px] text-gray-500 line-through">RM {Number(packageItem.line_total_snapshot ?? packageItem.line_total).toFixed(2)}</p>
@@ -5972,7 +5979,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <button
                           type="button"
                           onClick={() => void removePackageCartItem(packageItem.id)}
-                          className="rounded-md p-2 text-red-600 transition-colors hover:bg-red-50"
+                          className="ml-auto flex shrink-0 items-center justify-center rounded-md p-2 text-red-600 transition-colors hover:bg-red-50 sm:ml-0"
                           title="Remove package"
                         >
                           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

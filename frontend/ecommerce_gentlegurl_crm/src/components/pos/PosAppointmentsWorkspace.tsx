@@ -2096,9 +2096,9 @@ export default function PosAppointmentsWorkspace({
   )
 
   return (
-    <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex items-center justify-between">
-        <div>
+    <div className="min-h-screen min-w-0 space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Appointments</h2>
           {/* <p className="mt-2 text-sm text-gray-600">
             Month view shows a calendar; Day view shows the staff × time grid. Settlement stays on the right.
@@ -2109,9 +2109,9 @@ export default function PosAppointmentsWorkspace({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
-        <div className="space-y-5 xl:col-span-3 xl:min-h-0">
-          <div className="flex flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
+      <div className="pos-split-layout grid min-w-0 grid-cols-1 gap-5">
+        <div className="pos-split-catalog min-w-0 space-y-5">
+          <div className="pos-split-panel flex min-h-0 w-full min-w-0 max-w-full flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
             <h3 className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xl font-bold text-gray-900">
               <div className="flex items-center gap-2">
                 <svg className="h-6 w-6 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -2241,7 +2241,7 @@ export default function PosAppointmentsWorkspace({
               scheduleStaff={scheduleStaffForDayGrid}
               staffOffTodayIds={staffOffTodayIds}
               filterSlot={(
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
                   <input
                     value={appointmentQuery}
                     onChange={(e) => setAppointmentQuery(e.target.value)}
@@ -2288,8 +2288,8 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
 
-        <div className="space-y-5 xl:col-span-2 xl:min-h-0">
-          <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5 ">
+        <div className="pos-split-cart min-w-0 space-y-5">
+          <div className="pos-split-panel flex min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5">
             <div className="flex-shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
               <h3 className="text-base font-bold tracking-tight text-slate-900">Appointment Settlement</h3>
               <p className="mt-0.5 text-xs text-slate-500">Review the breakdown, collect payment, or update the booking.</p>

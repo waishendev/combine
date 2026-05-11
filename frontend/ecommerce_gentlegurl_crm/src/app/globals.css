@@ -34,3 +34,35 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/**
+ * POS checkout: use two columns only when the viewport is wide *and* tall enough.
+ * Prevents broken overlap on phone landscape (e.g. width ≥768px but height ~390px).
+ */
+@layer utilities {
+  @media (min-width: 768px) and (min-height: 640px) {
+    .pos-split-layout {
+      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      min-height: 0;
+    }
+    .pos-split-catalog {
+      grid-column: span 3 / span 3;
+      min-height: 0;
+    }
+    .pos-split-cart {
+      grid-column: span 2 / span 2;
+      min-height: 0;
+    }
+    .pos-split-panel {
+      height: calc(80vh - 5rem);
+      max-height: calc(100dvh - 6rem);
+      min-height: 0;
+    }
+    .pos-split-product-grid {
+      min-height: 0;
+    }
+    .pos-split-cart-scroll {
+      min-height: 0;
+    }
+  }
+}

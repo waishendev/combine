@@ -213,9 +213,14 @@ export default function PosAppointmentsDayGrid({
   const HEADER_H = 44
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white shadow-sm">
-      <div className="flex min-w-full border-b border-slate-200 bg-slate-100">
-        <div className="w-14 shrink-0" style={{ minHeight: HEADER_H }} />
+    <div className="flex h-full max-h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]">
+        <div className="min-w-max">
+          <div className="flex min-w-full shrink-0 border-b border-slate-200 bg-slate-100">
+        <div
+          className="sticky left-0 z-[2] w-14 shrink-0 border-r border-slate-200 bg-slate-100"
+          style={{ minHeight: HEADER_H }}
+        />
         {staffColumns.map((col) => (
           <div
             key={`h-${col.key}`}
@@ -234,7 +239,7 @@ export default function PosAppointmentsDayGrid({
 
       <div className="inline-flex min-w-full">
         <div
-          className="w-14 shrink-0 border-r border-slate-200 bg-slate-50"
+          className="sticky left-0 z-[1] w-14 shrink-0 border-r border-slate-200 bg-slate-50"
           style={{ height: gridHeight }}
         >
           {Array.from({ length: totalSlots }, (_, i) => {
@@ -339,6 +344,8 @@ export default function PosAppointmentsDayGrid({
             </div>
           )
         })}
+      </div>
+        </div>
       </div>
     </div>
   )

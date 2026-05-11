@@ -105,7 +105,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
   }
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-[100] flex h-16 items-center gap-2 border-b border-slate-100/80 bg-white px-2 shadow-sm sm:gap-3 sm:px-4 md:px-6">
+    <header className="fixed top-0 left-0 right-0 z-50 flex h-16 items-center gap-2 border-b border-slate-100/80 bg-white px-2 shadow-sm sm:gap-3 sm:px-4 md:px-6">
       <div className="relative z-[1] flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
         <button
           aria-label="Toggle sidebar"
