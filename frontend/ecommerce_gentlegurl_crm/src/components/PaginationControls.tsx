@@ -32,57 +32,73 @@ export default function PaginationControls({
     }
   }, [currentPage, totalPages])
 
+  const touchBtn =
+    'touch-manipulation select-none inline-flex min-h-[44px] shrink-0 items-center justify-center rounded-md border text-sm font-medium shadow-sm transition-colors disabled:pointer-events-none disabled:opacity-50'
+
+  const navBtn = `${touchBtn} min-w-[44px] border-gray-300 bg-white px-3 text-gray-800 hover:bg-gray-50 active:bg-gray-100`
+
+  const pageIdle = `${touchBtn} min-w-[44px] border-gray-300 bg-white text-gray-800 hover:bg-gray-50 active:bg-gray-100`
+
+  const pageActive = `${touchBtn} min-w-[44px] border-blue-600 bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700`
+
   return (
-    <div className="flex items-center justify-end mt-4">
-      <div className="flex items-center space-x-2">
+    <nav
+      className="relative z-10 mt-6 flex touch-manipulation flex-wrap items-center justify-center gap-2 sm:justify-end"
+      aria-label="Pagination"
+    >
+      <button
+        type="button"
+        className={`${navBtn} min-w-[5.5rem] px-4`}
+        onClick={() => onPageChange(currentPage - 1)}
+        disabled={disabled || currentPage === 1}
+      >
+        {t('previous')}
+      </button>
+      {hasPrevGroup && (
         <button
-          className="px-3 py-1 border rounded disabled:opacity-50"
-          onClick={() => onPageChange(currentPage - 1)}
-          disabled={disabled || currentPage === 1}
+          type="button"
+          key="prev-ellipsis"
+          onClick={() => onPageChange(start - 1)}
+          className={navBtn}
+          disabled={disabled}
+          aria-label="Show previous pages"
         >
-          {t('previous')}
+          …
         </button>
-        {hasPrevGroup && (
-          <button
-            key="prev-ellipsis"
-            onClick={() => onPageChange(start - 1)}
-            className="px-3 py-1 border rounded"
-            disabled={disabled}
-          >
-            ...
-          </button>
-        )}
-        {pages.map((page) => (
-          <button
-            key={page}
-            onClick={() => onPageChange(page)}
-            className={`px-3 py-1 border rounded ${page === currentPage ? 'bg-blue-500 text-white' : ''}`}
-            disabled={disabled}
-          >
-            {page}
-          </button>
-        ))}
-        {hasNextGroup && (
-          <button
-            key="next-ellipsis"
-            onClick={() => onPageChange(end + 1)}
-            className="px-3 py-1 border rounded"
-            disabled={disabled}
-          >
-            ...
-          </button>
-        )}
+      )}
+      {pages.map((page) => (
         <button
-          className="px-3 py-1 border rounded disabled:opacity-50"
-          onClick={() => onPageChange(currentPage + 1)}
-          disabled={
-            disabled || currentPage === totalPages || totalPages === 0
-          }
+          type="button"
+          key={page}
+          onClick={() => onPageChange(page)}
+          className={page === currentPage ? pageActive : pageIdle}
+          disabled={disabled}
+          aria-current={page === currentPage ? 'page' : undefined}
         >
-          {t('next')}
+          {page}
         </button>
-      </div>
-    </div>
+      ))}
+      {hasNextGroup && (
+        <button
+          type="button"
+          key="next-ellipsis"
+          onClick={() => onPageChange(end + 1)}
+          className={navBtn}
+          disabled={disabled}
+          aria-label="Show more pages"
+        >
+          …
+        </button>
+      )}
+      <button
+        type="button"
+        className={`${navBtn} min-w-[5.5rem] px-4`}
+        onClick={() => onPageChange(currentPage + 1)}
+        disabled={disabled || currentPage === totalPages || totalPages === 0}
+      >
+        {t('next')}
+      </button>
+    </nav>
   )
 }
 

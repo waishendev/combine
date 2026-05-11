@@ -58,7 +58,8 @@ export function ShopHeaderClient({ shopMenu, servicesMenu, logoUrl }: ShopHeader
   const bookingHref = useMemo(() => {
     const rawBase = process.env.NEXT_PUBLIC_BOOKING_BASE_URL;
     const base = rawBase?.trim().replace(/\/+$/, "");
-    return base ? `${base}/booking` : "/booking";
+  
+    return base || "#";
   }, []);
   const pathname = usePathname();
   const searchParams = useSearchParams();

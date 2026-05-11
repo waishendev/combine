@@ -1828,7 +1828,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 : toApiBoolean(item.track_stock)
                   ? true
                   : null,
-            stock: toOptionalNumber(item.stock_quantity ?? item.stock),
+            stock: toOptionalNumber(item.stock ?? item.stock_quantity),
           }
         : {}),
     }
