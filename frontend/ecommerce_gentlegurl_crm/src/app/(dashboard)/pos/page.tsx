@@ -19,7 +19,7 @@ export default async function PosPage() {
   }
 
   return (
-    <div className="h-full overflow-y-auto px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8 xl:px-10">
+    <div className="w-full overflow-visible px-3 pb-24 pt-4 sm:px-4 sm:pt-5 md:px-6 md:pb-28 md:pt-6 lg:px-8 lg:pb-10 xl:px-10">
       <PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
         <PosPageContent
           currentUser={{

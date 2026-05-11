@@ -4883,7 +4883,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   )
 
   return (
-    <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
+    <div className="w-full space-y-4 bg-gray-50 p-3 pb-24 sm:space-y-5 sm:p-4 sm:pb-24 md:pb-28 lg:space-y-6 lg:p-6 lg:pb-10">
       <div className="flex items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
@@ -4911,8 +4911,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
-        <div className="space-y-5 xl:col-span-3 xl:min-h-0">
+      <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-start">
+        <div className="min-w-0 space-y-5">
           {/* Hidden barcode scanner input for listening */}
           <input
             ref={scannerInputRef}
@@ -4928,7 +4928,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           />
 
           {/* Products / Services Section */}
-          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
+          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -5047,7 +5047,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             {/* Products Grid */}
-            <div ref={productsGridRef} className="grid min-h-[260px] flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
+            <div ref={productsGridRef} className="grid min-h-[260px] auto-rows-max content-start grid-cols-1 gap-3 overflow-visible p-1 sm:grid-cols-2 xl:grid-cols-2">
               {visibleProductHits.map((hit, idx) => {
                 const item = hit.product
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
@@ -5433,9 +5433,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
 
 
-        <div className="space-y-5 xl:col-span-2 xl:min-h-0">
+        <div className="min-w-0 space-y-5">
 
-            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
+            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5">
               <>
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5444,7 +5444,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               Shopping Cart
             </h3>
             {hasCartItems ? (
-              <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
+              <div className="mt-3 min-h-[220px] space-y-3 overflow-visible pr-1">
                 {cartItems.map((item) => {
                   // Get current variant stock info
                   const currentVariant = item.variant_id 
