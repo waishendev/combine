@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SalesVisualDailyReportService
 {
-    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'];
+    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
     /**
      * Apply the same order-inclusion logic used by POS Summary so that online booking orders
@@ -122,11 +122,11 @@ class SalesVisualDailyReportService
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
             ->selectRaw("$lineTotal as net_amount")
-            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as line_kind")
+            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as line_kind")
             ->selectRaw('oi.booking_id');
 
         $itemAgg = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon') THEN net_amount ELSE 0 END), 0) as service_bucket")
+            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
@@ -214,11 +214,11 @@ class SalesVisualDailyReportService
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
             ->selectRaw("$lineTotal as net_amount")
-            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as line_kind")
+            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as line_kind")
             ->selectRaw('oi.booking_id');
 
         $itemBooking = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon') THEN net_amount ELSE 0 END), 0) as service_bucket")
+            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
@@ -671,26 +671,26 @@ class SalesVisualDailyReportService
             ->values()
             ->all();
 
-        if (empty($bookingIds)) {
-            return [];
-        }
+        $splitRows = empty($bookingIds)
+            ? collect()
+            : DB::table('booking_service_staff_splits')
+                ->whereIn('booking_id', $bookingIds)
+                ->get(['booking_id', 'staff_id', 'split_percent'])
+                ->groupBy('booking_id');
 
-        $splitRows = DB::table('booking_service_staff_splits')
-            ->whereIn('booking_id', $bookingIds)
-            ->get(['booking_id', 'staff_id', 'split_percent'])
-            ->groupBy('booking_id');
-
-        $bookingTotals = $this->applyOrderScope(
-            DB::table('order_items as oi')
-                ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereIn('oi.booking_id', $bookingIds)
-        )
-            ->whereIn('oi.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
-            ->groupBy('oi.booking_id')
-            ->selectRaw('oi.booking_id as booking_id')
-            ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")
-            ->pluck('service_amount', 'booking_id')
-            ->map(fn ($amount) => round((float) $amount, 2));
+        $bookingTotals = empty($bookingIds)
+            ? collect()
+            : $this->applyOrderScope(
+                DB::table('order_items as oi')
+                    ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                    ->whereIn('oi.booking_id', $bookingIds)
+            )
+                ->whereIn('oi.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->groupBy('oi.booking_id')
+                ->selectRaw('oi.booking_id as booking_id')
+                ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")
+                ->pluck('service_amount', 'booking_id')
+                ->map(fn ($amount) => round((float) $amount, 2));
 
         $byStaff = [];
         foreach ($bookings as $booking) {
@@ -709,22 +709,36 @@ class SalesVisualDailyReportService
             }
 
             foreach ($splits as $split) {
-                $staffId = (int) $split['staff_id'];
-                if ($staffId <= 0) {
-                    continue;
-                }
-
-                if (! isset($byStaff[$staffId])) {
-                    $byStaff[$staffId] = [
-                        'staff_id' => $staffId,
-                        'service_count' => 0,
-                        'service_amount' => 0.0,
-                    ];
-                }
-
-                $byStaff[$staffId]['service_count']++;
-                $byStaff[$staffId]['service_amount'] += round($serviceAmount * (((float) $split['share_percent']) / 100), 2);
+                $this->addStaffServiceActivity(
+                    $byStaff,
+                    (int) $split['staff_id'],
+                    round($serviceAmount * (((float) $split['share_percent']) / 100), 2)
+                );
             }
+        }
+
+        $bookingProductRows = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->leftJoin('order_item_staff_splits as sps', 'sps.order_item_id', '=', 'oi.id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
+            ->where('oi.line_type', 'booking_product')
+            ->where(function (Builder $q) {
+                $q->whereNotNull('sps.staff_id')
+                    ->orWhereNotNull('oi.staff_id');
+            })
+            ->selectRaw('COALESCE(sps.staff_id, oi.staff_id) as staff_id')
+            ->selectRaw('CASE WHEN sps.staff_id IS NULL THEN 100 ELSE COALESCE(sps.share_percent, 0) END as share_percent')
+            ->selectRaw("$lineTotal as service_amount")
+            ->get();
+
+        foreach ($bookingProductRows as $row) {
+            $this->addStaffServiceActivity(
+                $byStaff,
+                (int) ($row->staff_id ?? 0),
+                round(((float) ($row->service_amount ?? 0)) * (((float) ($row->share_percent ?? 0)) / 100), 2)
+            );
         }
 
         if (empty($byStaff)) {
@@ -746,6 +760,27 @@ class SalesVisualDailyReportService
             ->sortByDesc('service_amount')
             ->values()
             ->all();
+    }
+
+    /**
+     * @param  array<int, array{staff_id: int, service_count: int, service_amount: float}>  $byStaff
+     */
+    private function addStaffServiceActivity(array &$byStaff, int $staffId, float $amount): void
+    {
+        if ($staffId <= 0) {
+            return;
+        }
+
+        if (! isset($byStaff[$staffId])) {
+            $byStaff[$staffId] = [
+                'staff_id' => $staffId,
+                'service_count' => 0,
+                'service_amount' => 0.0,
+            ];
+        }
+
+        $byStaff[$staffId]['service_count']++;
+        $byStaff[$staffId]['service_amount'] += $amount;
     }
 
 }
