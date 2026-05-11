@@ -139,8 +139,13 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
           cache: 'no-store',
           signal: controller.signal,
         })
-        const data = await res.json().catch(() => ({})) as { data?: CategoryOption[] }
-        if (res.ok) setCategories(data.data ?? [])
+        const data = await res.json().catch(() => ({})) as {
+          data?: unknown
+        }
+        if (res.ok) {
+          const maybeArray = (data as any)?.data?.data ?? (data as any)?.data
+          setCategories(Array.isArray(maybeArray) ? maybeArray : [])
+        }
       } catch (err) {
         if (err instanceof DOMException && err.name === 'AbortError') return
       }
