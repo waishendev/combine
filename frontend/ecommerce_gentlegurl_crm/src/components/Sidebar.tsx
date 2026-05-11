@@ -390,6 +390,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             href: '/reports/wishlist',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
+          {
+            key: 'product-profit-report',
+            label: 'Product Profit Report',
+            href: '/reports/product-profit',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
         ],
       },
       // {
