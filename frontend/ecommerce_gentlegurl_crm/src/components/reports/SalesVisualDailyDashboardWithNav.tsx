@@ -35,8 +35,9 @@ type VisualPayload = {
       total?: number
     }>
     sales_activity_total?: number
-    service_activity?: Array<{ staff_id: number; name: string; service_count: number }>
+    service_activity?: Array<{ staff_id: number; name: string; service_count: number; service_amount?: number; total?: number }>
     service_activity_total?: number
+    service_activity_amount_total?: number
   }
 }
 
@@ -264,15 +265,12 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
                       <div className="font-semibold text-slate-900">{fmtRm(s.total ?? s.product_sales ?? 0)}</div>
                     </li>
                   ))}
-                  <li className="border-t border-slate-100 pt-2 font-semibold text-slate-900">
-                    Total {fmtRm(data?.staff?.sales_activity_total ?? 0)}
-                  </li>
                 </ul>
               )}
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Services</p>
-              <p className="mt-0.5 text-[11px] text-slate-400">Completed bookings this day</p>
+              <p className="mt-0.5 text-[11px] text-slate-400">Completed bookings + booking products</p>
               {loading ? (
                 <p className="mt-2 text-sm text-slate-500">Loading…</p>
               ) : staffSvc.length === 0 ? (
@@ -282,16 +280,20 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
                   {staffSvc.map((s) => (
                     <li key={s.staff_id}>
                       <div className="text-slate-800">{s.name}</div>
-                      <div className="font-semibold text-slate-900">{s.service_count}×</div>
+                      <div className="font-semibold text-slate-900">{fmtRm(s.service_amount ?? s.total ?? 0)}</div>
+                      <div className="text-xs text-slate-500">{s.service_count}×</div>
                     </li>
                   ))}
-                  <li className="border-t border-slate-100 pt-2 font-semibold text-slate-900">
-                    Total {data?.staff?.service_activity_total ?? 0}×
-                  </li>
                 </ul>
               )}
             </div>
           </div>
+          {!loading ? (
+            <div className="mt-3 grid gap-4 border-t border-slate-100 pt-2 text-sm font-semibold text-slate-900 sm:grid-cols-2">
+              <div>Total {fmtRm(data?.staff?.sales_activity_total ?? 0)}</div>
+              <div>Total {fmtRm(data?.staff?.service_activity_amount_total ?? 0)} · {data?.staff?.service_activity_total ?? 0}×</div>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

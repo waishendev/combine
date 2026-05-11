@@ -18,8 +18,9 @@ class SalesChannelReportService
     public const BOOKING_TYPE_FINAL_SETTLEMENT = 'final_settlement';
     public const BOOKING_TYPE_ADDON = 'addon';
     public const BOOKING_TYPE_PACKAGE_PURCHASE = 'package_purchase';
+    public const BOOKING_TYPE_PRODUCT = 'booking_product';
 
-    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'];
+    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
     /**
      * Mirror MyPosSummaryReportController::baseOrdersScopeQuery logic so that
@@ -185,6 +186,7 @@ class SalesChannelReportService
             ->selectRaw("COALESCE(SUM(CASE WHEN type = 'final_settlement' THEN net_amount ELSE 0 END), 0) as booking_settlement_amount")
             ->selectRaw("COALESCE(SUM(CASE WHEN type = 'addon' THEN net_amount ELSE 0 END), 0) as addon_revenue")
             ->selectRaw("COALESCE(SUM(CASE WHEN type = 'package_purchase' THEN net_amount ELSE 0 END), 0) as package_purchase_amount")
+            ->selectRaw("COALESCE(SUM(CASE WHEN type = 'booking_product' THEN net_amount ELSE 0 END), 0) as booking_product_amount")
             ->first();
 
         $totalsPage = $this->aggregateBookingTotals($rows);
@@ -197,6 +199,7 @@ class SalesChannelReportService
             'booking_settlement_amount' => (float) ($summaryRow->booking_settlement_amount ?? 0),
             'addon_revenue' => (float) ($summaryRow->addon_revenue ?? 0),
             'package_purchase_amount' => (float) ($summaryRow->package_purchase_amount ?? 0),
+            'booking_product_amount' => (float) ($summaryRow->booking_product_amount ?? 0),
         ];
 
         return [
@@ -209,6 +212,7 @@ class SalesChannelReportService
                 'booking_settlement_amount' => (float) ($summaryRow->booking_settlement_amount ?? 0),
                 'addon_revenue' => (float) ($summaryRow->addon_revenue ?? 0),
                 'package_purchase_amount' => (float) ($summaryRow->package_purchase_amount ?? 0),
+                'booking_product_amount' => (float) ($summaryRow->booking_product_amount ?? 0),
             ],
             'totals_page' => $totalsPage,
             'grand_totals' => $grandTotals,
@@ -327,9 +331,9 @@ class SalesChannelReportService
             ->selectRaw('o.grand_total as order_total')
             ->selectRaw('o.status')
             ->selectRaw('oi.id AS order_item_id')
-            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as type")
+            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as type")
             ->selectRaw('oi.booking_id as booking_id')
-            ->selectRaw('COALESCE(b.booking_code, CONCAT(\'BOOKING-\', oi.booking_id)) as booking_no')
+            ->selectRaw('COALESCE(b.booking_code, CASE WHEN oi.booking_id IS NOT NULL THEN CONCAT(\'BOOKING-\', oi.booking_id) ELSE NULL END) as booking_no')
             ->selectRaw('COALESCE(oi.display_name_snapshot, oi.product_name_snapshot, sp.name) as package_name')
             ->selectRaw('COALESCE(oi.line_total, 0) as gross_amount')
             ->selectRaw('COALESCE(oi.discount_amount, 0) as discount')
@@ -350,6 +354,7 @@ class SalesChannelReportService
                 self::BOOKING_TYPE_FINAL_SETTLEMENT => 'booking_settlement',
                 self::BOOKING_TYPE_ADDON => 'booking_addon',
                 self::BOOKING_TYPE_PACKAGE_PURCHASE => 'service_package',
+                self::BOOKING_TYPE_PRODUCT => 'booking_product',
                 default => null,
             };
             if ($lineType !== null) {
@@ -439,6 +444,7 @@ class SalesChannelReportService
             self::BOOKING_TYPE_FINAL_SETTLEMENT => self::BOOKING_TYPE_FINAL_SETTLEMENT,
             self::BOOKING_TYPE_ADDON => self::BOOKING_TYPE_ADDON,
             self::BOOKING_TYPE_PACKAGE_PURCHASE => self::BOOKING_TYPE_PACKAGE_PURCHASE,
+            self::BOOKING_TYPE_PRODUCT => self::BOOKING_TYPE_PRODUCT,
             default => self::BOOKING_TYPE_ALL,
         };
     }
@@ -471,6 +477,7 @@ class SalesChannelReportService
             'booking_settlement_amount' => (float) $rows->filter(fn ($row) => ($row['type'] ?? '') === self::BOOKING_TYPE_FINAL_SETTLEMENT)->sum('net_amount'),
             'addon_revenue' => (float) $rows->filter(fn ($row) => ($row['type'] ?? '') === self::BOOKING_TYPE_ADDON)->sum('net_amount'),
             'package_purchase_amount' => (float) $rows->filter(fn ($row) => ($row['type'] ?? '') === self::BOOKING_TYPE_PACKAGE_PURCHASE)->sum('net_amount'),
+            'booking_product_amount' => (float) $rows->filter(fn ($row) => ($row['type'] ?? '') === self::BOOKING_TYPE_PRODUCT)->sum('net_amount'),
         ];
     }
 }
