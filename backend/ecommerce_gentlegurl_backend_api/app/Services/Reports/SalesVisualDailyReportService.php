@@ -717,27 +717,54 @@ class SalesVisualDailyReportService
             }
         }
 
-        $bookingProductRows = $this->applyOrderScope(
-            DB::table('order_items as oi')
+        $bookingProductSplitRows = $this->applyOrderScope(
+            DB::table('order_item_staff_splits as sps')
+                ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->leftJoin('order_item_staff_splits as sps', 'sps.order_item_id', '=', 'oi.id')
                 ->whereBetween('o.created_at', [$start, $end])
         )
             ->where('oi.line_type', 'booking_product')
-            ->where(function (Builder $q) {
-                $q->whereNotNull('sps.staff_id')
-                    ->orWhereNotNull('oi.staff_id');
-            })
-            ->selectRaw('COALESCE(sps.staff_id, oi.staff_id) as staff_id')
-            ->selectRaw('CASE WHEN sps.staff_id IS NULL THEN 100 ELSE COALESCE(sps.share_percent, 0) END as share_percent')
-            ->selectRaw("$lineTotal as service_amount")
+            ->whereNotNull('sps.staff_id')
+            ->groupBy('sps.staff_id')
+            ->selectRaw('sps.staff_id as staff_id')
+            ->selectRaw('COUNT(*) as service_count')
+            ->selectRaw("COALESCE(SUM(($lineTotal) * (COALESCE(sps.share_percent, 0) / 100.0)), 0) as service_amount")
             ->get();
 
-        foreach ($bookingProductRows as $row) {
+        foreach ($bookingProductSplitRows as $row) {
             $this->addStaffServiceActivity(
                 $byStaff,
                 (int) ($row->staff_id ?? 0),
-                round(((float) ($row->service_amount ?? 0)) * (((float) ($row->share_percent ?? 0)) / 100), 2)
+                round((float) ($row->service_amount ?? 0), 2),
+                (int) ($row->service_count ?? 0)
+            );
+        }
+
+        $bookingProductFallbackRows = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->leftJoin('users as creator', 'creator.id', '=', 'o.created_by_user_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
+            ->where('oi.line_type', 'booking_product')
+            ->whereNotExists(function (Builder $q) {
+                $q->selectRaw('1')
+                    ->from('order_item_staff_splits as sps_exists')
+                    ->whereColumn('sps_exists.order_item_id', 'oi.id');
+            })
+            ->whereNotNull(DB::raw('COALESCE(oi.staff_id, creator.staff_id)'))
+            ->groupBy(DB::raw('COALESCE(oi.staff_id, creator.staff_id)'))
+            ->selectRaw('COALESCE(oi.staff_id, creator.staff_id) as staff_id')
+            ->selectRaw('COUNT(*) as service_count')
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")
+            ->get();
+
+        foreach ($bookingProductFallbackRows as $row) {
+            $this->addStaffServiceActivity(
+                $byStaff,
+                (int) ($row->staff_id ?? 0),
+                round((float) ($row->service_amount ?? 0), 2),
+                (int) ($row->service_count ?? 0)
             );
         }
 
@@ -765,9 +792,9 @@ class SalesVisualDailyReportService
     /**
      * @param  array<int, array{staff_id: int, service_count: int, service_amount: float}>  $byStaff
      */
-    private function addStaffServiceActivity(array &$byStaff, int $staffId, float $amount): void
+    private function addStaffServiceActivity(array &$byStaff, int $staffId, float $amount, int $count = 1): void
     {
-        if ($staffId <= 0) {
+        if ($staffId <= 0 || $count <= 0) {
             return;
         }
 
@@ -779,7 +806,7 @@ class SalesVisualDailyReportService
             ];
         }
 
-        $byStaff[$staffId]['service_count']++;
+        $byStaff[$staffId]['service_count'] += $count;
         $byStaff[$staffId]['service_amount'] += $amount;
     }
 
