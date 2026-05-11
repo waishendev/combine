@@ -482,6 +482,9 @@ $protectedRoutes = function () {
     Route::post('/admin/products/stock-movements/{id}/revoke', [ProductStockMovementController::class, 'revoke'])
         ->middleware('permission:ecommerce.products.update');
 
+    Route::get('/admin/reports/product-profit', [ProductProfitReportController::class, 'index'])
+        ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {
         // Categories
