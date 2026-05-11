@@ -65,8 +65,8 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
-        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         return [
             'date' => $day->toDateString(),
@@ -97,6 +97,7 @@ class SalesVisualDailyReportService
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
+                'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
     }
@@ -134,8 +135,8 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
-        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         $serviceConsumedQuery = $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -174,6 +175,7 @@ class SalesVisualDailyReportService
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
+                'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
     }
@@ -225,8 +227,8 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
-        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         $serviceConsumedAmount = round((float) $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -266,6 +268,7 @@ class SalesVisualDailyReportService
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
+                'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
     }
@@ -326,19 +329,22 @@ class SalesVisualDailyReportService
 
     /**
      * @param  list<array{staff_id: int, name: string}>  $roster
-     * @param  array<int, array<string, mixed>>  $byId  keyed by staff_id from completedBookingsByStaff
-     * @return list<array{staff_id: int, name: string, service_count: int}>
+     * @param  array<int, array<string, mixed>>  $byId  keyed by staff_id from completedBookingServiceActivityByStaff
+     * @return list<array{staff_id: int, name: string, service_count: int, service_amount: float, total: float}>
      */
-    private function padStaffWithServiceCounts(array $roster, array $byId): array
+    private function padStaffWithServiceActivity(array $roster, array $byId): array
     {
         $out = [];
         foreach ($roster as $s) {
             $id = $s['staff_id'];
             $cnt = isset($byId[$id]) ? (int) ($byId[$id]['service_count'] ?? 0) : 0;
+            $amt = isset($byId[$id]) ? (float) ($byId[$id]['service_amount'] ?? $byId[$id]['total'] ?? 0) : 0.0;
             $out[] = [
                 'staff_id' => $id,
                 'name' => $s['name'],
                 'service_count' => $cnt,
+                'service_amount' => round($amt, 2),
+                'total' => round($amt, 2),
             ];
         }
 
@@ -649,26 +655,97 @@ class SalesVisualDailyReportService
         return (float) $q->sum(DB::raw('COALESCE(op.amount, o.grand_total)'));
     }
 
-    private function completedBookingsByStaff(Carbon $start, Carbon $end): array
+    private function completedBookingServiceActivityByStaff(Carbon $start, Carbon $end, string $lineTotal): array
     {
-        $rows = DB::table('bookings as b')
-            ->join('staffs as st', 'st.id', '=', 'b.staff_id')
-            ->whereNotNull('b.staff_id')
+        $bookings = DB::table('bookings as b')
             ->where('b.status', 'COMPLETED')
             ->whereNotNull('b.completed_at')
             ->whereBetween('b.completed_at', [$start, $end])
-            ->groupBy('st.id', 'st.name')
-            ->orderByDesc(DB::raw('service_count'))
-            ->selectRaw('st.id as staff_id')
-            ->selectRaw('st.name as staff_name')
-            ->selectRaw('COUNT(*) as service_count')
+            ->select('b.id', 'b.staff_id')
             ->get();
 
-        return $rows->map(fn ($r) => [
-            'staff_id' => (int) $r->staff_id,
-            'name' => (string) $r->staff_name,
-            'service_count' => (int) $r->service_count,
-        ])->values()->all();
+        $bookingIds = $bookings->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        if (empty($bookingIds)) {
+            return [];
+        }
+
+        $splitRows = DB::table('booking_service_staff_splits')
+            ->whereIn('booking_id', $bookingIds)
+            ->get(['booking_id', 'staff_id', 'split_percent'])
+            ->groupBy('booking_id');
+
+        $bookingTotals = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereIn('oi.booking_id', $bookingIds)
+        )
+            ->whereIn('oi.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->groupBy('oi.booking_id')
+            ->selectRaw('oi.booking_id as booking_id')
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")
+            ->pluck('service_amount', 'booking_id')
+            ->map(fn ($amount) => round((float) $amount, 2));
+
+        $byStaff = [];
+        foreach ($bookings as $booking) {
+            $bookingId = (int) $booking->id;
+            $serviceAmount = (float) ($bookingTotals[$bookingId] ?? 0);
+            $splits = collect($splitRows->get($bookingId, []))
+                ->map(fn ($row) => [
+                    'staff_id' => (int) ($row->staff_id ?? 0),
+                    'share_percent' => (float) ($row->split_percent ?? 0),
+                ])
+                ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                ->values();
+
+            if ($splits->isEmpty() && (int) ($booking->staff_id ?? 0) > 0) {
+                $splits = collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100.0]]);
+            }
+
+            foreach ($splits as $split) {
+                $staffId = (int) $split['staff_id'];
+                if ($staffId <= 0) {
+                    continue;
+                }
+
+                if (! isset($byStaff[$staffId])) {
+                    $byStaff[$staffId] = [
+                        'staff_id' => $staffId,
+                        'service_count' => 0,
+                        'service_amount' => 0.0,
+                    ];
+                }
+
+                $byStaff[$staffId]['service_count']++;
+                $byStaff[$staffId]['service_amount'] += round($serviceAmount * (((float) $split['share_percent']) / 100), 2);
+            }
+        }
+
+        if (empty($byStaff)) {
+            return [];
+        }
+
+        $staffNames = DB::table('staffs')
+            ->whereIn('id', array_keys($byStaff))
+            ->pluck('name', 'id');
+
+        return collect($byStaff)
+            ->map(fn (array $row) => [
+                'staff_id' => (int) $row['staff_id'],
+                'name' => (string) ($staffNames[$row['staff_id']] ?? ('Staff #'.$row['staff_id'])),
+                'service_count' => (int) $row['service_count'],
+                'service_amount' => round((float) $row['service_amount'], 2),
+                'total' => round((float) $row['service_amount'], 2),
+            ])
+            ->sortByDesc('service_amount')
+            ->values()
+            ->all();
     }
 
 }

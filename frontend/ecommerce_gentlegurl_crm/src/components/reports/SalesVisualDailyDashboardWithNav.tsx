@@ -35,8 +35,9 @@ type VisualPayload = {
       total?: number
     }>
     sales_activity_total?: number
-    service_activity?: Array<{ staff_id: number; name: string; service_count: number }>
+    service_activity?: Array<{ staff_id: number; name: string; service_count: number; service_amount?: number; total?: number }>
     service_activity_total?: number
+    service_activity_amount_total?: number
   }
 }
 
@@ -282,11 +283,12 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
                   {staffSvc.map((s) => (
                     <li key={s.staff_id}>
                       <div className="text-slate-800">{s.name}</div>
-                      <div className="font-semibold text-slate-900">{s.service_count}×</div>
+                      <div className="font-semibold text-slate-900">{fmtRm(s.service_amount ?? s.total ?? 0)}</div>
+                      <div className="text-xs text-slate-500">{s.service_count}×</div>
                     </li>
                   ))}
                   <li className="border-t border-slate-100 pt-2 font-semibold text-slate-900">
-                    Total {data?.staff?.service_activity_total ?? 0}×
+                    Total {fmtRm(data?.staff?.service_activity_amount_total ?? 0)} · {data?.staff?.service_activity_total ?? 0}×
                   </li>
                 </ul>
               )}
