@@ -145,7 +145,8 @@ export default function Slider({ items }: SliderProps) {
   };
 
   return (
-    <div className="relative overflow-hidden rounded-md border border-[var(--card-border)]/80 bg-transparent shadow-[var(--shadow)]">
+    <>
+        <div className="relative overflow-hidden rounded-md border border-[var(--card-border)]/80 bg-transparent shadow-[var(--shadow)]">
       <div
         className="relative h-[380px] sm:h-[420px] lg:h-[480px] cursor-grab active:cursor-grabbing"
         onTouchStart={onTouchStart}
@@ -232,25 +233,32 @@ export default function Slider({ items }: SliderProps) {
             </article>
           );
         })}
-
-        {slides.length > 1 && (
-          <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 gap-2 rounded-full bg-white/50 px-3 py-2 shadow-sm backdrop-blur-sm dark:bg-[var(--card)]/70">
-            {slides.map((item, index) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => goTo(index)}
-                className={`h-2.5 rounded-full transition ${
-                  index === activeIndex
-                    ? "w-7 bg-[var(--foreground)]/80"
-                    : "w-2.5 bg-[var(--foreground)]/35 hover:bg-[var(--foreground)]/55"
-                }`}
-                aria-label={`Go to slide ${index + 1}`}
-              />
-            ))}
-          </div>
-        )}
       </div>
     </div>
+      {slides.length > 1 && (
+        <div
+          className="flex justify-center gap-2 bg-[var(--card)]/40 px-3 py-3 backdrop-blur-sm dark:bg-[var(--background-soft)]/50"
+          role="tablist"
+          aria-label="Slide indicators"
+      >
+          {slides.map((item, index) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={index === activeIndex}
+              onClick={() => goTo(index)}
+              className={`h-2.5 rounded-full transition ${
+                index === activeIndex
+                  ? "w-7 bg-[var(--foreground)]/80"
+                  : "w-2.5 bg-[var(--foreground)]/35 hover:bg-[var(--foreground)]/55"
+              }`}
+              aria-label={`Go to slide ${index + 1}`}
+            />
+          ))}
+        </div>
+      )}
+    </>
+
   );
 }

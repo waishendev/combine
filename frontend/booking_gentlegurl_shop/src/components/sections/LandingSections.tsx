@@ -14,6 +14,7 @@ import type {
 } from "@/lib/types";
 import Slider, { justBreathe } from "@/components/home/Slider";
 import type { BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
+import { HERO_DECOR_LAYERS } from "@/components/sections/heroDecorLayers";
 
 type HeroProps = {
   hero: LandingSections["hero"];
@@ -28,6 +29,19 @@ export function Hero({ hero, sliders }: HeroProps) {
   const title2 = hero.title_2?.trim();
   const subtitle2 = hero.subtitle_2?.trim();
   const heroFont = justBreathe.className;
+  const showDecors = hero.decorations_enabled !== false;
+
+  const labelText = hero.label?.trim() ?? "";
+  const primaryTitle = hero.title?.trim();
+  const smallEyebrow = primaryTitle && labelText ? labelText : "";
+  const useLabelAsHeadline = !primaryTitle && Boolean(labelText);
+  const mainHeading =
+    primaryTitle ||
+    (useLabelAsHeadline ? labelText : "") ||
+    (!primaryTitle && !labelText && title2 ? title2 : "");
+  const subHeading = primaryTitle && title2 ? title2 : null;
+
+  const titleHeadingClass = `${heroFont} max-w-[22rem] text-2xl font-semibold leading-snug tracking-tight text-[var(--hero-label)] sm:max-w-2xl sm:text-3xl md:text-[2rem] md:leading-tight`;
 
   return (
     <section className="w-full text-center">
@@ -38,27 +52,65 @@ export function Hero({ hero, sliders }: HeroProps) {
       ) : null}
 
       <div
-        className={`mx-auto flex max-w-4xl flex-col items-center space-y-3 sm:space-y-4 ${
-          hasSliders ? "mt-8 sm:mt-10" : ""
+        className={`relative isolate mx-auto w-full max-w-xl px-6 py-8 sm:max-w-2xl sm:px-8 ${
+          hasSliders ? "mt-5 sm:mt-7" : "mt-2 sm:mt-4"
         }`}
       >
-        <p className={`${heroFont} text-sm uppercase tracking-[0.25em] text-[var(--text-muted)]`}>{hero.label}</p>
-        <h1 className={`${heroFont} text-3xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-4xl md:text-5xl`}>
-          {hero.title}
-        </h1>
-        <p className={`${heroFont} max-w-2xl text-lg text-[var(--text-muted)]`}>{hero.subtitle}</p>
-        {title2 ? (
-          <h2 className={`${heroFont} max-w-3xl text-2xl font-semibold leading-tight tracking-tight text-[var(--foreground)] sm:text-3xl`}>
-            {title2}
-          </h2>
-        ) : null}
-        {subtitle2 ? <p className={`${heroFont} max-w-2xl text-lg text-[var(--text-muted)]`}>{subtitle2}</p> : null}
-        <Link
-          href={hero.cta_link || "/booking"}
-          className="mt-1 inline-flex rounded-full bg-[var(--accent-strong)] px-8 py-3 text-sm font-semibold text-white transition-colors hover:bg-[var(--accent-stronger)]"
-        >
-          {hero.cta_label}
-        </Link>
+        {showDecors
+          ? HERO_DECOR_LAYERS.map((layer, idx) => (
+              <div
+                key={`${layer.src}-${idx}`}
+                className={`pointer-events-none absolute z-0 select-none ${layer.className}`}
+                aria-hidden
+              >
+                <Image
+                  src={layer.src}
+                  alt=""
+                  width={200}
+                  height={200}
+                  sizes="(max-width: 640px) 30vw, 170px"
+                  className="h-auto w-full drop-shadow-[0_4px_12px_rgba(60,36,50,0.12)]"
+                />
+              </div>
+            ))
+          : null}
+
+        <div className="relative z-10 flex flex-col items-center gap-2.5 sm:gap-3.5">
+          {smallEyebrow ? (
+            <p
+              className={`${heroFont} text-[0.65rem] font-medium uppercase tracking-[0.28em] text-[var(--hero-label)]/90 sm:text-xs sm:tracking-[0.25em]`}
+            >
+              {smallEyebrow}
+            </p>
+          ) : null}
+
+          {mainHeading ? <h1 className={titleHeadingClass}>{mainHeading}</h1> : null}
+
+          {hero.subtitle?.trim() ? (
+            <p
+              className={`${heroFont} max-w-[22rem] text-sm leading-relaxed text-[var(--text-muted)] sm:max-w-xl sm:text-base md:text-lg`}
+            >
+              {hero.subtitle}
+            </p>
+          ) : null}
+
+          {subHeading ? <h2 className={titleHeadingClass}>{subHeading}</h2> : null}
+
+          {subtitle2 ? (
+            <p
+              className={`${heroFont} max-w-[22rem] text-sm leading-relaxed text-[var(--text-muted)] sm:max-w-xl sm:text-base md:text-lg`}
+            >
+              {subtitle2}
+            </p>
+          ) : null}
+
+          <Link
+            href={hero.cta_link || "/booking"}
+            className={`${heroFont} mt-2 inline-flex rounded-full bg-[var(--hero-cta-bg)] px-7 py-2.5 text-[0.7rem] font-semibold tracking-wide text-[var(--hero-cta-text)] shadow-sm transition-colors hover:bg-[var(--hero-cta-bg-hover)] sm:mt-3 sm:px-9 sm:py-3 sm:text-xs`}
+          >
+            {hero.cta_label}
+          </Link>
+        </div>
       </div>
     </section>
   );
@@ -205,7 +257,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
   }));
 
   return (
-    <div className="space-y-12 py-16">
+    <div className="space-y-12 py-10 pb-16">
       {/* Gallery Section */}
       {sections.gallery?.is_active && galleryItems.length > 0 && (
         <section className="space-y-6">
