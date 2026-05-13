@@ -90,6 +90,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [photoBusyItemId, setPhotoBusyItemId] = useState<number | null>(null);
   const [depositTncEnabled, setDepositTncEnabled] = useState(false);
   const [depositTncText, setDepositTncText] = useState("");
+  const [depositTncImage, setDepositTncImage] = useState<string | null>(null);
 
   const loadCart = useCallback(async () => {
     try {
@@ -159,12 +160,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           setSelectedBankAccountId(defaultBank?.id ?? null);
           setDepositTncEnabled(Boolean(depositTncSettings.booking_deposit_tnc_enabled));
           setDepositTncText(depositTncSettings.booking_deposit_tnc_text);
+          setDepositTncImage(depositTncSettings.booking_deposit_tnc_image);
         })
         .catch(() => {
           setGateways([]);
           setBankAccounts([]);
           setDepositTncEnabled(false);
           setDepositTncText("");
+          setDepositTncImage(null);
         });
     }
   }, [isOpen, loadCart]);
@@ -1357,8 +1360,21 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 </div>
               </div>
 
-              {depositTncEnabled && depositTncText ? (
-                <p className="text-sm text-[var(--text-muted)]">{depositTncText}</p>
+              {(depositTncEnabled && depositTncImage) || depositTncText ? (
+                <div className="space-y-3">
+                  {depositTncEnabled && depositTncImage ? (
+                    <div className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--surface)] p-2">
+                      <img
+                        src={depositTncImage}
+                        alt="Booking deposit terms and conditions"
+                        className="mx-auto max-h-80 w-full rounded-lg object-contain"
+                      />
+                    </div>
+                  ) : null}
+                  {depositTncText ? (
+                    <p className="text-sm text-[var(--text-muted)]">{depositTncText}</p>
+                  ) : null}
+                </div>
               ) : null}
 
               <button
