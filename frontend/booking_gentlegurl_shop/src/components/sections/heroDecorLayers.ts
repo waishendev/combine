@@ -28,7 +28,7 @@ export const HERO_DECOR_LAYERS: HeroDecorLayer[] = [
   {
     src: "/images/sliders_design/6.png",
     className: mergeHeroDecor({
-      pc: "sm:left-auto sm:right-[-6%] sm:top-[-32%] sm:w-[30%] sm:max-w-[175px] sm:rotate-6",
+      pc: "sm:left-[-21%] sm:top-[-32%] sm:w-[30%] sm:max-w-[175px] sm:rotate-6",
       phone: "left-[2%] top-[-40%] w-[36%] max-w-[200px] rotate-3 opacity-50",
       ipad: "",
     }),
@@ -36,7 +36,7 @@ export const HERO_DECOR_LAYERS: HeroDecorLayer[] = [
   {
     src: "/images/sliders_design/7.webp",
     className: mergeHeroDecor({
-      pc: "sm:left-[-7%] sm:top-[-4%] sm:w-[28%] sm:max-w-[165px] sm:-rotate-12",
+      pc: "sm:left-[-28%] sm:top-[10%] sm:w-[28%] sm:max-w-[165px] sm:-rotate-12",
       phone: "left-[-5%] top-[0%] w-[36%] max-w-[200px] -rotate-20 opacity-50",
       ipad: "",
     }),
@@ -44,7 +44,7 @@ export const HERO_DECOR_LAYERS: HeroDecorLayer[] = [
   {
     src: "/images/sliders_design/5.png",
     className: mergeHeroDecor({
-      pc: "sm:left-[4%] sm:bottom-[-6%] sm:max-w-[132px] sm:w-[24%]",
+      pc: "sm:left-[-30%] sm:bottom-[-18%] sm:max-w-[132px] sm:w-[24%]",
       phone: "left-[5%] bottom-[-8%] w-[28%] max-w-[80px] opacity-50",
       ipad: "",
     }),
@@ -52,7 +52,7 @@ export const HERO_DECOR_LAYERS: HeroDecorLayer[] = [
   {
     src: "/images/sliders_design/3.webp",
     className: mergeHeroDecor({
-      pc: "sm:left-[36%] sm:bottom-[-26%] sm:max-w-[130px] sm:w-[24%]",
+      pc: "sm:left-[-25%] sm:bottom-[-40%] sm:max-w-[130px] sm:w-[24%]",
       phone: "bottom-[-30%] w-[28%] max-w-[100px] opacity-50",
       ipad: "",
     }),
@@ -68,7 +68,7 @@ export const HERO_DECOR_LAYERS: HeroDecorLayer[] = [
   {
     src: "/images/sliders_design/8.webp",
     className: mergeHeroDecor({
-      pc: "sm:right-[-8%] sm:top-[-26%] sm:max-w-[185px] sm:w-[30%] sm:rotate-6",
+      pc: "sm:right-[-30%] sm:top-[-30%] sm:max-w-[185px] sm:w-[30%] sm:rotate-6",
       phone: "right-[-12%] top-[-30%] w-[36%] max-w-[200px] rotate-3 opacity-50",
       ipad: "",
     }),
@@ -76,7 +76,7 @@ export const HERO_DECOR_LAYERS: HeroDecorLayer[] = [
   {
     src: "/images/sliders_design/4.webp",
     className: mergeHeroDecor({
-      pc: "sm:right-[1%] sm:bottom-[0%] sm:max-w-[135px] sm:w-[24%] sm:-rotate-6",
+      pc: "sm:right-[-37%] sm:bottom-[0%] sm:max-w-[135px] sm:w-[24%] sm:-rotate-10",
       phone: "right-[0%] bottom-[-1%] w-[28%] max-w-[80px] opacity-50 -rotate-10",
       ipad: "",
     }),
@@ -84,7 +84,7 @@ export const HERO_DECOR_LAYERS: HeroDecorLayer[] = [
   {
     src: "/images/sliders_design/1.webp",
     className: mergeHeroDecor({
-      pc: "sm:right-[6%] sm:bottom-[-34%] sm:max-w-[135px] sm:w-[24%] sm:rotate-45",
+      pc: "sm:right-[-30%] sm:bottom-[-60%] sm:max-w-[135px] sm:w-[24%] sm:rotate-55",
       phone: "right-[8%] bottom-[-40%] w-[28%] max-w-[80px] opacity-50 rotate-55",
       ipad: "",
     }),
