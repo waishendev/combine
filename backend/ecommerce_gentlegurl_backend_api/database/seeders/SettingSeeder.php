@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Setting;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Storage;
 
 class SettingSeeder extends Seeder
 {
@@ -68,10 +69,17 @@ class SettingSeeder extends Seeder
             ['value' => 'Deposit rules and confirmation become necessary to agree deposit T&C']
         );
 
-        Setting::updateOrCreate(
-            ['type' => 'booking', 'key' => 'booking_deposit_tnc_image'],
-            ['value' => null]
-        );
+        $defaultDepositTncImage = $this->seedDefaultBookingDepositTncImage();
+        $depositTncImageSetting = Setting::where('type', 'booking')
+            ->where('key', 'booking_deposit_tnc_image')
+            ->first();
+
+        if (! $depositTncImageSetting || blank($depositTncImageSetting->value)) {
+            Setting::updateOrCreate(
+                ['type' => 'booking', 'key' => 'booking_deposit_tnc_image'],
+                ['value' => $defaultDepositTncImage]
+            );
+        }
 
         Setting::updateOrCreate(
             ['type' => 'booking', 'key' => 'booking_service_deposit_note'],
@@ -96,5 +104,18 @@ class SettingSeeder extends Seeder
                 'send_at' => '10:00',
             ]]
         );
+    }
+
+    private function seedDefaultBookingDepositTncImage(): ?string
+    {
+        $sourcePath = dirname(base_path(), 2).'/frontend/ecommerce_gentlegurl_crm/public/images/images.jpg';
+        if (! is_file($sourcePath)) {
+            return null;
+        }
+
+        $targetPath = 'booking/deposit-tnc/images.jpg';
+        Storage::disk('public')->put($targetPath, (string) file_get_contents($sourcePath));
+
+        return $targetPath;
     }
 }
