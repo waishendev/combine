@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class AuthController extends Controller
@@ -16,9 +18,12 @@ class AuthController extends Controller
         $credentials = $request->validate([
             'email' => ['required', 'email'],
             'password' => ['required', 'string'],
+            'portal' => ['nullable', 'string', Rule::in(['admin', 'staff'])],
         ]);
 
-        if (! Auth::attempt($credentials)) {
+        $portal = ($credentials['portal'] ?? 'admin') === 'staff' ? 'staff' : 'admin';
+
+        if (! Auth::attempt(Arr::only($credentials, ['email', 'password']))) {
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
@@ -28,6 +33,18 @@ class AuthController extends Controller
 
         /** @var User $user */
         $user = Auth::user();
+
+        if (! $this->userMatchesLoginPortal($user, $portal)) {
+            Auth::logout();
+            $request->session()->invalidate();
+            $request->session()->regenerateToken();
+
+            $message = $portal === 'admin'
+                ? 'Your account is not allowed to access Admin portal.'
+                : 'Your account is not allowed to access Staff portal.';
+
+            return $this->respond(null, $message, false, 403);
+        }
 
         if (! $user->is_active) {
             Auth::logout();
@@ -141,5 +158,27 @@ class AuthController extends Controller
             ])->values(),
             'permissions' => $permissions,
         ];
+    }
+
+    /**
+     * Admin CRM login: any role except a role named "Staff" (case-insensitive).
+     * Staff portal login: user must have a role named "Staff" (case-insensitive).
+     */
+    private function userMatchesLoginPortal(User $user, string $portal): bool
+    {
+        $hasStaffRole = $this->userHasStaffRole($user);
+
+        if ($portal === 'staff') {
+            return $hasStaffRole;
+        }
+
+        return ! $hasStaffRole;
+    }
+
+    private function userHasStaffRole(User $user): bool
+    {
+        $user->loadMissing('roles');
+
+        return $user->roles->contains(fn ($role) => strcasecmp((string) $role->name, 'Staff') === 0);
     }
 }

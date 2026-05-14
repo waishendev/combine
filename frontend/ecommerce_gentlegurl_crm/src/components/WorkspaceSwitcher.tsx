@@ -5,6 +5,7 @@ import { startTransition, useEffect, useRef, useState } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 
 import { getWorkspace, getWorkspaceLanding, setWorkspace, type Workspace } from '@/lib/workspace'
+import { getLoginPortal } from '@/lib/login-portal'
 
 const OPTIONS: Array<{ label: string; value: Workspace }> = [
   { label: 'Ecommerce', value: 'ecommerce' },
@@ -31,6 +32,8 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const staffPortalOnly = getLoginPortal() === 'staff'
+  const workspaceOptions = staffPortalOnly ? OPTIONS.filter((o) => o.value === 'booking') : OPTIONS
   const showPos = permissions.includes('pos.checkout')
   const showSalesReport = permissions.includes('ecommerce.daily-sales-reports.view')
   const isPosCheckout = pathname === '/pos'
@@ -91,6 +94,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
     if (isSalesVisualRoute) return 'Daily Sales'
     if (isPosAppointments) return 'Appointments'
     if (isPosRoute) return 'POS'
+    if (staffPortalOnly) return 'Booking'
     if (workspace === 'booking') return 'Booking'
     return 'Ecommerce'
   })()
@@ -116,7 +120,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
             className="absolute right-0 z-[110] mt-1 max-h-[min(70vh,24rem)] w-[min(calc(100vw-5rem),16rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
             role="listbox"
           >
-            {OPTIONS.map((option) => {
+            {workspaceOptions.map((option) => {
               const isActive = option.value === workspace && !isPosRoute
               return (
                 <button
@@ -177,7 +181,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
 
       {/* sm+: compact segmented control */}
       <div className="hidden shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-slate-50 p-0.5 sm:inline-flex sm:gap-1 sm:p-1">
-        {OPTIONS.map((option) => {
+        {workspaceOptions.map((option) => {
           const isActive = option.value === workspace && !isPosRoute
 
           return (

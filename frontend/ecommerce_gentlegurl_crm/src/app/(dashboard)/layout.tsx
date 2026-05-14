@@ -7,6 +7,7 @@ import Header from '@/components/Header'
 import DashboardNavigationProgress from '@/components/DashboardNavigationProgress'
 import Sidebar from '@/components/Sidebar'
 import { LogoLoader } from '@/components/LogoLoader'
+import { getLoginPagePath } from '@/lib/login-portal'
 
 type ProfileResponse = {
   success?: boolean
@@ -73,7 +74,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       if (response.status === 401 || response.status === 419) {
         clearAuthCookies()
         hasRedirected.current = true
-        router.replace('/login')
+        router.replace(getLoginPagePath())
         return response
       }
 
@@ -82,7 +83,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         if (isUnauthenticated(data, response.status)) {
           clearAuthCookies()
           hasRedirected.current = true
-          router.replace('/login')
+          router.replace(getLoginPagePath())
         }
       } catch {
         // Ignore non-JSON responses
@@ -132,7 +133,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         if (controller.signal.aborted) return
         if (err instanceof DOMException && err.name === 'AbortError') return
         if (isActive) {
-          router.replace('/login')
+          router.replace(getLoginPagePath())
         }
       } finally {
         if (isActive) {
@@ -169,15 +170,25 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   const toggleSidebar = () => setCollapsed((c) => !c)
 
+  const clearSessionCookiesOnClient = () => {
+    const names = ['connect.sid', 'laravel-session', 'gentlegurl-api-session']
+    names.forEach((name) => {
+      document.cookie = `${name}=; Max-Age=0; path=/`
+    })
+  }
+
   const handleLogout = async () => {
     try {
-      await fetch('/api/logout', { method: 'POST' })
+      await fetch('/api/logout', { method: 'POST', credentials: 'include' })
     } catch (error) {
       console.error('Logout failed', error)
     } finally {
       setUserEmail('')
       setPermissions([])
-      router.replace('/')
+      clearSessionCookiesOnClient()
+      // Full navigation: avoids middleware treating /admin/login as "still logged in"
+      // when Set-Cookie from the proxy did not fully clear the session cookie.
+      window.location.assign(getLoginPagePath())
     }
   }
 

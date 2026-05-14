@@ -1,3 +1,6 @@
+import { getApiErrorMessage } from '@/lib/api-errors'
+import { getLoginPagePath } from '@/lib/login-portal'
+
 export class ApiError extends Error {
   status: number;
 
@@ -93,14 +96,14 @@ export async function apiFetch<T>(
   if (isUnauthenticatedResponse(data, res.status)) {
     clearAuthCookies();
     if (typeof window !== 'undefined') {
-      window.location.replace('/login');
+      window.location.replace(getLoginPagePath());
     }
     throw new ApiError('Unauthenticated', res.status || 401);
   }
 
   if (!res.ok) {
-    const message =
-      data?.error || data?.message || `Request failed with status ${res.status}`;
+    const fallback = `Request failed with status ${res.status}`;
+    const message = getApiErrorMessage(data, fallback);
     throw new ApiError(message, res.status);
   }
 
