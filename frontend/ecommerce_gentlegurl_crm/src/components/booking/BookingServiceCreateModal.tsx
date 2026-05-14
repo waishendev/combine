@@ -4,13 +4,16 @@
  */
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
-import BookingServiceQuestionsBuilder, { type QuestionForm } from './BookingServiceQuestionsBuilder'
+import BookingServiceQuestionsBuilder, {
+  emptyQuestionOption,
+  type QuestionForm,
+} from './BookingServiceQuestionsBuilder'
 import {
   BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE,
   mapBookingServiceApiItemToRow,
@@ -24,6 +27,8 @@ type ServiceType = 'premium' | 'standard'
 interface BookingServiceCreateModalProps {
   onClose: () => void
   onSuccess: (service: BookingServiceRowData) => void
+  /** When set, fetches this service and prefills the create form (new POST, no ids on questions/options). */
+  copyFromServiceId?: number | null
 }
 
 type PriceMode = 'fixed' | 'range'
@@ -69,11 +74,105 @@ const initialFormState: FormState = {
   questions: [],
 }
 
+type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
+  questions?: Array<{
+    id?: number
+    title?: string
+    cn_title?: string | null
+    description?: string | null
+    cn_description?: string | null
+    question_type?: 'single_choice' | 'multi_choice'
+    sort_order?: number
+    is_required?: boolean
+    is_active?: boolean
+    options?: Array<{
+      id?: number
+      label?: string
+      cn_label?: string | null
+      linked_booking_service_id?: number | null
+      sort_order?: number
+      is_active?: boolean
+    }>
+  }>
+  allowed_staff_ids?: unknown[]
+  allowed_staffs?: Array<{ id?: unknown }>
+  primary_slots?: Array<{ start_time?: string | null }>
+}
+
+function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWithRelations): FormState {
+  const rawName = typeof service.name === 'string' ? service.name.trim() : ''
+  const nameWithCopySuffix = rawName ? `${rawName} (Copy)` : 'Untitled (Copy)'
+
+  const questions: QuestionForm[] = Array.isArray(service.questions)
+    ? (service.questions ?? []).map((question, questionIndex) => ({
+        title: question?.title ?? '',
+        cn_title: question?.cn_title ?? '',
+        description: question?.description ?? '',
+        cn_description: question?.cn_description ?? '',
+        question_type: question?.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
+        sort_order: String(question?.sort_order ?? questionIndex),
+        is_required: Boolean(question?.is_required),
+        is_active: question?.is_active !== false,
+        options:
+          Array.isArray(question?.options) && question.options.length > 0
+            ? question.options.map((option, optionIndex) => ({
+                label: option?.label ?? '',
+                cn_label: option?.cn_label ?? '',
+                linked_booking_service_id: option?.linked_booking_service_id
+                  ? String(option.linked_booking_service_id)
+                  : '',
+                sort_order: String(option?.sort_order ?? optionIndex),
+                is_active: option?.is_active !== false,
+              }))
+            : [emptyQuestionOption()],
+      }))
+    : []
+
+  const allowed_staff_ids = Array.isArray(service.allowed_staff_ids)
+    ? (service.allowed_staff_ids ?? []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    : Array.isArray(service.allowed_staffs)
+      ? (service.allowed_staffs ?? []).map((staff) => Number(staff?.id)).filter((id) => Number.isFinite(id) && id > 0)
+      : []
+
+  return {
+    name: nameWithCopySuffix,
+    cn_name: typeof service.cn_name === 'string' ? service.cn_name : '',
+    description: typeof service.description === 'string' ? service.description : '',
+    service_type:
+      service.service_type === 'premium' || service.service_type === 'standard'
+        ? service.service_type
+        : 'standard',
+    duration_min: String(service.duration_min ?? 30),
+    price_mode: service.price_mode === 'range' ? 'range' : 'fixed',
+    service_price: String(service.service_price ?? 0),
+    price_range_min: String(service.price_range_min ?? 0),
+    price_range_max: String(service.price_range_max ?? 0),
+    deposit_amount: String(service.deposit_amount ?? 0),
+    buffer_min: String(service.buffer_min ?? 15),
+    is_active: service.is_active === true || service.is_active === 'true' || service.is_active === 1,
+    allow_photo_upload:
+      service.allow_photo_upload === true ||
+      service.allow_photo_upload === 'true' ||
+      service.allow_photo_upload === 1,
+    imageFile: null,
+    allowed_staff_ids,
+    primary_slots: Array.isArray(service.primary_slots)
+      ? (service.primary_slots ?? []).map((slot) => slot?.start_time ?? '').filter(Boolean).join(', ')
+      : '',
+    questions,
+  }
+}
+
 export default function BookingServiceCreateModal({
   onClose,
   onSuccess,
+  copyFromServiceId = null,
 }: BookingServiceCreateModalProps) {
   const { t } = useI18n()
+  const copySourceId = (() => {
+    const n = Number(copyFromServiceId)
+    return Number.isFinite(n) && n > 0 ? n : null
+  })()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,6 +180,8 @@ export default function BookingServiceCreateModal({
   const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
   const [bookingServiceOptions, setBookingServiceOptions] = useState<BookingServiceOption[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
+  /** False while copying from server: must track readiness separately from props (first paint can miss copy id). */
+  const [copySourceReady, setCopySourceReady] = useState(() => copySourceId == null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -194,6 +295,79 @@ export default function BookingServiceCreateModal({
     return () => { ignore = true }
   }, [])
 
+  useLayoutEffect(() => {
+    if (copySourceId == null) {
+      setCopySourceReady(true)
+    } else {
+      setCopySourceReady(false)
+    }
+  }, [copySourceId])
+
+  useEffect(() => {
+    if (copySourceId == null) {
+      setCopySourceReady(true)
+      setForm({ ...initialFormState })
+      setImagePreview(null)
+      setError(null)
+      return
+    }
+
+    let cancelled = false
+    const controller = new AbortController()
+
+    const loadCopySource = async () => {
+      setError(null)
+      setForm({ ...initialFormState })
+      setImagePreview(null)
+      try {
+        const res = await fetch(`/api/proxy/admin/booking/services/${copySourceId}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        })
+        const data = await res.json().catch(() => null)
+        if (cancelled) return
+        if (data && typeof data === 'object') {
+          if (data?.success === false && data?.message === 'Unauthorized') {
+            window.location.replace('/dashboard')
+            return
+          }
+        }
+        if (!res.ok) {
+          const message =
+            data && typeof data === 'object' && typeof (data as { message?: unknown }).message === 'string'
+              ? (data as { message: string }).message
+              : 'Failed to load service to copy'
+          setError(message)
+          return
+        }
+        const service = (data as { data?: BookingServiceApiItemWithRelations } | null)?.data
+        if (!service || typeof service !== 'object') {
+          setError('Failed to load service to copy')
+          return
+        }
+        setForm(mapBookingServiceApiToCreateFormState(service))
+        const mapped = mapBookingServiceApiItemToRow(service)
+        setImagePreview(mapped.imageUrl || null)
+      } catch (err) {
+        if (cancelled) return
+        if (!(err instanceof DOMException && err.name === 'AbortError')) {
+          setError('Failed to load service to copy')
+        }
+      } finally {
+        if (!cancelled) {
+          setCopySourceReady(true)
+        }
+      }
+    }
+
+    void loadCopySource()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
+  }, [copySourceId])
+
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
@@ -234,6 +408,7 @@ export default function BookingServiceCreateModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (copySourceId != null && !copySourceReady) return
 
     const trimmedName = form.name.trim()
     if (!trimmedName) {
@@ -359,6 +534,9 @@ export default function BookingServiceCreateModal({
     }
   }
 
+  const isWaitingForCopySource = copySourceId != null && !copySourceReady
+  const disableForm = submitting || isWaitingForCopySource
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div
@@ -367,9 +545,45 @@ export default function BookingServiceCreateModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-6xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-semibold">Create Booking Service</h2>
+      <div
+        className={`relative w-full max-w-6xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto ${
+          isWaitingForCopySource ? 'min-h-[min(22rem,78vh)]' : ''
+        }`}
+      >
+        {isWaitingForCopySource ? (
+          <div
+            className="absolute inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-white px-6 text-center"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <span
+              className="h-12 w-12 shrink-0 animate-spin rounded-full border-[3px] border-gray-200 border-t-blue-600"
+              aria-hidden
+            />
+            <div className="max-w-md">
+              <p className="text-lg font-semibold text-gray-900">Retrieving service…</p>
+              <p className="mt-2 text-sm text-gray-600">
+                Loading the booking service from the server. Fields will appear when data is ready.
+              </p>
+            </div>
+          </div>
+        ) : null}
+        <div
+          className={`relative flex items-start justify-between gap-3 border-b border-gray-300 bg-white px-5 py-4 ${
+            isWaitingForCopySource ? 'z-[110]' : 'z-[1]'
+          }`}
+        >
+          <div className="min-w-0 pr-2">
+            <h2 className="text-lg font-semibold">Create Booking Service</h2>
+            {copySourceId != null ? (
+              <p className="mt-1 max-w-xl text-xs text-gray-500">
+                {isWaitingForCopySource
+                  ? 'Retrieving the selected service — please wait.'
+                  : 'Prefilled from the selected service (name ends with (Copy)). Upload a cover file if you want that image on the new record — preview is for reference only.'}
+              </p>
+            ) : null}
+          </div>
           <button
             onClick={() => {
               if (!submitting) onClose()
@@ -382,7 +596,11 @@ export default function BookingServiceCreateModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5">
+        <form
+          onSubmit={handleSubmit}
+          className="relative z-[1] p-5"
+          aria-busy={isWaitingForCopySource}
+        >
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
             {/* Left Side - Image Upload */}
             <div className="space-y-4 w-full lg:w-1/2">
@@ -401,7 +619,7 @@ export default function BookingServiceCreateModal({
                     accept={IMAGE_ACCEPT}
                     onChange={handleImageChange}
                     className="hidden"
-                    disabled={submitting}
+                    disabled={disableForm}
                   />
                   {imagePreview ? (
                     <div className="relative group">
@@ -419,7 +637,7 @@ export default function BookingServiceCreateModal({
                           }}
                           className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
                           aria-label="Replace image"
-                          disabled={submitting}
+                          disabled={disableForm}
                         >
                           <i className="fa-solid fa-image text-xs" />
                         </button>
@@ -431,7 +649,7 @@ export default function BookingServiceCreateModal({
                           }}
                           className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
                           aria-label="Delete image"
-                          disabled={submitting}
+                          disabled={disableForm}
                         >
                           <i className="fa-solid fa-trash-can text-xs" />
                         </button>
@@ -461,7 +679,7 @@ export default function BookingServiceCreateModal({
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder="English service name"
-                  disabled={submitting}
+                  disabled={disableForm}
                 />
               </div>
 
@@ -477,7 +695,7 @@ export default function BookingServiceCreateModal({
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder="中文服务名称"
-                  disabled={submitting}
+                  disabled={disableForm}
                 />
               </div>
 
@@ -493,7 +711,7 @@ export default function BookingServiceCreateModal({
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Service description"
                   rows={3}
-                  disabled={submitting}
+                  disabled={disableForm}
                 />
               </div>
             </div>
@@ -513,7 +731,7 @@ export default function BookingServiceCreateModal({
                 value={form.service_type}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                disabled={submitting}
+                disabled={disableForm}
               >
                 <option value="standard">Standard</option>
                 <option value="premium">Premium</option>
@@ -533,7 +751,7 @@ export default function BookingServiceCreateModal({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                 placeholder="30"
-                disabled={submitting}
+                disabled={disableForm}
               />
             </div>
 
@@ -547,7 +765,7 @@ export default function BookingServiceCreateModal({
                 value={form.price_mode}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                disabled={submitting}
+                disabled={disableForm}
               >
                 <option value="fixed">Fixed</option>
                 <option value="range">Range</option>
@@ -569,7 +787,7 @@ export default function BookingServiceCreateModal({
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder="0"
-                  disabled={submitting}
+                  disabled={disableForm}
                 />
               </div>
             ) : (
@@ -588,7 +806,7 @@ export default function BookingServiceCreateModal({
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="0"
-                    disabled={submitting}
+                    disabled={disableForm}
                   />
                 </div>
                 <div>
@@ -605,7 +823,7 @@ export default function BookingServiceCreateModal({
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                     placeholder="0"
-                    disabled={submitting}
+                    disabled={disableForm}
                   />
                 </div>
               </>
@@ -625,7 +843,7 @@ export default function BookingServiceCreateModal({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                 placeholder="0"
-                disabled={submitting}
+                disabled={disableForm}
               />
             </div>
 
@@ -642,7 +860,7 @@ export default function BookingServiceCreateModal({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                 placeholder="15"
-                disabled={submitting}
+                disabled={disableForm}
               />
             </div>
 
@@ -651,7 +869,7 @@ export default function BookingServiceCreateModal({
                 staffOptions={staffOptions}
                 value={form.allowed_staff_ids}
                 onChange={(ids) => setForm((prev) => ({ ...prev, allowed_staff_ids: ids }))}
-                disabled={submitting}
+                disabled={disableForm}
                 loading={staffLoading}
               />
             </div>
@@ -668,7 +886,7 @@ export default function BookingServiceCreateModal({
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                 placeholder="12:00, 15:00, 18:00"
-                disabled={submitting}
+                disabled={disableForm}
               />
             </div>
             <div>
@@ -681,7 +899,7 @@ export default function BookingServiceCreateModal({
                 value={form.is_active ? 'true' : 'false'}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                disabled={submitting}
+                disabled={disableForm}
               >
                 <option value="true">Active</option>
                 <option value="false">Inactive</option>
@@ -697,7 +915,7 @@ export default function BookingServiceCreateModal({
                 value={form.allow_photo_upload ? 'true' : 'false'}
                 onChange={handleChange}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                disabled={submitting}
+                disabled={disableForm}
               >
                 <option value="false">Disabled</option>
                 <option value="true">Enabled</option>
@@ -710,7 +928,7 @@ export default function BookingServiceCreateModal({
               value={form.questions}
               onChange={(questions) => setForm((prev) => ({ ...prev, questions }))}
               bookingServiceOptions={bookingServiceOptions}
-              disabled={submitting}
+              disabled={disableForm}
             />
           </div>
 
@@ -734,7 +952,7 @@ export default function BookingServiceCreateModal({
             <button
               type="submit"
               className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              disabled={submitting}
+              disabled={disableForm}
             >
               {submitting ? t('common.creating') : t('common.create')}
             </button>

@@ -15,6 +15,7 @@ import type {
 import Slider, { justBreathe } from "@/components/home/Slider";
 import type { BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
 import { HERO_DECOR_LAYERS } from "@/components/sections/heroDecorLayers";
+import { HeroViewportRichText } from "@/components/sections/heroRichText";
 
 type HeroProps = {
   hero: LandingSections["hero"];
@@ -87,26 +88,24 @@ export function Hero({ hero, sliders }: HeroProps) {
           {mainHeading ? <h1 className={titleHeadingClass}>{mainHeading}</h1> : null}
 
           {hero.subtitle?.trim() ? (
-            <p
-              className={`${heroFont} max-w-[22rem] text-sm leading-relaxed text-[var(--text-muted)] sm:max-w-xl sm:text-base md:text-lg`}
-            >
-              {hero.subtitle}
-            </p>
+            <HeroViewportRichText
+              raw={hero.subtitle.trim()}
+              className={`${heroFont} max-w-[22rem] text-sm leading-relaxed text-[var(--hero-label)]  sm:max-w-xl sm:text-base md:text-lg`}
+            />
           ) : null}
 
           {subHeading ? <h2 className={titleHeadingClass}>{subHeading}</h2> : null}
 
           {subtitle2 ? (
-            <p
-              className={`${heroFont} max-w-[22rem] text-sm leading-relaxed text-[var(--text-muted)] sm:max-w-xl sm:text-base md:text-lg`}
-            >
-              {subtitle2}
-            </p>
+            <HeroViewportRichText
+              raw={subtitle2}
+              className={`${heroFont} max-w-[22rem] text-sm leading-relaxed text-[var(--hero-label)]  sm:max-w-xl sm:text-base md:text-lg`}
+            />
           ) : null}
 
           <Link
             href={hero.cta_link || "/booking"}
-            className={`${heroFont} mt-2 inline-flex rounded-full bg-[var(--hero-cta-bg)] px-7 py-2.5 text-[0.7rem] font-semibold tracking-wide text-[var(--hero-cta-text)] shadow-sm transition-colors hover:bg-[var(--hero-cta-bg-hover)] sm:mt-3 sm:px-9 sm:py-3 sm:text-xs`}
+            className={`${heroFont} mt-2 inline-flex max-w-[calc(100%-0.5rem)] items-center justify-center self-center rounded-full bg-[var(--hero-cta-bg)] px-5 py-2 text-sm font-semibold leading-snug tracking-tight text-[var(--hero-cta-text)] shadow-sm transition-colors hover:bg-[var(--hero-cta-bg-hover)] sm:mt-3 sm:max-w-none sm:px-8 sm:py-2.5 sm:text-base sm:tracking-wide md:px-10 md:py-3 md:text-lg`}
           >
             {hero.cta_label}
           </Link>

@@ -448,79 +448,87 @@ export default function ServiceStaffPage() {
               <div className="mt-6 rounded-2xl bg-gradient-to-br from-[var(--muted)]/90 to-[var(--background-soft)]/50 p-5 ring-1 ring-[var(--card-border)]/80 sm:p-6">
                 <div className="flex items-center justify-center gap-2.5 text-[var(--text-muted)]">
                   <i className="fa-regular fa-clock text-base" />
-                  <span className="text-sm font-semibold uppercase tracking-wider">Your time</span>
+                  <span className="text-sm font-semibold uppercase tracking-wider">Appointment details</span>
                 </div>
-                <p className="mt-3 text-center font-[var(--font-heading)] text-lg font-semibold tabular-nums leading-snug text-[var(--foreground)] sm:text-xl md:text-2xl">
-                  {new Date(startAt).toLocaleDateString("en-MY", {
-                    weekday: "long",
-                    day: "numeric",
-                    month: "long",
-                    year: "numeric",
-                    timeZone: TZ,
-                  })}
-                </p>
-                <p className="mt-2 text-center text-base font-medium leading-snug text-[var(--text-muted)] sm:text-lg">
-                  {formatTime(startAt)} – {formatTime(endAt)}
-                </p>
-                <p className="mt-1.5 text-center text-sm tabular-nums leading-snug text-[var(--text-muted)] sm:text-base">
-                  · {durationMin} min
-                </p>
+                <div className="mt-4 w-full space-y-2.5 text-center">
+                  <p className="text-base leading-snug text-[var(--foreground)]">
+                    <span className="font-medium text-[var(--text-muted)]">Date: </span>
+                    <span className="font-[var(--font-heading)] font-semibold tabular-nums">
+                      {new Date(startAt).toLocaleDateString("en-MY", {
+                        weekday: "long",
+                        day: "numeric",
+                        month: "long",
+                        year: "numeric",
+                        timeZone: TZ,
+                      })}
+                    </span>
+                  </p>
+                  <p className="text-base leading-snug text-[var(--foreground)]">
+                    <span className="font-medium text-[var(--text-muted)]">Time: </span>
+                    <span className="font-medium tabular-nums text-[var(--foreground)]">
+                      {formatTime(startAt)} – {formatTime(endAt)}
+                    </span>
+                  </p>
+                  <p className="text-sm tabular-nums leading-snug text-[var(--text-muted)] sm:text-base">
+                    · {durationMin} min
+                  </p>
+                </div>
               </div>
 
               <ul className="mt-5 space-y-0 divide-y divide-[var(--card-border)] rounded-2xl border border-[var(--card-border)] bg-[var(--background)]/60 px-1">
-                <li className="flex items-start justify-between gap-4 px-4 py-4 text-base">
-                  <span className="flex shrink-0 items-center gap-2 text-[var(--text-muted)]">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
+                <li className="flex flex-col gap-2 px-4 py-4 text-base">
+                  <span className="flex items-center gap-2 text-[var(--text-muted)]">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-spa text-xs" />
                     </span>
                     Service
                   </span>
-                  <span className="flex max-w-[70%] flex-wrap items-center justify-end gap-2 text-right font-medium leading-snug text-[var(--foreground)]">
-                    {service.name}
+                  <div className="flex min-w-0 flex-col items-start gap-2 pl-10 font-medium leading-snug text-[var(--foreground)]">
+                    <span className="block w-full">{service.name}</span>
                     <ServiceTierBadge serviceType={service.service_type} />
-                  </span>
+                  </div>
                 </li>
-                <li className="flex items-start justify-between gap-4 px-4 py-4 text-base">
-                  <span className="flex shrink-0 items-start gap-2 text-[var(--text-muted)]">
+                <li className="flex flex-col gap-2 px-4 py-4 text-base">
+                  <span className="flex items-center gap-2 text-[var(--text-muted)]">
                     <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-layer-group text-xs" />
                     </span>
-                    <span className="max-w-[5rem] pt-0.5 text-xs font-semibold uppercase leading-tight tracking-wide">ADD ON</span>
+                    <span className="text-xs font-semibold uppercase leading-tight tracking-wide">ADD ON</span>
                   </span>
-                  <div className="flex max-w-[65%] flex-col items-end gap-2 text-right font-medium leading-snug text-[var(--foreground)]">
+                  <div className="flex min-w-0 flex-col gap-3 pl-10 font-medium leading-snug text-[var(--foreground)]">
                     {selectedAddonDetails.length > 0 ? (
                       selectedAddonDetails.map((row, idx) => (
-                        <span key={`${row.label}-${idx}`} className="inline-flex flex-wrap items-center justify-end gap-2">
-                          {row.label}
-                          {row.linked_service_type ? <ServiceTierBadge serviceType={row.linked_service_type} /> : null}
-                        </span>
+                        <div key={`${row.label}-${idx}`} className="flex flex-col gap-1.5">
+                          <span>{row.label}</span>
+                          {row.linked_service_type ? (
+                            <ServiceTierBadge serviceType={row.linked_service_type} />
+                          ) : null}
+                        </div>
                       ))
                     ) : (
                       <span className="text-[var(--text-muted)]">—</span>
                     )}
                   </div>
                 </li>
-                <li className="flex items-start justify-between gap-4 px-4 py-4 text-base">
-                  <span className="flex shrink-0 items-center gap-2 text-[var(--text-muted)]">
-                    <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
+                <li className="flex flex-col gap-2 px-4 py-4 text-base">
+                  <span className="flex items-center gap-2 text-[var(--text-muted)]">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
                       <i className="fa-solid fa-user text-xs" />
                     </span>
                     Stylist
                   </span>
-                  <span className="text-right font-medium text-[var(--foreground)]">{confirmStaff.name}</span>
+                  <p className="min-w-0 pl-10 font-medium leading-snug text-[var(--foreground)]">{confirmStaff.name}</p>
                 </li>
                 <li className="flex flex-col gap-2 px-4 py-4 text-base">
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="flex items-center gap-2 text-[var(--text-muted)]">
-                      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
-                        <i className="fa-solid fa-receipt text-xs" />
-                      </span>
-                      Deposit Required
+                  <span className="flex items-center gap-2 text-[var(--text-muted)]">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[var(--muted)]/80 text-[var(--accent-strong)]">
+                      <i className="fa-solid fa-receipt text-xs" />
                     </span>
-                    <span className="shrink-0 font-semibold tabular-nums text-[var(--foreground)]">
-                      RM {depositPreview.depositTotal.toFixed(2)}
-                    </span>
-                  </div>
+                    Deposit Required
+                  </span>
+                  <p className="pl-10 text-lg font-semibold tabular-nums leading-snug text-[var(--foreground)]">
+                    RM {depositPreview.depositTotal.toFixed(2)}
+                  </p>
                   {/* <div className="ml-10 rounded-lg border border-[var(--card-border)] bg-[var(--muted)]/40 p-2.5 text-[11px] sm:ml-0">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Deposit breakdown</p>
                     <div className="mt-1 space-y-0.5">

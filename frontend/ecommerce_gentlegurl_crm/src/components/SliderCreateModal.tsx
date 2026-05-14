@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useRef, useState } from 'react'
 
 import type { SliderRowData } from './SliderRow'
 import { IMAGE_ACCEPT } from './mediaAccept'
-import { mapSliderApiItemToRow, type SliderApiItem } from './sliderUtils'
+import { formatHomeSliderApiError, mapSliderApiItemToRow, type SliderApiItem } from './sliderUtils'
 import { useI18n } from '@/lib/i18n'
 
 interface SliderCreateModalProps {
@@ -155,24 +155,7 @@ export default function SliderCreateModal({
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        let message = 'Failed to create slider'
-        if (data && typeof data === 'object') {
-          if (typeof (data as { message?: unknown }).message === 'string') {
-            message = (data as { message: string }).message
-          } else if (data && 'errors' in data) {
-            const errors = (data as { errors?: unknown }).errors
-            if (errors && typeof errors === 'object') {
-              const firstKey = Object.keys(errors)[0]
-              const firstValue = firstKey ? (errors as Record<string, unknown>)[firstKey] : null
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                message = firstValue[0]
-              } else if (typeof firstValue === 'string') {
-                message = firstValue
-              }
-            }
-          }
-        }
-        setError(message)
+        setError(formatHomeSliderApiError(data, 'Failed to create slider'))
         return
       }
 
@@ -545,7 +528,7 @@ export default function SliderCreateModal({
         </div>
 
           {error && (
-            <div className="text-sm text-red-600 mt-4" role="alert">
+            <div className="mt-4 text-sm whitespace-pre-line text-red-600" role="alert">
               {error}
             </div>
           )}

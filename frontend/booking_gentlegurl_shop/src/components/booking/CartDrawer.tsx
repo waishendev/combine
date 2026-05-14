@@ -818,7 +818,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         }}
                       />
 
-                      <div className="mt-2 grid grid-cols-3 gap-2">
+                      <div className="mt-2 flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch] sm:grid sm:grid-cols-3 sm:gap-2 sm:overflow-visible sm:pb-0">
                         {Array.from({ length: 3 }).map((_, index) => {
                           const photo = item.photos?.[index] ?? null;
                           const isEmpty = !photo;
@@ -827,7 +827,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                               key={index}
                               type="button"
                               className={[
-                                "group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200",
+                                "group relative aspect-square shrink-0 overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200 max-sm:snap-center",
+                                "w-[42vw] min-w-[10rem] max-w-[13rem] sm:min-w-0 sm:w-auto sm:max-w-none",
                                 isEmpty
                                   ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
                                   : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
@@ -854,16 +855,14 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                                     href={photo.file_url}
                                     target="_blank"
                                     rel="noreferrer"
-                                    className="block h-full w-full"
+                                    className="relative block h-full w-full overflow-hidden bg-[var(--card)]"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
-                                      <img
-                                        src={photo.file_url}
-                                        alt={photo.original_name || "Reference photo"}
-                                        className="h-full w-full object-contain"
-                                      />
-                                    </div>
+                                    <img
+                                      src={photo.file_url}
+                                      alt={photo.original_name || "Reference photo"}
+                                      className="h-full w-full object-cover sm:object-contain"
+                                    />
                                   </a>
                                   <button
                                     type="button"
@@ -1385,13 +1384,13 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     <button
                       type="button"
                       onClick={() => setDepositTncImagePreviewOpen(true)}
-                      className="group relative w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--surface)] p-2 text-left transition hover:border-[var(--accent)]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-strong)]"
+                      className="group relative min-w-0 w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--surface)] p-2 text-left transition hover:border-[var(--accent)]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-strong)]"
                       aria-label="View deposit terms image larger"
                     >
                       <img
                         src={depositTncImage}
                         alt="Booking deposit terms and conditions"
-                        className="mx-auto max-h-80 w-full cursor-zoom-in rounded-lg object-contain transition group-hover:opacity-95"
+                        className="mx-auto block h-auto w-full max-w-full max-h-[min(52dvh,24rem)] cursor-zoom-in rounded-lg object-contain transition group-hover:opacity-95 sm:max-h-96"
                       />
                       {/* <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-[var(--foreground)]/70 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
                         Tap to enlarge
@@ -1441,7 +1440,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             <img
               src={depositTncImage}
               alt="Booking deposit terms and conditions (enlarged)"
-              className="mx-auto max-h-[85vh] w-full object-contain"
+              className="mx-auto block h-auto max-h-[85vh] w-full max-w-full object-contain"
             />
           </div>
         </div>

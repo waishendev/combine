@@ -915,7 +915,18 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
           </div>
           <div className="space-y-1 text-sm text-gray-700 md:col-span-2">
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Subtitle</span>
-            <textarea className={textareaCls} rows={2} value={sections.hero.subtitle} onChange={(e) => updateHero('subtitle', e.target.value)} disabled={!canEdit} />
+            <textarea className={textareaCls} rows={6} value={sections.hero.subtitle} onChange={(e) => updateHero('subtitle', e.target.value)} disabled={!canEdit} />
+            <p className="text-xs text-gray-500 leading-relaxed">
+              <span className="font-medium text-gray-600">Line breaks:</span> press Enter for a new line.
+              <span className="mx-1 text-gray-400">|</span>
+              <span className="font-medium text-gray-600">Bold:</span> wrap text in{' '}
+              <code className="rounded bg-gray-100 px-1 text-[0.7rem] text-gray-800">**double asterisks**</code>
+              .
+              <span className="mx-1 text-gray-400">|</span>
+              <span className="font-medium text-gray-600">Desktop vs phone:</span> put a line with only{' '}
+              <code className="rounded bg-gray-100 px-1 text-[0.7rem]">mobile</code> — text above shows on tablet/desktop
+              (sm and up); text below shows on small phones only. Omit it to use one version everywhere.
+            </p>
           </div>
           <div className="space-y-1 text-sm text-gray-700 md:col-span-2">
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Title 2</span>
@@ -923,7 +934,11 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
           </div>
           <div className="space-y-1 text-sm text-gray-700 md:col-span-2">
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">Subtitle 2</span>
-            <textarea className={textareaCls} rows={2} value={sections.hero.subtitle_2} onChange={(e) => updateHero('subtitle_2', e.target.value)} disabled={!canEdit} />
+            <textarea className={textareaCls} rows={4} value={sections.hero.subtitle_2} onChange={(e) => updateHero('subtitle_2', e.target.value)} disabled={!canEdit} />
+            <p className="text-xs text-gray-500 leading-relaxed">
+              Same as Subtitle: <code className="rounded bg-gray-100 px-1 text-[0.7rem]">**bold**</code>, Enter for new lines, optional{' '}
+              <code className="rounded bg-gray-100 px-1 text-[0.7rem]">mobile</code> divider for phone-only copy.
+            </p>
           </div>
           <div className="space-y-1 text-sm text-gray-700">
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">CTA link</span>

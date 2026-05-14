@@ -17,7 +17,7 @@ class BookingLandingPageSeeder extends Seeder
                         'is_active' => true,
                         'label' => 'Our Mission',
                         'title' => '',
-                        'subtitle' => "We're here to rewrite the rules of nail art and craft designs that are Weird, Creative, Unexpected and Unique",
+                        'subtitle' => "We're here to rewrite the rules of nail art and craft designs that are **Weird, Creative, Unexpected and Unique**\nmobile\nWe're here to rewrite the rules of nail\n art and craft designs that are\n**Weird, Creative, Unexpected and Unique**",
                         'title_2' => '',
                         'subtitle_2' => '',
                         'cta_label' => 'Book Appointment',

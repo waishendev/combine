@@ -69,6 +69,7 @@ export default function BookingServicesTable({
   const { t } = useI18n()
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false)
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
+  const [createCopyFromServiceId, setCreateCopyFromServiceId] = useState<number | null>(null)
   const [inputs, setInputs] = useState<BookingServiceFilterValues>({ ...emptyBookingServiceFilters })
   const [filters, setFilters] = useState<BookingServiceFilterValues>({ ...emptyBookingServiceFilters })
   const [rows, setRows] = useState<BookingServiceRowData[]>([])
@@ -92,7 +93,7 @@ export default function BookingServicesTable({
   const canUpdate = permissions.includes('booking.services.update')
   const canDelete = permissions.includes('booking.services.delete')
   const canViewAllowedStaff = permissions.includes('booking.services.view')
-  const showActions = canUpdate || canDelete
+  const showActions = canUpdate || canDelete || canCreate
   const showSelection = canUpdate
 
   const [meta, setMeta] = useState<Meta>({
@@ -514,8 +515,14 @@ export default function BookingServicesTable({
 
       {isCreateModalOpen && (
         <BookingServiceCreateModal
-          onClose={() => setIsCreateModalOpen(false)}
+          key={createCopyFromServiceId ?? 'new'}
+          copyFromServiceId={createCopyFromServiceId}
+          onClose={() => {
+            setCreateCopyFromServiceId(null)
+            setIsCreateModalOpen(false)
+          }}
           onSuccess={(service) => {
+            setCreateCopyFromServiceId(null)
             setIsCreateModalOpen(false)
             handleServiceCreated(service)
           }}
@@ -527,7 +534,10 @@ export default function BookingServicesTable({
           {canCreate && (
             <button
               className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
-              onClick={() => setIsCreateModalOpen(true)}
+              onClick={() => {
+                setCreateCopyFromServiceId(null)
+                setIsCreateModalOpen(true)
+              }}
               type="button"
             >
               <i className="fa-solid fa-plus" />
@@ -713,10 +723,15 @@ export default function BookingServicesTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  canDuplicate={canCreate}
                   canViewAllowedStaff={canViewAllowedStaff}
                   showSelection={showSelection}
                   isSelected={selectedIds.has(service.id)}
                   onToggleSelect={handleToggleSelect}
+                  onDuplicate={() => {
+                    setCreateCopyFromServiceId(service.id)
+                    setIsCreateModalOpen(true)
+                  }}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingServiceId(service.id)
@@ -743,6 +758,7 @@ export default function BookingServicesTable({
 
       {editingServiceId !== null && (
         <BookingServiceEditModal
+          key={editingServiceId}
           serviceId={editingServiceId}
           onClose={() => setEditingServiceId(null)}
           onSuccess={(service) => {

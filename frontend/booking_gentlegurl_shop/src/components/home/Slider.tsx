@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import localFont from "next/font/local";
 import { useEffect, useMemo, useState } from "react";
+import { HeroViewportRichText } from "@/components/sections/heroRichText";
 
 type SliderItem = {
   id: number | string;
@@ -203,11 +204,10 @@ export default function Slider({ items }: SliderProps) {
                     )}
 
                     {item.subtitle && (
-                      <p
-                        className={`${justBreathe.className} text-sm font-medium uppercase tracking-[0.22em] text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_2px_12px_rgba(0,0,0,0.45)]`}
-                      >
-                        {item.subtitle}
-                      </p>
+                      <HeroViewportRichText
+                        raw={item.subtitle}
+                        className={`${justBreathe.className} text-sm font-medium normal-case leading-relaxed tracking-normal text-white/95 [text-shadow:0_1px_2px_rgba(0,0,0,0.85),0_2px_12px_rgba(0,0,0,0.45)] sm:uppercase sm:tracking-[0.22em]`}
+                      />
                     )}
                     
                     {hasCta && (

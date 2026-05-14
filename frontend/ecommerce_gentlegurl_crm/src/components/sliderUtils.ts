@@ -1,5 +1,34 @@
 import type { SliderRowData } from './SliderRow'
 
+/** Laravel-style JSON: { message, errors?: { field: string[] } } */
+export function formatHomeSliderApiError(data: unknown, fallback: string): string {
+  if (!data || typeof data !== 'object') return fallback
+  const o = data as { message?: unknown; errors?: unknown }
+  const lines: string[] = []
+
+  if (o.errors && typeof o.errors === 'object' && !Array.isArray(o.errors)) {
+    for (const val of Object.values(o.errors as Record<string, unknown>)) {
+      if (Array.isArray(val)) {
+        for (const msg of val) {
+          if (typeof msg === 'string' && msg.trim()) lines.push(msg.trim())
+        }
+      } else if (typeof val === 'string' && val.trim()) {
+        lines.push(val.trim())
+      }
+    }
+  }
+
+  if (lines.length > 0) {
+    return lines.map((line) => `• ${line}`).join('\n')
+  }
+
+  if (typeof o.message === 'string' && o.message.trim()) {
+    return o.message.trim()
+  }
+
+  return fallback
+}
+
 export type SliderApiItem = {
   id: number | string
   title?: string | null

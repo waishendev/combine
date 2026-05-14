@@ -33,12 +33,15 @@ interface BookingServiceRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  /** When true, show Copy → opens create modal prefilled from this row (requires create permission). */
+  canDuplicate?: boolean
   canViewAllowedStaff?: boolean
   showSelection?: boolean
   isSelected?: boolean
   onToggleSelect?: (service: BookingServiceRowData, selected: boolean) => void
   onEdit?: (service: BookingServiceRowData) => void
   onDelete?: (service: BookingServiceRowData) => void
+  onDuplicate?: (service: BookingServiceRowData) => void
   onViewAllowedStaff?: (service: BookingServiceRowData) => void
 }
 
@@ -47,12 +50,14 @@ export default function BookingServiceRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  canDuplicate = false,
   canViewAllowedStaff = false,
   showSelection = false,
   isSelected = false,
   onToggleSelect,
   onEdit,
   onDelete,
+  onDuplicate,
   onViewAllowedStaff,
 }: BookingServiceRowProps) {
   const { t } = useI18n()
@@ -163,6 +168,17 @@ export default function BookingServiceRow({
                 title={t('common.edit')}
               >
                 <i className="fa-solid fa-pen-to-square" />
+              </button>
+            )}
+            {canDuplicate && (
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-violet-600 text-white hover:bg-violet-700"
+                onClick={() => onDuplicate?.(service)}
+                aria-label="Copy booking service"
+                title="Copy booking service"
+              >
+                <i className="fa-solid fa-copy" />
               </button>
             )}
             {canDelete && (

@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { SliderRowData } from './SliderRow'
-import { mapSliderApiItemToRow, type SliderApiItem } from './sliderUtils'
+import { formatHomeSliderApiError, mapSliderApiItemToRow, type SliderApiItem } from './sliderUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
@@ -280,28 +280,7 @@ export default function SliderEditModal({
       }
 
       if (!res.ok) {
-        if (data && typeof data === 'object') {
-          if ('message' in data && typeof data.message === 'string') {
-            setError(data.message)
-            return
-          }
-          if ('errors' in data && typeof data.errors === 'object') {
-            const errors = data.errors as Record<string, unknown>
-            const firstKey = Object.keys(errors)[0]
-            if (firstKey) {
-              const firstValue = errors[firstKey]
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                setError(firstValue[0])
-                return
-              }
-              if (typeof firstValue === 'string') {
-                setError(firstValue)
-                return
-              }
-            }
-          }
-        }
-        setError('Failed to update slider')
+        setError(formatHomeSliderApiError(data, 'Failed to update slider'))
         return
       }
 
@@ -706,7 +685,7 @@ export default function SliderEditModal({
           )}
 
           {error && (
-            <div className="text-sm text-red-600 mt-4" role="alert">
+            <div className="mt-4 text-sm whitespace-pre-line text-red-600" role="alert">
               {error}
             </div>
           )}

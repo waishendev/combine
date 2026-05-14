@@ -1,6 +1,6 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, {
@@ -88,7 +88,16 @@ export default function BookingServiceEditModal({
   const [staffLoading, setStaffLoading] = useState(true)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
+  useLayoutEffect(() => {
+    setLoading(true)
+    setForm({ ...initialFormState })
+    setImagePreview(null)
+    setLoadedService(null)
+    setError(null)
+  }, [serviceId])
+
   useEffect(() => {
+    let cancelled = false
     const controller = new AbortController()
 
     const loadService = async () => {
@@ -103,7 +112,11 @@ export default function BookingServiceEditModal({
           },
         })
 
+        if (cancelled) return
+
         const data = await res.json().catch(() => null)
+        if (cancelled) return
+
         if (data && typeof data === 'object') {
           if (data?.success === false && data?.message === 'Unauthorized') {
             window.location.replace('/dashboard')
@@ -212,20 +225,28 @@ export default function BookingServiceEditModal({
               : [],
         })
       } catch (err) {
+        if (cancelled) return
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError('Failed to load booking service')
         }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
 
-    loadService().catch(() => {
-      setLoading(false)
-      setError('Failed to load booking service')
+    void loadService().catch(() => {
+      if (!cancelled) {
+        setLoading(false)
+        setError('Failed to load booking service')
+      }
     })
 
-    return () => controller.abort()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [serviceId])
 
 
@@ -372,6 +393,7 @@ export default function BookingServiceEditModal({
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    if (loading || loadedService?.id !== serviceId) return
 
     const trimmedName = form.name.trim()
 
@@ -553,6 +575,10 @@ export default function BookingServiceEditModal({
   }
 
   const disableForm = loading || submitting
+  /** Avoid one frame of empty defaults before `setForm` from API is applied (or show load error). */
+  const showEditFields =
+    !loading && (loadedService?.id === serviceId || (Boolean(error) && loadedService == null))
+  const showRetrieveOverlay = loading
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -562,9 +588,45 @@ export default function BookingServiceEditModal({
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-6xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-semibold">Edit Booking Service</h2>
+      <div
+        className={`relative w-full max-w-6xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto ${
+          showRetrieveOverlay ? 'min-h-[min(22rem,78vh)]' : ''
+        }`}
+      >
+        {showRetrieveOverlay ? (
+          <div
+            className="absolute inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-white px-6 text-center"
+            role="status"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <span
+              className="h-12 w-12 shrink-0 animate-spin rounded-full border-[3px] border-gray-200 border-t-blue-600"
+              aria-hidden
+            />
+            <div className="max-w-md">
+              <p className="text-lg font-semibold text-gray-900">Retrieving service…</p>
+              <p className="mt-2 text-sm text-gray-600">
+                Fetching this booking service from the server. Fields will appear when data is ready.
+              </p>
+            </div>
+          </div>
+        ) : null}
+        <div
+          className={`relative flex items-start justify-between gap-3 border-b border-gray-300 bg-white px-5 py-4 ${
+            showRetrieveOverlay ? 'z-[110]' : 'z-[1]'
+          }`}
+        >
+          <div className="min-w-0 pr-2">
+            <h2 className="text-lg font-semibold">Edit Booking Service</h2>
+            {showRetrieveOverlay ? (
+              <p className="mt-1 max-w-xl text-xs text-gray-500">Retrieving service — please wait.</p>
+            ) : loadedService ? (
+              <p className="mt-1 truncate text-xs text-gray-500" title={loadedService.name}>
+                {loadedService.name}
+              </p>
+            ) : null}
+          </div>
           <button
             onClick={() => {
               if (!submitting) onClose()
@@ -577,10 +639,8 @@ export default function BookingServiceEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-5">
-          {loading ? (
-            <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
-          ) : (
+        <form onSubmit={handleSubmit} className="relative z-[1] p-5" aria-busy={showRetrieveOverlay}>
+          {showEditFields ? (
             <>
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
               {/* Left Side - Image Upload */}
@@ -969,7 +1029,7 @@ export default function BookingServiceEditModal({
               </button>
             </div>
             </>
-          )}
+          ) : null}
         </form>
       </div>
     </div>

@@ -235,9 +235,10 @@ export default function BookingDepositTermsSettingsCard({ canEdit }: Props) {
               Deposit T&amp;C Image
             </h4>
             <p className="mt-1 text-xs text-slate-500">
-              Upload a portrait, mobile-friendly PNG, JPG, or WEBP image that
-              fits the booking drawer width.
+              Upload a PNG, JPG, or WEBP for the booking cart deposit T&amp;C (fits the drawer; use safe margins on
+              narrow screens).
             </p>
+            <p className="mt-1 text-xs font-semibold text-red-600">Suggested size: 330 × 320 px</p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-[220px_1fr]">
@@ -268,8 +269,7 @@ export default function BookingDepositTermsSettingsCard({ canEdit }: Props) {
                 className="block w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 file:mr-4 file:rounded-lg file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
               />
               <p className="text-xs text-slate-400">
-                Accepted formats: PNG, JPG, WEBP. Recommended:
-                portrait/mobile-friendly artwork with safe margins.
+                Accepted formats: PNG, JPG, WEBP. Portrait or mobile-friendly artwork with safe margins works best.
               </p>
               {previewImage ? (
                 <button
