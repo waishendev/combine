@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 
 import type { BlockRowData } from './BlockRow'
-import { mapBlockApiItemToRow, type BlockApiItem, type StaffOption } from './blockUtils'
+import { mapBlockApiItemToRow, toApiDateTime, toDateTimeLocalValue, type BlockApiItem, type StaffOption } from './blockUtils'
 import { useI18n } from '@/lib/i18n'
 
 interface BlockEditModalProps {
@@ -99,8 +99,8 @@ export default function BlockEditModal({
         setForm({
           scope: mappedBlock.scope,
           staff_id: mappedBlock.staff_id ? String(mappedBlock.staff_id) : '',
-          start_at: mappedBlock.start_at ? new Date(mappedBlock.start_at).toISOString().slice(0, 16) : '',
-          end_at: mappedBlock.end_at ? new Date(mappedBlock.end_at).toISOString().slice(0, 16) : '',
+          start_at: toDateTimeLocalValue(mappedBlock.start_at),
+          end_at: toDateTimeLocalValue(mappedBlock.end_at),
           reason: mappedBlock.reason || '',
         })
       } catch (err) {
@@ -154,8 +154,8 @@ export default function BlockEditModal({
         body: JSON.stringify({
           scope: form.scope,
           staff_id: form.scope === 'STAFF' ? Number(form.staff_id) : null,
-          start_at: new Date(form.start_at).toISOString(),
-          end_at: new Date(form.end_at).toISOString(),
+          start_at: toApiDateTime(form.start_at),
+          end_at: toApiDateTime(form.end_at),
           reason: form.reason.trim() || null,
         }),
       })
