@@ -17,7 +17,7 @@ class GlobalSeoSeedeer extends Seeder
 
         $byType = [
             'ecommerce' => [
-                'default_title' => 'Gentlegurls',
+                'default_title' => 'Gentlegurls Beauty Shop',
             ],
             'booking' => [
                 'default_title' => 'Gentlegurls Nail Salon',
