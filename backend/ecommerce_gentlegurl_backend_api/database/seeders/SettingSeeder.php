@@ -108,12 +108,12 @@ class SettingSeeder extends Seeder
 
     private function seedDefaultBookingDepositTncImage(): ?string
     {
-        $sourcePath = dirname(base_path(), 2).'/frontend/ecommerce_gentlegurl_crm/public/images/images.jpg';
+        $sourcePath = dirname(base_path(), 2).'/frontend/ecommerce_gentlegurl_crm/public/images/default_photo.png';
         if (! is_file($sourcePath)) {
             return null;
         }
 
-        $targetPath = 'booking/deposit-tnc/images.jpg';
+        $targetPath = 'booking/deposit-tnc/default_photo.png';
         Storage::disk('public')->put($targetPath, (string) file_get_contents($sourcePath));
 
         return $targetPath;
