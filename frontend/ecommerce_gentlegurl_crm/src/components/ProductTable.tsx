@@ -189,7 +189,7 @@ export default function ProductTable({
   const canCreate = permissions.includes('ecommerce.products.create')
   const canUpdate = permissions.includes('ecommerce.products.update')
   const canDelete = permissions.includes('ecommerce.products.delete')
-  const showActions = canUpdate || canDelete
+  const showActions = canUpdate || canDelete || canCreate
 
   const fetchCategories = useCallback(async (signal?: AbortSignal) => {
     const collectCategoryRows = (nodes: unknown[], depth: number): Array<{ id: number; name: string }> => {
@@ -1151,6 +1151,8 @@ export default function ProductTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  canCreate={canCreate}
+                  listBasePath={basePath}
                   showSelection={showSelection}
                   isSelected={selectedIds.has(product.id)}
                   onToggleSelect={handleToggleSelect}
