@@ -417,7 +417,7 @@ export default function SliderEditModal({
 
                   <div>
                     <h3 className="text-sm font-medium text-gray-700">Mobile Image</h3>
-                    <p className="text-xs text-red-500 mb-2">Suggested size: 1410 x 1360</p>
+                    <p className="text-xs text-red-500 mb-2">Suggested size (phone): 1638 x 2048</p>
                     <div
                       onClick={handleMobileImageClick}
                       className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${

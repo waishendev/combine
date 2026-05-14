@@ -149,7 +149,7 @@ export default function Slider({ items }: SliderProps) {
     <>
         <div className="relative overflow-hidden rounded-md border border-[var(--card-border)]/80 bg-transparent shadow-[var(--shadow)]">
       <div
-        className="relative h-[380px] sm:h-[420px] lg:h-[480px] cursor-grab active:cursor-grabbing"
+        className="relative aspect-[1638/2048] w-full sm:aspect-auto sm:h-[420px] lg:h-[480px] cursor-grab active:cursor-grabbing"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -172,8 +172,8 @@ export default function Slider({ items }: SliderProps) {
               key={item.id}
               className={`absolute inset-0 overflow-hidden transition  duration-700 ease-out ${isActive ? "z-10 opacity-100" : "pointer-events-none opacity-0"}`}
             >
-              <div className="absolute inset-0">
-                <div className="relative h-full w-full ">
+              <div className="absolute inset-0 bg-[var(--background-soft)]">
+                <div className="relative h-full w-full">
                   <Image
                     src={desktopImage}
                     alt={item.title ?? "slide"}
@@ -187,7 +187,8 @@ export default function Slider({ items }: SliderProps) {
                     alt={item.title ?? "slide"}
                     fill
                     priority={isActive}
-                    className="object-cover sm:hidden"
+                    sizes="100vw"
+                    className="object-contain sm:hidden"
                   />
                 </div>
               </div>
