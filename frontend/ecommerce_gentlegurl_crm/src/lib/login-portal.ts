@@ -32,6 +32,13 @@ export function setLoginPortal(portal: LoginPortal): void {
   document.cookie = `${PORTAL_COOKIE}=${encoded}; path=/; max-age=31536000`
 }
 
+/** Clears portal preference (e.g. after logout). */
+export function clearLoginPortal(): void {
+  if (typeof document === 'undefined') return
+  document.cookie = `${PORTAL_COOKIE}=; Max-Age=0; path=/`
+}
+
+/** Post-logout and unauthenticated redirects: unified hub. */
 export function getLoginPagePath(): string {
-  return getLoginPortal() === 'staff' ? '/staff/login' : '/admin/login'
+  return '/login'
 }

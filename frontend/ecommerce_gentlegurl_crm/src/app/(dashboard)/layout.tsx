@@ -7,7 +7,7 @@ import Header from '@/components/Header'
 import DashboardNavigationProgress from '@/components/DashboardNavigationProgress'
 import Sidebar from '@/components/Sidebar'
 import { LogoLoader } from '@/components/LogoLoader'
-import { getLoginPagePath } from '@/lib/login-portal'
+import { clearLoginPortal, getLoginPagePath } from '@/lib/login-portal'
 
 type ProfileResponse = {
   success?: boolean
@@ -133,6 +133,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         if (controller.signal.aborted) return
         if (err instanceof DOMException && err.name === 'AbortError') return
         if (isActive) {
+          clearSessionCookiesOnClient()
           router.replace(getLoginPagePath())
         }
       } finally {
@@ -185,10 +186,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     } finally {
       setUserEmail('')
       setPermissions([])
+      const postLogout = getLoginPagePath()
       clearSessionCookiesOnClient()
-      // Full navigation: avoids middleware treating /admin/login as "still logged in"
-      // when Set-Cookie from the proxy did not fully clear the session cookie.
-      window.location.assign(getLoginPagePath())
+      clearLoginPortal()
+      window.location.assign(postLogout)
     }
   }
 

@@ -1,5 +1,7 @@
-import { redirect } from 'next/navigation'
+'use client'
 
-export default function LegacyLoginPage() {
-  redirect('/admin/login')
+import { UnifiedLoginForm } from '@/components/LoginForm'
+
+export default function LoginPage() {
+  return <UnifiedLoginForm />
 }

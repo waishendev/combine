@@ -22,13 +22,22 @@ export function proxy(req: NextRequest) {
     req.cookies.get('gentlegurl-api-session');
 
   if (isLoginPage && hasSessionCookie) {
-    const portal = req.cookies.get('crm_login_portal')?.value;
-    const destPath = portal === 'staff' ? '/booking/appointments' : '/dashboard';
+    // Match redirect to the URL the user opened. Otherwise /admin/login + crm_login_portal=staff
+    // sent users to booking first; invalid session then bounced them to /staff/login (confusing).
+    let destPath = '/dashboard';
+    if (pathname.startsWith('/staff/login')) {
+      destPath = '/booking/appointments';
+    } else if (pathname.startsWith('/admin/login')) {
+      destPath = '/dashboard';
+    } else {
+      const portal = req.cookies.get('crm_login_portal')?.value;
+      destPath = portal === 'staff' ? '/booking/appointments' : '/dashboard';
+    }
     return NextResponse.redirect(new URL(destPath, req.url));
   }
 
   if (isProtectedPage && !hasSessionCookie) {
-    return NextResponse.redirect(new URL('/admin/login', req.url));
+    return NextResponse.redirect(new URL('/login', req.url));
   }
 
   return NextResponse.next();
