@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 
 import Header from '@/components/Header'
+import DashboardNavigationProgress from '@/components/DashboardNavigationProgress'
 import Sidebar from '@/components/Sidebar'
 import { LogoLoader } from '@/components/LogoLoader'
 
@@ -204,7 +205,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           staffId={staffId}
           onToggleSidebar={toggleSidebar}
         />
-        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100">{children}</main>
+        <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100">
+          <DashboardNavigationProgress />
+          {children}
+        </main>
       </div>
     </LogoLoader>
   )
