@@ -381,7 +381,7 @@ export default function ServiceAddonsPage() {
                             onClick={() => toggleOption(q, opt)}
                             aria-pressed={checked}
                             className={[
-                              "group relative flex w-full flex-row gap-3 overflow-hidden rounded-2xl p-3 text-left transition-all duration-300 sm:flex-col sm:gap-0 sm:p-0",
+                              "group relative flex w-full flex-col gap-0 overflow-hidden rounded-2xl p-0 text-left transition-all duration-300",
                               "border-2 bg-[var(--card)] shadow-sm",
                               checked
                                 ? "border-[3px] border-[var(--accent-strong)] bg-[var(--accent)]/10 shadow-lg ring-4 ring-[var(--accent)]/35"
@@ -389,19 +389,19 @@ export default function ServiceAddonsPage() {
                             ].join(" ")}
                           >
                             {checked ? (
-                              <div className="absolute right-2.5 top-2.5 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-strong)] text-white shadow-md sm:right-3 sm:top-3 sm:h-8 sm:w-8">
+                              <div className="absolute right-3 top-3 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-[var(--accent-strong)] text-white shadow-md sm:h-8 sm:w-8">
                                 <i className="fa-solid fa-check text-sm" aria-hidden />
                                 <span className="sr-only">Selected</span>
                               </div>
                             ) : null}
-                            <div className="relative h-[104px] w-[104px] shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:aspect-[4/3] sm:h-auto sm:w-full sm:rounded-none">
+                            <div className="relative w-full shrink-0 overflow-hidden bg-gray-100 aspect-[1080/680]">
                               {imgSrc ? (
                                 <img src={imgSrc} alt={opt.label} className="h-full w-full object-cover" />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">No image</div>
                               )}
                             </div>
-                            <div className="relative flex min-w-0 flex-1 flex-col py-0.5 sm:p-4">
+                            <div className="relative flex min-w-0 flex-1 flex-col p-3 sm:p-4">
                               <div className="flex flex-wrap items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <h3 className="break-words font-[var(--font-heading)] font-semibold leading-snug">

@@ -129,8 +129,8 @@ export default function BookingPageContent() {
               }}
               className="group relative flex h-full min-w-0 flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] text-left shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
-              {/* Match product cards: fixed crop box + overflow-hidden so tall/portrait images never stretch the layout */}
-              <div className="relative aspect-[4/3] w-full shrink-0 overflow-hidden bg-gray-100">
+              {/* Same wide crop as service cards / add-ons on the booking shop (1080×680). */}
+              <div className="relative aspect-[1080/680] w-full shrink-0 overflow-hidden bg-gray-100">
                 {(category.image_url || category.image_path) ? (
                   <img
                     src={(category.image_url || category.image_path) as string}
@@ -163,16 +163,16 @@ export default function BookingPageContent() {
             <Link
               key={service.id}
               href={`/booking/service/${service.id}?category_id=${selectedCategory.id}`}
-              className="group relative flex h-full flex-row gap-3 overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-3 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg sm:flex-col sm:gap-0 sm:p-0"
+              className="group relative flex h-full flex-col gap-0 overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-0 shadow-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-[var(--accent)] hover:shadow-lg"
             >
-              <div className="relative h-[104px] w-[104px] shrink-0 overflow-hidden rounded-xl bg-gray-100 sm:aspect-[4/3] sm:h-auto sm:w-full sm:rounded-none">
+              <div className="relative w-full shrink-0 overflow-hidden bg-gray-100 aspect-[1080/680]">
                 {(service.image_url || service.image_path) ? (
                   <img src={(service.image_url || service.image_path) as string} alt={service.name} className="h-full w-full object-cover" />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-gray-400">No image</div>
                 )}
               </div>
-              <div className="relative flex min-w-0 flex-1 flex-col sm:flex-1 sm:p-4">
+              <div className="relative flex min-w-0 flex-1 flex-col p-3 sm:p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0 flex-1">
                     <h2 className="break-words font-[var(--font-heading)] text-[15px] font-semibold leading-snug sm:line-clamp-2 sm:text-base">
