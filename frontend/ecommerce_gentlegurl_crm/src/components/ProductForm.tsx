@@ -216,6 +216,47 @@ const getBundleItemKey = (item: BundleItemFormValue) => {
   return null
 }
 
+/** Laravel `meta_og_image_file` uses `max:5120` (kilobytes). */
+const META_OG_IMAGE_MAX_BYTES = 5120 * 1024
+
+const META_OG_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/jpg',
+  'image/gif',
+] as const
+
+const META_OG_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'] as const
+
+function mergeLaravelErrorRecord(errors: unknown): string[] {
+  const out: string[] = []
+  if (!errors || typeof errors !== 'object') return out
+  const record = errors as Record<string, unknown>
+  for (const key of Object.keys(record)) {
+    const errorValue = record[key]
+    if (Array.isArray(errorValue)) {
+      for (const msg of errorValue) {
+        if (typeof msg === 'string') out.push(msg)
+      }
+    } else if (typeof errorValue === 'string') {
+      out.push(`${key}: ${errorValue}`)
+    }
+  }
+  return out
+}
+
+function collectLaravelValidationErrors(payload: unknown): string[] {
+  if (!payload || typeof payload !== 'object') return []
+  const root = payload as Record<string, unknown>
+  const messages = [...mergeLaravelErrorRecord(root.errors)]
+  const nested = root.data
+  if (nested && typeof nested === 'object' && 'errors' in nested) {
+    messages.push(...mergeLaravelErrorRecord((nested as Record<string, unknown>).errors))
+  }
+  return messages
+}
+
 /** Cost/stock on variant rows are only locked for rows that existed on load as a variant product (use stock adjustment). */
 const buildPersistedVariantCostStockLock = (
   mode: ProductFormMode,
@@ -547,6 +588,7 @@ export default function ProductForm({
   const fileInputRef = useRef<HTMLInputElement>(null)
   const videoInputRef = useRef<HTMLInputElement>(null)
   const metaOgImageFileInputRef = useRef<HTMLInputElement>(null)
+  const productFormErrorAnchorRef = useRef<HTMLDivElement>(null)
   const [metaOgImagePreview, setMetaOgImagePreview] = useState<string | null>(null)
   const metaOgImagePreviewRef = useRef<string | null>(null)
   const [previewImage, setPreviewImage] = useState<{
@@ -727,6 +769,15 @@ export default function ProductForm({
   }, [mode, product?.id, copyTemplate?.id])
 
   useEffect(() => {
+    if (!error) return
+    const el = productFormErrorAnchorRef.current
+    if (!el) return
+    requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    })
+  }, [error])
+
+  useEffect(() => {
     if (!rewardOnly) {
       return
     }
@@ -903,6 +954,18 @@ export default function ProductForm({
   const handleMetaFileChange = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0] || null
     if (file) {
+      if (
+        !isAllowedFileType(file, [...META_OG_IMAGE_TYPES], [...META_OG_IMAGE_EXTENSIONS]) ||
+        file.size > META_OG_IMAGE_MAX_BYTES
+      ) {
+        setError(
+          file.size > META_OG_IMAGE_MAX_BYTES
+            ? t('product.metaOgImageTooLarge')
+            : t('product.invalidImage'),
+        )
+        event.target.value = ''
+        return
+      }
       // Clean up old preview
       if (metaOgImagePreview) {
         URL.revokeObjectURL(metaOgImagePreview)
@@ -929,7 +992,8 @@ export default function ProductForm({
   }
 
   const MAX_IMAGES = 6
-  const IMAGE_MAX_MB = 10
+  const productImageMaxMb = Number(process.env.NEXT_PUBLIC_PRODUCT_IMAGE_MAX_MB ?? 10) || 10
+  const IMAGE_MAX_BYTES = productImageMaxMb * 1024 * 1024
   const VIDEO_MAX_MB = 50
   const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/jpg']
   const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp']
@@ -1002,7 +1066,32 @@ export default function ProductForm({
             reject(error)
           }
         } else {
-          reject(new Error(xhr.responseText))
+          const fallback = `Upload failed (${xhr.status}).`
+          try {
+            const parsed: unknown = JSON.parse(xhr.responseText)
+            const errs = collectLaravelValidationErrors(parsed)
+            if (errs.length > 0) {
+              reject(new Error(errs.join('\n')))
+            } else if (
+              parsed &&
+              typeof parsed === 'object' &&
+              typeof (parsed as { message?: unknown }).message === 'string'
+            ) {
+              reject(new Error((parsed as { message: string }).message))
+            } else {
+              const text =
+                typeof xhr.responseText === 'string' && xhr.responseText.trim()
+                  ? xhr.responseText.trim()
+                  : fallback
+              reject(new Error(text.length > 500 ? fallback : text))
+            }
+          } catch {
+            const text =
+              typeof xhr.responseText === 'string' && xhr.responseText.trim()
+                ? xhr.responseText.trim()
+                : fallback
+            reject(new Error(text.length > 500 ? fallback : text))
+          }
         }
       }
       xhr.onerror = () => reject(new Error('Upload failed.'))
@@ -1133,7 +1222,7 @@ export default function ProductForm({
 
     const validFiles = filesToAdd.filter((file) => {
       const isValidType = isAllowedFileType(file, IMAGE_TYPES, IMAGE_EXTENSIONS)
-      const isValidSize = file.size <= IMAGE_MAX_MB * 1024 * 1024
+      const isValidSize = file.size <= IMAGE_MAX_BYTES
       return isValidType && isValidSize
     })
 
@@ -1333,7 +1422,7 @@ export default function ProductForm({
 
       if (
         !isAllowedFileType(file, IMAGE_TYPES, IMAGE_EXTENSIONS) ||
-        file.size > IMAGE_MAX_MB * 1024 * 1024
+        file.size > IMAGE_MAX_BYTES
       ) {
         setError(t('product.invalidImage'))
         return
@@ -1388,7 +1477,9 @@ export default function ProductForm({
             }
             setPendingImages((prev) => prev.filter((item) => item.id !== newUpload.id))
           })
-          .catch(() => {
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : t('product.uploadFailed')
+            setError(message)
             setPendingImages((prev) =>
               prev.map((item) =>
                 item.id === newUpload.id ? { ...item, status: 'failed' } : item,
@@ -1400,8 +1491,9 @@ export default function ProductForm({
     input.click()
   }
 
-  const uploadPendingMedia = async (productId: number) => {
-    const imageUploads = pendingImages.map((upload) => {
+  /** Returns false if any pending image or video upload failed (product may already be saved). */
+  const uploadPendingMedia = async (productId: number): Promise<boolean> => {
+    const imageTasks = pendingImages.map((upload) => {
       setPendingImages((prev) =>
         prev.map((item) =>
           item.id === upload.id ? { ...item, status: 'uploading' } : item,
@@ -1424,41 +1516,51 @@ export default function ProductForm({
           }
           setPendingImages((prev) => prev.filter((item) => item.id !== upload.id))
         })
-        .catch(() => {
+        .then(() => true as const)
+        .catch((err: unknown) => {
+          const message = err instanceof Error ? err.message : t('product.uploadFailed')
+          setError(message)
           setPendingImages((prev) =>
             prev.map((item) =>
               item.id === upload.id ? { ...item, status: 'failed' } : item,
             ),
           )
+          return false as const
         })
     })
 
-    if (pendingVideo) {
-      setPendingVideo({ ...pendingVideo, status: 'uploading' })
-    }
+    const videoSnapshot = pendingVideo
+    const videoTask =
+      videoSnapshot && videoSnapshot.file
+        ? (() => {
+            setPendingVideo({ ...videoSnapshot, status: 'uploading' })
+            return uploadMediaFile(
+              'video',
+              videoSnapshot.file,
+              (progress) => {
+                setPendingVideo((prev) => (prev ? { ...prev, progress } : prev))
+              },
+              productId,
+            )
+              .then((response) => {
+                const videoItem = buildVideoFromResponse(response as { data?: unknown })
+                if (videoItem) {
+                  setExistingVideo(videoItem)
+                }
+                setPendingVideo(null)
+              })
+              .then(() => true as const)
+              .catch((err: unknown) => {
+                const message = err instanceof Error ? err.message : t('product.uploadFailed')
+                setError(message)
+                setPendingVideo((prev) => (prev ? { ...prev, status: 'failed' } : prev))
+                return false as const
+              })
+          })()
+        : Promise.resolve(true as const)
 
-    const videoUpload = pendingVideo
-      ? uploadMediaFile(
-          'video',
-          pendingVideo.file,
-          (progress) => {
-            setPendingVideo((prev) => (prev ? { ...prev, progress } : prev))
-          },
-          productId,
-        )
-          .then((response) => {
-            const videoItem = buildVideoFromResponse(response as { data?: unknown })
-            if (videoItem) {
-              setExistingVideo(videoItem)
-            }
-            setPendingVideo(null)
-          })
-          .catch(() => {
-            setPendingVideo((prev) => (prev ? { ...prev, status: 'failed' } : prev))
-          })
-      : Promise.resolve()
-
-    await Promise.all([...imageUploads, videoUpload])
+    const outcomes = await Promise.all([...imageTasks, videoTask])
+    return outcomes.every(Boolean)
   }
 
   const handleVideoChange = (event: ChangeEvent<HTMLInputElement>) => {
@@ -1635,7 +1737,16 @@ export default function ProductForm({
     )
   }
 
-  const handleVariantImageChange = (index: number, file: File | null) => {
+  const handleVariantImageChange = (index: number, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    if (!file) return
+
+    if (!isAllowedFileType(file, IMAGE_TYPES, IMAGE_EXTENSIONS) || file.size > IMAGE_MAX_BYTES) {
+      setError(t('product.invalidImage'))
+      event.target.value = ''
+      return
+    }
+
     setVariants((prev) =>
       prev.map((variant, idx) => {
         if (idx !== index) return variant
@@ -1645,7 +1756,7 @@ export default function ProductForm({
         return {
           ...variant,
           imageFile: file,
-          imagePreview: file ? URL.createObjectURL(file) : null,
+          imagePreview: URL.createObjectURL(file),
           removeImage: false,
         }
       }),
@@ -1670,7 +1781,16 @@ export default function ProductForm({
     )
   }
 
-  const handleBundleImageChange = (index: number, file: File | null) => {
+  const handleBundleImageChange = (index: number, event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0] ?? null
+    if (!file) return
+
+    if (!isAllowedFileType(file, IMAGE_TYPES, IMAGE_EXTENSIONS) || file.size > IMAGE_MAX_BYTES) {
+      setError(t('product.invalidImage'))
+      event.target.value = ''
+      return
+    }
+
     setBundles((prev) =>
       prev.map((bundle, idx) => {
         if (idx !== index) return bundle
@@ -1680,7 +1800,7 @@ export default function ProductForm({
         return {
           ...bundle,
           imageFile: file,
-          imagePreview: file ? URL.createObjectURL(file) : null,
+          imagePreview: URL.createObjectURL(file),
           removeImage: false,
         }
       }),
@@ -2213,6 +2333,36 @@ export default function ProductForm({
       }
     }
 
+    if (form.metaOgImageFile) {
+      if (
+        !isAllowedFileType(form.metaOgImageFile, [...META_OG_IMAGE_TYPES], [...META_OG_IMAGE_EXTENSIONS]) ||
+        form.metaOgImageFile.size > META_OG_IMAGE_MAX_BYTES
+      ) {
+        setError(
+          form.metaOgImageFile.size > META_OG_IMAGE_MAX_BYTES
+            ? t('product.metaOgImageTooLarge')
+            : t('product.invalidImage'),
+        )
+        setSubmitting(false)
+        return
+      }
+    }
+
+    if (resolvedType === 'variant') {
+      const combinedForImages = [...variants, ...bundles]
+      const invalidVariantImage = combinedForImages.find(
+        (row) =>
+          row.imageFile &&
+          (!isAllowedFileType(row.imageFile, IMAGE_TYPES, IMAGE_EXTENSIONS) ||
+            row.imageFile.size > IMAGE_MAX_BYTES),
+      )
+      if (invalidVariantImage) {
+        setError(t('product.invalidImage'))
+        setSubmitting(false)
+        return
+      }
+    }
+
     const formData = new FormData()
     const resolvedPrice =
       resolvedType === 'variant' ? '1' : rewardOnly ? '1' : form.price || '0'
@@ -2329,40 +2479,19 @@ export default function ProductForm({
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        let errorMessages: string[] = []
-        if (data && typeof data === 'object') {
-          // Check if there are validation errors
-          if ('errors' in data && data.errors) {
-            const errors = (data as { errors?: unknown }).errors
-            if (errors && typeof errors === 'object') {
-              // Loop through all error keys
-              Object.keys(errors).forEach((key) => {
-                const errorValue = (errors as Record<string, unknown>)[key]
-                if (Array.isArray(errorValue)) {
-                  // If it's an array, add all error messages
-                  errorValue.forEach((msg) => {
-                    if (typeof msg === 'string') {
-                      errorMessages.push(`${msg}`)
-                    }
-                  })
-                } else if (typeof errorValue === 'string') {
-                  errorMessages.push(`${key}: ${errorValue}`)
-                }
-              })
-            }
-          }
-          
-          // If no errors found but there's a message, use it
-          if (errorMessages.length === 0 && typeof (data as { message?: unknown }).message === 'string') {
-            errorMessages.push((data as { message: string }).message)
-          }
+        const errorMessages = collectLaravelValidationErrors(data)
+        if (
+          errorMessages.length === 0 &&
+          data &&
+          typeof data === 'object' &&
+          typeof (data as { message?: unknown }).message === 'string'
+        ) {
+          errorMessages.push((data as { message: string }).message)
         }
-        
-        // If still no error messages, use default error message
         if (errorMessages.length === 0) {
           errorMessages.push(t('product.saveError'))
         }
-        
+
         setError(errorMessages.join('\n'))
         return
       }
@@ -2418,8 +2547,9 @@ export default function ProductForm({
         await updateBundleItems(payload, bundles)
       }
 
+      let mediaUploadsOk = true
       if (pendingImages.length > 0 || pendingVideo) {
-        await uploadPendingMedia(productRow.id)
+        mediaUploadsOk = await uploadPendingMedia(productRow.id)
       }
 
       if (rewardOnly) {
@@ -2469,6 +2599,15 @@ export default function ProductForm({
         }
       }
 
+      if (!mediaUploadsOk) {
+        setError((prev) => {
+          const hint = t('product.savedButMediaUploadFailed')
+          if (prev?.trim()) return `${prev.trim()}\n\n${hint}`
+          return hint
+        })
+        return
+      }
+
       if (mode === 'create') {
         resetForm()
       }
@@ -2505,7 +2644,9 @@ export default function ProductForm({
 
   return (
     <form className="p-6 space-y-6" onSubmit={handleSubmit}>
-      <ErrorBox error={error} />
+      <div ref={productFormErrorAnchorRef} tabIndex={-1} className="outline-none scroll-mt-6">
+        <ErrorBox error={error} />
+      </div>
       {isCopyFromTemplate ? (
         <div
           className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
@@ -3778,9 +3919,7 @@ export default function ProductForm({
                     type="file"
                     accept={buildAcceptList(IMAGE_TYPES, IMAGE_EXTENSIONS).join(',')}
                     className="hidden"
-                    onChange={(event) =>
-                      handleVariantImageChange(index, event.target.files?.[0] ?? null)
-                    }
+                    onChange={(event) => handleVariantImageChange(index, event)}
                   />
                   <div className="w-full max-w-sm">
                     <div
@@ -4267,9 +4406,7 @@ export default function ProductForm({
                           type="file"
                           accept={buildAcceptList(IMAGE_TYPES, IMAGE_EXTENSIONS).join(',')}
                           className="hidden"
-                          onChange={(event) =>
-                            handleBundleImageChange(index, event.target.files?.[0] ?? null)
-                          }
+                          onChange={(event) => handleBundleImageChange(index, event)}
                         />
                         <div className="w-full max-w-sm">
                           <div

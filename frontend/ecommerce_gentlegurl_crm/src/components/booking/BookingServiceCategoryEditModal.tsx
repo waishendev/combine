@@ -1,10 +1,11 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
+import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { BookingServiceCategoryRowData } from './BookingServiceCategoryRow'
 import {
   mapBookingServiceCategoryApiItemToRow,
+  formatBookingCategorySubmitError,
   type BookingServiceCategoryApiItem,
 } from './bookingServiceCategoryUtils'
 import { useI18n } from '@/lib/i18n'
@@ -38,6 +39,8 @@ export default function BookingServiceCategoryEditModal({
   const [services, setServices] = useState<BookingCategoryServiceOption[]>([])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     let ignore = false
@@ -109,7 +112,9 @@ export default function BookingServiceCategoryEditModal({
         setDescription(String(raw.description ?? ''))
         setIsActive(Boolean(raw.is_active))
         setServiceIds(Array.isArray(raw.service_ids) ? raw.service_ids.map((id) => Number(id)) : [])
-        setImagePreview(typeof raw.image_url === 'string' ? raw.image_url : null)
+        const existingUrl = typeof raw.image_url === 'string' ? raw.image_url : null
+        setInitialImageUrl(existingUrl)
+        setImagePreview(existingUrl)
         setImageFile(null)
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
@@ -133,12 +138,21 @@ export default function BookingServiceCategoryEditModal({
     const file = e.target.files?.[0]
     if (!file) {
       setImageFile(null)
+      setImagePreview(initialImageUrl)
       return
     }
     setImageFile(file)
     const reader = new FileReader()
     reader.onloadend = () => setImagePreview(reader.result as string)
     reader.readAsDataURL(file)
+  }
+
+  const handleImageClick = () => imageInputRef.current?.click()
+
+  const handleRemoveImage = () => {
+    setImageFile(null)
+    setImagePreview(initialImageUrl)
+    if (imageInputRef.current) imageInputRef.current.value = ''
   }
 
   const handleSubmit = async (e: FormEvent) => {
@@ -168,11 +182,7 @@ export default function BookingServiceCategoryEditModal({
       })
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        const msg =
-          data && typeof data === 'object' && typeof (data as { message?: string }).message === 'string'
-            ? (data as { message: string }).message
-            : 'Failed to update category'
-        setError(msg)
+        setError(formatBookingCategorySubmitError(data, 'Failed to update category'))
         return
       }
       const payload = data?.data as BookingServiceCategoryApiItem | undefined
@@ -200,9 +210,9 @@ export default function BookingServiceCategoryEditModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
       <form
         onSubmit={handleSubmit}
-        className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-lg"
+        className="mx-4 w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-lg"
       >
-        <div className="mb-4 flex items-start justify-between">
+        <div className="mb-4 flex items-start justify-between border-b border-gray-200 pb-4">
           <h2 className="text-lg font-semibold">Edit Category</h2>
           <button
             type="button"
@@ -216,80 +226,145 @@ export default function BookingServiceCategoryEditModal({
         </div>
 
         {loading ? (
-          <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
+          <div className="flex flex-col gap-6 py-6 lg:flex-row lg:items-start">
+            <div className="w-full shrink-0 space-y-2 lg:w-[300px]">
+              <div className="h-4 w-20 animate-pulse rounded bg-gray-200" />
+              <div className="h-48 rounded-lg border-2 border-dashed border-gray-200 bg-gray-50" />
+            </div>
+            <div className="flex flex-1 items-center justify-center py-12 text-sm text-gray-500">
+              {t('common.loadingDetails')}
+            </div>
+          </div>
         ) : (
           <>
-            <div className="space-y-4">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
-                  English Name <span className="text-red-500">*</span>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
+              <div className="w-full shrink-0 space-y-2 lg:w-[300px]">
+                <h3 className="text-sm font-medium text-gray-700">Image</h3>
+                <p className="text-xs text-gray-500">{BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE}</p>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => !disableForm && handleImageClick()}
+                  onKeyDown={(e) => {
+                    if (disableForm) return
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault()
+                      handleImageClick()
+                    }
+                  }}
+                  className={`relative rounded-lg border-2 border-dashed p-4 transition-colors ${
+                    disableForm ? 'cursor-not-allowed opacity-60' : 'cursor-pointer hover:border-blue-400'
+                  } ${imagePreview ? 'border-gray-300' : 'border-gray-300'}`}
+                >
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept={IMAGE_ACCEPT}
+                    onChange={handleImageChange}
+                    className="hidden"
+                    disabled={disableForm}
+                  />
+                  {imagePreview ? (
+                    <div className="relative group">
+                      <img
+                        src={imagePreview}
+                        alt=""
+                        className="mx-auto h-48 max-h-[220px] w-full max-w-[260px] rounded object-contain"
+                      />
+                      <div className="absolute right-2 top-2 flex gap-2 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            if (!disableForm) handleImageClick()
+                          }}
+                          disabled={disableForm}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-blue-400/30 bg-blue-500/95 text-white shadow-lg hover:bg-blue-600 disabled:opacity-50"
+                          aria-label="Replace image"
+                        >
+                          <i className="fa-solid fa-image text-xs" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(ev) => {
+                            ev.stopPropagation()
+                            if (!disableForm) handleRemoveImage()
+                          }}
+                          disabled={disableForm}
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400/30 bg-red-500/95 text-white shadow-lg hover:bg-red-600 disabled:opacity-50"
+                          aria-label="Clear new image selection"
+                        >
+                          <i className="fa-solid fa-trash-can text-xs" />
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-10">
+                      <i className="fa-solid fa-cloud-arrow-up mb-2 text-4xl text-gray-400" aria-hidden />
+                      <p className="text-sm text-gray-600">Click to upload</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="min-w-0 flex-1 space-y-4">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">
+                    English Name <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    required
+                    disabled={disableForm}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Chinese Name</label>
+                  <input
+                    value={cnName}
+                    onChange={(e) => setCnName(e.target.value)}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    placeholder="中文分类名称"
+                    disabled={disableForm}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Slug</label>
+                  <input
+                    value={slug}
+                    onChange={(e) => setSlug(e.target.value)}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    disabled={disableForm}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
+                  <textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    rows={3}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    disabled={disableForm}
+                  />
+                </div>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={isActive}
+                    onChange={(e) => setIsActive(e.target.checked)}
+                    disabled={disableForm}
+                  />
+                  Active
                 </label>
-                <input
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  required
+                <BookingCategoryServicesSection
+                  services={services}
+                  serviceIds={serviceIds}
+                  onToggle={toggleService}
                   disabled={disableForm}
                 />
               </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Chinese Name</label>
-                <input
-                  value={cnName}
-                  onChange={(e) => setCnName(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  placeholder="中文分类名称"
-                  disabled={disableForm}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Slug</label>
-                <input
-                  value={slug}
-                  onChange={(e) => setSlug(e.target.value)}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={disableForm}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Description</label>
-                <textarea
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  rows={3}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  disabled={disableForm}
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">Image</label>
-                <p className="text-xs text-gray-500 mb-1">{BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE}</p>
-                <input
-                  type="file"
-                  accept={IMAGE_ACCEPT}
-                  onChange={handleImageChange}
-                  className="text-sm"
-                  disabled={disableForm}
-                />
-                {imagePreview ? (
-                  <img src={imagePreview} alt="" className="mt-2 h-24 w-24 rounded border object-cover" />
-                ) : null}
-              </div>
-              <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={isActive}
-                  onChange={(e) => setIsActive(e.target.checked)}
-                  disabled={disableForm}
-                />
-                Active
-              </label>
-              <BookingCategoryServicesSection
-                services={services}
-                serviceIds={serviceIds}
-                onToggle={toggleService}
-                disabled={disableForm}
-              />
             </div>
 
             {error && (
@@ -298,7 +373,7 @@ export default function BookingServiceCategoryEditModal({
               </div>
             )}
 
-            <div className="mt-6 flex items-center justify-end gap-2">
+            <div className="mt-6 flex items-center justify-end gap-2 border-t border-gray-200 pt-4">
               <button
                 type="button"
                 onClick={onClose}

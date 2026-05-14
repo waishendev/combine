@@ -248,7 +248,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 5 : 4
+  const colCount = showActions ? 6 : 5
   const totalPages = meta.last_page || 1
 
   const handleCategoryCreated = (category: BookingServiceCategoryRowData) => {
@@ -517,6 +517,9 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                Image
+              </th>
               {(
                 [
                   { key: 'name', label: 'English Name' },

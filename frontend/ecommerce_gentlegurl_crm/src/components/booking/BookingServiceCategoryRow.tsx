@@ -35,6 +35,17 @@ export default function BookingServiceCategoryRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      <td className="px-4 py-2 border border-gray-200">
+        {category.imageUrl ? (
+          <img
+            src={category.imageUrl}
+            alt={category.name}
+            className="h-10 w-10 rounded object-cover border border-gray-200 bg-gray-50"
+          />
+        ) : (
+          <div className="h-10 w-10 rounded border border-dashed border-gray-300 bg-gray-100" aria-hidden />
+        )}
+      </td>
       <td className="px-4 py-2 border border-gray-200"><div className="font-semibold text-gray-900">{category.name}</div>{category.cnName ? <div className="mt-0.5 text-xs text-gray-500">{category.cnName}</div> : null}</td>
       <td className="px-4 py-2 border border-gray-200">{category.slug}</td>
       <td className="px-4 py-2 border border-gray-200">
