@@ -68,7 +68,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   // Warm common targets so leaving POS / heavy pages feels snappier.
   useEffect(() => {
     router.prefetch('/dashboard')
-    router.prefetch('/booking/appointments')
+    router.prefetch('/booking/appointment-history')
     router.prefetch('/pos/appointments')
     router.prefetch('/reports/sales/visual')
   }, [router])

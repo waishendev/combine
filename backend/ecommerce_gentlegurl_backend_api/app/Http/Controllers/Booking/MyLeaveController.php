@@ -32,10 +32,38 @@ class MyLeaveController extends Controller
             return $this->respondError('This account is not linked to a staff profile.', 403);
         }
 
-        $rows = BookingLeaveRequest::query()
-            ->where('staff_id', $staffId)
+        $validated = $request->validate([
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:200'],
+            'status' => ['sometimes', 'nullable', 'in:pending,approved,rejected,cancelled'],
+            'leave_type' => ['sometimes', 'nullable', 'in:annual,mc,emergency,unpaid,off_day'],
+            'date_range' => ['sometimes', 'nullable', 'in:upcoming,past,all'],
+        ]);
+
+        $query = BookingLeaveRequest::query()
+            ->where('staff_id', $staffId);
+
+        if (! empty($validated['status'])) {
+            $query->where('status', $validated['status']);
+        }
+
+        if (! empty($validated['leave_type'])) {
+            $query->where('leave_type', $validated['leave_type']);
+        }
+
+        $dateRange = $validated['date_range'] ?? 'all';
+        $today = Carbon::today()->toDateString();
+
+        if ($dateRange === 'upcoming') {
+            $query->whereDate('end_date', '>=', $today);
+        } elseif ($dateRange === 'past') {
+            $query->whereDate('end_date', '<', $today);
+        }
+
+        $perPage = (int) ($validated['per_page'] ?? 100);
+
+        $rows = $query
             ->orderByDesc('created_at')
-            ->paginate((int) $request->input('per_page', 20));
+            ->paginate($perPage);
 
         return $this->respond($rows);
     }

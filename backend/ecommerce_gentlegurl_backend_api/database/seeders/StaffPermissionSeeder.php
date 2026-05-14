@@ -35,7 +35,7 @@ class StaffPermissionSeeder extends Seeder
         $permissionIds = Permission::whereIn('slug', [
             // 'booking.commission-tiers.view',
             // 'staff.view',
-            'pos.checkout',
+            // 'pos.checkout',
             // 'pos.orders.view',
             // 'reports.my-pos-summary.view',
         ])->pluck('id')->all();

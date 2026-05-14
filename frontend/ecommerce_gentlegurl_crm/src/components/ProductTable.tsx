@@ -1059,7 +1059,7 @@ export default function ProductTable({
             {t('common.filter')}
           </button>
 
-          {showSelection && (
+          {showSelection && canDelete && (
             <>
               <button
                 className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"

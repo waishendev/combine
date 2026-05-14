@@ -26,13 +26,15 @@ export function proxy(req: NextRequest) {
     // sent users to booking first; invalid session then bounced them to /staff/login (confusing).
     let destPath = '/dashboard';
     if (pathname.startsWith('/staff/login')) {
-      destPath = '/booking/appointments';
+      destPath = '/booking/appointment-history';
     } else if (pathname.startsWith('/admin/login')) {
       destPath = '/dashboard';
-    } else {
-      const portal = req.cookies.get('crm_login_portal')?.value;
-      destPath = portal === 'staff' ? '/booking/appointments' : '/dashboard';
-    }
+    } 
+    
+    // else {
+    //   const portal = req.cookies.get('crm_login_portal')?.value;
+    //   destPath = portal === 'staff' ? '/booking/appointment-history' : '/dashboard';
+    // }
     return NextResponse.redirect(new URL(destPath, req.url));
   }
 

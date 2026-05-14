@@ -11,6 +11,7 @@ type MePayload = {
   data?: {
     staff_id?: number | null
     permissions?: string[]
+    roles?: string[]
   }
 }
 
@@ -18,14 +19,36 @@ type LoginFormProps = {
   variant: 'admin' | 'staff'
 }
 
+/** Matches AdminSeeder role name `Admin` (case-insensitive). */
+function hasAdminRoleName(roles: unknown): boolean {
+  if (!Array.isArray(roles)) return false
+  return roles.some((r) => typeof r === 'string' && r.toLowerCase() === 'admin')
+}
+
 async function completeSessionAndNavigate(
   router: ReturnType<typeof useRouter>,
   portal: 'admin' | 'staff',
   workspace: Workspace,
+  options?: { preferPosForAdminRoleFromHub?: boolean },
 ) {
   await new Promise((resolve) => setTimeout(resolve, 100))
 
   setLoginPortal(portal)
+
+  if (options?.preferPosForAdminRoleFromHub && portal === 'admin') {
+    try {
+      const me = await apiFetch<MePayload>('/api/me')
+      const permissions = Array.isArray(me?.data?.permissions) ? me.data.permissions : []
+      if (hasAdminRoleName(me?.data?.roles) && permissions.includes('pos.checkout')) {
+        setWorkspace(workspace)
+        router.refresh()
+        router.replace('/pos')
+        return
+      }
+    } catch {
+      // fall through to default landing
+    }
+  }
 
   let landing = getWorkspaceLanding(workspace)
 
@@ -38,7 +61,7 @@ async function completeSessionAndNavigate(
       if (staffId) {
         landing = '/booking/my-leave'
       } else if (permissions.includes('booking.appointments.view')) {
-        landing = '/booking/appointments'
+        landing = '/booking/appointment-history'
       } else {
         landing = '/dashboard'
       }
@@ -76,7 +99,9 @@ export function UnifiedLoginForm() {
         method: 'POST',
         body: JSON.stringify({ email, password, portal }),
       })
-      await completeSessionAndNavigate(router, portal, workspace)
+      await completeSessionAndNavigate(router, portal, workspace, {
+        preferPosForAdminRoleFromHub: role === 'admin',
+      })
     } catch (err) {
       if (err instanceof Error) {
         if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
