@@ -2109,8 +2109,8 @@ export default function PosAppointmentsWorkspace({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
-        <div className="space-y-5 xl:col-span-3 xl:min-h-0">
+      <div className="pos-appt-layout grid min-w-0 grid-cols-1 gap-5">
+        <div className="pos-appt-left space-y-5 min-w-0">
           <div className="flex flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
             <h3 className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xl font-bold text-gray-900">
               <div className="flex items-center gap-2">
@@ -2288,8 +2288,8 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
 
-        <div className="space-y-5 xl:col-span-2 xl:min-h-0">
-          <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5 ">
+        <div className="pos-appt-right space-y-5 min-w-0">
+          <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5 min-w-0">
             <div className="flex-shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
               <h3 className="text-base font-bold tracking-tight text-slate-900">Appointment Settlement</h3>
               <p className="mt-0.5 text-xs text-slate-500">Review the breakdown, collect payment, or update the booking.</p>

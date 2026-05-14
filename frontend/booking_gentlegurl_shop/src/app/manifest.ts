@@ -12,7 +12,7 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
 
   return {
     name,
-    short_name: name.slice(0, 12),
+    short_name: name,
     description,
     start_url: "/",
     scope: "/",

@@ -17,6 +17,11 @@
   --input-bg: #ffffff;
   --input-border: #f1c9d7;
   --text-muted: #7a4d63;
+  /** Hero eyebrow / label (booking landing) */
+  --hero-label: #97322f;
+  --hero-cta-bg: #6d7757;
+  --hero-cta-bg-hover: #5d6649;
+  --hero-cta-text: #ffffff;
   --ring: #e7a2ba;
   --shadow: 0 12px 30px -20px rgba(60, 36, 50, 0.35);
   --status-error: #c26686;
@@ -64,6 +69,10 @@
   --input-bg: #fff8ed;
   --input-border: #e3d1c4;
   --text-muted: #6f5b50;
+  --hero-label: #97322f;
+  --hero-cta-bg: #6d7757;
+  --hero-cta-bg-hover: #5d6649;
+  --hero-cta-text: #ffffff;
   --ring: #d2ae90;
   --shadow: 0 12px 30px -20px rgba(70, 45, 35, 0.35);
   --status-error: #ff1c0c;

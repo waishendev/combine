@@ -90,6 +90,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [photoBusyItemId, setPhotoBusyItemId] = useState<number | null>(null);
   const [depositTncEnabled, setDepositTncEnabled] = useState(false);
   const [depositTncText, setDepositTncText] = useState("");
+  const [depositTncImage, setDepositTncImage] = useState<string | null>(null);
+  const [depositTncImagePreviewOpen, setDepositTncImagePreviewOpen] = useState(false);
 
   const loadCart = useCallback(async () => {
     try {
@@ -159,15 +161,35 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           setSelectedBankAccountId(defaultBank?.id ?? null);
           setDepositTncEnabled(Boolean(depositTncSettings.booking_deposit_tnc_enabled));
           setDepositTncText(depositTncSettings.booking_deposit_tnc_text);
+          setDepositTncImage(depositTncSettings.booking_deposit_tnc_image);
         })
         .catch(() => {
           setGateways([]);
           setBankAccounts([]);
           setDepositTncEnabled(false);
           setDepositTncText("");
+          setDepositTncImage(null);
         });
     }
   }, [isOpen, loadCart]);
+
+  useEffect(() => {
+    if (!isOpen) setDepositTncImagePreviewOpen(false);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!depositTncImagePreviewOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDepositTncImagePreviewOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [depositTncImagePreviewOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -1357,8 +1379,29 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                 </div>
               </div>
 
-              {depositTncEnabled && depositTncText ? (
-                <p className="text-sm text-[var(--text-muted)]">{depositTncText}</p>
+              {(depositTncEnabled && depositTncImage) || depositTncText ? (
+                <div className="space-y-3">
+                  {depositTncEnabled && depositTncImage ? (
+                    <button
+                      type="button"
+                      onClick={() => setDepositTncImagePreviewOpen(true)}
+                      className="group relative w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--surface)] p-2 text-left transition hover:border-[var(--accent)]/35 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent-strong)]"
+                      aria-label="View deposit terms image larger"
+                    >
+                      <img
+                        src={depositTncImage}
+                        alt="Booking deposit terms and conditions"
+                        className="mx-auto max-h-80 w-full cursor-zoom-in rounded-lg object-contain transition group-hover:opacity-95"
+                      />
+                      {/* <span className="pointer-events-none absolute bottom-2 right-2 rounded-full bg-[var(--foreground)]/70 px-2.5 py-1 text-[10px] font-medium text-white backdrop-blur-sm">
+                        Tap to enlarge
+                      </span> */}
+                    </button>
+                  ) : null}
+                  {depositTncText ? (
+                    <p className="text-sm text-[var(--text-muted)]">{depositTncText}</p>
+                  ) : null}
+                </div>
               ) : null}
 
               <button
@@ -1374,6 +1417,35 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           ) : null}
         </div>
       </div>
+
+      {depositTncImagePreviewOpen && depositTncImage ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Deposit terms preview"
+          onClick={() => setDepositTncImagePreviewOpen(false)}
+        >
+          <button
+            type="button"
+            onClick={() => setDepositTncImagePreviewOpen(false)}
+            className="absolute right-4 top-4 z-[61] inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/90 text-lg font-medium text-[var(--foreground)] shadow-md transition hover:bg-white"
+            aria-label="Close preview"
+          >
+            <span aria-hidden>✕</span>
+          </button>
+          <div
+            className="max-h-[90vh] max-w-[min(100%,56rem)] overflow-auto rounded-xl border border-white/15 bg-black/20 p-2 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <img
+              src={depositTncImage}
+              alt="Booking deposit terms and conditions (enlarged)"
+              className="mx-auto max-h-[85vh] w-full object-contain"
+            />
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

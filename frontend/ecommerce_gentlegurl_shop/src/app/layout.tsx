@@ -32,6 +32,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     ...baseMetadata,
     title: resolvedTitle,
+    appleWebApp: {
+      capable: true,
+      title: resolvedTitle,
+    },
     alternates: {
       canonical: siteUrl,
     },

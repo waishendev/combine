@@ -12,16 +12,17 @@ class BookingLandingPageSeeder extends Seeder
         BookingLandingPage::updateOrCreate(
             ['slug' => 'home'],
             [
-                'sections' => [
+            'sections' => [
                     'hero' => [
                         'is_active' => true,
-                        'label' => 'Premium Salon Booking',
-                        'title' => 'Beauty appointments, made effortless.',
-                        'subtitle' => 'Discover signature services, reserve your slot instantly, and arrive confident with our trusted professional team.',
+                        'label' => 'Our Mission',
+                        'title' => '',
+                        'subtitle' => "We're here to rewrite the rules of nail art and craft designs that are Weird, Creative, Unexpected and Unique",
                         'title_2' => '',
                         'subtitle_2' => '',
                         'cta_label' => 'Book Appointment',
                         'cta_link' => '/booking',
+                        'decorations_enabled' => true,
                     ],
                     'gallery' => [
                         'is_active' => true,

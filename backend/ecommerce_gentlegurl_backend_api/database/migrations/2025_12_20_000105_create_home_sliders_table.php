@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('home_sliders', function (Blueprint $table) {
             $table->bigIncrements('id');
 
-            $table->string('title', 255);
+            $table->string('title', 255)->nullable();
             $table->string('subtitle', 255)->nullable();
 
             $table->string('image_path', 255);

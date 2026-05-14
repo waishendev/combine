@@ -19,10 +19,15 @@ export const dynamic = 'force-dynamic';
 
 export async function generateMetadata(): Promise<Metadata> {
   const branding = await getCrmBranding();
+  const title = process.env.NEXT_PUBLIC_APP_NAME || 'Gentlegurls Management App';
 
   return {
-    title: 'Gentlegurls Admin',
+    title,
     description: 'Ecommerce administration dashboard',
+    appleWebApp: {
+      capable: true,
+      title,
+    },
     manifest: '/manifest.webmanifest',
     icons: buildMetadataIcons(branding?.crm_favicon_icons, branding?.crm_favicon_url ?? '/images/logo.png'),
   };

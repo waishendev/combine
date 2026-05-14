@@ -4083,6 +4083,28 @@ class PosController extends Controller
                     'booking_service_id' => $serviceItem->booking_service_id,
                 ]);
 
+                foreach (collect($serviceItem->addon_items_json ?? [])->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) === 'main_service' && ! (bool) ($row['is_original'] ?? false))->values() as $extraMainRow) {
+                    $extraMainName = (string) ($extraMainRow['name'] ?? $extraMainRow['label'] ?? 'Service');
+                    $extraMainServiceId = (int) ($extraMainRow['linked_booking_service_id'] ?? 0);
+                    OrderItem::create([
+                        'order_id' => $order->id,
+                        'line_type' => 'booking_deposit',
+                        'product_id' => null,
+                        'product_name_snapshot' => 'Booking Deposit - ' . $extraMainName,
+                        'display_name_snapshot' => 'Booking Deposit - ' . $extraMainName,
+                        'quantity' => 1,
+                        'price_snapshot' => 0,
+                        'unit_price_snapshot' => 0,
+                        'line_total' => 0,
+                        'line_total_snapshot' => 0,
+                        'effective_unit_price' => 0,
+                        'effective_line_total' => 0,
+                        'locked' => true,
+                        'booking_id' => $booking->id,
+                        'booking_service_id' => $extraMainServiceId > 0 ? $extraMainServiceId : $serviceItem->booking_service_id,
+                    ]);
+                }
+
                 foreach (($depositAddonByServiceItemId[(int) $serviceItem->id] ?? []) as $addonRow) {
                     $addonDepositAmount = (float) ($addonRow['deposit_contribution'] ?? 0);
                     $addonId = (int) ($addonRow['id'] ?? 0);
@@ -5004,6 +5026,62 @@ class PosController extends Controller
                 ->all();
             $depositAddonTotal = round(collect($addonDepositLines)->sum(fn (array $r) => (float) ($r['deposit'] ?? 0)), 2);
             $depositPayableTotal = round($depositContribution + $depositAddonTotal, 2);
+            $rawAddonItems = collect($item->addon_items_json ?? []);
+            $originalAddonItems = $rawAddonItems
+                ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? 'addon')) !== 'main_service')
+                ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
+                ->map(fn ($addon) => [
+                    'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                    'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                    'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
+                    'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
+                    'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                ])
+                ->values();
+            $mainServices = $rawAddonItems
+                ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) === 'main_service')
+                ->map(function ($service) use ($item, $originalAddonItems) {
+                    $isOriginal = (bool) ($service['is_original'] ?? false);
+                    $serviceAddons = collect((array) ($service['addon_items'] ?? []))
+                        ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
+                        ->map(fn ($addon) => [
+                            'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                            'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
+                            'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
+                            'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
+                            'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                        ])
+                        ->values();
+
+                    return [
+                        'id' => $service['id'] ?? null,
+                        'name' => (string) ($service['name'] ?? $service['label'] ?? $item->service_name_snapshot ?? 'Service'),
+                        'cn_name' => $service['cn_name'] ?? $service['cn_label'] ?? $service['linked_cn_name'] ?? null,
+                        'extra_duration_min' => (int) ($service['extra_duration_min'] ?? 0),
+                        'extra_price' => (float) ($service['extra_price'] ?? 0),
+                        'linked_booking_service_id' => isset($service['linked_booking_service_id']) ? (int) $service['linked_booking_service_id'] : null,
+                        'is_original' => $isOriginal,
+                        'add_ons' => $isOriginal ? $originalAddonItems->all() : $serviceAddons->all(),
+                        'staff_splits' => collect($service['staff_splits'] ?? [])->map(fn ($split) => [
+                            'staff_id' => (int) ($split['staff_id'] ?? 0),
+                            'share_percent' => (int) ($split['share_percent'] ?? 0),
+                        ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all(),
+                    ];
+                })
+                ->values();
+            if ($mainServices->isEmpty()) {
+                $mainServices = collect([[
+                    'id' => (int) $item->booking_service_id,
+                    'name' => (string) ($item->service_name_snapshot ?? 'Service'),
+                    'cn_name' => $item->bookingService?->cn_name,
+                    'extra_duration_min' => (int) ($item->bookingService?->duration_min ?? 0),
+                    'extra_price' => (float) ($item->price_snapshot ?? 0),
+                    'linked_booking_service_id' => (int) $item->booking_service_id,
+                    'is_original' => true,
+                    'add_ons' => $originalAddonItems->all(),
+                    'staff_splits' => $item->staff_splits ?? [],
+                ]]);
+            }
 
             return [
                 'id' => $item->id,
@@ -5017,7 +5095,7 @@ class PosController extends Controller
                 'line_total' => (float) $lineTotal,
                 'addon_duration_min' => (int) ($item->addon_duration_min ?? 0),
                 'addon_price' => (float) ($item->addon_price ?? 0),
-                'addon_items' => collect($item->addon_items_json ?? [])
+                'addon_items' => $rawAddonItems
                     ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
                     ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
                     ->map(fn ($addon) => [
@@ -5028,6 +5106,7 @@ class PosController extends Controller
                         'extra_price' => (float) ($addon['extra_price'] ?? 0),
                         'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
                     ])->values()->all(),
+                'main_services' => $mainServices->all(),
                 'deposit_contribution' => (float) $depositContribution,
                 'deposit_main_reference' => $claimedByPackage
                     ? max(0.0, (float) ($item->bookingService?->deposit_amount ?? 0))

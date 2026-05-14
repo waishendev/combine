@@ -9,6 +9,7 @@ import {
 } from './bookingServiceCategoryUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '@/components/mediaAccept'
+import { BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE } from './bookingServiceUtils'
 import BookingCategoryServicesSection, {
   type BookingCategoryServiceOption,
 } from './BookingCategoryServicesSection'
@@ -262,6 +263,7 @@ export default function BookingServiceCategoryEditModal({
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Image</label>
+                <p className="text-xs text-gray-500 mb-1">{BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE}</p>
                 <input
                   type="file"
                   accept={IMAGE_ACCEPT}

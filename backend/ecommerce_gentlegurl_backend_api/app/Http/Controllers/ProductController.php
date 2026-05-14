@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\Category;
 use App\Models\Ecommerce\Product;
+// use App\Support\ProductSaveFailureLogger;
 use App\Models\Ecommerce\ProductMedia;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\ProductStockMovement;
@@ -95,6 +96,16 @@ class ProductController extends Controller
 
     public function store(Request $request)
     {
+    //     try {
+    //         return $this->executeStore($request);
+    //     } catch (\Throwable $e) {
+    //         ProductSaveFailureLogger::log($request, 'product_store', null, $e);
+    //         throw $e;
+    //     }
+    // }
+
+    // protected function executeStore(Request $request)
+    // {
         $imageMaxKilobytes = (int) config('ecommerce.product_media.image_max_mb') * 1024;
         $imageExtensions = implode(',', config('ecommerce.product_media.image_extensions'));
 
@@ -200,6 +211,16 @@ class ProductController extends Controller
 
     public function update(Request $request, Product $product)
     {
+    //     try {
+    //         return $this->executeUpdate($request, $product);
+    //     } catch (\Throwable $e) {
+    //         ProductSaveFailureLogger::log($request, 'product_update', (int) $product->id, $e);
+    //         throw $e;
+    //     }
+    // }
+
+    // protected function executeUpdate(Request $request, Product $product)
+    // {
         $imageMaxKilobytes = (int) config('ecommerce.product_media.image_max_mb') * 1024;
         $imageExtensions = implode(',', config('ecommerce.product_media.image_extensions'));
 

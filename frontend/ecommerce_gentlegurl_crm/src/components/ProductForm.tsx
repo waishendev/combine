@@ -4,7 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useRef, useState } from 're
 import { useRouter } from 'next/navigation'
 
 import { mapProductApiItemToRow, type ProductApiItem } from './productUtils'
-import type { ProductImage, ProductRowData, ProductVideo } from './ProductRow'
+import type { ProductImage, ProductRowData, ProductVideo, ProductVariant } from './ProductRow'
 import { useI18n } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
 import ErrorBox from './ErrorBox'
@@ -242,6 +242,43 @@ const buildPersistedVariantCostStockLock = (
   return { lockOriginalVariantRows: loadedAsVariant, originalNonBundleVariantIds }
 }
 
+/**
+ * When duplicating a product, bundle rows must not keep same-product `componentVariantId`
+ * (those IDs belong to the source product). Clear them and rely on `componentSku` so
+ * `updateBundleItems` can remap against the newly created variant rows.
+ */
+function normalizeBundleItemsForProductCopy(
+  bundleItems: BundleItemFormValue[],
+  sourceVariants: ProductVariant[] | undefined,
+): BundleItemFormValue[] {
+  const nonBundleIds = new Set(
+    (sourceVariants ?? [])
+      .filter((v) => v.isBundle !== true)
+      .map((v) => (typeof v.id === 'number' ? v.id : Number(v.id) || 0))
+      .filter((n) => n > 0),
+  )
+  const idToSku = new Map<number, string>()
+  for (const v of sourceVariants ?? []) {
+    if (v.isBundle === true) continue
+    const id = typeof v.id === 'number' ? v.id : Number(v.id) || 0
+    const sku = typeof v.sku === 'string' ? v.sku.trim() : ''
+    if (id > 0 && sku) idToSku.set(id, sku)
+  }
+  return bundleItems.map((item) => {
+    const cid = item.componentVariantId
+    const cidNum = typeof cid === 'number' ? cid : cid != null ? Number(cid) : NaN
+    if (Number.isFinite(cidNum) && cidNum > 0 && nonBundleIds.has(cidNum)) {
+      const sku = (item.componentSku || idToSku.get(cidNum) || '').trim()
+      return {
+        ...item,
+        componentVariantId: null,
+        componentSku: sku || item.componentSku,
+      }
+    }
+    return { ...item }
+  })
+}
+
 const VARIANT_BULK_FIELDS = [
   { key: 'price', label: 'Price', type: 'number' },
   { key: 'costPrice', label: 'Cost Price', type: 'number' },
@@ -302,6 +339,8 @@ const calculateBundleDerivedCost = (
 interface ProductFormProps {
   mode: ProductFormMode
   product?: ProductRowData | null
+  /** When `mode` is `create`, pre-fill the form from this product (copy flow). Saving still creates a new product. */
+  copyTemplate?: ProductRowData | null
   onSuccess?: (product: ProductRowData) => void
   onCancel?: () => void
   redirectPath?: string
@@ -314,6 +353,7 @@ interface ProductFormProps {
 export default function ProductForm({
   mode,
   product,
+  copyTemplate = null,
   onSuccess,
   onCancel,
   redirectPath,
@@ -324,39 +364,41 @@ export default function ProductForm({
 }: ProductFormProps) {
   const { t } = useI18n()
   const router = useRouter()
+  const isCopyFromTemplate = mode === 'create' && Boolean(copyTemplate)
   const [form, setForm] = useState<ProductFormValues>(() => {
-    if (mode === 'edit' && product) {
+    const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
+    if (seed) {
       return {
-        name: product.name,
-        slug: product.slug,
-        sku: product.sku,
-        barcode: product.barcode ?? '',
-        type: product.type || 'single',
-        description: product.description,
-        price: product.price ? String(product.price) : '',
+        name: seed.name,
+        slug: seed.slug,
+        sku: seed.sku,
+        barcode: seed.barcode ?? '',
+        type: seed.type || 'single',
+        description: seed.description,
+        price: seed.price ? String(seed.price) : '',
         salePrice:
-          product.salePrice !== null && product.salePrice !== undefined
-            ? String(product.salePrice)
+          seed.salePrice !== null && seed.salePrice !== undefined
+            ? String(seed.salePrice)
             : '',
-        salePriceStartAt: formatDateTimeInput(product.salePriceStartAt),
-        salePriceEndAt: formatDateTimeInput(product.salePriceEndAt),
-        costPrice: product.costPrice ? String(product.costPrice) : '',
-        stock: product.stock ? String(product.stock) : '',
-        lowStockThreshold: product.lowStockThreshold
-          ? String(product.lowStockThreshold)
+        salePriceStartAt: formatDateTimeInput(seed.salePriceStartAt),
+        salePriceEndAt: formatDateTimeInput(seed.salePriceEndAt),
+        costPrice: seed.costPrice ? String(seed.costPrice) : '',
+        stock: seed.stock ? String(seed.stock) : '',
+        lowStockThreshold: seed.lowStockThreshold
+          ? String(seed.lowStockThreshold)
           : '',
-        dummySoldCount: product.dummySoldCount !== undefined
-          ? String(product.dummySoldCount)
+        dummySoldCount: seed.dummySoldCount !== undefined
+          ? String(seed.dummySoldCount)
           : '',
-        isFeatured: showFeatured ? product.isFeatured : false,
-        isHiddenInShop: product.isHiddenInShop ?? false,
-        isStaffFree: product.isStaffFree ?? false,
-        metaTitle: product.metaTitle,
-        metaDescription: product.metaDescription,
-        metaKeywords: product.metaKeywords,
-        metaOgImage: product.metaOgImage,
-        status: product.isActive ? 'active' : 'inactive',
-        categoryIds: showCategories ? (product.categoryIds ?? []) : [],
+        isFeatured: showFeatured ? seed.isFeatured : false,
+        isHiddenInShop: seed.isHiddenInShop ?? false,
+        isStaffFree: seed.isStaffFree ?? false,
+        metaTitle: seed.metaTitle,
+        metaDescription: seed.metaDescription,
+        metaKeywords: seed.metaKeywords,
+        metaOgImage: seed.metaOgImage,
+        status: seed.isActive ? 'active' : 'inactive',
+        categoryIds: showCategories ? (seed.categoryIds ?? []) : [],
         metaOgImageFile: null,
       }
     }
@@ -371,54 +413,58 @@ export default function ProductForm({
   const [discountPercentInput, setDiscountPercentInput] = useState('')
   const [rewardForm, setRewardForm] = useState<RewardFormValues>({ ...emptyRewardForm })
   const [rewardId, setRewardId] = useState<number | null>(null)
-  const [existingImages, setExistingImages] = useState<ProductImage[]>(
-    product?.images ?? [],
-  )
+  const [existingImages, setExistingImages] = useState<ProductImage[]>(() => {
+    const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
+    if (mode === 'create' && copyTemplate) return []
+    return seed?.images ?? []
+  })
   const [pendingImages, setPendingImages] = useState<PendingImageUpload[]>([])
   const [pendingVideo, setPendingVideo] = useState<PendingVideoUpload | null>(null)
-  const [existingVideo, setExistingVideo] = useState<ProductVideo | null>(
-    product?.video ?? null,
-  )
+  const [existingVideo, setExistingVideo] = useState<ProductVideo | null>(() => {
+    const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
+    if (mode === 'create' && copyTemplate) return null
+    return seed?.video ?? null
+  })
   const [variants, setVariants] = useState<VariantFormValue[]>(() => {
-    if (mode === 'edit' && product?.variants?.length) {
-      return product.variants
-        .filter((variant) => variant.isBundle !== true)
-        .map((variant, index) => ({
-          id: variant.id,
-          name: variant.name ?? '',
-          sku: variant.sku ?? '',
-          barcode: variant.barcode ?? '',
-          price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
-          salePrice:
-            variant.salePrice !== null && variant.salePrice !== undefined
-              ? String(variant.salePrice)
+    const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
+    const copy = mode === 'create' && Boolean(copyTemplate)
+    if (!seed?.variants?.length) return []
+    return seed.variants
+      .filter((variant) => variant.isBundle !== true)
+      .map((variant, index) => ({
+        id: copy ? undefined : variant.id,
+        name: variant.name ?? '',
+        sku: variant.sku ?? '',
+        barcode: variant.barcode ?? '',
+        price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
+        salePrice:
+          variant.salePrice !== null && variant.salePrice !== undefined
+            ? String(variant.salePrice)
+            : '',
+        salePriceStartAt: formatDateTimeInput(variant.salePriceStartAt),
+        salePriceEndAt: formatDateTimeInput(variant.salePriceEndAt),
+        costPrice:
+          variant.derivedCostPrice !== null && variant.derivedCostPrice !== undefined
+            ? String(variant.derivedCostPrice)
+            : variant.costPrice !== null && variant.costPrice !== undefined
+              ? String(variant.costPrice)
               : '',
-          salePriceStartAt: formatDateTimeInput(variant.salePriceStartAt),
-          salePriceEndAt: formatDateTimeInput(variant.salePriceEndAt),
-          costPrice:
-            variant.derivedCostPrice !== null && variant.derivedCostPrice !== undefined
-              ? String(variant.derivedCostPrice)
-              : variant.costPrice !== null && variant.costPrice !== undefined
-                ? String(variant.costPrice)
-              : '',
-          stock: variant.stock !== null && variant.stock !== undefined ? String(variant.stock) : '',
-          lowStockThreshold:
-            variant.lowStockThreshold !== null && variant.lowStockThreshold !== undefined
-              ? String(variant.lowStockThreshold)
-              : '',
-          trackStock: variant.trackStock ?? true,
-          isActive: variant.isActive ?? true,
-          sortOrder: variant.sortOrder ?? index,
-          imageUrl: variant.imageUrl ?? null,
-          imageFile: null,
-          imagePreview: null,
-          removeImage: false,
-          isBundle: false,
-          derivedAvailableQty: null,
-          bundleItems: [],
-        }))
-    }
-    return []
+        stock: variant.stock !== null && variant.stock !== undefined ? String(variant.stock) : '',
+        lowStockThreshold:
+          variant.lowStockThreshold !== null && variant.lowStockThreshold !== undefined
+            ? String(variant.lowStockThreshold)
+            : '',
+        trackStock: variant.trackStock ?? true,
+        isActive: variant.isActive ?? true,
+        sortOrder: variant.sortOrder ?? index,
+        imageUrl: variant.imageUrl ?? null,
+        imageFile: null,
+        imagePreview: null,
+        removeImage: false,
+        isBundle: false,
+        derivedAvailableQty: null,
+        bundleItems: [],
+      }))
   })
   const [variantDiscountPercentInputs, setVariantDiscountPercentInputs] = useState<string[]>(
     () => Array.from({ length: variants.length }, () => ''),
@@ -431,11 +477,23 @@ export default function ProductForm({
   )
   const [isVariantBulkUpdateOpen, setIsVariantBulkUpdateOpen] = useState(false)
   const [bundles, setBundles] = useState<BundleFormValue[]>(() => {
-    if (mode === 'edit' && product?.variants?.length) {
-      return product.variants
-        .filter((variant) => variant.isBundle === true)
-        .map((variant, index) => ({
-          id: variant.id,
+    const seed = mode === 'edit' && product ? product : mode === 'create' && copyTemplate ? copyTemplate : null
+    const copy = mode === 'create' && Boolean(copyTemplate)
+    if (!seed?.variants?.length) return []
+    return seed.variants
+      .filter((variant) => variant.isBundle === true)
+      .map((variant, index) => {
+        const rawItems = Array.isArray(variant.bundleItems)
+          ? variant.bundleItems.map((item, itemIndex) => ({
+              componentVariantId: item.componentVariantId ?? null,
+              componentSku: item.componentVariantSku ?? undefined,
+              quantity: String(item.quantity ?? 1),
+              sortOrder: item.sortOrder ?? itemIndex,
+            }))
+          : []
+        const bundleItems = copy ? normalizeBundleItemsForProductCopy(rawItems, seed.variants) : rawItems
+        return {
+          id: copy ? undefined : variant.id,
           name: variant.name ?? '',
           sku: variant.sku ?? '',
           barcode: variant.barcode ?? '',
@@ -461,17 +519,9 @@ export default function ProductForm({
           removeImage: false,
           isBundle: true,
           derivedAvailableQty: variant.derivedAvailableQty ?? null,
-          bundleItems: Array.isArray(variant.bundleItems)
-            ? variant.bundleItems.map((item, itemIndex) => ({
-                componentVariantId: item.componentVariantId ?? null,
-                componentSku: item.componentVariantSku ?? undefined,
-                quantity: String(item.quantity ?? 1),
-                sortOrder: item.sortOrder ?? itemIndex,
-              }))
-            : [],
-        }))
-    }
-    return []
+          bundleItems,
+        }
+      })
   })
   const [bundleDiscountPercentInputs, setBundleDiscountPercentInputs] = useState<string[]>(() =>
     Array.from({ length: bundles.length }, () => ''),
@@ -664,14 +714,17 @@ export default function ProductForm({
   }, [showCategories])
 
   useEffect(() => {
-    setExistingImages(product?.images ?? [])
-    setExistingVideo(product?.video ?? null)
+    const seed = mode === 'edit' ? product ?? null : copyTemplate ?? null
+    if (mode === 'create' && copyTemplate) {
+      setExistingImages([])
+      setExistingVideo(null)
+    } else {
+      setExistingImages(seed?.images ?? [])
+      setExistingVideo(seed?.video ?? null)
+    }
     setPendingImages([])
     setPendingVideo(null)
-    if (mode === 'edit' && product) {
-      setForm((prev) => ({ ...prev }))
-    }
-  }, [mode, product])
+  }, [mode, product?.id, copyTemplate?.id])
 
   useEffect(() => {
     if (!rewardOnly) {
@@ -2453,6 +2506,19 @@ export default function ProductForm({
   return (
     <form className="p-6 space-y-6" onSubmit={handleSubmit}>
       <ErrorBox error={error} />
+      {isCopyFromTemplate ? (
+        <div
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          role="status"
+        >
+          <p className="font-medium">Copying from product #{copyTemplate?.id}</p>
+          <p className="mt-1 text-amber-800/90">
+            Fields are pre-filled from the source product. Nothing is saved until you click Save — adjust SKU,
+            slug, or other values if they must be unique, then create the new product. Gallery images and video are
+            not duplicated; add media again on this form if you need them on the new product.
+          </p>
+        </div>
+      ) : null}
 
       {/* Reward Details Section */}
       {rewardOnly && (

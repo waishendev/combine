@@ -122,7 +122,7 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   main_service_settlement_items?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
   addon_total_price?: number
   deposit_contribution?: number
@@ -192,6 +192,17 @@ type ServiceCartItem = {
   notes?: string | null
   staff_splits?: Array<{ staff_id: number; share_percent: number; service_commission_rate_snapshot?: number }>
   commission_rate_used?: number
+  main_services?: Array<{
+    id?: number | string | null
+    name: string
+    cn_name?: string | null
+    extra_duration_min?: number
+    extra_price?: number
+    linked_booking_service_id?: number | null
+    is_original?: boolean
+    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>
+    staff_splits?: Array<{ staff_id: number; share_percent: number }>
+  }>
 }
 
 function formatPosServiceCartIdentity(
@@ -208,6 +219,146 @@ function formatPosServiceCartIdentity(
   const g = item.guest_name?.trim()
   if (g) return `Guest: ${g}`
   return null
+}
+
+function getPosServiceMainBlocks(item: ServiceCartItem): NonNullable<ServiceCartItem['main_services']> {
+  const blocks = (item.main_services ?? []).filter((service) => String(service.name ?? '').trim() !== '')
+  if (blocks.length > 0) return blocks
+
+  return [{
+    id: item.booking_service_id,
+    name: item.service_name,
+    cn_name: item.service_cn_name ?? null,
+    extra_duration_min: undefined,
+    extra_price: item.unit_price,
+    linked_booking_service_id: item.booking_service_id,
+    is_original: true,
+    add_ons: (item.addon_items ?? [])
+      .filter((addon) => Number(addon.id ?? 0) > 0 && String(addon.item_kind ?? '').toLowerCase() !== 'main_service')
+      .map((addon) => ({
+        id: addon.id ?? null,
+        name: addon.name,
+        cn_name: addon.cn_name ?? null,
+        extra_duration_min: Number(addon.extra_duration_min ?? 0),
+        extra_price: Number(addon.extra_price ?? 0),
+        linked_deposit_amount: Number(addon.linked_deposit_amount ?? 0),
+      })),
+    staff_splits: item.staff_splits?.map((split) => ({
+      staff_id: Number(split.staff_id),
+      share_percent: Number(split.share_percent),
+    })),
+  }]
+}
+
+function getPosServiceAddonDeposit(item: ServiceCartItem, addonId?: number | null): number {
+  const id = Number(addonId ?? 0)
+  if (id <= 0) return 0
+
+  const depositLine = (item.deposit_addon_lines ?? []).find((line) => Number(line.id ?? 0) === id)
+  if (depositLine) return Number(depositLine.deposit ?? 0)
+
+  const addonSnapshot = (item.addon_items ?? []).find((addon) => Number(addon.id ?? 0) === id)
+  return Number(addonSnapshot?.linked_deposit_amount ?? 0)
+}
+
+function getPosServiceAddonDepositReference(
+  item: ServiceCartItem,
+  addon: NonNullable<NonNullable<ServiceCartItem['main_services']>[number]['add_ons']>[number],
+): number {
+  const id = Number(addon.id ?? 0)
+  const addonSnapshot = id > 0
+    ? (item.addon_items ?? []).find((row) => Number(row.id ?? 0) === id)
+    : null
+  const linkedDeposit = Number(addonSnapshot?.linked_deposit_amount ?? addon.linked_deposit_amount ?? 0)
+  if (linkedDeposit > 0.0001) return linkedDeposit
+
+  const depositLine = id > 0
+    ? (item.deposit_addon_lines ?? []).find((line) => Number(line.id ?? 0) === id)
+    : null
+  return Number(depositLine?.deposit ?? 0)
+}
+
+function getPosServiceDepositBlocks(item: ServiceCartItem) {
+  const isMainPackageClaimed = Boolean(
+    item.claimed_by_package ||
+    item.package_claim_status === 'reserved' ||
+    item.package_claim_status === 'consumed',
+  )
+  const mainDepositReference = Number(item.deposit_main_reference ?? item.deposit_contribution ?? 0)
+
+  return getPosServiceMainBlocks(item).map((service, idx) => {
+    const isOriginal = service.is_original ?? idx === 0
+    const deposit = isOriginal ? Number(item.deposit_contribution ?? 0) : 0
+    const referenceDeposit = isOriginal && isMainPackageClaimed
+      ? Math.max(mainDepositReference, deposit)
+      : deposit
+    const coveredByPackage = isOriginal && isMainPackageClaimed && deposit < 0.0001
+
+    return {
+      ...service,
+      deposit,
+      reference_deposit: referenceDeposit,
+      covered_by_package: coveredByPackage,
+      package_note: coveredByPackage ? 'Included in your package (main service)' : null,
+      add_ons: (service.add_ons ?? []).map((addon) => {
+        const addonDeposit = getPosServiceAddonDeposit(item, addon.id)
+        const addonReferenceDeposit = getPosServiceAddonDepositReference(item, addon)
+        const addonCoveredByPackage = addonReferenceDeposit > addonDeposit + 0.0001 && addonDeposit < 0.0001
+
+        return {
+          ...addon,
+          deposit: addonDeposit,
+          reference_deposit: Math.max(addonReferenceDeposit, addonDeposit),
+          covered_by_package: addonCoveredByPackage,
+          package_note: addonCoveredByPackage ? 'Included in your package (add-on)' : null,
+        }
+      }),
+    }
+  })
+}
+
+function PosDepositAmount({
+  amount,
+  referenceAmount,
+  className = 'font-semibold text-gray-900',
+}: {
+  amount: number
+  referenceAmount?: number | null
+  className?: string
+}) {
+  const payable = Number(amount ?? 0)
+  const reference = Number(referenceAmount ?? payable)
+
+  if (reference > payable + 0.0001) {
+    return (
+      <span className={`inline-flex flex-wrap items-baseline justify-end gap-x-1.5 ${className}`}>
+        <span className="text-gray-400 line-through">RM {reference.toFixed(2)}</span>
+        <span>RM {payable.toFixed(2)}</span>
+      </span>
+    )
+  }
+
+  return <span className={className}>RM {payable.toFixed(2)}</span>
+}
+
+function formatPosServiceStaffSplitSummary(item: ServiceCartItem): string {
+  const splits = (item.staff_splits ?? [])
+    .map((split) => ({
+      staff_id: Number(split.staff_id),
+      share_percent: Number(split.share_percent),
+    }))
+    .filter((split) => split.staff_id > 0 && split.share_percent > 0)
+
+  if (splits.length === 0) {
+    return item.assigned_staff_name ? `${item.assigned_staff_name} 100%` : '—'
+  }
+
+  return splits.map((split) => {
+    const staffName = split.staff_id === Number(item.assigned_staff_id ?? 0) && item.assigned_staff_name
+      ? item.assigned_staff_name
+      : `Staff #${split.staff_id}`
+    return `${staffName} ${split.share_percent}%`
+  }).join(' · ')
 }
 
 type PackageCartItem = {
@@ -1677,7 +1828,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 : toApiBoolean(item.track_stock)
                   ? true
                   : null,
-            stock: toOptionalNumber(item.stock_quantity ?? item.stock),
+            stock: toOptionalNumber(item.stock ?? item.stock_quantity),
           }
         : {}),
     }
@@ -4733,17 +4884,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex items-center justify-between gap-3">
-        <div>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
-          <p className="mt-2 text-sm text-gray-600 flex items-center gap-2">
-            <svg className="h-4 w-4 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-            </svg>
-            <span className="font-medium">Barcode Listener Active</span> - System is listening for barcode scans. Scan items to add them to cart automatically.
+          <p className="mt-2 flex flex-col gap-1.5 text-sm text-gray-600 sm:flex-row sm:items-start sm:gap-2">
+            <span className="inline-flex shrink-0 items-center gap-2">
+              <svg className="h-4 w-4 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+              </svg>
+              <span className="font-medium">Barcode Listener Active</span>
+            </span>
+            <span className="min-w-0 text-pretty text-gray-600">
+              System listens for barcode scans; scan items to add them to the cart automatically.
+            </span>
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
           {/* <Link
             href="/pos/appointments"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
@@ -4760,8 +4916,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 xl:grid-cols-5 xl:min-h-0">
-        <div className="space-y-5 xl:col-span-3 xl:min-h-0">
+      <div className="pos-split-layout grid min-w-0 grid-cols-1 gap-5">
+        <div className="pos-split-catalog min-w-0 space-y-5">
           {/* Hidden barcode scanner input for listening */}
           <input
             ref={scannerInputRef}
@@ -4777,7 +4933,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           />
 
           {/* Products / Services Section */}
-          <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
+          <div className="@container pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -4791,7 +4947,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               )}
             </h3>
 
-            <div className="mb-4 inline-flex w-fit rounded-lg border border-gray-200 bg-gray-100 p-1">
+            <div className="mb-4 flex max-w-full flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1">
               <button
                 type="button"
                 onClick={() => setCatalogTab('products')}
@@ -4836,8 +4992,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <>
             
             {/* Search + Category Filters */}
-            <div className="mb-5 space-y-3">
-              <div className="grid gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+            <div className="mb-5 min-w-0 space-y-3">
+              <div className="grid min-w-0 gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
                 <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
                   <button
                     type="button"
@@ -4868,8 +5024,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               </div>
 
-              <div className="border-b border-gray-200 pb-2">
-                <div className="flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:thin]">
+              <div className="min-w-0 border-b border-gray-200 pb-2">
+                <div className="-mx-1 flex min-w-0 flex-nowrap gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap px-1 pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
                   <button
                     type="button"
                     onClick={() => setSelectedCategoryId(null)}
@@ -4896,7 +5052,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             {/* Products Grid */}
-            <div ref={productsGridRef} className="grid min-h-[260px] flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 sm:grid-cols-2 xl:min-h-0 xl:grid-cols-2">
+            <div ref={productsGridRef} className="pos-split-product-grid grid min-h-[260px] min-w-0 flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 @min-[640px]:grid-cols-2">
               {visibleProductHits.map((hit, idx) => {
                 const item = hit.product
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
@@ -5041,7 +5197,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
                   {filteredBookingProducts.map((item) => (
                     <button key={item.id} type="button" onClick={() => addBookingProductToCart(item)} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
@@ -5282,9 +5438,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
 
 
-        <div className="space-y-5 xl:col-span-2 xl:min-h-0">
+        <div className="pos-split-cart min-w-0 space-y-5">
 
-            <div className="flex min-h-[420px] flex-col rounded-xl border-2 border-gray-200 bg-white p-5 shadow-md xl:h-[calc(80vh-5rem)] xl:min-h-0">
+            <div className="pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5">
               <>
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5293,7 +5449,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               Shopping Cart
             </h3>
             {hasCartItems ? (
-              <div className="mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto pr-1 xl:min-h-0">
+              <div className="pos-split-cart-scroll mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
                 {cartItems.map((item) => {
                   // Get current variant stock info
                   const currentVariant = item.variant_id 
@@ -5309,11 +5465,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const canIncreaseQty = !hasStockLimit || (stockValue !== null && item.qty < stockValue)
                   
                   return (
-                    <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-4 shadow-sm hover:shadow-md transition-shadow">
-                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-3 shadow-sm hover:shadow-md transition-shadow sm:p-4">
+                      <div className="flex min-w-0 flex-col gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-bold text-gray-900 truncate sm:max-w-[200px]" title={item.product_name || undefined}>{item.product_name}</p>
-                          <p className="mt-0.5 text-xs font-mono text-gray-600 truncate sm:max-w-[200px]" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
+                          <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
+                          <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
@@ -5330,7 +5486,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </div>
                           ) : null}
                         </div>
-                        <div className="flex w-fit items-center gap-2 rounded-lg bg-gray-100 p-1">
+                        <div className="flex min-w-0 w-full flex-wrap items-center gap-x-3 gap-y-2 border-t border-gray-100 pt-3 sm:border-t-0 sm:pt-0">
+                          <div className="flex shrink-0 items-center gap-2 rounded-lg bg-gray-100 p-1">
                           <button
                             type="button"
                             title={item.qty <= 1 ? 'Remove item' : 'Decrease quantity'}
@@ -5346,14 +5503,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             -
                           </button>
                           <span className="w-8 text-center text-sm font-bold text-gray-900">{item.qty}</span>
-                          <button 
+                          <button
+                            type="button"
                             onClick={() => void updateQty(item.id, item.qty + 1)} 
                             disabled={!canIncreaseQty}
                             className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-gray-100 disabled:hover:border-gray-200"
                           >+</button>
                         </div>
-                        <div className="flex items-center justify-between gap-3 sm:justify-end">
-                          <div className="min-w-[140px] text-left sm:text-right">
+                          <div className="min-w-0 flex-1 text-right tabular-nums sm:max-w-[11rem] sm:flex-none sm:text-right">
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
@@ -5376,8 +5533,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             )}
                           </div>
                           <button 
+                            type="button"
                             onClick={() => void removeItem(item.id)} 
-                            className="rounded-md p-2 text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center"
+                            className="ml-auto flex shrink-0 items-center justify-center rounded-md p-2 text-red-600 transition-colors hover:bg-red-50 sm:ml-0"
                             title="Remove item"
                           >
                             <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -5385,45 +5543,45 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </svg>
                           </button>
                         </div>
+                        {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) ? (
+                          <div className="mt-2 w-full min-w-0 border-t border-gray-100 pt-3 sm:border-t-0 sm:pt-0">
+                            <select
+                              className={`h-9 w-full max-w-full rounded-lg border px-2 text-xs ${
+                                cartVariantLoading[item.id] 
+                                  ? 'border-slate-300 bg-gray-50 text-gray-400 cursor-wait' 
+                                  : (cartVariantOptions[item.id] ?? []).length === 0
+                                  ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
+                                  : 'border-slate-300 bg-white text-gray-900'
+                              }`}
+                              value={item.variant_id ? String(item.variant_id) : ''}
+                              onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
+                              onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
+                              disabled={cartVariantLoading[item.id] || (cartVariantOptions[item.id] ?? []).length === 0}
+                            >
+                              <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
+                              {(cartVariantOptions[item.id] ?? []).map((variant) => {
+                                const variantTrackStock = variant.track_stock ?? null
+                                const variantStock =
+                                  typeof variant.stock === 'number' && Number.isFinite(variant.stock)
+                                    ? variant.stock
+                                    : null
+                                const variantHasStock = variantHasSellableStock(variantTrackStock, variantStock)
+                                const isDisabled = !variantHasStock || !variant.is_active
+                                
+                                return (
+                                  <option 
+                                    key={variant.id} 
+                                    value={String(variant.id)}
+                                    disabled={isDisabled}
+                                  >
+                                    {variant.name} ({variant.sku}){!variantHasStock ? ' - Out of Stock' : ''}
+                                  </option>
+                                )
+                              })}
+                            </select>
+                          </div>
+                        ) : null}
                       </div>
-                      {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) && (
-                        <div className="mt-2">
-                          <select
-                            className={`h-9 w-full rounded-lg border px-2 text-xs ${
-                              cartVariantLoading[item.id] 
-                                ? 'border-slate-300 bg-gray-50 text-gray-400 cursor-wait' 
-                                : (cartVariantOptions[item.id] ?? []).length === 0
-                                ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                : 'border-slate-300 bg-white text-gray-900'
-                            }`}
-                            value={item.variant_id ? String(item.variant_id) : ''}
-                            onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
-                            onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
-                            disabled={cartVariantLoading[item.id] || (cartVariantOptions[item.id] ?? []).length === 0}
-                          >
-                            <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
-                            {(cartVariantOptions[item.id] ?? []).map((variant) => {
-                              const variantTrackStock = variant.track_stock ?? null
-                              const variantStock =
-                                typeof variant.stock === 'number' && Number.isFinite(variant.stock)
-                                  ? variant.stock
-                                  : null
-                              const variantHasStock = variantHasSellableStock(variantTrackStock, variantStock)
-                              const isDisabled = !variantHasStock || !variant.is_active
-                              
-                              return (
-                                <option 
-                                  key={variant.id} 
-                                  value={String(variant.id)}
-                                  disabled={isDisabled}
-                                >
-                                  {variant.name} ({variant.sku}){!variantHasStock ? ' - Out of Stock' : ''}
-                                </option>
-                              )
-                            })}
-                          </select>
-                        </div>
-                      )}
                     </div>
                   )
                 })}
@@ -5434,20 +5592,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const depPayable = Number(
                     serviceItem.deposit_payable_total ?? depMain + depAddonTotal,
                   )
-                  const svcType = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
                   const identityLine = formatPosServiceCartIdentity(serviceItem, selectedMember)
                   const isPkgClaimed =
                     !!serviceItem.claimed_by_package ||
                     serviceItem.package_claim_status === 'reserved' ||
                     serviceItem.package_claim_status === 'consumed'
-                  const mainDepositRef = Number(serviceItem.deposit_main_reference ?? 0)
-                  const visibleAddons = (serviceItem.addon_items ?? []).filter((addon) => {
-                    if (Number(addon.id ?? 0) <= 0) return false
-                    if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
-                    if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
-                    return true
-                  })
-                  const hasAddons = visibleAddons.length > 0
+                  const depositBlocks = getPosServiceDepositBlocks(serviceItem)
+                  const hasAddons = depositBlocks.some((block) => (block.add_ons ?? []).length > 0)
+                  const staffSplitSummary = formatPosServiceStaffSplitSummary(serviceItem)
                   const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
 
                   return (
@@ -5456,9 +5608,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                          {serviceItem.package_claim_status === 'reserved' || (serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? (
-                            <span className="text-[10px] text-gray-500 tabular-nums">
-                              Pkg bal. {serviceAvailabilityMap[serviceItem.id] ?? 0}
+                          {isPkgClaimed || (serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? (
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${isPkgClaimed ? 'bg-emerald-100 text-emerald-800' : 'text-gray-500'}`}>
+                              {(serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? `Pkg bal. ${serviceAvailabilityMap[serviceItem.id] ?? 0}` : 'Package claimed'}
                             </span>
                           ) : null}
                           {serviceItem.package_claim_status === 'reserved' ? (
@@ -5504,72 +5656,46 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           </button>
                         </div>
                       </div>
-                      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                        <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-bold text-gray-900" />
-                        <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
-                          {svcType}
-                        </span>
-                        <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
-                      </div>
+                      <div className="mt-2 space-y-1 text-xs text-gray-600">
                       {serviceItem.start_at ? (
-                        <p className="mt-2 text-xs text-gray-600">
-                          Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
-                        </p>
+                        <p>Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
                       ) : null}
                       {serviceItem.assigned_staff_name ? (
-                        <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
+                        <p>Staff: {serviceItem.assigned_staff_name}</p>
                       ) : null}
                       {identityLine ? (
-                        <p className="text-xs text-gray-600">{identityLine}</p>
+                        <p>{identityLine}</p>
                       ) : null}
+                    </div>
                     </div>
 
                     <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-emerald-200/80">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposit Service</p>
                       <div className="mt-2 space-y-2 text-[11px]">
-                        {mainCoveredByPkg ? (
-                          <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 pb-2">
-                            <div className="min-w-0">
-                              <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                              <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
-                                Included in your package (main service)
-                              </p>
+                        {depositBlocks.map((service, idx) => (
+                          <div key={`dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
+                            <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
+                              <span className="text-gray-500">{idx + 1}.</span>
+                              <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                              <PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />
                             </div>
-                            <div className="shrink-0 text-right tabular-nums">
-                              {mainDepositRef > 0.0001 ? (
-                                <span className="text-gray-400 line-through">RM {mainDepositRef.toFixed(2)}</span>
-                              ) : null}
-                              {mainDepositRef > 0.0001 ? ' ' : null}
-                              <span className="text-sm font-semibold text-gray-900">RM {depMain.toFixed(2)}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
-                            <span className="text-gray-700">Main service</span>
-                            <span className="font-semibold tabular-nums text-gray-900">RM {depMain.toFixed(2)}</span>
-                          </div>
-                        )}
-
-                        {hasAddons ? (
-                          <div className="space-y-1.5">
-                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Add-ons</p>
-                            {visibleAddons.map((addon, idx) => {
-                              const dep = Number(addon.linked_deposit_amount ?? 0)
-                              return (
-                                <div
-                                  key={`dep-addon-${addon.id ?? addon.name}-${idx}`}
-                                  className="flex justify-between gap-2 pl-1 tabular-nums text-gray-700"
-                                >
-                                  <span className="min-w-0">
-                                    <span className="text-gray-500">+</span> {addon.name}
-                                    {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
-                                  </span>
-                                  <span className="shrink-0 font-semibold text-gray-900">RM {dep.toFixed(2)}</span>
+                            {service.package_note ? (
+                              <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
+                            ) : null}
+                            {(service.add_ons ?? []).map((addon, addonIdx) => (
+                              <div key={`dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
+                                <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
+                                  <span className="text-gray-500">+</span>
+                                  <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                  <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
                                 </div>
-                              )
-                            })}
+                                {addon.package_note ? (
+                                  <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
+                                ) : null}
+                              </div>
+                            ))}
                           </div>
-                        ) : null}
+                        ))}
 
                         {mainCoveredByPkg && hasAddons && depAddonTotal > 0.0001 ? (
                           <p className="text-[10px] leading-snug text-gray-600">
@@ -5579,11 +5705,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         ) : null}
 
                         <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-200 pt-2">
-                          <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">
-                            Total deposit
-                          </span>
+                          <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Total deposit</span>
                           <span className="text-sm font-bold tabular-nums text-orange-700">RM {depPayable.toFixed(2)}</span>
                         </div>
+                        <p className="text-[10px] font-medium text-gray-600">Staff split: {staffSplitSummary}</p>
                       </div>
                     </div>
                   </div>
@@ -5804,17 +5929,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 {cartPackageItems.map((packageItem) => (
                   <div
                     key={`package-${packageItem.id}`}
-                    className="rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white p-4 shadow-sm transition-shadow hover:shadow-md"
+                    className="rounded-xl border-2 border-purple-200 bg-gradient-to-br from-purple-50 to-white p-3 shadow-sm transition-shadow hover:shadow-md sm:p-4"
                   >
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                    <div className="flex min-w-0 flex-col gap-3">
                       <div className="min-w-0">
                         <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Service Package</p>
-                        <h4 className="mt-0.5 truncate text-sm font-bold text-gray-900" title={packageItem.package_name}>
+                        <h4 className="mt-0.5 break-words text-sm font-bold text-gray-900" title={packageItem.package_name}>
                           {packageItem.package_name}
                         </h4>
-                        <p className="mt-1.5 text-xs text-gray-600">{formatPosPackageMemberLabel(packageItem, selectedMember)}</p>
+                        <p className="mt-1.5 break-words text-xs text-gray-600">{formatPosPackageMemberLabel(packageItem, selectedMember)}</p>
                       </div>
-                      <div className="flex w-fit items-center gap-2 rounded-lg bg-purple-100/90 p-1 ring-1 ring-purple-200/80">
+                      <div className="flex min-w-0 w-full flex-wrap items-center gap-x-3 gap-y-2 border-t border-purple-100 pt-3 sm:border-t-0 sm:pt-0">
+                      <div className="flex shrink-0 items-center gap-2 rounded-lg bg-purple-100/90 p-1 ring-1 ring-purple-200/80">
                         <button
                           type="button"
                           title={packageItem.qty <= 1 ? 'Remove package' : 'Decrease quantity'}
@@ -5840,8 +5966,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           +
                         </button>
                       </div>
-                      <div className="flex items-center justify-between gap-3 sm:justify-end">
-                        <div className="min-w-[120px] text-left sm:text-right">
+                        <div className="min-w-0 flex-1 text-right tabular-nums sm:max-w-[11rem] sm:flex-none sm:text-right">
                           {(packageItem.discount_amount ?? 0) > 0 ? (
                             <div className="space-y-0.5">
                               <p className="text-[11px] text-gray-500 line-through">RM {Number(packageItem.line_total_snapshot ?? packageItem.line_total).toFixed(2)}</p>
@@ -5854,7 +5979,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <button
                           type="button"
                           onClick={() => void removePackageCartItem(packageItem.id)}
-                          className="rounded-md p-2 text-red-600 transition-colors hover:bg-red-50"
+                          className="ml-auto flex shrink-0 items-center justify-center rounded-md p-2 text-red-600 transition-colors hover:bg-red-50 sm:ml-0"
                           title="Remove package"
                         >
                           <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -6872,57 +6997,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       )
                     })}
                     {cartServiceItems.map((serviceItem) => {
-                      const splitSummary = Array.isArray(serviceItem.staff_splits) && serviceItem.staff_splits.length > 0
-                        ? serviceItem.staff_splits.map((split) => `Staff #${split.staff_id} (${split.share_percent}%)`).join(', ')
-                        : (serviceItem.assigned_staff_name ? `Staff: ${serviceItem.assigned_staff_name}` : '-')
+                      const splitSummary = formatPosServiceStaffSplitSummary(serviceItem)
                       const chkIdentity = formatPosServiceCartIdentity(serviceItem, selectedMember)
-                      const depMainChk = Number(serviceItem.deposit_contribution ?? 0)
+                      const depPayableChk = Number(serviceItem.deposit_payable_total ?? Number(serviceItem.deposit_contribution ?? 0) + Number(serviceItem.deposit_addon_total ?? 0))
                       const chkPkgClaimed =
                         !!serviceItem.claimed_by_package ||
                         serviceItem.package_claim_status === 'reserved' ||
                         serviceItem.package_claim_status === 'consumed'
-                      const chkMainRef = Number(serviceItem.deposit_main_reference ?? 0)
-                      const svcTypeChk = String(serviceItem.service_type ?? 'STANDARD').toUpperCase()
-                      const checkoutAddons = (serviceItem.addon_items ?? []).filter((addon) => {
-                        if (Number(addon.id ?? 0) <= 0) return false
-                        if (String(addon.item_kind ?? '').toLowerCase() === 'main_service') return false
-                        if (addon.linked_booking_service_id != null && Number(addon.linked_booking_service_id) === Number(serviceItem.booking_service_id)) return false
-                        return true
-                      })
-                      const checkoutAddonCount = checkoutAddons.length
-                      const checkoutAddonSum = checkoutAddons.reduce(
-                        (s, a) => s + Number(a.linked_deposit_amount ?? 0),
-                        0,
-                      )
-                      const svcQty = Math.max(1, Number(serviceItem.qty) || 1)
-                      const mainLineDeposit = depMainChk
-                      const mainUnitDeposit = svcQty > 1 ? mainLineDeposit / svcQty : mainLineDeposit
-                      const mainCoveredByPkg = chkPkgClaimed && depMainChk < 0.0001
+                      const checkoutDepositBlocks = getPosServiceDepositBlocks(serviceItem)
+                      const checkoutHasAddons = checkoutDepositBlocks.some((block) => (block.add_ons ?? []).length > 0)
+                      const mainCoveredByPkg = chkPkgClaimed && Number(serviceItem.deposit_contribution ?? 0) < 0.0001
 
                       const checkoutServiceItemHeader = (
                         <>
                           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
-                          <div className="mt-1 flex flex-wrap items-start gap-x-2 gap-y-0.5">
-                            <ServiceNameStack
-                              name={serviceItem.service_name}
-                              cnName={serviceItem.service_cn_name}
-                              primaryClassName="text-base font-bold leading-snug text-gray-900"
-                              secondaryClassName="mt-0.5 text-xs font-normal text-gray-500"
-                            />
-                            <span className="shrink-0 rounded-md bg-emerald-600/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800">
-                              {svcTypeChk}
-                            </span>
-                            <span className="text-xs text-gray-500">×{serviceItem.qty}</span>
+                          <div className="mt-2 space-y-0.5 text-xs text-gray-600">
+                            {serviceItem.start_at ? (
+                              <p>Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
+                            ) : null}
+                            {serviceItem.assigned_staff_name ? (
+                              <p>Staff: {serviceItem.assigned_staff_name}</p>
+                            ) : null}
+                            {chkIdentity ? <p className="font-medium text-gray-700">{chkIdentity}</p> : null}
                           </div>
-                          {serviceItem.start_at ? (
-                            <p className="mt-2 text-xs text-gray-600">
-                              Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}
-                            </p>
-                          ) : null}
-                          {serviceItem.assigned_staff_name ? (
-                            <p className="text-xs text-gray-600">Staff: {serviceItem.assigned_staff_name}</p>
-                          ) : null}
-                          {chkIdentity ? <p className="text-xs font-medium text-gray-700 mt-1">{chkIdentity}</p> : null}
                         </>
                       )
 
@@ -6942,80 +7039,50 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                           </tr>
                           <tr className={`${svcRowClass} align-top`}>
-                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposits</p>
-                              {mainCoveredByPkg ? (
-                                <div className="mt-1">
-                                  <ServiceNameStack name={serviceItem.service_name} cnName={serviceItem.service_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                                  <p className="mt-0.5 text-[10px] leading-snug text-emerald-700">
-                                    Included in your package (main service)
-                                  </p>
+                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8" colSpan={4}>
+                              <div className="rounded-lg bg-white/80 p-3 ring-1 ring-emerald-100">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposit Service</p>
+                                <div className="mt-2 space-y-2 text-[11px]">
+                                  {checkoutDepositBlocks.map((service, idx) => (
+                                    <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
+                                      <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
+                                        <span className="text-gray-500">{idx + 1}.</span>
+                                        <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                        <PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />
+                                      </div>
+                                      {service.package_note ? (
+                                        <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
+                                      ) : null}
+                                      {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                        <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
+                                          <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
+                                            <span className="text-gray-500">+</span>
+                                            <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                            <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
+                                          </div>
+                                          {addon.package_note ? (
+                                            <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
+                                          ) : null}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  ))}
+
+                                  {mainCoveredByPkg && checkoutHasAddons && Number(serviceItem.deposit_addon_total ?? 0) > 0.0001 ? (
+                                    <p className="text-[10px] leading-snug text-gray-600">
+                                      Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
+                                      only. Add-on deposits above are still due at checkout.
+                                    </p>
+                                  ) : null}
+
+                                  <div className="mt-2 flex items-baseline justify-between gap-3 border-t border-gray-200 pt-2">
+                                    <span className="text-[9px] font-semibold uppercase tracking-wide text-gray-500">Total deposit</span>
+                                    <span className="text-sm font-bold tabular-nums text-orange-700">RM {depPayableChk.toFixed(2)}</span>
+                                  </div>
                                 </div>
-                              ) : (
-                                <p className="mt-1 text-xs text-gray-700">Main service</p>
-                              )}
-                            </td>
-                            <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
-                            <td className="px-4 py-2.5 align-top text-xs tabular-nums text-gray-700">
-                              {mainCoveredByPkg && chkMainRef > 0.0001 ? (
-                                <span>
-                                  <span className="text-gray-400 line-through">RM {chkMainRef.toFixed(2)}</span>{' '}
-                                  <span className="font-medium">RM {mainUnitDeposit.toFixed(2)}</span>
-                                </span>
-                              ) : (
-                                <span className="font-medium">RM {mainUnitDeposit.toFixed(2)}</span>
-                              )}
-                            </td>
-                            <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                              <p className="text-lg font-bold leading-tight text-orange-700">
-                                RM {mainLineDeposit.toFixed(2)}
-                              </p>
+                              </div>
                             </td>
                           </tr>
-                          {checkoutAddonCount > 0 ? (
-                            <>
-                              <tr className={`${svcRowClass} align-top`}>
-                                <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
-                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-ons</p>
-                                </td>
-                                <td className="min-w-[260px] px-4 py-1.5" aria-hidden />
-                                <td className="px-4 py-1.5" colSpan={2} aria-hidden />
-                              </tr>
-                              {checkoutAddons.map((addon, idx) => {
-                                const dep = Number(addon.linked_deposit_amount ?? 0)
-                                return (
-                                  <tr key={`chk-dep-addon-${serviceItem.id}-${addon.id ?? addon.name}-${idx}`} className={`${svcRowClass} align-top`}>
-                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
-                                      <span className="text-gray-500">+</span> {addon.name}
-                                      {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
-                                    </td>
-                                    <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                                    <td className="px-4 py-2 text-xs tabular-nums text-gray-700">
-                                      <span className="font-medium">RM {dep.toFixed(2)}</span>
-                                    </td>
-                                    {idx === 0 ? (
-                                      <td
-                                        rowSpan={checkoutAddonCount}
-                                        className="px-4 py-2 text-right align-middle tabular-nums sm:px-5"
-                                      >
-                                        <p className="text-lg font-bold leading-tight text-orange-700">
-                                          RM {checkoutAddonSum.toFixed(2)}
-                                        </p>
-                                      </td>
-                                    ) : null}
-                                  </tr>
-                                )
-                              })}
-                              {mainCoveredByPkg && checkoutAddonSum > 0.0001 ? (
-                                <tr className={`${svcRowClass} align-top`}>
-                                  <td className="px-4 py-2 pl-7 text-[10px] leading-snug text-gray-600 sm:px-5 sm:pl-8" colSpan={4}>
-                                    Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
-                                    only. Add-on deposits above are still due at checkout.
-                                  </td>
-                                </tr>
-                              ) : null}
-                            </>
-                          ) : null}
                         </Fragment>
                       )
                     })}
@@ -8101,8 +8168,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
-            <div className="border-b border-gray-200 bg-white px-5 py-4">
+          <div className="flex max-h-[min(90vh,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+            <div className="shrink-0 border-b border-gray-200 bg-white px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-bold text-gray-900">Add Service to Cart</h3>
@@ -8117,7 +8184,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </p>
               </div>
             </div>
-            <div className="p-5 overflow-y-auto max-h-[calc(90vh-120px)]">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5 overscroll-contain">
             {bookingModalError ? (
               <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
                 {bookingModalError}
@@ -8499,7 +8566,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
               <button
                 type="button"
                 onClick={() => {
@@ -8518,7 +8586,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               >
                 {bookingSubmitting ? 'Creating...' : 'Add Service to Cart'}
               </button>
-            </div>
             </div>
           </div>
         </div>

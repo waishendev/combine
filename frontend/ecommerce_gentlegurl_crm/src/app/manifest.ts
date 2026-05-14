@@ -7,11 +7,11 @@ export const dynamic = 'force-dynamic'
 
 export default async function manifest(): Promise<MetadataRoute.Manifest> {
   const branding = await getCrmBranding()
-  const name = process.env.NEXT_PUBLIC_APP_NAME || 'Gentlegurls Admin'
+  const name = process.env.NEXT_PUBLIC_APP_NAME || 'Gentlegurls Management App'
 
   return {
     name,
-    short_name: 'GG Admin',
+    short_name: name,
     description: 'Ecommerce administration dashboard',
     start_url: '/',
     scope: '/',

@@ -16,7 +16,11 @@ class LandingPageController extends Controller
             ->first();
 
         if (! $page) {
-            return $this->respond($this->defaultPage());
+            return $this->respond([
+                'id' => null,
+                'slug' => 'home',
+                'sections' => null,
+            ]);
         }
 
         $sections = $this->resolveImageUrls($this->mergeWithDefaults($page->sections ?? []));
@@ -109,6 +113,7 @@ class LandingPageController extends Controller
                     'subtitle' => 'Discover signature services, reserve your slot instantly, and arrive confident with our trusted professional team.',
                     'cta_label' => 'Book Appointment',
                     'cta_link' => '/booking',
+                    'decorations_enabled' => true,
                 ],
                 'gallery' => [
                     'is_active' => true,

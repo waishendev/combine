@@ -404,6 +404,8 @@ export type LandingSections = {
     subtitle_2?: string;
     cta_label: string;
     cta_link: string;
+    /** When false, scribble layers under hero copy are hidden. Default true if omitted. */
+    decorations_enabled?: boolean;
   };
   gallery: {
     is_active: boolean;
@@ -443,5 +445,6 @@ export type LandingSections = {
 export type BookingLandingPage = {
   id: number | null;
   slug: string;
-  sections: LandingSections;
+  /** Null when no active landing page exists (shop shows nothing until seeded or published). */
+  sections: LandingSections | null;
 };

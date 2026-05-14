@@ -22,6 +22,10 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    appleWebApp: {
+      capable: true,
+      title,
+    },
     keywords: homepage?.seo?.meta_keywords?.split(",").map((item) => item.trim()).filter(Boolean),
     openGraph: {
       title,

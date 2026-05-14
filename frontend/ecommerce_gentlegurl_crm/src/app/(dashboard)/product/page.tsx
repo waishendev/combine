@@ -28,7 +28,7 @@ export default async function ProductPage() {
   const t = await getTranslator(lang)
 
   return (
-    <div className="overflow-y-auto py-6 px-10">
+    <div className="box-border min-h-0 py-6 px-4 pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:px-6 md:px-10">
       <div className="text-xs mb-4">
         <span className="text-gray-500">Catalog</span>
         <span className="mx-1">/</span>

@@ -14,7 +14,7 @@ use Illuminate\Support\Facades\DB;
  */
 class SalesVisualDailyReportService
 {
-    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'];
+    private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
     /**
      * Apply the same order-inclusion logic used by POS Summary so that online booking orders
@@ -65,8 +65,8 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
-        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         return [
             'date' => $day->toDateString(),
@@ -97,6 +97,7 @@ class SalesVisualDailyReportService
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
+                'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
     }
@@ -121,11 +122,11 @@ class SalesVisualDailyReportService
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
             ->selectRaw("$lineTotal as net_amount")
-            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as line_kind")
+            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as line_kind")
             ->selectRaw('oi.booking_id');
 
         $itemAgg = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon') THEN net_amount ELSE 0 END), 0) as service_bucket")
+            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
@@ -134,8 +135,8 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
-        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         $serviceConsumedQuery = $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -174,6 +175,7 @@ class SalesVisualDailyReportService
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
+                'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
     }
@@ -212,11 +214,11 @@ class SalesVisualDailyReportService
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
             ->selectRaw("$lineTotal as net_amount")
-            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' ELSE 'package_purchase' END as line_kind")
+            ->selectRaw("CASE oi.line_type WHEN 'booking_deposit' THEN 'deposit' WHEN 'booking_settlement' THEN 'final_settlement' WHEN 'booking_addon' THEN 'addon' WHEN 'booking_product' THEN 'booking_product' ELSE 'package_purchase' END as line_kind")
             ->selectRaw('oi.booking_id');
 
         $itemBooking = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon') THEN net_amount ELSE 0 END), 0) as service_bucket")
+            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
@@ -225,8 +227,8 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingsByStaff($start, $end));
-        $staffService = $this->padStaffWithServiceCounts($roster, $svcKeyed);
+        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         $serviceConsumedAmount = round((float) $this->applyOrderScope(
             DB::table('order_items as oi')
@@ -266,6 +268,7 @@ class SalesVisualDailyReportService
                 'sales_activity_total' => $salesTotal,
                 'service_activity' => $staffService,
                 'service_activity_total' => array_sum(array_column($staffService, 'service_count')),
+                'service_activity_amount_total' => round(array_sum(array_column($staffService, 'service_amount')), 2),
             ],
         ];
     }
@@ -326,19 +329,22 @@ class SalesVisualDailyReportService
 
     /**
      * @param  list<array{staff_id: int, name: string}>  $roster
-     * @param  array<int, array<string, mixed>>  $byId  keyed by staff_id from completedBookingsByStaff
-     * @return list<array{staff_id: int, name: string, service_count: int}>
+     * @param  array<int, array<string, mixed>>  $byId  keyed by staff_id from completedBookingServiceActivityByStaff
+     * @return list<array{staff_id: int, name: string, service_count: int, service_amount: float, total: float}>
      */
-    private function padStaffWithServiceCounts(array $roster, array $byId): array
+    private function padStaffWithServiceActivity(array $roster, array $byId): array
     {
         $out = [];
         foreach ($roster as $s) {
             $id = $s['staff_id'];
             $cnt = isset($byId[$id]) ? (int) ($byId[$id]['service_count'] ?? 0) : 0;
+            $amt = isset($byId[$id]) ? (float) ($byId[$id]['service_amount'] ?? $byId[$id]['total'] ?? 0) : 0.0;
             $out[] = [
                 'staff_id' => $id,
                 'name' => $s['name'],
                 'service_count' => $cnt,
+                'service_amount' => round($amt, 2),
+                'total' => round($amt, 2),
             ];
         }
 
@@ -649,26 +655,159 @@ class SalesVisualDailyReportService
         return (float) $q->sum(DB::raw('COALESCE(op.amount, o.grand_total)'));
     }
 
-    private function completedBookingsByStaff(Carbon $start, Carbon $end): array
+    private function completedBookingServiceActivityByStaff(Carbon $start, Carbon $end, string $lineTotal): array
     {
-        $rows = DB::table('bookings as b')
-            ->join('staffs as st', 'st.id', '=', 'b.staff_id')
-            ->whereNotNull('b.staff_id')
+        $bookings = DB::table('bookings as b')
             ->where('b.status', 'COMPLETED')
             ->whereNotNull('b.completed_at')
             ->whereBetween('b.completed_at', [$start, $end])
-            ->groupBy('st.id', 'st.name')
-            ->orderByDesc(DB::raw('service_count'))
-            ->selectRaw('st.id as staff_id')
-            ->selectRaw('st.name as staff_name')
-            ->selectRaw('COUNT(*) as service_count')
+            ->select('b.id', 'b.staff_id')
             ->get();
 
-        return $rows->map(fn ($r) => [
-            'staff_id' => (int) $r->staff_id,
-            'name' => (string) $r->staff_name,
-            'service_count' => (int) $r->service_count,
-        ])->values()->all();
+        $bookingIds = $bookings->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $splitRows = empty($bookingIds)
+            ? collect()
+            : DB::table('booking_service_staff_splits')
+                ->whereIn('booking_id', $bookingIds)
+                ->get(['booking_id', 'staff_id', 'split_percent'])
+                ->groupBy('booking_id');
+
+        $bookingTotals = empty($bookingIds)
+            ? collect()
+            : $this->applyOrderScope(
+                DB::table('order_items as oi')
+                    ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                    ->whereIn('oi.booking_id', $bookingIds)
+            )
+                ->whereIn('oi.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->groupBy('oi.booking_id')
+                ->selectRaw('oi.booking_id as booking_id')
+                ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")
+                ->pluck('service_amount', 'booking_id')
+                ->map(fn ($amount) => round((float) $amount, 2));
+
+        $byStaff = [];
+        foreach ($bookings as $booking) {
+            $bookingId = (int) $booking->id;
+            $serviceAmount = (float) ($bookingTotals[$bookingId] ?? 0);
+            $splits = collect($splitRows->get($bookingId, []))
+                ->map(fn ($row) => [
+                    'staff_id' => (int) ($row->staff_id ?? 0),
+                    'share_percent' => (float) ($row->split_percent ?? 0),
+                ])
+                ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                ->values();
+
+            if ($splits->isEmpty() && (int) ($booking->staff_id ?? 0) > 0) {
+                $splits = collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100.0]]);
+            }
+
+            foreach ($splits as $split) {
+                $this->addStaffServiceActivity(
+                    $byStaff,
+                    (int) $split['staff_id'],
+                    round($serviceAmount * (((float) $split['share_percent']) / 100), 2)
+                );
+            }
+        }
+
+        $bookingProductSplitRows = $this->applyOrderScope(
+            DB::table('order_item_staff_splits as sps')
+                ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
+            ->where('oi.line_type', 'booking_product')
+            ->whereNotNull('sps.staff_id')
+            ->groupBy('sps.staff_id')
+            ->selectRaw('sps.staff_id as staff_id')
+            ->selectRaw('COUNT(*) as service_count')
+            ->selectRaw("COALESCE(SUM(($lineTotal) * (COALESCE(sps.share_percent, 0) / 100.0)), 0) as service_amount")
+            ->get();
+
+        foreach ($bookingProductSplitRows as $row) {
+            $this->addStaffServiceActivity(
+                $byStaff,
+                (int) ($row->staff_id ?? 0),
+                round((float) ($row->service_amount ?? 0), 2),
+                (int) ($row->service_count ?? 0)
+            );
+        }
+
+        $bookingProductFallbackRows = $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->leftJoin('users as creator', 'creator.id', '=', 'o.created_by_user_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
+            ->where('oi.line_type', 'booking_product')
+            ->whereNotExists(function (Builder $q) {
+                $q->selectRaw('1')
+                    ->from('order_item_staff_splits as sps_exists')
+                    ->whereColumn('sps_exists.order_item_id', 'oi.id');
+            })
+            ->whereNotNull(DB::raw('COALESCE(oi.staff_id, creator.staff_id)'))
+            ->groupBy(DB::raw('COALESCE(oi.staff_id, creator.staff_id)'))
+            ->selectRaw('COALESCE(oi.staff_id, creator.staff_id) as staff_id')
+            ->selectRaw('COUNT(*) as service_count')
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")
+            ->get();
+
+        foreach ($bookingProductFallbackRows as $row) {
+            $this->addStaffServiceActivity(
+                $byStaff,
+                (int) ($row->staff_id ?? 0),
+                round((float) ($row->service_amount ?? 0), 2),
+                (int) ($row->service_count ?? 0)
+            );
+        }
+
+        if (empty($byStaff)) {
+            return [];
+        }
+
+        $staffNames = DB::table('staffs')
+            ->whereIn('id', array_keys($byStaff))
+            ->pluck('name', 'id');
+
+        return collect($byStaff)
+            ->map(fn (array $row) => [
+                'staff_id' => (int) $row['staff_id'],
+                'name' => (string) ($staffNames[$row['staff_id']] ?? ('Staff #'.$row['staff_id'])),
+                'service_count' => (int) $row['service_count'],
+                'service_amount' => round((float) $row['service_amount'], 2),
+                'total' => round((float) $row['service_amount'], 2),
+            ])
+            ->sortByDesc('service_amount')
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array{staff_id: int, service_count: int, service_amount: float}>  $byStaff
+     */
+    private function addStaffServiceActivity(array &$byStaff, int $staffId, float $amount, int $count = 1): void
+    {
+        if ($staffId <= 0 || $count <= 0) {
+            return;
+        }
+
+        if (! isset($byStaff[$staffId])) {
+            $byStaff[$staffId] = [
+                'staff_id' => $staffId,
+                'service_count' => 0,
+                'service_amount' => 0.0,
+            ];
+        }
+
+        $byStaff[$staffId]['service_count'] += $count;
+        $byStaff[$staffId]['service_amount'] += $amount;
     }
 
 }

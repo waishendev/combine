@@ -15,6 +15,7 @@ class StaffPermissionSeeder extends Seeder
             ->first();
 
         if (! $staffRole) {
+            // Role name "Staff" is matched case-insensitively for CRM login portals (AuthController::login `portal`).
             $staffRole = Role::create([
                 'name' => 'Staff',
                 'description' => 'Staff role for POS and limited CRM access',
@@ -32,7 +33,7 @@ class StaffPermissionSeeder extends Seeder
         }
 
         $permissionIds = Permission::whereIn('slug', [
-            'booking.commission-tiers.view',
+            // 'booking.commission-tiers.view',
             // 'staff.view',
             // 'pos.checkout',
             // 'pos.orders.view',

@@ -110,17 +110,19 @@ function buildProductListSearchString(args: {
   return qs.toString()
 }
 
-function listStateMatchesSearchParams(
-  currentPage: number,
-  pageSize: number,
-  filters: ProductFilterValues,
-  sp: ReadonlyURLSearchParams,
-): boolean {
-  return (
-    parsePageFromSearchParams(sp) === currentPage &&
-    parsePerPageFromSearchParams(sp) === pageSize &&
-    filtersEqual(parseFiltersFromSearchParams(sp), filters)
-  )
+/** Stable comparison so `page=1&a=1` equals `a=1&page=1` and we avoid replace→fetch loops when Next re-renders. */
+function normalizeProductListQueryString(query: string): string {
+  const raw = query.startsWith('?') ? query.slice(1) : query
+  const params = new URLSearchParams(raw)
+  const keys = [...new Set([...params.keys()])].sort()
+  const out = new URLSearchParams()
+  for (const k of keys) {
+    const values = [...params.getAll(k)].sort()
+    for (const v of values) {
+      out.append(k, v)
+    }
+  }
+  return out.toString()
 }
 
 export default function ProductTable({
@@ -162,6 +164,8 @@ export default function ProductTable({
   const [stockAdjustment, setStockAdjustment] = useState<StockAdjustmentState | null>(null)
   const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const lastProductFetchKeyRef = useRef<string | null>(null)
+  const productsFetchGenRef = useRef(0)
 
   const returnListPath = useMemo(() => {
     const qs = buildProductListSearchString({ currentPage, pageSize, filters })
@@ -169,13 +173,19 @@ export default function ProductTable({
   }, [basePath, currentPage, pageSize, filters])
 
   useEffect(() => {
-    if (listStateMatchesSearchParams(currentPage, pageSize, filters, searchParams)) {
-      return
-    }
-    const qs = buildProductListSearchString({ currentPage, pageSize, filters })
-    const url = qs ? `${pathname}?${qs}` : pathname
+    if (typeof window === 'undefined') return
+    if (window.location.pathname !== pathname) return
+
+    const built = buildProductListSearchString({ currentPage, pageSize, filters })
+    const want = normalizeProductListQueryString(built)
+    const have = normalizeProductListQueryString(window.location.search.replace(/^\?/, ''))
+    if (want === have) return
+
+    const url = built ? `${pathname}?${built}` : pathname
     router.replace(url, { scroll: false })
-  }, [currentPage, pageSize, filters, pathname, router, searchParams])
+    // Intentionally omit `searchParams` from deps: Next can hand a new object reference on each render
+    // with the same URL and retrigger this effect → router.replace → fetch → table "flash".
+  }, [currentPage, pageSize, filters, pathname, router])
 
   useEffect(() => {
     const p = parsePageFromSearchParams(searchParams)
@@ -184,12 +194,13 @@ export default function ProductTable({
     setCurrentPage((prev) => (prev !== p ? p : prev))
     setPageSize((prev) => (prev !== ps ? ps : prev))
     setFilters((prev) => (filtersEqual(prev, f) ? prev : f))
+    setInputs((prev) => (filtersEqual(prev, f) ? prev : f))
   }, [searchParams])
 
   const canCreate = permissions.includes('ecommerce.products.create')
   const canUpdate = permissions.includes('ecommerce.products.update')
   const canDelete = permissions.includes('ecommerce.products.delete')
-  const showActions = canUpdate || canDelete
+  const showActions = canUpdate || canDelete || canCreate
 
   const fetchCategories = useCallback(async (signal?: AbortSignal) => {
     const collectCategoryRows = (nodes: unknown[], depth: number): Array<{ id: number; name: string }> => {
@@ -245,7 +256,13 @@ export default function ProductTable({
   }, [])
 
   const fetchProducts = useCallback(async (signal?: AbortSignal) => {
-    setLoading(true)
+    const gen = ++productsFetchGenRef.current
+    const fetchKey = `${currentPage}|${pageSize}|${rewardOnly}|${filters.name.trim()}|${filters.sku.trim()}|${filters.category_id}|${filters.status}`
+    const isNewQuery = lastProductFetchKeyRef.current !== fetchKey
+    lastProductFetchKeyRef.current = fetchKey
+    if (isNewQuery) {
+      setLoading(true)
+    }
     try {
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
@@ -322,7 +339,9 @@ export default function ProductTable({
         setMeta((prev) => ({ ...prev, total: 0 }))
       }
     } finally {
-      setLoading(false)
+      if (productsFetchGenRef.current === gen) {
+        setLoading(false)
+      }
     }
   }, [currentPage, filters, pageSize, rewardOnly])
 
@@ -487,6 +506,41 @@ export default function ProductTable({
     setInputs({ ...emptyProductFilters })
     setFilters({ ...emptyProductFilters })
     setCurrentPage(1)
+  }
+
+  const handleProductFilterBadgeRemove = (field: keyof ProductFilterValues) => {
+    const next: ProductFilterValues = { ...filters, [field]: '' }
+    setFilters(next)
+    setInputs(next)
+    setCurrentPage(1)
+  }
+
+  const activeProductFilters = useMemo(() => {
+    const out: [keyof ProductFilterValues, string][] = []
+    if (filters.name.trim()) out.push(['name', filters.name.trim()])
+    if (filters.sku.trim()) out.push(['sku', filters.sku.trim()])
+    if (filters.category_id) out.push(['category_id', filters.category_id])
+    if (filters.status) out.push(['status', filters.status])
+    return out
+  }, [filters])
+
+  const productFilterLabels: Record<keyof ProductFilterValues, string> = {
+    name: t('common.name'),
+    sku: t('product.sku'),
+    category_id: t('dashboard.category'),
+    status: t('common.status'),
+  }
+
+  const renderProductFilterBadgeValue = (key: keyof ProductFilterValues, value: string) => {
+    if (key === 'status') {
+      return value === 'active' ? t('common.active') : t('common.inactive')
+    }
+    if (key === 'category_id') {
+      const id = Number.parseInt(value, 10)
+      if (!Number.isFinite(id)) return value
+      return categoryOptions.find((c) => c.id === id)?.name ?? value
+    }
+    return value
   }
 
   const handlePageChange = (page: number) => {
@@ -1005,7 +1059,7 @@ export default function ProductTable({
             {t('common.filter')}
           </button>
 
-          {showSelection && (
+          {showSelection && canDelete && (
             <>
               <button
                 className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2 disabled:opacity-50"
@@ -1074,6 +1128,28 @@ export default function ProductTable({
           </select>
         </div>
       </div>
+
+      {activeProductFilters.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          {activeProductFilters.map(([key, value]) => (
+            <span
+              key={key}
+              className="inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1 text-xs text-blue-700"
+            >
+              <span className="font-medium">{productFilterLabels[key]}</span>
+              <span>{renderProductFilterBadgeValue(key, value)}</span>
+              <button
+                type="button"
+                className="text-blue-600 hover:text-blue-800"
+                onClick={() => handleProductFilterBadgeRemove(key)}
+                aria-label={`${t('common.removeFilter')} ${productFilterLabels[key]}`}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {(isImporting || importSummary) && (
         <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-3 text-sm">
@@ -1151,6 +1227,8 @@ export default function ProductTable({
                   showActions={showActions}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
+                  canCreate={canCreate}
+                  listBasePath={basePath}
                   showSelection={showSelection}
                   isSelected={selectedIds.has(product.id)}
                   onToggleSelect={handleToggleSelect}

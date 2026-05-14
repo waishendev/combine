@@ -11,7 +11,11 @@ import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
 import BookingServiceQuestionsBuilder, { type QuestionForm } from './BookingServiceQuestionsBuilder'
-import { mapBookingServiceApiItemToRow, type BookingServiceApiItem } from './bookingServiceUtils'
+import {
+  BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE,
+  mapBookingServiceApiItemToRow,
+  type BookingServiceApiItem,
+} from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 
@@ -384,6 +388,7 @@ export default function BookingServiceCreateModal({
             <div className="space-y-4 w-full lg:w-1/2">
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-1">Image</h3>
+                <p className="text-xs text-gray-500 mb-2">{BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE}</p>
                 <div
                   onClick={handleImageClick}
                   className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${

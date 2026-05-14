@@ -29,6 +29,7 @@ type Sections = {
     subtitle_2: string
     cta_label: string
     cta_link: string
+    decorations_enabled: boolean
   }
   gallery: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
   service_menu: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
@@ -76,6 +77,7 @@ const defaultSections: Sections = {
     subtitle_2: '',
     cta_label: 'Book Appointment',
     cta_link: '/booking',
+    decorations_enabled: true,
   },
   gallery: {
     is_active: true,
@@ -225,6 +227,8 @@ function mergeSectionsFromApi(raw: Partial<Sections> & Record<string, unknown>):
       ...hero,
       title_2: String(hero.title_2 ?? ''),
       subtitle_2: String(hero.subtitle_2 ?? ''),
+      decorations_enabled:
+        typeof hero.decorations_enabled === 'boolean' ? hero.decorations_enabled : defaultSections.hero.decorations_enabled,
     }
   }
   const na = raw.nail_academy as Sections['nail_academy'] | undefined
@@ -924,6 +928,20 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
           <div className="space-y-1 text-sm text-gray-700">
             <span className="text-xs font-medium uppercase tracking-wide text-gray-500">CTA link</span>
             <input className={inputCls} value={sections.hero.cta_link} onChange={(e) => updateHero('cta_link', e.target.value)} disabled={!canEdit} />
+          </div>
+          <div className="flex items-center gap-2 md:col-span-2">
+            <input
+              id="hero-decorations"
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300"
+              checked={sections.hero.decorations_enabled}
+              onChange={(e) => updateHero('decorations_enabled', e.target.checked)}
+              disabled={!canEdit}
+            />
+            <label htmlFor="hero-decorations" className="text-sm text-gray-700">
+              Show hero scribble decorations (images from booking shop{' '}
+              <code className="rounded bg-gray-100 px-1 text-xs">public/images/sliders_design/</code>)
+            </label>
           </div>
         </div>
       </SectionCard>

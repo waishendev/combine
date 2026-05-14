@@ -146,7 +146,7 @@ class BookingTestingSeeder extends Seeder
                 [
                     'name' => (string) ($staff->name ?: sprintf('Booking Seed Staff %d', $index + 1)),
                     'username' => $username,
-                    'password' => Hash::make('Password123!'),
+                    'password' => Hash::make('password'),
                     'is_active' => true,
                     'staff_id' => (int) $staffId,
                 ]

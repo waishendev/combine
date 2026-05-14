@@ -31,6 +31,25 @@ type MenuChild = {
   children?: MenuChild[]
 }
 
+/** Nested groups (e.g. Rewards) may omit requiredPermission; only include them if a visible leaf remains. */
+function filterVisibleMenuChildren(children: MenuChild[], permissions: string[]): MenuChild[] {
+  return children
+    .map((child) => {
+      if (child.children && child.children.length > 0) {
+        const nested = filterVisibleMenuChildren(child.children, permissions)
+        if (nested.length === 0) {
+          return null
+        }
+        return { ...child, children: nested }
+      }
+      if (!child.requiredPermission || permissions.includes(child.requiredPermission)) {
+        return child
+      }
+      return null
+    })
+    .filter((c): c is MenuChild => c !== null)
+}
+
 export default function Sidebar({ collapsed, overlayMode, permissions, staffId, onToggleSidebar }: SidebarProps) {
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
@@ -258,7 +277,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                 key: 'rewards-products',
                 label: 'Redeem Products',
                 href: '/rewards/products',
-                requiredPermission: 'ecommerce.products.view',
+                requiredPermission: 'ecommerce.rewards.products.view',
               },
             ],
           },
@@ -388,6 +407,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             key: 'wishlist-report',
             label: 'Wishlist Report',
             href: '/reports/wishlist',
+            requiredPermission: 'ecommerce.reports.sales.view',
+          },
+          {
+            key: 'product-profit-report',
+            label: 'Product Profit Report',
+            href: '/reports/product-profit',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
         ],
@@ -731,6 +756,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             key: 'booking-commission-logs',
             label: 'Commission Logs',
             href: '/booking/commissions/logs',
+            requiredPermission: 'booking.logs.view',
           },
         ],
       },
@@ -815,9 +841,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
     return menuItems
       .map((item) => {
         if (item.children) {
-          const visibleChildren = item.children.filter(
-            (child) => !child.requiredPermission || permissions.includes(child.requiredPermission),
-          )
+          const visibleChildren = filterVisibleMenuChildren(item.children, permissions)
           if (visibleChildren.length === 0) {
             return null
           }

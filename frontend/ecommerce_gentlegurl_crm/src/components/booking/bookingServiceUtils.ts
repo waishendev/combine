@@ -1,5 +1,9 @@
 import type { BookingServiceRowData } from './BookingServiceRow'
 
+/** Shown under cover image fields in CRM (booking services + categories); matches booking shop card crop. */
+export const BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE =
+  'Suggested size: 1080 × 680 px (landscape).'
+
 export type BookingServiceApiItem = {
   id: number | string
   name?: string | null

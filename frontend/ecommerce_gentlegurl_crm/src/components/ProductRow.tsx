@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import StatusBadge from './StatusBadge'
 import { useState } from 'react'
 import { useI18n } from '@/lib/i18n'
@@ -94,6 +95,10 @@ interface ProductRowProps {
   showActions?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  /** When true, show a Copy action that opens create with `?copy=1&copyId=`. */
+  canCreate?: boolean
+  /** Base path for catalog (e.g. `/product`). Used for copy → create URL. */
+  listBasePath?: string
   showSelection?: boolean
   isSelected?: boolean
   onToggleSelect?: (product: ProductRowData, selected: boolean) => void
@@ -109,6 +114,8 @@ export default function ProductRow({
   showActions = false,
   canUpdate = false,
   canDelete = false,
+  canCreate = false,
+  listBasePath = '/product',
   showSelection = false,
   isSelected = false,
   onToggleSelect,
@@ -199,6 +206,16 @@ export default function ProductRow({
               >
                 <i className="fa-solid fa-pen-to-square" />
               </button>
+            )}
+            {canCreate && (
+              <Link
+                href={`${listBasePath.replace(/\/$/, '')}/create?copy=1&copyId=${product.id}`}
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-violet-600 text-white hover:bg-violet-700"
+                aria-label="Copy product"
+                title="Copy product"
+              >
+                <i className="fa-solid fa-copy" />
+              </Link>
             )}
             {canUpdate && (
               <button

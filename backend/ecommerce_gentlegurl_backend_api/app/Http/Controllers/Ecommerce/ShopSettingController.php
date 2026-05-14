@@ -7,6 +7,8 @@ use App\Models\Setting;
 use App\Services\SettingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ShopSettingController extends Controller
@@ -36,6 +38,7 @@ class ShopSettingController extends Controller
                 'booking_reminder_email' => SettingService::get('booking_reminder_email', ['enabled' => true, 'send_at' => '10:00'], $type),
                 'booking_deposit_tnc_enabled' => (bool) SettingService::get('booking_deposit_tnc_enabled', false, $type),
                 'booking_deposit_tnc_text' => (string) SettingService::get('booking_deposit_tnc_text', '', $type),
+                'booking_deposit_tnc_image' => $this->resolveStorageUrl(SettingService::get('booking_deposit_tnc_image', null, $type)),
                 'booking_slots_help_note_enabled' => (bool) SettingService::get('booking_slots_help_note_enabled', false, $type),
                 'booking_slots_help_note_text' => (string) SettingService::get('booking_slots_help_note_text', '', $type),
             ];
@@ -131,6 +134,7 @@ class ShopSettingController extends Controller
             'booking_reminder_email' => ['enabled' => true, 'send_at' => '10:00'],
             'booking_deposit_tnc_enabled' => false,
             'booking_deposit_tnc_text' => '',
+            'booking_deposit_tnc_image' => null,
             'booking_slots_help_note_enabled' => false,
             'booking_slots_help_note_text' => '',
         ];
@@ -138,6 +142,9 @@ class ShopSettingController extends Controller
         $settingKey = $this->resolveSettingKey($key);
         $defaultKey = $settingKey === 'ecommerce.invoice_profile' ? 'invoice_profile' : $key;
         $value = SettingService::get($settingKey, $defaultValues[$defaultKey], $type);
+        if ($settingKey === 'booking_deposit_tnc_image') {
+            $value = $this->resolveStorageUrl($value);
+        }
 
         return response()->json([
             'data' => [
@@ -222,6 +229,9 @@ class ShopSettingController extends Controller
             case 'booking_deposit_tnc_text':
                 $data = $this->validateBookingDepositTncText($request);
                 break;
+            case 'booking_deposit_tnc_image':
+                $data = $this->validateBookingDepositTncImage($request, $type);
+                break;
             case 'booking_slots_help_note_enabled':
                 $data = $this->validateBookingSlotsHelpNoteEnabled($request);
                 break;
@@ -249,7 +259,9 @@ class ShopSettingController extends Controller
         return response()->json([
             'data' => [
                 'key' => $key,
-                'value' => $setting->value,
+                'value' => $settingKey === 'booking_deposit_tnc_image'
+                    ? $this->resolveStorageUrl($setting->value)
+                    : $setting->value,
             ],
             'message' => 'Setting updated successfully.',
             'success' => true,
@@ -552,6 +564,51 @@ class ShopSettingController extends Controller
         return trim((string) ($validated['value'] ?? ''));
     }
 
+    protected function validateBookingDepositTncImage(Request $request, string $type): ?string
+    {
+        $validated = $request->validate([
+            'image_file' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp', 'max:5120'],
+            'value' => ['nullable'],
+            'remove' => ['nullable', 'boolean'],
+        ]);
+
+        $existingPath = SettingService::get('booking_deposit_tnc_image', null, $type);
+
+        $shouldRemove = (bool) ($validated['remove'] ?? false)
+            || ($request->has('value') && ($validated['value'] === null || $validated['value'] === ''));
+
+        if ($shouldRemove) {
+            $this->deleteStoredBookingDepositTncImage($existingPath);
+
+            return null;
+        }
+
+        if (! $request->hasFile('image_file')) {
+            return is_string($existingPath) && trim($existingPath) !== '' ? $existingPath : null;
+        }
+
+        $file = $request->file('image_file');
+        $extension = strtolower($file->getClientOriginalExtension() ?: $file->extension() ?: 'png');
+        $filename = sprintf('deposit-tnc-%s.%s', Str::random(12), $extension);
+        $path = $file->storeAs('booking/deposit-tnc', $filename, 'public');
+
+        $this->deleteStoredBookingDepositTncImage($existingPath);
+
+        return $path;
+    }
+
+    protected function deleteStoredBookingDepositTncImage(mixed $path): void
+    {
+        if (! is_string($path) || trim($path) === '' || filter_var($path, FILTER_VALIDATE_URL)) {
+            return;
+        }
+
+        $normalizedPath = ltrim($path, '/');
+        if (str_starts_with($normalizedPath, 'booking/deposit-tnc/') && Storage::disk('public')->exists($normalizedPath)) {
+            Storage::disk('public')->delete($normalizedPath);
+        }
+    }
+
     protected function validateBookingSlotsHelpNoteEnabled(Request $request): bool
     {
         $validated = $request->validate([
@@ -683,7 +740,23 @@ class ShopSettingController extends Controller
         ];
     }
 
+    protected function resolveStorageUrl(mixed $path): ?string
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
 
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+
+        $normalizedPath = ltrim($path, '/');
+        if ($normalizedPath === '') {
+            return null;
+        }
+
+        return Storage::disk('public')->url($normalizedPath);
+    }
 
     protected function supportedRouteKeys(string $type): array
     {
@@ -698,6 +771,7 @@ class ShopSettingController extends Controller
                 'booking_reminder_email',
                 'booking_deposit_tnc_enabled',
                 'booking_deposit_tnc_text',
+                'booking_deposit_tnc_image',
                 'booking_slots_help_note_enabled',
                 'booking_slots_help_note_text',
             ];
