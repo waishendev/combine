@@ -904,6 +904,8 @@ $protectedRoutes = function () {
 
         Route::put('/shop-settings/{key}', [ShopSettingController::class, 'update']);
 
+        Route::post('/shop-settings/{key}', [ShopSettingController::class, 'update']);
+
         // Branding (logos)
         Route::get('/branding', [BrandingController::class, 'show']);
 

@@ -705,20 +705,24 @@ export async function getBookingServiceDepositNote(): Promise<string | null> {
 export type BookingDepositTncSettings = {
   booking_deposit_tnc_enabled: boolean;
   booking_deposit_tnc_text: string;
+  booking_deposit_tnc_image: string | null;
 };
 
 export async function getBookingDepositTncSettings(): Promise<BookingDepositTncSettings> {
-  const response = await request<{ data?: { settings?: { booking_deposit_tnc_enabled?: boolean; booking_deposit_tnc_text?: string | null } } }>(
+  const response = await request<{ data?: { settings?: { booking_deposit_tnc_enabled?: boolean; booking_deposit_tnc_text?: string | null; booking_deposit_tnc_image?: string | null } } }>(
     "/public/shop/homepage?type=booking",
   );
 
   const enabled = Boolean(response?.data?.settings?.booking_deposit_tnc_enabled);
   const rawText = response?.data?.settings?.booking_deposit_tnc_text;
   const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : "";
+  const rawImage = response?.data?.settings?.booking_deposit_tnc_image;
+  const image = typeof rawImage === "string" && rawImage.trim().length > 0 ? rawImage.trim() : null;
 
   return {
     booking_deposit_tnc_enabled: enabled,
     booking_deposit_tnc_text: text,
+    booking_deposit_tnc_image: image,
   };
 }
 
