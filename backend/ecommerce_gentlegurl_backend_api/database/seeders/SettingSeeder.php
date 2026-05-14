@@ -108,7 +108,8 @@ class SettingSeeder extends Seeder
 
     private function seedDefaultBookingDepositTncImage(): ?string
     {
-        $sourcePath = dirname(base_path(), 2).'/frontend/ecommerce_gentlegurl_crm/public/images/default_photo.png';
+        // Use image shipped with this API (Docker/backend-only deploy has no CRM repo path).
+        $sourcePath = public_path('images/default_photo.png');
         if (! is_file($sourcePath)) {
             return null;
         }
