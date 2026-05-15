@@ -56,6 +56,7 @@ class SalesVisualDailyReportService
                 'month' => $month,
                 'month_name' => $monthStart->format('M'),
                 'ecommerce_orders' => 0,
+                'booking_count' => 0,
                 'ecommerce_sales' => 0.0,
                 'booking_sales' => 0.0,
                 'total_sales' => 0.0,
@@ -78,6 +79,7 @@ class SalesVisualDailyReportService
             if (! isset($rows[$key])) {
                 continue;
             }
+            $rows[$key]['booking_count'] = (int) $row->booking_count;
             $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
         }
 
@@ -97,6 +99,7 @@ class SalesVisualDailyReportService
                 'date' => $key,
                 'day' => $day,
                 'ecommerce_orders' => 0,
+                'booking_count' => 0,
                 'ecommerce_sales' => 0.0,
                 'booking_sales' => 0.0,
                 'total_sales' => 0.0,
@@ -119,6 +122,7 @@ class SalesVisualDailyReportService
             if (! isset($rows[$key])) {
                 continue;
             }
+            $rows[$key]['booking_count'] = (int) $row->booking_count;
             $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
         }
 
@@ -153,6 +157,10 @@ class SalesVisualDailyReportService
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw(
+                "COUNT(DISTINCT CASE WHEN oi.booking_id IS NOT NULL THEN CONCAT('booking:', oi.booking_id::text) " .
+                "ELSE CONCAT('order_item:', oi.id::text) END) as booking_count"
+            )
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as booking_sales")
             ->groupByRaw($bucketExpression)
             ->get();
@@ -163,6 +171,7 @@ class SalesVisualDailyReportService
         $rows = array_map(function (array $row) {
             $row['ecommerce_sales'] = round((float) ($row['ecommerce_sales'] ?? 0), 2);
             $row['booking_sales'] = round((float) ($row['booking_sales'] ?? 0), 2);
+            $row['booking_count'] = (int) ($row['booking_count'] ?? 0);
             $row['total_sales'] = round($row['ecommerce_sales'] + $row['booking_sales'], 2);
             $row['ecommerce_orders'] = (int) ($row['ecommerce_orders'] ?? 0);
 
@@ -177,7 +186,9 @@ class SalesVisualDailyReportService
                 'ecommerce_sales' => round(array_sum(array_column($rows, 'ecommerce_sales')), 2),
                 'booking_sales' => round(array_sum(array_column($rows, 'booking_sales')), 2),
                 'total_sales' => round(array_sum(array_column($rows, 'total_sales')), 2),
-                'total_orders' => (int) array_sum(array_column($rows, 'ecommerce_orders')),
+                'total_orders' =>
+                    (int) array_sum(array_column($rows, 'ecommerce_orders')) +
+                    (int) array_sum(array_column($rows, 'booking_count')),
             ],
             'rows' => $rows,
         ];

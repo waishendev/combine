@@ -14,6 +14,7 @@ type MonthlyRow = {
   month: number
   month_name: string
   ecommerce_orders: number
+  booking_count: number
   ecommerce_sales: number
   booking_sales: number
   total_sales: number
@@ -23,6 +24,7 @@ type DailyRow = {
   date: string
   day: number
   ecommerce_orders: number
+  booking_count: number
   ecommerce_sales: number
   booking_sales: number
   total_sales: number
@@ -74,6 +76,7 @@ export default function SalesSummaryWorkspaceClient() {
   const selectedYear = Number(searchParams.get('year') || currentYear())
   const rawMonth = searchParams.get('month')
   const selectedMonth = rawMonth ? Number(rawMonth) : null
+  const selectedMonthTitle = selectedMonth ? monthTitle(selectedYear, selectedMonth) : null
 
   const [data, setData] = useState<SalesSummaryPayload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -120,17 +123,17 @@ export default function SalesSummaryWorkspaceClient() {
     router.push(`${pathname}?${q.toString()}`)
   }
 
+  const openYearSummary = () => {
+    const q = new URLSearchParams(searchParams.toString())
+    q.set('year', String(selectedYear))
+    q.delete('month')
+    router.push(`${pathname}?${q.toString()}`)
+  }
+
   const openMonth = (month: number) => {
     const q = new URLSearchParams(searchParams.toString())
     q.set('year', String(selectedYear))
     q.set('month', String(month))
-    router.push(`${pathname}?${q.toString()}`)
-  }
-
-  const clearMonth = () => {
-    const q = new URLSearchParams(searchParams.toString())
-    q.set('year', String(selectedYear))
-    q.delete('month')
     router.push(`${pathname}?${q.toString()}`)
   }
 
@@ -144,18 +147,34 @@ export default function SalesSummaryWorkspaceClient() {
 
   return (
     <div className="overflow-y-auto px-6 py-6 lg:px-10">
-      <div className="mb-4 text-xs">
+      <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs" aria-label="Breadcrumb">
         <span className="text-gray-500">Reports</span>
-        <span className="mx-1">/</span>
-        <span className="text-gray-700">Sales report</span>
-      </div>
+        <span className="text-gray-400">/</span>
+        <button type="button" onClick={openYearSummary} className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
+          Sales Report
+        </button>
+        <span className="text-gray-400">/</span>
+        {selectedMonth ? (
+          <button type="button" onClick={openYearSummary} className="font-medium text-blue-700 hover:text-blue-900 hover:underline">
+            {selectedYear}
+          </button>
+        ) : (
+          <span className="font-medium text-gray-700">{selectedYear}</span>
+        )}
+        {selectedMonthTitle ? (
+          <>
+            <span className="text-gray-400">/</span>
+            <span className="font-medium text-gray-700">{selectedMonthTitle.split(' ')[0]}</span>
+          </>
+        ) : null}
+      </nav>
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-3xl font-semibold text-slate-900">Sales report</h2>
+          <h2 className="text-3xl font-semibold text-slate-900">Sales Report</h2>
           <p className="mt-1 text-sm text-slate-600">
-            {selectedMonth
-              ? `Daily ecommerce and booking sales summary for ${monthTitle(selectedYear, selectedMonth)}.`
+            {selectedMonthTitle
+              ? `Daily ecommerce and booking sales summary for ${selectedMonthTitle}.`
               : `Monthly ecommerce and booking sales summary for ${selectedYear}.`}
           </p>
         </div>
@@ -164,10 +183,10 @@ export default function SalesSummaryWorkspaceClient() {
           {selectedMonth ? (
             <button
               type="button"
-              onClick={clearMonth}
+              onClick={openYearSummary}
               className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
             >
-              ← Back to months
+              ← Back to yearly summary
             </button>
           ) : null}
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
@@ -199,19 +218,20 @@ export default function SalesSummaryWorkspaceClient() {
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
           <h3 className="text-lg font-semibold text-slate-900">
-            {selectedMonth ? `${monthTitle(selectedYear, selectedMonth)} daily summary` : `${selectedYear} monthly summary`}
+            {selectedMonthTitle ? `${selectedMonthTitle} daily summary` : `${selectedYear} monthly summary`}
           </h3>
           <p className="mt-1 text-xs text-slate-500">
-            Ecommerce sales count product lines only. Booking sales use the same booking line buckets as the Daily Sales visual report.
+            Ecommerce sales count product lines only. Booking count and sales use the same booking line buckets as the Daily Sales visual report.
           </p>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[720px] text-sm">
+          <table className="w-full min-w-[860px] text-sm">
             <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
               <tr>
                 <th className="px-5 py-3">{selectedMonth ? 'Date' : 'Month'}</th>
-                <th className="px-5 py-3 text-right">Ecommerce Orders</th>
+                <th className="px-5 py-3 text-right">Ecommerce Order Count</th>
+                <th className="px-5 py-3 text-right">Booking Count</th>
                 <th className="px-5 py-3 text-right">Ecommerce Sales</th>
                 <th className="px-5 py-3 text-right">Booking Sales</th>
                 <th className="px-5 py-3 text-right">Total Sales</th>
@@ -220,13 +240,13 @@ export default function SalesSummaryWorkspaceClient() {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
                     Loading sales summary…
                   </td>
                 </tr>
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-5 py-8 text-center text-slate-500">
+                  <td colSpan={6} className="px-5 py-8 text-center text-slate-500">
                     No sales rows found.
                   </td>
                 </tr>
@@ -245,6 +265,7 @@ export default function SalesSummaryWorkspaceClient() {
                         </button>
                       </td>
                       <td className="px-5 py-3 text-right font-medium text-slate-900">{fmtInt(row.ecommerce_orders)}</td>
+                      <td className="px-5 py-3 text-right font-medium text-slate-900">{fmtInt(row.booking_count)}</td>
                       <td className="px-5 py-3 text-right text-slate-700">{fmtRm(row.ecommerce_sales)}</td>
                       <td className="px-5 py-3 text-right text-slate-700">{fmtRm(row.booking_sales)}</td>
                       <td className="px-5 py-3 text-right font-semibold text-slate-900">{fmtRm(row.total_sales)}</td>
