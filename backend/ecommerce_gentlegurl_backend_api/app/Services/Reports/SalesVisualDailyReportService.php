@@ -62,7 +62,9 @@ class SalesVisualDailyReportService
             ];
         }
 
-        foreach ($this->ecommerceSummaryRows($start, $end, 'MONTH(o.created_at)') as $row) {
+        $bucketExpression = 'EXTRACT(MONTH FROM o.created_at)::int';
+
+        foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (int) $row->bucket;
             if (! isset($rows[$key])) {
                 continue;
@@ -71,7 +73,7 @@ class SalesVisualDailyReportService
             $rows[$key]['ecommerce_sales'] = round((float) $row->ecommerce_sales, 2);
         }
 
-        foreach ($this->bookingSummaryRows($start, $end, 'MONTH(o.created_at)') as $row) {
+        foreach ($this->bookingSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (int) $row->bucket;
             if (! isset($rows[$key])) {
                 continue;
@@ -101,7 +103,9 @@ class SalesVisualDailyReportService
             ];
         }
 
-        foreach ($this->ecommerceSummaryRows($start, $end, 'DATE(o.created_at)') as $row) {
+        $bucketExpression = 'DATE(o.created_at)';
+
+        foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (string) $row->bucket;
             if (! isset($rows[$key])) {
                 continue;
@@ -110,7 +114,7 @@ class SalesVisualDailyReportService
             $rows[$key]['ecommerce_sales'] = round((float) $row->ecommerce_sales, 2);
         }
 
-        foreach ($this->bookingSummaryRows($start, $end, 'DATE(o.created_at)') as $row) {
+        foreach ($this->bookingSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (string) $row->bucket;
             if (! isset($rows[$key])) {
                 continue;
@@ -134,7 +138,7 @@ class SalesVisualDailyReportService
             ->selectRaw("{$bucketExpression} as bucket")
             ->selectRaw('COUNT(DISTINCT o.id) as ecommerce_orders')
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as ecommerce_sales")
-            ->groupBy('bucket')
+            ->groupByRaw($bucketExpression)
             ->get();
     }
 
@@ -150,7 +154,7 @@ class SalesVisualDailyReportService
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw("{$bucketExpression} as bucket")
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as booking_sales")
-            ->groupBy('bucket')
+            ->groupByRaw($bucketExpression)
             ->get();
     }
 
