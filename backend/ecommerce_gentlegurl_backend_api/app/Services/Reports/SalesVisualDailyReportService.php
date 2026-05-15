@@ -35,6 +35,150 @@ class SalesVisualDailyReportService
             ->whereNull("{$alias}.refunded_at");
     }
 
+    public function salesSummary(int $year, ?int $month = null): array
+    {
+        if ($month !== null) {
+            return $this->dailySalesSummary($year, $month);
+        }
+
+        return $this->monthlySalesSummary($year);
+    }
+
+    private function monthlySalesSummary(int $year): array
+    {
+        $start = Carbon::create($year, 1, 1)->startOfDay();
+        $end = $start->copy()->endOfYear()->endOfDay();
+        $rows = [];
+
+        for ($month = 1; $month <= 12; $month++) {
+            $monthStart = Carbon::create($year, $month, 1);
+            $rows[$month] = [
+                'month' => $month,
+                'month_name' => $monthStart->format('M'),
+                'ecommerce_orders' => 0,
+                'ecommerce_sales' => 0.0,
+                'booking_sales' => 0.0,
+                'total_sales' => 0.0,
+            ];
+        }
+
+        foreach ($this->ecommerceSummaryRows($start, $end, 'MONTH(o.created_at)') as $row) {
+            $key = (int) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['ecommerce_orders'] = (int) $row->ecommerce_orders;
+            $rows[$key]['ecommerce_sales'] = round((float) $row->ecommerce_sales, 2);
+        }
+
+        foreach ($this->bookingSummaryRows($start, $end, 'MONTH(o.created_at)') as $row) {
+            $key = (int) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        return $this->salesSummaryPayload($year, null, array_values($rows));
+    }
+
+    private function dailySalesSummary(int $year, int $month): array
+    {
+        $start = Carbon::create($year, $month, 1)->startOfDay();
+        $end = $start->copy()->endOfMonth()->endOfDay();
+        $rows = [];
+
+        for ($day = 1; $day <= $start->daysInMonth; $day++) {
+            $date = Carbon::create($year, $month, $day);
+            $key = $date->toDateString();
+            $rows[$key] = [
+                'date' => $key,
+                'day' => $day,
+                'ecommerce_orders' => 0,
+                'ecommerce_sales' => 0.0,
+                'booking_sales' => 0.0,
+                'total_sales' => 0.0,
+            ];
+        }
+
+        foreach ($this->ecommerceSummaryRows($start, $end, 'DATE(o.created_at)') as $row) {
+            $key = (string) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['ecommerce_orders'] = (int) $row->ecommerce_orders;
+            $rows[$key]['ecommerce_sales'] = round((float) $row->ecommerce_sales, 2);
+        }
+
+        foreach ($this->bookingSummaryRows($start, $end, 'DATE(o.created_at)') as $row) {
+            $key = (string) $row->bucket;
+            if (! isset($rows[$key])) {
+                continue;
+            }
+            $rows[$key]['booking_sales'] = round((float) $row->booking_sales, 2);
+        }
+
+        return $this->salesSummaryPayload($year, $month, array_values($rows));
+    }
+
+    private function ecommerceSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
+    {
+        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+
+        return $this->applyOrderScope(
+            DB::table('order_items as oi')
+                ->join('orders as o', 'o.id', '=', 'oi.order_id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
+            ->where('oi.line_type', 'product')
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw('COUNT(DISTINCT o.id) as ecommerce_orders')
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as ecommerce_sales")
+            ->groupBy('bucket')
+            ->get();
+    }
+
+    private function bookingSummaryRows(Carbon $start, Carbon $end, string $bucketExpression)
+    {
+        $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
+
+        return $this->applyOrderScope(
+            DB::table('orders as o')
+                ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
+                ->whereBetween('o.created_at', [$start, $end])
+        )
+            ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
+            ->selectRaw("{$bucketExpression} as bucket")
+            ->selectRaw("COALESCE(SUM($lineTotal), 0) as booking_sales")
+            ->groupBy('bucket')
+            ->get();
+    }
+
+    private function salesSummaryPayload(int $year, ?int $month, array $rows): array
+    {
+        $rows = array_map(function (array $row) {
+            $row['ecommerce_sales'] = round((float) ($row['ecommerce_sales'] ?? 0), 2);
+            $row['booking_sales'] = round((float) ($row['booking_sales'] ?? 0), 2);
+            $row['total_sales'] = round($row['ecommerce_sales'] + $row['booking_sales'], 2);
+            $row['ecommerce_orders'] = (int) ($row['ecommerce_orders'] ?? 0);
+
+            return $row;
+        }, $rows);
+
+        return [
+            'year' => $year,
+            'month' => $month,
+            'mode' => $month === null ? 'monthly' : 'daily',
+            'summary' => [
+                'ecommerce_sales' => round(array_sum(array_column($rows, 'ecommerce_sales')), 2),
+                'booking_sales' => round(array_sum(array_column($rows, 'booking_sales')), 2),
+                'total_sales' => round(array_sum(array_column($rows, 'total_sales')), 2),
+                'total_orders' => (int) array_sum(array_column($rows, 'ecommerce_orders')),
+            ],
+            'rows' => $rows,
+        ];
+    }
+
     public function ecommerceDay(Carbon $day): array
     {
         $start = $day->copy()->startOfDay();

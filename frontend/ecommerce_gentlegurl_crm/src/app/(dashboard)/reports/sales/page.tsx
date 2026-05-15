@@ -1,10 +1,10 @@
 import { Suspense } from 'react'
 import { redirect } from 'next/navigation'
 
-import SalesVisualWorkspaceClientWithDateNav from '@/components/reports/SalesVisualWorkspaceClientWithDateNav'
+import SalesSummaryWorkspaceClient from '@/components/reports/SalesSummaryWorkspaceClient'
 import { getCurrentUser } from '@/lib/auth'
 
-export default async function SalesVisualPage() {
+export default async function SalesReportPage() {
   const user = await getCurrentUser()
 
   if (!user) {
@@ -15,12 +15,9 @@ export default async function SalesVisualPage() {
     redirect('/dashboard')
   }
 
-  const canExport = user.permissions.includes('ecommerce.reports.sales.export')
-
   return (
     <Suspense fallback={<div className="p-10 text-sm text-slate-600">Loading report…</div>}>
-      <SalesVisualWorkspaceClientWithDateNav canExport={canExport} />
+      <SalesSummaryWorkspaceClient />
     </Suspense>
   )
 }
-
