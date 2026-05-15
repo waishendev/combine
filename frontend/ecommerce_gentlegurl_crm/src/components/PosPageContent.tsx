@@ -5880,12 +5880,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-800">
                                         <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="text-xs font-medium text-gray-800" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                        <span className="font-semibold tabular-nums">
-                                          {discount > 0 ? <span className="mr-1 text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
-                                          RM {net.toFixed(2)}
+                                        <span className="text-right font-semibold tabular-nums">
+                                          {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
+                                          <span className="block">RM {net.toFixed(2)}</span>
                                         </span>
                                       </div>
-                                      {discount > 0 ? <div className="mt-0.5 text-right text-[10px] font-semibold text-amber-700">Discount -RM {discount.toFixed(2)}</div> : null}
                                     </div>
                                   )
                                 })}
@@ -5897,12 +5896,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <div key={`settlement-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-700">
                                         <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
-                                        <span className="font-semibold tabular-nums">
-                                          {discount > 0 ? <span className="mr-1 text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
-                                          RM {net.toFixed(2)}
+                                        <span className="text-right font-semibold tabular-nums">
+                                          {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
+                                          <span className="block">RM {net.toFixed(2)}</span>
                                         </span>
                                       </div>
-                                      {discount > 0 ? <div className="mt-0.5 text-right text-[10px] font-semibold text-amber-700">Discount -RM {discount.toFixed(2)}</div> : null}
                                     </div>
                                   )
                                 })}
@@ -7179,8 +7177,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
                                       </td>
-                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700"><p>Gross RM {servicePrice.toFixed(2)}</p><p className="text-amber-700">Discount -RM {serviceDiscount.toFixed(2)}</p></td>
-                                      <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5"><p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Net</p></td>
+                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs font-semibold text-gray-700">RM {serviceNet.toFixed(2)}</td>
+                                      <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
+                                        {serviceDiscount > 0 ? (
+                                          <div className="space-y-0.5">
+                                            <p className="text-xs text-gray-400 line-through">RM {servicePrice.toFixed(2)}</p>
+                                            <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
+                                            <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>
+                                          </div>
+                                        ) : (
+                                          <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>
+                                        )}
+                                      </td>
                                     </tr>
                                     {/* <tr className={`${stRowClass} align-top`}>
                                       <td className="px-4 py-2 pl-8 text-xs font-semibold text-gray-700 sm:px-5 sm:pl-10">Block Subtotal</td>
@@ -7201,8 +7209,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</td>
                                     <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-700"><p>Gross RM {gross.toFixed(2)}</p><p className="text-amber-700">Discount -RM {discount.toFixed(2)}</p></td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Net</p></td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
                                 )
                               }) : null}
@@ -7260,8 +7268,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                     </td>
                                     <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-700"><p>Gross RM {gross.toFixed(2)}</p><p className="text-amber-700">Discount -RM {discount.toFixed(2)}</p></td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Net</p></td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
                                 )
                               })}
