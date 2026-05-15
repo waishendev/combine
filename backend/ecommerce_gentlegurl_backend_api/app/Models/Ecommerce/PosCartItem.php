@@ -16,7 +16,9 @@ class PosCartItem extends Model
         'price_snapshot',
         'discount_type',
         'discount_value',
+        'discount_amount',
         'discount_remark',
+        'line_total_after_discount',
     ];
 
     protected function casts(): array
@@ -25,6 +27,8 @@ class PosCartItem extends Model
             'qty' => 'integer',
             'price_snapshot' => 'decimal:2',
             'discount_value' => 'decimal:2',
+            'discount_amount' => 'decimal:2',
+            'line_total_after_discount' => 'decimal:2',
             'discount_remark' => 'string',
         ];
     }

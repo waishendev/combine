@@ -3299,9 +3299,10 @@ class PosController extends Controller
             $item->discount_type = null;
             $item->discount_value = 0;
             $item->discount_remark = null;
+            $this->applyCartLineDiscountSnapshots($item, 0.0, null);
             $item->save();
 
-            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
+            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
         }
 
         $isStaffUser = !empty($request->user()?->staff_id);
@@ -3316,12 +3317,14 @@ class PosController extends Controller
             return $this->respondError(__('Fixed discount must not exceed line total.'), 422);
         }
 
+        $discountAmount = $this->resolveManualDiscountAmount((string) $discountType, $discountValue, $baseLineTotal);
         $item->discount_type = $discountType;
         $item->discount_value = $discountValue;
         $item->discount_remark = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
+        $this->applyCartLineDiscountSnapshots($item, $discountAmount, max(0.0, $baseLineTotal - $discountAmount));
         $item->save();
 
-        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
     }
 
     protected function appointmentSettlementLineKey(string $kind, array $line, int $index): string
@@ -3501,9 +3504,10 @@ class PosController extends Controller
             $item->discount_type = null;
             $item->discount_value = 0;
             $item->discount_remark = null;
+            $this->applyCartLineDiscountSnapshots($item, 0.0, null);
             $item->save();
 
-            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
+            return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
         }
 
         if ($discountType === 'percentage' && $discountValue > 100) {
@@ -3513,12 +3517,25 @@ class PosController extends Controller
             return $this->respondError(__('Fixed discount must not exceed line total.'), 422);
         }
 
+        $discountAmount = $this->resolveManualDiscountAmount((string) $discountType, $discountValue, $lineTotal);
         $item->discount_type = $discountType;
         $item->discount_value = $discountValue;
         $item->discount_remark = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
+        $this->applyCartLineDiscountSnapshots($item, $discountAmount, max(0.0, $lineTotal - $discountAmount));
         $item->save();
 
-        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
+    }
+
+    protected function applyCartLineDiscountSnapshots(Model $item, float $discountAmount, ?float $lineTotalAfterDiscount): void
+    {
+        $table = $item->getTable();
+        if (Schema::hasColumn($table, 'discount_amount')) {
+            $item->setAttribute('discount_amount', round(max(0.0, $discountAmount), 2));
+        }
+        if (Schema::hasColumn($table, 'line_total_after_discount')) {
+            $item->setAttribute('line_total_after_discount', $lineTotalAfterDiscount === null ? null : round(max(0.0, $lineTotalAfterDiscount), 2));
+        }
     }
 
     public function checkout(Request $request, OrderPaymentService $orderPaymentService)
@@ -3983,7 +4000,10 @@ class PosController extends Controller
                     }
 
                     $itemSplits = collect($staffSplitsByCartItemId->get((int) $item->id, []));
-                    $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+                    $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);
+                    $lineTotal = round((float) ($pricing['line_total_snapshot'] ?? (((float) $item->price_snapshot) * (int) $item->qty)), 2);
+                    $lineNetTotal = round((float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total'] ?? $lineTotal), 2);
+                    $effectiveUnitPrice = (int) $item->qty > 0 ? round($lineNetTotal / (int) $item->qty, 2) : 0.0;
                     $orderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'line_type' => 'booking_product',
@@ -3994,10 +4014,15 @@ class PosController extends Controller
                         'price_snapshot' => (float) $item->price_snapshot,
                         'unit_price_snapshot' => (float) $item->price_snapshot,
                         'quantity' => (int) $item->qty,
-                        'line_total' => (float) $lineTotal,
+                        'line_total' => (float) $lineNetTotal,
                         'line_total_snapshot' => (float) $lineTotal,
-                        'effective_unit_price' => (float) $item->price_snapshot,
-                        'effective_line_total' => (float) $lineTotal,
+                        'effective_unit_price' => (float) $effectiveUnitPrice,
+                        'effective_line_total' => (float) $lineNetTotal,
+                        'discount_type' => $item->discount_type,
+                        'discount_value' => (float) ($item->discount_value ?? 0),
+                        'discount_remark' => $item->discount_remark,
+                        'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
+                        'line_total_after_discount' => (float) $lineNetTotal,
                         'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                         'locked' => true,
                     ]);
@@ -5120,25 +5145,25 @@ class PosController extends Controller
         $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
 
         $items = $cart->items->map(function (PosCartItem $item) use ($isStaffUser, $cartPricing) {
-            if ((string) ($item->item_type ?? 'product') === 'booking_product') {
-                $unit = (float) $item->price_snapshot;
-                $line = round($unit * (int) $item->qty, 2);
+            if (strtolower((string) ($item->item_type ?? 'product')) === 'booking_product') {
+                $pricing = $cartPricing['items'][(int) $item->id] ?? $this->resolvePosCartItemPricing($item, $isStaffUser);
+
                 return [
                     'id' => $item->id,
                     'item_type' => 'BOOKING_PRODUCT',
                     'booking_product_id' => (int) ($item->booking_product_id ?? 0),
                     'booking_product_category' => $item->bookingProduct?->categories?->first()?->name,
                     'qty' => (int) $item->qty,
-                    'unit_price' => $unit,
-                    'line_total' => $line,
-                    'unit_price_snapshot' => $unit,
-                    'line_total_snapshot' => $line,
+                    'unit_price' => (float) $pricing['effective_unit_price'],
+                    'line_total' => (float) $pricing['effective_line_total'],
+                    'unit_price_snapshot' => (float) $pricing['unit_price_snapshot'],
+                    'line_total_snapshot' => (float) $pricing['line_total_snapshot'],
                     'product_name' => (string) ($item->bookingProduct?->name ?? 'Booking Product'),
-                    'discount_type' => null,
-                    'discount_value' => 0,
-                    'discount_remark' => null,
-                    'discount_amount' => 0,
-                    'line_total_after_discount' => $line,
+                    'discount_type' => $item->discount_type,
+                    'discount_value' => (float) ($item->discount_value ?? 0),
+                    'discount_remark' => $item->discount_remark,
+                    'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
+                    'line_total_after_discount' => (float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total']),
                     'promotion_applied' => false,
                     'manual_discount_allowed' => true,
                 ];
