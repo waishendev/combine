@@ -3324,6 +3324,91 @@ class PosController extends Controller
         return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
     }
 
+    protected function appointmentSettlementLineKey(string $kind, array $line, int $index): string
+    {
+        $identity = $kind === 'service'
+            ? ($line['linked_booking_service_id'] ?? $line['id'] ?? $index)
+            : (($line['service_ref'] ?? 'original') . ':' . ($line['id'] ?? $line['name'] ?? $index));
+
+        return sprintf('%s:%s:%d', $kind, preg_replace('/[^A-Za-z0-9_.:-]+/', '-', (string) $identity), $index);
+    }
+
+    protected function normalizeAppointmentSettlementDiscountLines(mixed $value): array
+    {
+        if (is_string($value) && $value !== '') {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($value as $lineKey => $discount) {
+            if (! is_string($lineKey) || ! is_array($discount)) {
+                continue;
+            }
+            $type = $discount['discount_type'] ?? null;
+            $amount = (float) ($discount['discount_amount'] ?? 0);
+            $discountValue = (float) ($discount['discount_value'] ?? 0);
+            if (! in_array($type, ['fixed', 'percentage'], true) || $discountValue <= 0) {
+                continue;
+            }
+            $normalized[$lineKey] = [
+                'discount_type' => $type,
+                'discount_value' => $discountValue,
+                'discount_amount' => max(0.0, $amount),
+                'discount_remark' => $discount['discount_remark'] ?? null,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    protected function resolveAppointmentSettlementLineGross(array $summary, string $lineKey): ?float
+    {
+        foreach ((array) ($summary['main_service_settlement_items'] ?? []) as $line) {
+            if ((string) ($line['line_key'] ?? '') === $lineKey) {
+                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+                return $gross > 0.0001 ? $gross : null;
+            }
+        }
+
+        foreach ((array) ($summary['addon_settlement_items'] ?? []) as $line) {
+            if ((string) ($line['line_key'] ?? '') === $lineKey) {
+                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+                return $gross > 0.0001 ? $gross : null;
+            }
+        }
+
+        return null;
+    }
+
+    protected function resolveAppointmentSettlementLineDiscount(PosCartAppointmentSettlementItem $item, string $lineKey, float $gross): array
+    {
+        $discountLines = $this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []);
+        $discount = $discountLines[$lineKey] ?? null;
+        if (! $discount) {
+            return [
+                'discount_type' => null,
+                'discount_value' => 0.0,
+                'discount_amount' => 0.0,
+                'discount_remark' => null,
+                'line_total_after_discount' => $gross,
+            ];
+        }
+
+        $amount = $this->resolveManualDiscountAmount((string) $discount['discount_type'], (float) $discount['discount_value'], $gross);
+
+        return [
+            'discount_type' => $discount['discount_type'],
+            'discount_value' => (float) $discount['discount_value'],
+            'discount_amount' => min($gross, $amount),
+            'discount_remark' => $discount['discount_remark'] ?? null,
+            'line_total_after_discount' => max(0.0, $gross - min($gross, $amount)),
+        ];
+    }
+
     public function updatePackageCartItemDiscount(Request $request, int $itemId)
     {
         $validated = $request->validate([
@@ -3342,6 +3427,7 @@ class PosController extends Controller
     public function updateAppointmentSettlementCartItemDiscount(Request $request, int $itemId)
     {
         $validated = $request->validate([
+            'line_key' => ['nullable', 'string', 'max:180'],
             'discount_type' => ['nullable', 'in:percentage,fixed'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'discount_remark' => ['nullable', 'string', 'max:255'],
@@ -3359,8 +3445,52 @@ class PosController extends Controller
         }
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $lineKey = trim((string) ($validated['line_key'] ?? ''));
+        if ($lineKey !== '') {
+            $lineTotal = $this->resolveAppointmentSettlementLineGross($summary, $lineKey);
+            if ($lineTotal === null) {
+                return $this->respondError(__('Settlement line was not found or is no longer payable.'), 422);
+            }
+
+            return $this->saveAppointmentSettlementLineDiscount($cart, $item, $validated, (float) $lineTotal, $lineKey);
+        }
+
         $lineTotal = max(0.0, (float) ($summary['balance_due'] ?? 0));
         return $this->saveNonProductLineDiscount($cart, $item, $validated, $lineTotal);
+    }
+
+    protected function saveAppointmentSettlementLineDiscount(PosCart $cart, PosCartAppointmentSettlementItem $item, array $validated, float $lineTotal, string $lineKey)
+    {
+        $discountType = $validated['discount_type'] ?? null;
+        $discountValue = (float) ($validated['discount_value'] ?? 0);
+        $discountLines = $this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []);
+
+        if (!$discountType || $discountValue <= 0) {
+            unset($discountLines[$lineKey]);
+        } else {
+            if ($discountType === 'percentage' && $discountValue > 100) {
+                return $this->respondError(__('Percentage discount must be between 0 and 100.'), 422);
+            }
+            if ($discountType === 'fixed' && $discountValue > $lineTotal) {
+                return $this->respondError(__('Fixed discount must not exceed line total.'), 422);
+            }
+
+            $discountAmount = $this->resolveManualDiscountAmount((string) $discountType, $discountValue, $lineTotal);
+            $discountLines[$lineKey] = [
+                'discount_type' => $discountType,
+                'discount_value' => $discountValue,
+                'discount_amount' => $discountAmount,
+                'discount_remark' => isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null,
+            ];
+        }
+
+        $item->discount_lines = empty($discountLines) ? null : $discountLines;
+        $item->discount_type = null;
+        $item->discount_value = 0;
+        $item->discount_remark = null;
+        $item->save();
+
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
     }
 
     protected function saveNonProductLineDiscount(PosCart $cart, Model $item, array $validated, float $lineTotal)
@@ -4229,7 +4359,11 @@ class PosController extends Controller
                 $mainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
                 $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
                 $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
-                $settlementDiscount = $this->resolveManualDiscountAmount((string) ($settlementItem->discount_type ?? ''), (float) ($settlementItem->discount_value ?? 0), $balanceDue);
+                $discountLines = $this->normalizeAppointmentSettlementDiscountLines($settlementItem->discount_lines ?? []);
+                $hasPerLineDiscounts = ! empty($discountLines);
+                $settlementDiscount = $hasPerLineDiscounts
+                    ? 0.0
+                    : $this->resolveManualDiscountAmount((string) ($settlementItem->discount_type ?? ''), (float) ($settlementItem->discount_value ?? 0), $balanceDue);
                 $discountLeft = $settlementDiscount;
                 if ($balanceDue <= 0.0001) {
                     $this->recordPackageCoveredAppointmentOnOrder($order, $booking);
@@ -4245,6 +4379,7 @@ class PosController extends Controller
                             'balance_due' => $serviceBalanceDue,
                             'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
                             'is_original' => true,
+                            'line_key' => $this->appointmentSettlementLineKey('service', ['linked_booking_service_id' => (int) ($booking->service_id ?? 0)], 0),
                         ]]);
 
                     foreach ($serviceLines as $mainLine) {
@@ -4252,9 +4387,21 @@ class PosController extends Controller
                         if ($mainAmount <= 0.0001) {
                             continue;
                         }
-                        $serviceLineDiscount = min($discountLeft, $mainAmount);
+                        $lineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, 0));
+                        if ($hasPerLineDiscounts) {
+                            $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $mainAmount);
+                            $serviceLineDiscount = (float) $lineDiscount['discount_amount'];
+                            $serviceLineDiscountType = $lineDiscount['discount_type'];
+                            $serviceLineDiscountValue = (float) $lineDiscount['discount_value'];
+                            $serviceLineDiscountRemark = $lineDiscount['discount_remark'];
+                        } else {
+                            $serviceLineDiscount = min($discountLeft, $mainAmount);
+                            $discountLeft -= $serviceLineDiscount;
+                            $serviceLineDiscountType = $settlementItem->discount_type;
+                            $serviceLineDiscountValue = (float) ($settlementItem->discount_value ?? 0);
+                            $serviceLineDiscountRemark = $settlementItem->discount_remark;
+                        }
                         $serviceLineNet = max(0.0, $mainAmount - $serviceLineDiscount);
-                        $discountLeft -= $serviceLineDiscount;
 
                         $settlementOrderItem = OrderItem::query()->create([
                             'order_id' => (int) $order->id,
@@ -4269,9 +4416,9 @@ class PosController extends Controller
                             'line_total_snapshot' => $mainAmount,
                             'effective_unit_price' => $serviceLineNet,
                             'effective_line_total' => $serviceLineNet,
-                            'discount_type' => $settlementItem->discount_type,
-                            'discount_value' => (float) ($settlementItem->discount_value ?? 0),
-                            'discount_remark' => $settlementItem->discount_remark,
+                            'discount_type' => $serviceLineDiscountType,
+                            'discount_value' => $serviceLineDiscountValue,
+                            'discount_remark' => $serviceLineDiscountRemark,
                             'discount_amount' => $serviceLineDiscount,
                             'line_total_after_discount' => $serviceLineNet,
                             'locked' => true,
@@ -4319,9 +4466,21 @@ class PosController extends Controller
                     $addonDisplayName = $addonServiceRef === 'original'
                         ? $addonName
                         : sprintf('%s::%s', $addonServiceRef, $addonName);
-                    $addonLineDiscount = min($discountLeft, $addonAmount);
+                    $lineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, 0));
+                    if ($hasPerLineDiscounts) {
+                        $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $addonAmount);
+                        $addonLineDiscount = (float) $lineDiscount['discount_amount'];
+                        $addonLineDiscountType = $lineDiscount['discount_type'];
+                        $addonLineDiscountValue = (float) $lineDiscount['discount_value'];
+                        $addonLineDiscountRemark = $lineDiscount['discount_remark'];
+                    } else {
+                        $addonLineDiscount = min($discountLeft, $addonAmount);
+                        $discountLeft -= $addonLineDiscount;
+                        $addonLineDiscountType = $settlementItem->discount_type;
+                        $addonLineDiscountValue = (float) ($settlementItem->discount_value ?? 0);
+                        $addonLineDiscountRemark = $settlementItem->discount_remark;
+                    }
                     $addonLineNet = max(0.0, $addonAmount - $addonLineDiscount);
-                    $discountLeft -= $addonLineDiscount;
                     OrderItem::query()->create([
                         'order_id' => (int) $order->id,
                         'line_type' => 'booking_addon',
@@ -4336,9 +4495,9 @@ class PosController extends Controller
                         'line_total_snapshot' => $addonAmount,
                         'effective_unit_price' => $addonLineNet,
                         'effective_line_total' => $addonLineNet,
-                        'discount_type' => $settlementItem->discount_type,
-                        'discount_value' => (float) ($settlementItem->discount_value ?? 0),
-                        'discount_remark' => $settlementItem->discount_remark,
+                        'discount_type' => $addonLineDiscountType,
+                        'discount_value' => $addonLineDiscountValue,
+                        'discount_remark' => $addonLineDiscountRemark,
                         'discount_amount' => $addonLineDiscount,
                         'line_total_after_discount' => $addonLineNet,
                         'locked' => true,
@@ -5168,8 +5327,45 @@ class PosController extends Controller
             $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
 
             $lineTotal = round($balanceDue, 2);
-            $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
-            $netLineTotal = max(0.0, $lineTotal - $discountAmount);
+            $rawMainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
+            $mainSettlementItems = $rawMainSettlementItems->map(function (array $line) use ($item) {
+                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+                $lineKey = (string) ($line['line_key'] ?? '');
+                $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $gross);
+
+                return [
+                    ...$line,
+                    'gross_amount' => $gross,
+                    'discount_type' => $discount['discount_type'],
+                    'discount_value' => $discount['discount_value'],
+                    'discount_amount' => $discount['discount_amount'],
+                    'discount_remark' => $discount['discount_remark'],
+                    'line_total_after_discount' => $discount['line_total_after_discount'],
+                ];
+            })->values();
+            $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []))->map(function (array $line) use ($item) {
+                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+                $lineKey = (string) ($line['line_key'] ?? '');
+                $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $gross);
+
+                return [
+                    ...$line,
+                    'gross_amount' => $gross,
+                    'discount_type' => $discount['discount_type'],
+                    'discount_value' => $discount['discount_value'],
+                    'discount_amount' => $discount['discount_amount'],
+                    'discount_remark' => $discount['discount_remark'],
+                    'line_total_after_discount' => $discount['line_total_after_discount'],
+                    'balance_due' => $discount['line_total_after_discount'],
+                ];
+            })->values();
+            $hasPerLineDiscounts = ! empty($this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []));
+            $discountAmount = $hasPerLineDiscounts
+                ? round((float) $mainSettlementItems->sum('discount_amount') + (float) $addonSettlementItems->sum('discount_amount'), 2)
+                : $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
+            $netLineTotal = $hasPerLineDiscounts
+                ? max(0.0, $lineTotal - $discountAmount)
+                : max(0.0, $lineTotal - $discountAmount);
 
             return [
                 'id' => (int) $item->id,
@@ -5201,7 +5397,7 @@ class PosController extends Controller
                 'discount_remark' => $item->discount_remark,
                 'service_total' => (float) ($summary['service_total'] ?? 0),
                 'main_services' => $summary['main_services'] ?? [],
-                'main_service_settlement_items' => $summary['main_service_settlement_items'] ?? [],
+                'main_service_settlement_items' => $mainSettlementItems->all(),
                 'settled_service_amount' => $summary['settled_service_amount'] ?? null,
                 'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
                 'requires_settled_amount' => (bool) ($summary['requires_settled_amount'] ?? false),
@@ -5209,8 +5405,8 @@ class PosController extends Controller
                 'deposit_contribution' => (float) ($summary['deposit_contribution'] ?? 0),
                 'package_offset' => (float) ($summary['package_offset'] ?? 0),
                 'amount_due_now' => (float) ($summary['amount_due_now'] ?? $balanceDue),
-                'service_balance_due' => (float) ($summary['service_balance_due'] ?? 0),
-                'addon_settlement_items' => $summary['addon_settlement_items'] ?? [],
+                'service_balance_due' => (float) ($hasPerLineDiscounts ? $mainSettlementItems->sum('line_total_after_discount') : ($summary['service_balance_due'] ?? 0)),
+                'addon_settlement_items' => $addonSettlementItems->all(),
                 'package_status' => $summary['package_status'] ?? null,
             ];
         })->filter()->values();
@@ -5913,7 +6109,7 @@ class PosController extends Controller
             ->groupBy(fn (OrderItem $row) => (string) ($row->display_name_snapshot ?: $row->product_name_snapshot ?: 'Add-on'))
             ->map(fn ($rows) => (float) $rows->sum(fn ($row) => (float) ($row->line_total ?? 0)));
         $usedPaidByName = [];
-        $addonSettlementItems = $addonItems->map(function (array $addon) use ($addonPaidByName, &$usedPaidByName) {
+        $addonSettlementItems = $addonItems->map(function (array $addon, int $idx) use ($addonPaidByName, &$usedPaidByName) {
             $name = ((string) ($addon['service_ref'] ?? 'original')) . '::' . (string) ($addon['name'] ?? 'Add-on');
             $totalPaidForName = (float) ($addonPaidByName->get($name) ?? 0);
             $alreadyUsed = (float) ($usedPaidByName[$name] ?? 0);
@@ -5926,6 +6122,7 @@ class PosController extends Controller
             return [
                 ...$addon,
                 'display_name' => $name,
+                'line_key' => $this->appointmentSettlementLineKey('addon', $addon, $idx),
                 'paid_amount' => round($paidApplied, 2),
                 'balance_due' => round($balanceDue, 2),
             ];
@@ -6076,7 +6273,7 @@ class PosController extends Controller
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
         $packageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
 
-        $serviceOutstandingRows = $mainSettlementItems->map(function (array $item) use ($depositPaid, $packageOffset) {
+        $serviceOutstandingRows = $mainSettlementItems->map(function (array $item, int $idx) use ($depositPaid, $packageOffset) {
             $lineAmount = max(0, (float) ($item['extra_price'] ?? 0));
             $linePaid = max(0, (float) ($item['paid_amount'] ?? 0));
             $lineOutstanding = max(0, $lineAmount - $linePaid);
@@ -6086,6 +6283,7 @@ class PosController extends Controller
 
             return [
                 ...$item,
+                'line_key' => $this->appointmentSettlementLineKey('service', $item, $idx),
                 'balance_due' => round($lineOutstanding, 2),
             ];
         })->values();

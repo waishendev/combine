@@ -123,7 +123,7 @@ type AppointmentSettlementCartItem = {
   balance_due: number
   service_total?: number
   main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
+  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null }>
   addon_total_price?: number
   deposit_contribution?: number
   package_offset?: number
@@ -137,12 +137,19 @@ type AppointmentSettlementCartItem = {
   service_balance_due?: number
   addon_settlement_items?: Array<{
     id?: number | null
+    line_key?: string | null
     name: string
     cn_name?: string | null
     extra_duration_min?: number
     extra_price: number
+    gross_amount?: number
     paid_amount?: number
     balance_due: number
+    discount_type?: 'percentage' | 'fixed' | null
+    discount_value?: number
+    discount_amount?: number
+    line_total_after_discount?: number
+    discount_remark?: string | null
   }>
   package_status?: { status?: 'reserved' | 'consumed' | 'released' | null } | null
 }
@@ -390,6 +397,7 @@ type DiscountTarget =
   | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
   | { kind: 'package'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
   | { kind: 'settlement'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
+  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
 
 function formatPosPackageMemberLabel(
   packageItem: PackageCartItem,
@@ -2933,12 +2941,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     let endpoint = ''
     if (discountTarget.kind === 'product') endpoint = `/api/proxy/pos/cart/items/${discountTarget.id}/discount`
     if (discountTarget.kind === 'package') endpoint = `/api/proxy/pos/cart/package-items/${discountTarget.id}/discount`
-    if (discountTarget.kind === 'settlement') endpoint = `/api/proxy/pos/cart/appointment-settlements/${discountTarget.id}/discount`
+    if (discountTarget.kind === 'settlement' || discountTarget.kind === 'settlementLine') endpoint = `/api/proxy/pos/cart/appointment-settlements/${discountTarget.id}/discount`
     if (!endpoint) return
 
     const payload = value <= 0
-      ? { discount_type: null, discount_value: 0, discount_remark: null }
-      : { discount_type: discountTypeDraft, discount_value: value, discount_remark: discountRemarkDraft.trim() || null }
+      ? { discount_type: null, discount_value: 0, discount_remark: null, ...(discountTarget.kind === 'settlementLine' ? { line_key: discountTarget.lineKey } : {}) }
+      : { discount_type: discountTypeDraft, discount_value: value, discount_remark: discountRemarkDraft.trim() || null, ...(discountTarget.kind === 'settlementLine' ? { line_key: discountTarget.lineKey } : {}) }
 
     setDiscountSaving(true)
     try {
@@ -7093,7 +7101,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       const addons = settlement.addon_settlement_items ?? []
                       const addonCount = addons.length
-                      const hasServiceBlocks = (settlement.main_services ?? []).length > 0
+                      const hasServiceBlocks = (settlement.main_service_settlement_items ?? []).length > 0
                       const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const serviceDue = Number(settlement.service_balance_due ?? settlement.service_total ?? 0)
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
@@ -7164,10 +7172,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                           {hasServiceBlocks ? (
                             <>
-                              {(settlement.main_services ?? []).map((service, idx) => {
-                                const servicePrice = Number(service.extra_price ?? 0)
-                                const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
-                                const serviceSubtotal = servicePrice + serviceAddonTotal
+                              {(settlement.main_service_settlement_items ?? []).map((service, idx) => {
+                                const servicePrice = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
+                                const serviceDiscount = Number(service.discount_amount ?? 0)
+                                const serviceNet = Number(service.line_total_after_discount ?? Math.max(0, servicePrice - serviceDiscount))
                                 return (
                                   <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
                                     <tr className={`${stRowClass} align-top`}>
@@ -7175,27 +7183,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Services Block</p>
                                         <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="mt-1 text-xs text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
                                       </td>
-                                      <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
-                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-400">—</td>
-                                      <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                                        <p className="text-lg font-bold leading-tight text-orange-700">RM {servicePrice.toFixed(2)}</p>
+                                      <td className="min-w-[260px] px-4 py-2.5 align-top">
+                                        <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                                          {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
+                                        </button>
                                       </td>
+                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700"><p>Gross RM {servicePrice.toFixed(2)}</p><p className="text-amber-700">Discount -RM {serviceDiscount.toFixed(2)}</p></td>
+                                      <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5"><p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Net</p></td>
                                     </tr>
-                                    {(service.add_ons ?? []).map((addon, addonIdx) => (
-                                      <tr
-                                        key={`chk-main-block-addon-row-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`}
-                                        className={`${stRowClass} align-top`}
-                                      >
-                                        <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
-                                          <span className="text-gray-500">+</span> {addon.name}
-                                        </td>
-                                        <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                                        <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                                        <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                          <p className="text-lg font-bold leading-tight text-orange-700">RM {Number(addon.extra_price ?? 0).toFixed(2)}</p>
-                                        </td>
-                                      </tr>
-                                    ))}
                                     {/* <tr className={`${stRowClass} align-top`}>
                                       <td className="px-4 py-2 pl-8 text-xs font-semibold text-gray-700 sm:px-5 sm:pl-10">Block Subtotal</td>
                                       <td className="min-w-[260px] px-4 py-2" aria-hidden />
@@ -7207,6 +7202,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   </Fragment>
                                 )
                               })}
+                              {addonCount > 0 ? addons.map((addon, idx) => {
+                                const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
+                                const discount = Number(addon.discount_amount ?? 0)
+                                const due = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+                                return (
+                                  <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
+                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-700"><p>Gross RM {gross.toFixed(2)}</p><p className="text-amber-700">Discount -RM {discount.toFixed(2)}</p></td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Net</p></td>
+                                  </tr>
+                                )
+                              }) : null}
                             </>
                           ) : (
                             <>
@@ -7248,7 +7256,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <td className="px-4 py-1.5" colSpan={2} aria-hidden />
                               </tr>
                               {addons.map((addon, idx) => {
-                                const due = Number(addon.balance_due ?? addon.extra_price ?? 0)
+                                const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
+                                const discount = Number(addon.discount_amount ?? 0)
+                                const due = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
                                 return (
                                   <tr
                                     key={`chk-st-addon-${settlement.id}-${addon.id ?? addon.name}-${idx}`}
@@ -7258,11 +7268,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       <span className="text-gray-500">+</span> {addon.name}
                                       {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                     </td>
-                                    <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                      <p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>
-                                    </td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-700"><p>Gross RM {gross.toFixed(2)}</p><p className="text-amber-700">Discount -RM {discount.toFixed(2)}</p></td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p><p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Net</p></td>
                                   </tr>
                                 )
                               })}
@@ -7968,6 +7976,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 Discount Value {discountTypeDraft === 'percentage' ? '(%)' : '(RM)'}
                 <input type="number" min={0} max={discountTypeDraft === 'percentage' ? 100 : Number(discountTarget.lineTotal ?? 0)} step="0.01" value={discountValueDraft} onChange={(event) => setDiscountValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
               </label>
+              <div className="rounded-lg border border-amber-100 bg-amber-50/60 px-3 py-2 text-xs text-gray-700">
+                <div className="flex justify-between gap-3"><span>Calculated discount</span><span className="font-semibold tabular-nums text-amber-700">-RM {Math.min(Number(discountTarget.lineTotal ?? 0), Math.max(0, discountTypeDraft === 'percentage' ? Number(discountTarget.lineTotal ?? 0) * (Number(discountValueDraft || 0) / 100) : Number(discountValueDraft || 0))).toFixed(2)}</span></div>
+                <div className="mt-1 flex justify-between gap-3"><span>Net amount</span><span className="font-semibold tabular-nums text-gray-900">RM {Math.max(0, Number(discountTarget.lineTotal ?? 0) - Math.min(Number(discountTarget.lineTotal ?? 0), Math.max(0, discountTypeDraft === 'percentage' ? Number(discountTarget.lineTotal ?? 0) * (Number(discountValueDraft || 0) / 100) : Number(discountValueDraft || 0)))).toFixed(2)}</span></div>
+              </div>
               <label className="block text-sm font-semibold text-gray-700">
                 Remarks (optional)
                 <textarea value={discountRemarkDraft} onChange={(event) => setDiscountRemarkDraft(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="VIP discount / damaged box / promo adjustment" />
