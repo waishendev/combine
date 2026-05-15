@@ -15,6 +15,7 @@ class PosCartAppointmentSettlementItem extends Model
         'discount_type',
         'discount_value',
         'discount_remark',
+        'discount_lines',
     ];
 
     protected function casts(): array
@@ -23,6 +24,7 @@ class PosCartAppointmentSettlementItem extends Model
             'booking_id' => 'integer',
             'discount_value' => 'decimal:2',
             'discount_remark' => 'string',
+            'discount_lines' => 'array',
         ];
     }
 

@@ -335,7 +335,7 @@ class SalesChannelReportService
             ->selectRaw('oi.booking_id as booking_id')
             ->selectRaw('COALESCE(b.booking_code, CASE WHEN oi.booking_id IS NOT NULL THEN CONCAT(\'BOOKING-\', oi.booking_id) ELSE NULL END) as booking_no')
             ->selectRaw('COALESCE(oi.display_name_snapshot, oi.product_name_snapshot, sp.name) as package_name')
-            ->selectRaw('COALESCE(oi.line_total, 0) as gross_amount')
+            ->selectRaw('COALESCE(oi.line_total_snapshot, oi.line_total + COALESCE(oi.discount_amount, 0), oi.line_total, 0) as gross_amount')
             ->selectRaw('COALESCE(oi.discount_amount, 0) as discount')
             ->selectRaw('COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0), 0) as net_amount');
 
