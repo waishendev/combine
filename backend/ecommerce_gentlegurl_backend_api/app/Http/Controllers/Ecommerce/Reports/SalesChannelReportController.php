@@ -16,6 +16,19 @@ class SalesChannelReportController extends Controller
     ) {
     }
 
+    public function salesSummary(Request $request)
+    {
+        $year = (int) $request->query('year', Carbon::today()->year);
+        $year = max(2000, min(2100, $year));
+
+        $month = null;
+        if ($request->filled('month')) {
+            $month = max(1, min(12, (int) $request->query('month')));
+        }
+
+        return response()->json($this->visualDaily->salesSummary($year, $month));
+    }
+
     public function visualDailyEcommerce(Request $request)
     {
         $day = $request->filled('date')

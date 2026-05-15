@@ -375,7 +375,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           // },
           {
             key: 'sales-daily',
-            label: 'Daily Sales',
+            label: 'Sales Report',
             href: '/reports/sales',
             requiredPermission: 'ecommerce.reports.sales.view',
           },
