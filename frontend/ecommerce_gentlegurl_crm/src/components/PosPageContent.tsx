@@ -396,7 +396,6 @@ type PackageCartItem = {
 type DiscountTarget =
   | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
   | { kind: 'package'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
-  | { kind: 'settlement'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
   | { kind: 'settlementLine'; id: number; lineKey: string; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
 
 function formatPosPackageMemberLabel(
@@ -2941,7 +2940,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     let endpoint = ''
     if (discountTarget.kind === 'product') endpoint = `/api/proxy/pos/cart/items/${discountTarget.id}/discount`
     if (discountTarget.kind === 'package') endpoint = `/api/proxy/pos/cart/package-items/${discountTarget.id}/discount`
-    if (discountTarget.kind === 'settlement' || discountTarget.kind === 'settlementLine') endpoint = `/api/proxy/pos/cart/appointment-settlements/${discountTarget.id}/discount`
+    if (discountTarget.kind === 'settlementLine') endpoint = `/api/proxy/pos/cart/appointment-settlements/${discountTarget.id}/discount`
     if (!endpoint) return
 
     const payload = value <= 0
@@ -5832,11 +5831,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const serviceTotal = Number(settlement.service_total ?? 0)
                       const serviceDue = Number(settlement.service_balance_due ?? serviceTotal)
                       const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotal > 0.0001
-                      const hasServiceBlocks = (settlement.main_services ?? []).length > 0
+                      const hasServiceBlocks = (settlement.main_service_settlement_items ?? []).length > 0
                       const addonRows = settlement.addon_settlement_items ?? []
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
-                      const totalDue = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
+                      const totalDue = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
                       const isRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
                       const servicePriceLabel = isRangeUnsettled
                         ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
@@ -5873,25 +5872,37 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {hasServiceBlocks ? (
                               <div className="space-y-2 border-b border-gray-200 pb-2">
                                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service</p>
-                                {(settlement.main_services ?? []).map((service, idx) => {
-                                  const serviceAddonTotal = (service.add_ons ?? []).reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0)
-                                  const blockSubtotal = Number(service.extra_price ?? 0) + serviceAddonTotal
+                                {(settlement.main_service_settlement_items ?? []).map((service, idx) => {
+                                  const gross = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
+                                  const discount = Number(service.discount_amount ?? 0)
+                                  const net = Number(service.line_total_after_discount ?? Math.max(0, gross - discount))
                                   return (
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-800">
                                         <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="text-xs font-medium text-gray-800" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                        <span className="font-semibold tabular-nums">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
+                                        <span className="font-semibold tabular-nums">
+                                          {discount > 0 ? <span className="mr-1 text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
+                                          RM {net.toFixed(2)}
+                                        </span>
                                       </div>
-                                      {(service.add_ons ?? []).map((addon, addonIdx) => (
-                                        <div key={`settlement-service-block-addon-${settlement.id}-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="mt-0.5 flex justify-between gap-2 pl-2 text-[10px] text-gray-600">
-                                          <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
-                                          <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
-                                        </div>
-                                      ))}
-                                      {/* <div className="mt-1 flex justify-between gap-2 border-t border-gray-200 pt-1 text-[10px] font-semibold text-gray-700">
-                                        <span>Subtotal</span>
-                                        <span className="tabular-nums">RM {blockSubtotal.toFixed(2)}</span>
-                                      </div> */}
+                                      {discount > 0 ? <div className="mt-0.5 text-right text-[10px] font-semibold text-amber-700">Discount -RM {discount.toFixed(2)}</div> : null}
+                                    </div>
+                                  )
+                                })}
+                                {addonRows.map((addon, idx) => {
+                                  const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
+                                  const discount = Number(addon.discount_amount ?? 0)
+                                  const net = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+                                  return (
+                                    <div key={`settlement-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
+                                      <div className="flex justify-between gap-2 text-gray-700">
+                                        <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
+                                        <span className="font-semibold tabular-nums">
+                                          {discount > 0 ? <span className="mr-1 text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
+                                          RM {net.toFixed(2)}
+                                        </span>
+                                      </div>
+                                      {discount > 0 ? <div className="mt-0.5 text-right text-[10px] font-semibold text-amber-700">Discount -RM {discount.toFixed(2)}</div> : null}
                                     </div>
                                   )
                                 })}
@@ -5919,11 +5930,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 Total to pay
                               </span>
                               <div className="text-right">
-                                {(settlement.discount_amount ?? 0) > 0 && !isRangeUnsettled ? (
-                                  <p className="text-[10px] text-gray-500 line-through">
-                                    RM {Number(settlement.balance_due_snapshot ?? settlement.balance_due ?? 0).toFixed(2)}
-                                  </p>
-                                ) : null}
                                 <span className="text-sm font-bold tabular-nums text-orange-700">{totalDueLabel}</span>
                               </div>
                             </div>
@@ -7107,7 +7113,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const pkgOffset = Number(settlement.package_offset ?? 0)
-                      const totalDue = Number(settlement.amount_due_now ?? settlement.balance_due ?? 0)
+                      const totalDue = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
                       const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotalRef > 0.0001
                       const stIsRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
                       const stServiceLabel = stIsRangeUnsettled
@@ -7146,21 +7152,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-500 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-cyan-600 hover:to-cyan-700"
                                 >
                                   Edit Worker
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => openDiscountModal({
-                                    kind: 'settlement',
-                                    id: settlement.id,
-                                    name: `${settlement.booking_code} ${settlement.service_name ?? ''}`.trim(),
-                                    lineTotal: Number(settlement.balance_due_snapshot ?? settlement.balance_due ?? 0),
-                                    discountType: settlement.discount_type ?? null,
-                                    discountValue: Number(settlement.discount_value ?? 0),
-                                    discountRemark: settlement.discount_remark ?? null,
-                                  })}
-                                  className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800"
-                                >
-                                  {(settlement.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
                                 </button>
                               </div>
                             </td>
@@ -7299,16 +7290,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
                               <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
                                 <p className="text-lg font-bold leading-tight text-orange-700">− RM {depositCredit.toFixed(2)}</p>
-                              </td>
-                            </tr>
-                          ) : null}
-                          {(settlement.discount_amount ?? 0) > 0 ? (
-                            <tr className={`${stRowClass} align-top`}>
-                              <td className="px-4 py-2 pl-7 text-xs text-gray-700 sm:px-5 sm:pl-8">Item Discount</td>
-                              <td className="min-w-[260px] px-4 py-2" aria-hidden />
-                              <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
-                              <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-amber-700">− RM {Number(settlement.discount_amount ?? 0).toFixed(2)}</p>
                               </td>
                             </tr>
                           ) : null}

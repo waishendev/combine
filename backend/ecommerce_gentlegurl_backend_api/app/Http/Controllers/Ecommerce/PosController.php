@@ -3455,8 +3455,7 @@ class PosController extends Controller
             return $this->saveAppointmentSettlementLineDiscount($cart, $item, $validated, (float) $lineTotal, $lineKey);
         }
 
-        $lineTotal = max(0.0, (float) ($summary['balance_due'] ?? 0));
-        return $this->saveNonProductLineDiscount($cart, $item, $validated, $lineTotal);
+        return $this->respondError(__('Settlement discounts must be applied to an individual settlement line.'), 422);
     }
 
     protected function saveAppointmentSettlementLineDiscount(PosCart $cart, PosCartAppointmentSettlementItem $item, array $validated, float $lineTotal, string $lineKey)
@@ -3774,6 +3773,23 @@ class PosController extends Controller
                 if (! $booking) return 0.0;
                 $summary = $this->resolveAppointmentFinancialSummary($booking);
                 $lineTotal = max(0.0, (float) ($summary['balance_due'] ?? 0));
+                $discountLines = $this->normalizeAppointmentSettlementDiscountLines($row->discount_lines ?? []);
+                if (! empty($discountLines)) {
+                    $lineDiscountTotal = 0.0;
+                    foreach ((array) ($summary['main_service_settlement_items'] ?? []) as $line) {
+                        $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+                        $discount = $this->resolveAppointmentSettlementLineDiscount($row, (string) ($line['line_key'] ?? ''), $gross);
+                        $lineDiscountTotal += (float) ($discount['discount_amount'] ?? 0);
+                    }
+                    foreach ((array) ($summary['addon_settlement_items'] ?? []) as $line) {
+                        $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+                        $discount = $this->resolveAppointmentSettlementLineDiscount($row, (string) ($line['line_key'] ?? ''), $gross);
+                        $lineDiscountTotal += (float) ($discount['discount_amount'] ?? 0);
+                    }
+
+                    return max(0.0, $lineTotal - round($lineDiscountTotal, 2));
+                }
+
                 $discountAmount = $this->resolveManualDiscountAmount((string) ($row->discount_type ?? ''), (float) ($row->discount_value ?? 0), $lineTotal);
                 return max(0.0, $lineTotal - $discountAmount);
             });
@@ -5404,7 +5420,7 @@ class PosController extends Controller
                 'addon_total_price' => (float) ($summary['addon_total_price'] ?? 0),
                 'deposit_contribution' => (float) ($summary['deposit_contribution'] ?? 0),
                 'package_offset' => (float) ($summary['package_offset'] ?? 0),
-                'amount_due_now' => (float) ($summary['amount_due_now'] ?? $balanceDue),
+                'amount_due_now' => (float) $netLineTotal,
                 'service_balance_due' => (float) ($hasPerLineDiscounts ? $mainSettlementItems->sum('line_total_after_discount') : ($summary['service_balance_due'] ?? 0)),
                 'addon_settlement_items' => $addonSettlementItems->all(),
                 'package_status' => $summary['package_status'] ?? null,
