@@ -52,6 +52,15 @@ function formatDateLabel(ymd: string) {
   return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }).format(d)
 }
 
+function dateParts(ymd: string) {
+  const d = new Date(`${ymd}T12:00:00`)
+  if (Number.isNaN(d.getTime())) {
+    return { year: currentYear(), month: 1 }
+  }
+
+  return { year: d.getFullYear(), month: d.getMonth() + 1 }
+}
+
 const fmtRm = (n: number) => `RM ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtInt = (n: number) => Number(n || 0).toLocaleString()
 
@@ -137,9 +146,19 @@ export default function SalesSummaryWorkspaceClient() {
     router.push(`${pathname}?${q.toString()}`)
   }
 
-  const openDailyVisual = (date: string) => {
-    const q = new URLSearchParams({ mode: 'all', date, date_from: date, date_to: date, page: '1', ec_page: '1', bk_page: '1' })
-    router.push(`/reports/sales/visual?${q.toString()}`)
+  const openDailyDetail = (date: string) => {
+    const q = new URLSearchParams({
+      date,
+      year: String(selectedYear),
+      month: String(selectedMonth ?? dateParts(date).month),
+      mode: 'all',
+      date_from: date,
+      date_to: date,
+      page: '1',
+      ec_page: '1',
+      bk_page: '1',
+    })
+    router.push(`/reports/sales/daily?${q.toString()}`)
   }
 
   const totals = data?.summary ?? { ecommerce_sales: 0, booking_sales: 0, total_sales: 0, total_orders: 0 }
@@ -171,11 +190,11 @@ export default function SalesSummaryWorkspaceClient() {
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-3xl font-semibold text-slate-900">Sales Report</h2>
+          <h2 className="text-3xl font-semibold text-slate-900">{selectedMonthTitle ? 'Monthly Sales Report' : 'Yearly Sales Report'}</h2>
           <p className="mt-1 text-sm text-slate-600">
             {selectedMonthTitle
               ? `Daily ecommerce and booking sales summary for ${selectedMonthTitle}.`
-              : `Monthly ecommerce and booking sales summary for ${selectedYear}.`}
+              : `Yearly ecommerce and booking sales summary for ${selectedYear}.`}
           </p>
         </div>
 
@@ -254,8 +273,8 @@ export default function SalesSummaryWorkspaceClient() {
                 rows.map((row) => {
                   const key = isDailyRow(row) ? row.date : String(row.month)
                   const label = isDailyRow(row) ? formatDateLabel(row.date) : row.month_name
-                  const onClick = isDailyRow(row) ? () => openDailyVisual(row.date) : () => openMonth(row.month)
-                  const aria = isDailyRow(row) ? `Open Daily Sales visual for ${row.date}` : `Open daily summary for ${row.month_name}`
+                  const onClick = isDailyRow(row) ? () => openDailyDetail(row.date) : () => openMonth(row.month)
+                  const aria = isDailyRow(row) ? `Open Daily Sales detail for ${row.date}` : `Open daily summary for ${row.month_name}`
 
                   return (
                     <tr key={key} className="hover:bg-blue-50/50">
