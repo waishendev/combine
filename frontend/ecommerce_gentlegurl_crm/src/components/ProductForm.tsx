@@ -8,6 +8,7 @@ import type { ProductImage, ProductRowData, ProductVideo, ProductVariant } from 
 import { useI18n } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
 import ErrorBox from './ErrorBox'
+import { collectApiErrorMessages } from '@/lib/api-errors'
 
 interface CategoryOption {
   id: number
@@ -229,66 +230,8 @@ const META_OG_IMAGE_TYPES = [
 
 const META_OG_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'] as const
 
-function fieldLabelForLaravelKey(key: string): string | null {
-  const variantSku = /^variants\.(\d+)\.sku$/.exec(key)
-  if (variantSku) return `Variant row ${Number(variantSku[1]) + 1} (SKU)`
-  const variantBarcode = /^variants\.(\d+)\.barcode$/.exec(key)
-  if (variantBarcode) return `Variant row ${Number(variantBarcode[1]) + 1} (Barcode)`
-  if (key === 'sku') return 'Product SKU'
-  if (key === 'slug') return 'Slug'
-  if (key === 'barcode') return 'Barcode'
-  return null
-}
-
-function mergeLaravelErrorRecord(errors: unknown): string[] {
-  const out: string[] = []
-  if (!errors || typeof errors !== 'object') return out
-  const record = errors as Record<string, unknown>
-  for (const key of Object.keys(record)) {
-    const errorValue = record[key]
-    const label = fieldLabelForLaravelKey(key)
-    if (Array.isArray(errorValue)) {
-      for (const msg of errorValue) {
-        if (typeof msg === 'string') out.push(label ? `${label}: ${msg}` : msg)
-      }
-    } else if (typeof errorValue === 'string') {
-      out.push(label ? `${label}: ${errorValue}` : `${key}: ${errorValue}`)
-    }
-  }
-  return out
-}
-
-function collectProductSaveErrorMessages(
-  payload: unknown,
-  fallbackMessage: string,
-): string[] {
-  const messages = collectLaravelValidationErrors(payload)
-  if (
-    messages.length === 0 &&
-    payload &&
-    typeof payload === 'object' &&
-    typeof (payload as { message?: unknown }).message === 'string'
-  ) {
-    const apiMessage = (payload as { message: string }).message.trim()
-    if (apiMessage && apiMessage !== 'Validation failed' && apiMessage !== 'Server Error') {
-      messages.push(apiMessage)
-    }
-  }
-  if (messages.length === 0) {
-    messages.push(fallbackMessage)
-  }
-  return messages
-}
-
-function collectLaravelValidationErrors(payload: unknown): string[] {
-  if (!payload || typeof payload !== 'object') return []
-  const root = payload as Record<string, unknown>
-  const messages = [...mergeLaravelErrorRecord(root.errors)]
-  const nested = root.data
-  if (nested && typeof nested === 'object' && 'errors' in nested) {
-    messages.push(...mergeLaravelErrorRecord((nested as Record<string, unknown>).errors))
-  }
-  return messages
+function collectProductSaveErrorMessages(payload: unknown, fallbackMessage: string): string[] {
+  return collectApiErrorMessages(payload, { fallback: fallbackMessage })
 }
 
 /** Cost/stock on variant rows are only locked for rows that existed on load as a variant product (use stock adjustment). */
@@ -1103,7 +1046,7 @@ export default function ProductForm({
           const fallback = `Upload failed (${xhr.status}).`
           try {
             const parsed: unknown = JSON.parse(xhr.responseText)
-            const errs = collectLaravelValidationErrors(parsed)
+            const errs = collectApiErrorMessages(parsed)
             if (errs.length > 0) {
               reject(new Error(errs.join('\n')))
             } else if (

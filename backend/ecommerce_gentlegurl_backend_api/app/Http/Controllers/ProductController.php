@@ -7,7 +7,9 @@ use App\Models\Ecommerce\Product;
 // use App\Support\ProductSaveFailureLogger;
 use App\Models\Ecommerce\ProductMedia;
 use App\Models\Ecommerce\ProductVariant;
+use App\Models\Ecommerce\ProductVariantBundleItem;
 use App\Models\Ecommerce\ProductStockMovement;
+use Illuminate\Support\Collection;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -436,38 +438,21 @@ class ProductController extends Controller
 
     public function exportCsv(Request $request)
     {
-        $products = Product::with(['categories', 'images', 'video', 'variants.bundleItems'])
+        $products = Product::with(['categories', 'variants.bundleItems.componentVariant'])
             ->when($request->has('is_reward_only'), function ($query) use ($request) {
                 $query->where('is_reward_only', filter_var($request->get('is_reward_only'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE));
             })
             ->orderByDesc('id')
             ->get();
 
-        $rows = $products->map(function (Product $product) {
-            $payload = $product->toArray();
-            $payload['category_ids'] = $product->categories->pluck('id')->values()->all();
+        $rows = $products->map(fn (Product $product) => $this->serializeProductForCsvExport($product))->values()->all();
 
-            return $payload;
-        })->values()->all();
-
-        $headers = [];
-        foreach ($rows as $row) {
-            foreach (array_keys($row) as $key) {
-                if (! in_array($key, $headers, true)) {
-                    $headers[] = $key;
-                }
-            }
-        }
-
-        if (empty($headers)) {
-            $headers = [
-                'id', 'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price',
-                'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold',
-                'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only',
-                'meta_title', 'meta_description', 'meta_keywords', 'meta_og_image',
-                'created_at', 'updated_at', 'category_ids', 'categories', 'images', 'video', 'variants',
-            ];
-        }
+        $headers = [
+            'name', 'slug', 'sku', 'barcode', 'type', 'description', 'price', 'sale_price',
+            'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold',
+            'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only',
+            'meta_title', 'meta_description', 'meta_keywords', 'meta_og_image', 'category_ids', 'variants',
+        ];
 
         $stream = fopen('php://temp', 'r+');
         if (! $stream) {
@@ -532,7 +517,7 @@ class ProductController extends Controller
         }, $headers);
 
         $allowedFields = [
-            'name', 'slug', 'sku', 'type', 'description', 'price', 'sale_price', 'sale_price_start_at',
+            'name', 'slug', 'sku', 'barcode', 'type', 'description', 'price', 'sale_price', 'sale_price_start_at',
             'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold', 'track_stock', 'dummy_sold_count',
             'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only', 'meta_title', 'meta_description', 'meta_keywords',
             'meta_og_image', 'category_ids', 'variants',
@@ -790,6 +775,7 @@ class ProductController extends Controller
                     'unique:products,sku',
                 ],
                 'barcode' => ['nullable', 'string', 'max:100', 'unique:products,barcode'],
+                'variants' => ['nullable', 'array'],
                 'type' => ['sometimes', 'string', Rule::in(['single', 'package', 'variant'])],
                 'description' => ['nullable', 'string'],
                 'price' => ['required', 'numeric', 'gt:0'],
@@ -809,7 +795,6 @@ class ProductController extends Controller
                 'meta_og_image' => ['nullable'],
                 'category_ids' => ['array'],
                 'category_ids.*' => ['integer', 'exists:categories,id'],
-                'variants' => ['nullable', 'array'],
             ]);
 
             if ($validator->fails()) {
@@ -823,8 +808,10 @@ class ProductController extends Controller
 
             $clean = $validator->validated();
 
+            $variantsForImport = is_array($payload['variants'] ?? null) ? $payload['variants'] : [];
+
             try {
-                DB::transaction(function () use ($clean, &$existingSkuLookup, &$existingSlugLookup, &$summary) {
+                DB::transaction(function () use ($clean, $variantsForImport, &$existingSkuLookup, &$existingSlugLookup, &$summary) {
                     $importStock = max(0, (int) ($clean['stock'] ?? 0));
                     $product = Product::create($clean + [
                         'type' => $clean['type'] ?? 'single',
@@ -843,28 +830,8 @@ class ProductController extends Controller
                         $product->categories()->sync($clean['category_ids']);
                     }
 
-                    if (! empty($clean['variants']) && is_array($clean['variants'])) {
-                        foreach ($clean['variants'] as $variantData) {
-                            if (! is_array($variantData)) {
-                                continue;
-                            }
-                            $product->variants()->create([
-                                'sku' => $variantData['sku'] ?? null,
-                                'barcode' => $variantData['barcode'] ?? null,
-                                'title' => $variantData['title'] ?? ($variantData['name'] ?? null),
-                                'price' => isset($variantData['price']) ? (float) $variantData['price'] : null,
-                                'sale_price' => isset($variantData['sale_price']) ? (float) $variantData['sale_price'] : null,
-                                'sale_price_start_at' => $variantData['sale_price_start_at'] ?? null,
-                                'sale_price_end_at' => $variantData['sale_price_end_at'] ?? null,
-                                'cost_price' => isset($variantData['cost_price']) ? (float) $variantData['cost_price'] : null,
-                                'stock' => isset($variantData['stock']) ? (int) $variantData['stock'] : 0,
-                                'low_stock_threshold' => isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0,
-                                'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
-                                'is_bundle' => filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN),
-                                'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
-                                'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,
-                            ]);
-                        }
+                    if ($variantsForImport !== []) {
+                        $this->importProductVariantsFromCsv($product, $variantsForImport);
                     }
 
                     if (! empty($product->sku)) {
@@ -1236,6 +1203,200 @@ class ProductController extends Controller
         if ($path && Storage::disk('public')->exists($path)) {
             Storage::disk('public')->delete($path);
         }
+    }
+
+    protected function serializeProductForCsvExport(Product $product): array
+    {
+        return [
+            'name' => $product->name,
+            'slug' => $product->slug,
+            'sku' => $product->sku,
+            'barcode' => $product->barcode,
+            'type' => $product->type,
+            'description' => $product->description,
+            'price' => $product->price,
+            'sale_price' => $product->sale_price,
+            'sale_price_start_at' => $product->sale_price_start_at,
+            'sale_price_end_at' => $product->sale_price_end_at,
+            'cost_price' => $product->cost_price,
+            'stock' => $product->stock,
+            'low_stock_threshold' => $product->low_stock_threshold,
+            'track_stock' => $product->track_stock,
+            'dummy_sold_count' => $product->dummy_sold_count,
+            'is_active' => $product->is_active,
+            'is_featured' => $product->is_featured,
+            'is_hidden_in_shop' => $product->is_hidden_in_shop,
+            'is_staff_free' => $product->is_staff_free,
+            'is_reward_only' => $product->is_reward_only,
+            'meta_title' => $product->meta_title,
+            'meta_description' => $product->meta_description,
+            'meta_keywords' => $product->meta_keywords,
+            'meta_og_image' => $product->getRawOriginal('meta_og_image'),
+            'category_ids' => $product->categories->pluck('id')->values()->all(),
+            'variants' => $this->serializeVariantsForCsvExport($product->variants),
+        ];
+    }
+
+    protected function serializeVariantsForCsvExport(Collection $variants): array
+    {
+        return $variants->map(function (ProductVariant $variant) {
+            $row = [
+                'id' => $variant->id,
+                'sku' => $variant->sku,
+                'barcode' => $variant->barcode,
+                'title' => $variant->title,
+                'price' => $variant->price,
+                'sale_price' => $variant->sale_price,
+                'sale_price_start_at' => $variant->sale_price_start_at,
+                'sale_price_end_at' => $variant->sale_price_end_at,
+                'cost_price' => $variant->cost_price,
+                'stock' => $variant->stock,
+                'low_stock_threshold' => $variant->low_stock_threshold,
+                'track_stock' => $variant->track_stock,
+                'is_bundle' => $variant->is_bundle,
+                'is_active' => $variant->is_active,
+                'sort_order' => $variant->sort_order,
+            ];
+
+            if ($variant->is_bundle) {
+                $variant->loadMissing('bundleItems.componentVariant');
+                $row['bundle_items'] = $variant->bundleItems->map(function (ProductVariantBundleItem $item) {
+                    return [
+                        'component_variant_id' => $item->component_variant_id,
+                        'component_variant_sku' => $item->componentVariant?->sku,
+                        'quantity' => $item->quantity,
+                        'sort_order' => $item->sort_order,
+                    ];
+                })->values()->all();
+            }
+
+            return $row;
+        })->values()->all();
+    }
+
+    protected function importProductVariantsFromCsv(Product $product, array $variantsData): void
+    {
+        $oldVariantIdToNewId = [];
+        $variantSkuToId = [];
+        $created = [];
+
+        foreach ($variantsData as $variantData) {
+            if (! is_array($variantData)) {
+                continue;
+            }
+
+            $isBundle = filter_var($variantData['is_bundle'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $variant = $product->variants()->create([
+                'sku' => $variantData['sku'] ?? null,
+                'barcode' => $variantData['barcode'] ?? null,
+                'title' => $variantData['title'] ?? ($variantData['name'] ?? null),
+                'price' => isset($variantData['price']) ? (float) $variantData['price'] : null,
+                'sale_price' => isset($variantData['sale_price']) ? (float) $variantData['sale_price'] : null,
+                'sale_price_start_at' => $variantData['sale_price_start_at'] ?? null,
+                'sale_price_end_at' => $variantData['sale_price_end_at'] ?? null,
+                'cost_price' => isset($variantData['cost_price']) ? (float) $variantData['cost_price'] : null,
+                'stock' => $isBundle ? 0 : (isset($variantData['stock']) ? (int) $variantData['stock'] : 0),
+                'low_stock_threshold' => $isBundle ? 0 : (isset($variantData['low_stock_threshold']) ? (int) $variantData['low_stock_threshold'] : 0),
+                'track_stock' => filter_var($variantData['track_stock'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                'is_bundle' => $isBundle,
+                'is_active' => filter_var($variantData['is_active'] ?? true, FILTER_VALIDATE_BOOLEAN),
+                'sort_order' => isset($variantData['sort_order']) ? (int) $variantData['sort_order'] : 0,
+            ]);
+
+            $skuKey = mb_strtolower(trim((string) ($variant->sku ?? '')));
+            if ($skuKey !== '') {
+                $variantSkuToId[$skuKey] = (int) $variant->id;
+            }
+
+            if (isset($variantData['id']) && is_numeric($variantData['id'])) {
+                $oldVariantIdToNewId[(int) $variantData['id']] = (int) $variant->id;
+            }
+
+            $created[] = ['variant' => $variant, 'source' => $variantData];
+        }
+
+        foreach ($created as $entry) {
+            $variant = $entry['variant'];
+            $source = $entry['source'];
+
+            if (! $variant->is_bundle) {
+                continue;
+            }
+
+            $bundleItems = $source['bundle_items'] ?? $source['bundleItems'] ?? [];
+            if (! is_array($bundleItems) || $bundleItems === []) {
+                continue;
+            }
+
+            $variant->bundleItems()->delete();
+
+            foreach ($bundleItems as $index => $item) {
+                if (! is_array($item)) {
+                    continue;
+                }
+
+                $componentVariantId = $this->resolveImportBundleComponentVariantId(
+                    $item,
+                    $product,
+                    $variantSkuToId,
+                    $oldVariantIdToNewId,
+                );
+
+                if (! $componentVariantId) {
+                    continue;
+                }
+
+                $variant->bundleItems()->create([
+                    'component_variant_id' => $componentVariantId,
+                    'quantity' => max(1, (int) ($item['quantity'] ?? 1)),
+                    'sort_order' => isset($item['sort_order']) ? (int) $item['sort_order'] : $index,
+                ]);
+            }
+
+            $variant->load('bundleItems.componentVariant');
+            $variant->stock = 0;
+            $variant->low_stock_threshold = 0;
+            $variant->track_stock = true;
+            $variant->cost_price = $variant->derivedCostPrice() ?? 0;
+            $variant->save();
+        }
+    }
+
+    protected function resolveImportBundleComponentVariantId(
+        array $item,
+        Product $product,
+        array $variantSkuToId,
+        array $oldVariantIdToNewId,
+    ): ?int {
+        $sku = trim((string) (
+            $item['component_variant_sku']
+            ?? $item['componentVariant']['sku']
+            ?? $item['component_variant']['sku']
+            ?? ''
+        ));
+
+        if ($sku !== '') {
+            $skuKey = mb_strtolower($sku);
+            if (isset($variantSkuToId[$skuKey])) {
+                return $variantSkuToId[$skuKey];
+            }
+
+            $existingId = ProductVariant::query()
+                ->where('product_id', $product->id)
+                ->whereRaw('LOWER(sku) = ?', [$skuKey])
+                ->value('id');
+
+            if ($existingId) {
+                return (int) $existingId;
+            }
+        }
+
+        $legacyId = $item['component_variant_id'] ?? null;
+        if (is_numeric($legacyId) && isset($oldVariantIdToNewId[(int) $legacyId])) {
+            return $oldVariantIdToNewId[(int) $legacyId];
+        }
+
+        return null;
     }
 
     /**

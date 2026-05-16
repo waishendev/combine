@@ -17,6 +17,7 @@ import {
 } from './productUtils'
 import BulkUpdateModal from './BulkUpdateModal'
 import { useI18n } from '@/lib/i18n'
+import { getApiErrorMessage } from '@/lib/api-errors'
 
 interface ProductTableProps {
   permissions: string[]
@@ -396,11 +397,7 @@ export default function ProductTable({
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        const message =
-          json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
-            ? json.message
-            : 'Import CSV failed. Please retry.'
-        throw new Error(message)
+        throw new Error(getApiErrorMessage(json, 'Import CSV failed. Please retry.'))
       }
 
       const summaryPayload =
@@ -676,11 +673,7 @@ export default function ProductTable({
 
       if (!res.ok) {
         const json = await res.json().catch(() => null)
-        const message =
-          json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
-            ? json.message
-            : 'Bulk delete failed.'
-        setBulkDeleteError(message)
+        setBulkDeleteError(getApiErrorMessage(json, 'Bulk delete failed.'))
         return
       }
 
@@ -766,19 +759,7 @@ export default function ProductTable({
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        let message = 'Failed to adjust stock.'
-        if (json && typeof json === 'object') {
-          const errors = json.errors as Record<string, string[] | undefined> | undefined
-          const firstFieldError = errors
-            ? Object.values(errors).flatMap((items) => (Array.isArray(items) ? items : [])).find(Boolean)
-            : undefined
-          if (typeof firstFieldError === 'string') {
-            message = firstFieldError
-          } else if ('message' in json && typeof json.message === 'string') {
-            message = json.message
-          }
-        }
-        throw new Error(message)
+        throw new Error(getApiErrorMessage(json, 'Failed to adjust stock.'))
       }
 
       setStockAdjustment(null)
@@ -1013,7 +994,7 @@ export default function ProductTable({
                 )}
               </div>
               {bulkDeleteError && (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 whitespace-pre-line">
                   {bulkDeleteError}
                 </div>
               )}
