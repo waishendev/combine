@@ -81,6 +81,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
               href: '/staff-consumables',
               requiredPermission: 'pos.staff_consumables.access',
             },
+            {
+              key: 'staff-consumables-history',
+              label: 'My Consumable History',
+              icon: 'fa-solid fa-box-open',
+              href: '/staff-consumables/history',
+            },
           ] as MenuItem[])
         : []),
         // ======================
@@ -687,6 +693,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
               label: 'My Leave',
               icon: 'fa-solid fa-calendar-minus',
               href: '/booking/my-leave',
+            },
+            {
+              key: 'staff-consumables-history',
+              label: 'My Consumable History',
+              icon: 'fa-solid fa-box-open',
+              href: '/staff-consumables/history',
             },
           ] as const)
         : []),

@@ -73,7 +73,6 @@ const getPagedData = <T,>(json: unknown): T[] => {
 export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }: { canCheckout: boolean; canViewLogs: boolean }) {
   const [products, setProducts] = useState<ConsumableProduct[]>([])
   const [history, setHistory] = useState<ClaimHistoryRow[]>([])
-  const [myHistory, setMyHistory] = useState<ClaimHistoryRow[]>([])
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [cart, setCart] = useState<CartItem[]>([])
@@ -125,15 +124,6 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
     }
   }, [canViewLogs])
 
-  const loadMyHistory = useCallback(async () => {
-    try {
-      const res = await fetch('/api/proxy/admin/staff-consumables/my-claims?limit=20', { cache: 'no-store' })
-      const json = await res.json().catch(() => null)
-      if (res.ok) setMyHistory(getPagedData<ClaimHistoryRow>(json))
-    } catch {
-      setMyHistory([])
-    }
-  }, [])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -145,10 +135,6 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
   useEffect(() => {
     loadHistory()
   }, [loadHistory])
-
-  useEffect(() => {
-    loadMyHistory()
-  }, [loadMyHistory])
 
   const addProduct = (product: ConsumableProduct, variant?: ConsumableVariant) => {
     setMessage(null)
@@ -211,7 +197,7 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
       if (!res.ok) throw new Error(json?.message ?? 'Unable to record consumable claim.')
       setCart([])
       setMessage(`Consumable claim recorded. Order ${json?.data?.order_number ?? json?.order_number ?? ''}`.trim())
-      await Promise.all([loadProducts(), loadHistory(), loadMyHistory()])
+      await Promise.all([loadProducts(), loadHistory()])
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to record consumable claim.')
     } finally {
@@ -394,41 +380,6 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
             </button>
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="mb-3 text-lg font-bold text-slate-900">My Consumable History</h2>
-            {myHistory.length === 0 ? (
-              <p className="rounded-xl border border-dashed border-slate-200 p-4 text-sm text-slate-500">No consumable claims found for your staff account.</p>
-            ) : (
-              <div className="max-h-96 overflow-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="sticky top-0 bg-white text-slate-500">
-                    <tr>
-                      <th className="py-2 pr-2">Date/time</th>
-                      <th className="py-2 pr-2">Product</th>
-                      <th className="py-2 pr-2">SKU</th>
-                      <th className="py-2 pr-2 text-right">Qty</th>
-                      <th className="py-2 pr-2 text-right">Original</th>
-                      <th className="py-2 pr-2 text-right">Final</th>
-                      <th className="py-2">Reference</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {myHistory.map((row) => (
-                      <tr key={row.id}>
-                        <td className="py-2 pr-2 text-slate-500">{row.claimed_at ?? '-'}</td>
-                        <td className="py-2 pr-2 font-semibold text-slate-800">{row.product ?? '-'}</td>
-                        <td className="py-2 pr-2 text-slate-500">{row.sku ?? '-'}</td>
-                        <td className="py-2 pr-2 text-right text-slate-700">{row.qty}</td>
-                        <td className="py-2 pr-2 text-right text-slate-700">{formatCurrency(row.original_price)}</td>
-                        <td className="py-2 pr-2 text-right font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
-                        <td className="py-2 font-mono text-[11px] text-slate-600">{row.reference_no ?? row.order_number ?? '-'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
 
           {canViewLogs ? (
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

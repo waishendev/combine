@@ -431,6 +431,7 @@ $protectedRoutes = function () {
     Route::delete('/staffs/{staff}', [StaffController::class, 'destroy'])
         ->middleware('permission:staff.delete');
 
+    Route::get('/admin/staff-consumables/my-history', [PosController::class, 'myStaffConsumableClaims']);
     Route::get('/admin/staff-consumables/my-claims', [PosController::class, 'myStaffConsumableClaims'])
         ->middleware('permission:pos.staff_consumables.access');
     Route::get('/admin/staff-consumables/logs', [PosController::class, 'adminStaffConsumableLogs'])
