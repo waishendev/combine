@@ -19,13 +19,27 @@
             Just a quick little check-in — was everything okay for you today? 😊
         </p>
 
-        @if ($serviceName || $staffName || $appointmentDate)
         <div style="padding: 16px 20px; border: 1px solid #e0e0e0; border-radius: 8px; margin: 20px 0; background-color: #ffffff;">
             <table style="width: 100%; border-collapse: collapse;">
                 @if ($serviceName)
                 <tr>
-                    <td style="padding: 6px 4px; color: #666; width: 80px; vertical-align: top;">Service:</td>
+                    <td style="padding: 6px 4px; color: #666; width: 100px; vertical-align: top;">Service:</td>
                     <td style="padding: 6px 4px; font-weight: 600;">{{ $serviceName }}</td>
+                </tr>
+                @endif
+                @if (!empty($addonItems))
+                <tr>
+                    <td style="padding: 6px 4px; color: #666; vertical-align: top;">Add-Ons:</td>
+                    <td style="padding: 6px 4px;">
+                        @foreach ($addonItems as $addon)
+                            {{ $addon['name'] }}@if ($addon['extra_price'] > 0) (RM {{ number_format($addon['extra_price'], 2) }})@endif<br>
+                        @endforeach
+                    </td>
+                </tr>
+                @else
+                <tr>
+                    <td style="padding: 6px 4px; color: #666;">Add-Ons:</td>
+                    <td style="padding: 6px 4px; color: #999;">-</td>
                 </tr>
                 @endif
                 @if ($staffName)
@@ -40,9 +54,20 @@
                     <td style="padding: 6px 4px;">{{ $appointmentDate }}</td>
                 </tr>
                 @endif
+                @if ($appointmentStartTime)
+                <tr>
+                    <td style="padding: 6px 4px; color: #666; vertical-align: top;">Time:</td>
+                    <td style="padding: 6px 4px; font-weight: 600;">{{ $appointmentStartTime }} - {{ $appointmentEndTime }}</td>
+                </tr>
+                @endif
+                @if ($durationMin > 0)
+                <tr>
+                    <td style="padding: 6px 4px; color: #666; vertical-align: top;">Duration:</td>
+                    <td style="padding: 6px 4px;">{{ $durationMin }} minutes</td>
+                </tr>
+                @endif
             </table>
         </div>
-        @endif
 
         <p style="margin: 0 0 12px; font-size: 15px;">
             If anything didn't go quite right, feel free to let us know anytime. We're always here to make things better 💬💛

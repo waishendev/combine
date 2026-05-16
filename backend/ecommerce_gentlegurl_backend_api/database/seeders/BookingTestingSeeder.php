@@ -50,6 +50,8 @@ class BookingTestingSeeder extends Seeder
         $bookings = $this->seedBookings($staffOneId, $haircutService, $customerId);
         $this->seedBookingLogs($bookings, $staffOneId);
 
+        $this->seedGuestCompletedBookingForFeedback($staffOneId, $haircutService);
+
         $this->seedVoucherForNotifiedCancellation($bookings['NOTIFIED_CANCELLATION'], $customerId);
     }
 
@@ -556,6 +558,57 @@ class BookingTestingSeeder extends Seeder
         }
 
         return $bookings;
+    }
+
+    private function seedGuestCompletedBookingForFeedback(int $staffId, BookingService $service): void
+    {
+        $startAt = Carbon::parse('2026-05-16 10:00:00', 'Asia/Kuala_Lumpur');
+        $completedAt = Carbon::parse('2026-05-16 11:00:00', 'Asia/Kuala_Lumpur');
+        $duration = (int) $service->duration_min;
+
+        $booking = Booking::query()->updateOrCreate(
+            ['booking_code' => 'BKG-GUEST-TEOH-20260516'],
+            [
+                'source' => 'GUEST',
+                'customer_id' => null,
+                'guest_name' => 'TEOH WAI SHEN',
+                'guest_phone' => '0124482125',
+                'guest_email' => 'waishendev@gmail.com',
+                'staff_id' => $staffId,
+                'service_id' => $service->id,
+                'start_at' => $startAt,
+                'end_at' => $startAt->copy()->addMinutes($duration),
+                'buffer_min' => 15,
+                'status' => 'COMPLETED',
+                'deposit_amount' => $service->deposit_amount,
+                'payment_status' => 'PAID',
+                'completed_at' => $completedAt,
+                'created_by_staff_id' => $staffId,
+                'notes' => 'Guest completed booking for feedback email testing (16 May 2026)',
+            ]
+        );
+
+        if (! BookingLog::query()->where('booking_id', $booking->id)->where('action', 'CREATE_BOOKING')->exists()) {
+            BookingLog::query()->create([
+                'booking_id' => $booking->id,
+                'actor_type' => 'STAFF',
+                'actor_id' => $staffId,
+                'action' => 'CREATE_BOOKING',
+                'meta' => ['status' => 'HOLD'],
+                'created_at' => $startAt->copy()->subDay(),
+            ]);
+        }
+
+        if (! BookingLog::query()->where('booking_id', $booking->id)->where('action', 'UPDATE_STATUS')->exists()) {
+            BookingLog::query()->create([
+                'booking_id' => $booking->id,
+                'actor_type' => 'STAFF',
+                'actor_id' => $staffId,
+                'action' => 'UPDATE_STATUS',
+                'meta' => ['previous_status' => 'HOLD', 'new_status' => 'COMPLETED'],
+                'created_at' => $completedAt,
+            ]);
+        }
     }
 
     private function seedBookingLogs(array $bookings, int $actorStaffId): void
