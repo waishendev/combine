@@ -2,6 +2,7 @@
 
 namespace App\Services\Reports;
 
+use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
@@ -39,6 +40,125 @@ class SalesChannelReportService
                     ->orWhereNull("{$alias}.payment_status");
             })
             ->whereNull("{$alias}.refunded_at");
+    }
+
+
+    public function orderDetails(int $orderId): array
+    {
+        $order = Order::query()
+            ->with([
+                'customer:id,name',
+                'payments:id,order_id,payment_method,amount,reference_no',
+                'items' => fn ($query) => $query->orderBy('id'),
+                'items.product:id,name',
+                'items.productVariant:id,title,sku',
+                'items.booking:id,booking_code,service_id,guest_name,guest_phone,guest_email',
+                'items.booking.service:id,name,cn_name',
+                'items.bookingService:id,name,cn_name',
+                'items.staff:id,name',
+                'items.staffSplits.staff:id,name',
+            ])
+            ->where('id', $orderId)
+            ->where(function ($query) {
+                $query->where('status', 'completed')
+                    ->orWhere('payment_status', 'paid');
+            })
+            ->whereNotIn('status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($query) {
+                $query->where('payment_status', '!=', 'refunded')
+                    ->orWhereNull('payment_status');
+            })
+            ->whereNull('refunded_at')
+            ->firstOrFail();
+
+        $payments = $order->payments
+            ->map(fn ($payment) => [
+                'method' => (string) $payment->payment_method,
+                'amount' => (float) $payment->amount,
+                'reference_no' => $payment->reference_no,
+            ])
+            ->values();
+
+        $bookingNumbers = $order->items
+            ->map(fn (OrderItem $item) => $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $lineTypes = $order->items
+            ->pluck('line_type')
+            ->map(fn ($type) => $this->displayLineType((string) $type))
+            ->filter()
+            ->unique()
+            ->values();
+
+        return [
+            'order' => [
+                'id' => (int) $order->id,
+                'order_no' => (string) $order->order_number,
+                'order_datetime' => optional($order->created_at)?->toIso8601String(),
+                'customer' => (string) ($order->customer?->name ?: $order->shipping_name ?: $order->billing_name ?: 'Walk-in Customer'),
+                'payment_method' => (string) ($order->payment_method ?: 'unknown'),
+                'payments' => $payments->all(),
+                'type' => $lineTypes->isEmpty() ? 'Order' : $lineTypes->implode(', '),
+                'booking_no' => $bookingNumbers->isEmpty() ? null : $bookingNumbers->implode(', '),
+                'status' => (string) $order->status,
+                'grand_total' => (float) $order->grand_total,
+            ],
+            'lines' => $order->items->map(fn (OrderItem $item) => $this->formatOrderDetailLine($item))->values()->all(),
+        ];
+    }
+
+    private function formatOrderDetailLine(OrderItem $item): array
+    {
+        $gross = (float) ($item->line_total_snapshot ?? (((float) $item->line_total) + (float) ($item->discount_amount ?? 0)));
+        $discount = (float) ($item->discount_amount ?? 0);
+        $net = (float) ($item->line_total_after_discount ?? $item->effective_line_total ?? max(0.0, $gross - $discount));
+        $unitPrice = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
+        $variantName = trim((string) ($item->variant_name_snapshot ?: $item->productVariant?->title ?: ''));
+        $bookingNo = $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null);
+
+        $staffSplits = $item->staffSplits
+            ->map(fn ($split) => [
+                'staff_id' => (int) $split->staff_id,
+                'staff_name' => (string) ($split->staff?->name ?? ('Staff #' . $split->staff_id)),
+                'share_percent' => (int) $split->share_percent,
+                'commission_rate_snapshot' => (float) ($split->commission_rate_snapshot ?? 0),
+            ])
+            ->values();
+
+        return [
+            'id' => (int) $item->id,
+            'line_type' => (string) ($item->line_type ?? 'product'),
+            'type_label' => $this->displayLineType((string) ($item->line_type ?? 'product')),
+            'booking_no' => $bookingNo,
+            'name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: $item->product?->name ?: $item->bookingService?->name ?: 'Line item'),
+            'cn_name' => $item->displayCnName(),
+            'variant_name' => $variantName !== '' ? $variantName : null,
+            'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku,
+            'qty' => (int) ($item->quantity ?? 1),
+            'unit_price' => $unitPrice,
+            'gross_amount' => $gross,
+            'discount_amount' => $discount,
+            'net_amount' => $net,
+            'discount_type' => $item->discount_type,
+            'discount_value' => (float) ($item->discount_value ?? 0),
+            'discount_remark' => $item->discount_remark,
+            'staff_name' => $item->staff?->name,
+            'staff_splits' => $staffSplits->all(),
+        ];
+    }
+
+    private function displayLineType(string $lineType): string
+    {
+        return match ($lineType) {
+            'booking_deposit' => 'Booking Deposit',
+            'booking_settlement' => 'Settlement Service',
+            'booking_addon' => 'Add-on',
+            'service_package' => 'Service Package',
+            'booking_product' => 'Booking Product',
+            default => 'Product',
+        };
     }
 
     public function ecommerce(Carbon $start, Carbon $end, array $filters = []): array

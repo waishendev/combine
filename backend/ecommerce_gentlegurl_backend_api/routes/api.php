@@ -488,6 +488,10 @@ $protectedRoutes = function () {
     Route::get('/admin/reports/sales-summary', [SalesChannelReportController::class, 'salesSummary'])
         ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
+    Route::get('/admin/reports/sales/{orderId}/details', [SalesChannelReportController::class, 'details'])
+        ->whereNumber('orderId')
+        ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+
     // Ecommerce Admin APIs
     Route::prefix('ecommerce')->group(function () {
         // Categories
@@ -1044,6 +1048,10 @@ $protectedRoutes = function () {
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales/booking', [SalesChannelReportController::class, 'booking'])
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+
+            Route::get('/sales/{orderId}/details', [SalesChannelReportController::class, 'details'])
+                ->whereNumber('orderId')
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
             Route::get('/sales-summary', [SalesChannelReportController::class, 'salesSummary'])

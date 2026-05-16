@@ -1,5 +1,6 @@
 'use client'
 
+import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
@@ -115,6 +116,48 @@ type BookingResponse = {
   pagination?: Partial<Pagination>
 }
 
+type OrderDetailLine = {
+  id: number
+  line_type: string
+  type_label: string
+  booking_no?: string | null
+  name: string
+  cn_name?: string | null
+  variant_name?: string | null
+  sku?: string | null
+  qty: number
+  unit_price: number
+  gross_amount: number
+  discount_amount: number
+  net_amount: number
+  discount_type?: 'percentage' | 'fixed' | string | null
+  discount_value?: number
+  discount_remark?: string | null
+  staff_name?: string | null
+  staff_splits?: Array<{
+    staff_id: number
+    staff_name: string
+    share_percent: number
+    commission_rate_snapshot?: number
+  }>
+}
+
+type OrderDetail = {
+  order: {
+    id: number
+    order_no: string
+    order_datetime: string
+    customer: string
+    payment_method: string
+    payments?: PaymentBreakdownRow[]
+    type: string
+    booking_no?: string | null
+    status: string
+    grand_total: number
+  }
+  lines: OrderDetailLine[]
+}
+
 
 function ReportNameStack({ name, cnName }: { name?: string | null; cnName?: string | null }) {
   const displayCnName = cnName?.trim()
@@ -188,6 +231,25 @@ const paymentMethodDisplayLabel = (raw: string) => {
   const key = (raw ?? '').trim().toLowerCase()
   if (!key) return '—'
   return PAYMENT_METHOD_TABLE_LABELS[key] ?? labelize(raw)
+}
+
+const discountTypeDisplayLabel = (raw?: string | null) => {
+  const key = String(raw ?? '').trim()
+  return key ? labelize(key) : '—'
+}
+
+const discountValueDisplay = (type?: string | null, value?: number) => {
+  const amount = Number(value ?? 0)
+  if (!Number.isFinite(amount) || amount <= 0) return '—'
+  return type === 'percentage' ? `${formatAmount(amount)}%` : `RM ${formatAmount(amount)}`
+}
+
+const staffSplitDisplay = (line: OrderDetailLine) => {
+  const splits = Array.isArray(line.staff_splits) ? line.staff_splits : []
+  if (splits.length > 0) {
+    return splits.map((split) => `${split.staff_name} ${split.share_percent}%`).join(', ')
+  }
+  return line.staff_name || '—'
 }
 
 
@@ -289,6 +351,10 @@ export default function SalesChannelReportPage({
   const [loading, setLoading] = useState(true)
   const [isFilterOpen, setIsFilterOpen] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [detailError, setDetailError] = useState<string | null>(null)
+  const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
 
   useEffect(() => {
     setInputs(resolved)
@@ -394,6 +460,33 @@ export default function SalesChannelReportPage({
     }
     updateQuery(patch)
     setIsFilterOpen(false)
+  }
+
+  const openOrderDetail = async (orderId: number) => {
+    setDetailOpen(true)
+    setDetailLoading(true)
+    setDetailError(null)
+    setOrderDetail(null)
+
+    try {
+      const response = await fetch(`/api/proxy/admin/reports/sales/${orderId}/details`, { cache: 'no-store' })
+      const data = await response.json().catch(() => null) as OrderDetail | { message?: string } | null
+      if (!response.ok) {
+        setDetailError(data && 'message' in data && typeof data.message === 'string' ? data.message : 'Unable to load order details.')
+        return
+      }
+      setOrderDetail(data as OrderDetail)
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : 'Unable to load order details.')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const closeOrderDetail = () => {
+    setDetailOpen(false)
+    setDetailError(null)
+    setOrderDetail(null)
   }
 
   const showingRange = `${formatDisplayDate(resolved.dateFrom)} – ${formatDisplayDate(resolved.dateTo)}`
@@ -607,6 +700,16 @@ export default function SalesChannelReportPage({
                     <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
                     <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                     <td className="px-4 py-2 border border-gray-200 text-center">
+                      <div className="inline-flex items-center justify-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void openOrderDetail(row.order_id)}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-blue-300 hover:text-blue-700"
+                          title="View details"
+                          aria-label={`View details for ${row.order_no}`}
+                        >
+                          <i className="fa-solid fa-eye text-xs" />
+                        </button>
                       <OfflineOrderActions
                         orderId={row.order_id}
                         channel={row.channel}
@@ -618,6 +721,7 @@ export default function SalesChannelReportPage({
                           onDataChanged?.()
                         }}
                       />
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -642,6 +746,16 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">RM {formatAmount(row.net_amount)}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                   <td className="px-4 py-2 border border-gray-200 text-center">
+                    <div className="inline-flex items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void openOrderDetail(row.order_id)}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-blue-300 hover:text-blue-700"
+                        title="View details"
+                        aria-label={`View details for ${row.order_no}`}
+                      >
+                        <i className="fa-solid fa-eye text-xs" />
+                      </button>
                     <OfflineOrderActions
                       orderId={row.order_id}
                       channel={row.channel}
@@ -655,6 +769,7 @@ export default function SalesChannelReportPage({
                         onDataChanged?.()
                       }}
                     />
+                    </div>
                   </td>
                 </tr>
               ))
@@ -730,6 +845,92 @@ export default function SalesChannelReportPage({
         </table>
       </div>
 
+      {detailOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-6">
+          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Transaction details</p>
+                <h3 className="mt-1 text-lg font-bold text-slate-900">{orderDetail?.order.order_no ?? 'Loading…'}</h3>
+              </div>
+              <button
+                type="button"
+                onClick={closeOrderDetail}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800"
+                aria-label="Close details"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="max-h-[calc(90vh-72px)] overflow-y-auto px-5 py-4">
+              {detailLoading ? (
+                <div className="py-10 text-center text-sm text-slate-500">Loading order details…</div>
+              ) : detailError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{detailError}</div>
+              ) : orderDetail ? (
+                <div className="space-y-5">
+                  <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                    <DetailMeta label="Order no" value={orderDetail.order.order_no} />
+                    <DetailMeta label="Date/time" value={formatDisplayDateTime(orderDetail.order.order_datetime)} />
+                    <DetailMeta label="Customer" value={orderDetail.order.customer} />
+                    <DetailMeta label="Payment method" value={<PaymentMethodCell method={orderDetail.order.payment_method} payments={orderDetail.order.payments} />} />
+                    <DetailMeta label="Type" value={orderDetail.order.type} />
+                    <DetailMeta label="Booking no" value={orderDetail.order.booking_no ?? '—'} />
+                  </div>
+
+                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                    <table className="min-w-full divide-y divide-slate-200 text-sm">
+                      <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold">Line</th>
+                          <th className="px-3 py-2 text-left font-semibold">Qty / unit</th>
+                          <th className="px-3 py-2 text-right font-semibold">Gross</th>
+                          <th className="px-3 py-2 text-right font-semibold">Discount</th>
+                          <th className="px-3 py-2 text-right font-semibold">Net</th>
+                          <th className="px-3 py-2 text-left font-semibold">Discount details</th>
+                          <th className="px-3 py-2 text-left font-semibold">Staff split</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {orderDetail.lines.map((line) => (
+                          <tr key={line.id} className="align-top">
+                            <td className="px-3 py-3">
+                              <p className="text-xs font-semibold uppercase text-slate-400">{line.type_label}</p>
+                              <p className="mt-1 font-semibold text-slate-900">{line.name}</p>
+                              {line.cn_name ? <p className="mt-0.5 text-xs text-slate-500">{line.cn_name}</p> : null}
+                              {line.variant_name || line.sku ? (
+                                <p className="mt-1 text-xs text-slate-500">
+                                  {[line.variant_name, line.sku].filter(Boolean).join(' · ')}
+                                </p>
+                              ) : null}
+                              {line.booking_no ? <p className="mt-1 text-xs text-blue-700">Booking: {line.booking_no}</p> : null}
+                            </td>
+                            <td className="px-3 py-3 tabular-nums text-slate-700">
+                              <p>{line.qty}</p>
+                              <p className="text-xs text-slate-500">RM {formatAmount(line.unit_price)}</p>
+                            </td>
+                            <td className="px-3 py-3 text-right tabular-nums">RM {formatAmount(line.gross_amount)}</td>
+                            <td className="px-3 py-3 text-right tabular-nums text-amber-700">RM {formatAmount(line.discount_amount)}</td>
+                            <td className="px-3 py-3 text-right font-semibold tabular-nums text-slate-900">RM {formatAmount(line.net_amount)}</td>
+                            <td className="px-3 py-3 text-slate-700">
+                              <p>{discountTypeDisplayLabel(line.discount_type)}</p>
+                              <p className="text-xs text-slate-500">{discountValueDisplay(line.discount_type, line.discount_value)}</p>
+                              {line.discount_remark ? <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{line.discount_remark}</p> : null}
+                            </td>
+                            <td className="px-3 py-3 text-slate-700">{staffSplitDisplay(line)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <PaginationControls
         currentPage={pagination.current_page}
         totalPages={pagination.last_page}
@@ -746,6 +947,16 @@ function SummaryCard({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm">
       <p className="text-xs font-semibold uppercase text-slate-400">{label}</p>
       <p className="mt-1 text-lg font-semibold text-slate-700">{value}</p>
+    </div>
+  )
+}
+
+
+function DetailMeta({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
+      <div className="mt-1 font-medium text-slate-800">{value}</div>
     </div>
   )
 }
