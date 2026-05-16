@@ -56,6 +56,11 @@ class SalesChannelReportController extends Controller
         return response()->json($this->visualDaily->allDay($day));
     }
 
+    public function details(int $orderId)
+    {
+        return response()->json($this->service->orderDetails($orderId));
+    }
+
     public function ecommerce(Request $request)
     {
         [$start, $end] = $this->resolveDateRange($request);
