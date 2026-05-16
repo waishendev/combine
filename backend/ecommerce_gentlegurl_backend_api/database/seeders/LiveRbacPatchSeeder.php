@@ -144,7 +144,7 @@ class LiveRbacPatchSeeder extends Seeder
 
             // POS / Staff / Reports
             'staff' => ['view'],
-            'pos' => ['checkout'],
+            'pos' => ['checkout', 'staff_consumables.access', 'staff_consumables.checkout', 'staff_consumables.view_logs'],
             'pos.orders' => ['view'],
             'reports.my-pos-summary' => ['view'],
             'reports.pos-summary' => ['view'],
@@ -208,6 +208,9 @@ class LiveRbacPatchSeeder extends Seeder
             'customers.update',
             'customers.delete',
             'customers.verify',
+            'pos.staff_consumables.access',
+            'pos.staff_consumables.checkout',
+            'pos.staff_consumables.view_logs',
             'ecommerce.categories.view',
             'ecommerce.categories.create',
             'ecommerce.categories.update',
@@ -334,6 +337,8 @@ class LiveRbacPatchSeeder extends Seeder
 
         $staffPermissionIds = Permission::whereIn('slug', [
             'staff.view',
+            'pos.staff_consumables.access',
+            'pos.staff_consumables.checkout',
             'pos.checkout',
             'pos.orders.view',
             'reports.my-pos-summary.view',

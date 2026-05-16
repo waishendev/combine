@@ -1,5 +1,7 @@
 'use client'
 
+import Link from 'next/link'
+
 import StatusBadge from './StatusBadge'
 import { useI18n } from '@/lib/i18n'
 import type { StaffRowData } from './staffUtils'
@@ -9,8 +11,10 @@ export type { StaffRowData }
 interface StaffRowProps {
   staff: StaffRowData
   showActions?: boolean
+  canView?: boolean
   canUpdate?: boolean
   canDelete?: boolean
+  canViewConsumableLogs?: boolean
   onEdit?: (staff: StaffRowData) => void
   onDelete?: (staff: StaffRowData) => void
   onView?: (staff: StaffRowData) => void
@@ -19,8 +23,10 @@ interface StaffRowProps {
 export default function StaffRow({
   staff,
   showActions = false,
+  canView = false,
   canUpdate = false,
   canDelete = false,
+  canViewConsumableLogs = false,
   onEdit,
   onDelete,
   onView,
@@ -49,7 +55,19 @@ export default function StaffRow({
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
-            <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-600 text-white hover:bg-gray-700" onClick={() => onView?.(staff)} title="View"><i className="fa-solid fa-eye" /></button>
+            {canView && (
+              <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-600 text-white hover:bg-gray-700" onClick={() => onView?.(staff)} title="View"><i className="fa-solid fa-eye" /></button>
+            )}
+            {canViewConsumableLogs && (
+              <Link
+                href={`/logs/staff-consumables?staff_id=${staff.id}`}
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                title="Consumable Logs"
+                aria-label="Consumable Logs"
+              >
+                <i className="fa-solid fa-receipt" />
+              </Link>
+            )}
             {canUpdate && (
               <button
                 type="button"

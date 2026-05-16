@@ -35,6 +35,8 @@ class StaffPermissionSeeder extends Seeder
         $permissionIds = Permission::whereIn('slug', [
             // 'booking.commission-tiers.view',
             // 'staff.view',
+            'pos.staff_consumables.access',
+            'pos.staff_consumables.checkout',
             // 'pos.checkout',
             // 'pos.orders.view',
             // 'reports.my-pos-summary.view',

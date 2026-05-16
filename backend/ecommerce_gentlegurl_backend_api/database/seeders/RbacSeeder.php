@@ -67,6 +67,7 @@ class RbacSeeder extends Seeder
             'ecommerce.dashboard' => 'Ecommerce Dashboard',
             'ecommerce.settings' => 'Ecommerce Settings',
             'ecommerce.orders' => 'Ecommerce Orders',
+            'pos' => 'POS',
             'booking' => 'Booking',
         ];
 
@@ -182,6 +183,8 @@ class RbacSeeder extends Seeder
             'ecommerce.orders.view',
             'customers.view',
             'ecommerce.products.view',
+            'pos.staff_consumables.access',
+            'pos.staff_consumables.checkout',
         ])->pluck('id')->all();
 
         $staffRole->permissions()->sync($staffPermissionIds);

@@ -431,6 +431,23 @@ $protectedRoutes = function () {
     Route::delete('/staffs/{staff}', [StaffController::class, 'destroy'])
         ->middleware('permission:staff.delete');
 
+    Route::get('/admin/staff-consumables/my-history', [PosController::class, 'myStaffConsumableClaims']);
+    Route::get('/admin/staff-consumables/my-claims', [PosController::class, 'myStaffConsumableClaims'])
+        ->middleware('permission:pos.staff_consumables.access');
+    Route::get('/admin/staff-consumables/logs', [PosController::class, 'adminStaffConsumableLogs'])
+        ->middleware('permission:pos.staff_consumables.view_logs');
+    Route::get('/admin/staffs/{staff}/consumable-claims', [PosController::class, 'staffConsumableClaims'])
+        ->middleware('permission:pos.staff_consumables.view_logs');
+
+    Route::prefix('pos/staff-consumables')->group(function () {
+        Route::get('/products', [PosController::class, 'staffConsumableProducts'])
+            ->middleware('permission:pos.staff_consumables.access');
+        Route::get('/history', [PosController::class, 'staffConsumableHistory'])
+            ->middleware('permission:pos.staff_consumables.view_logs');
+        Route::post('/checkout', [PosController::class, 'staffConsumableCheckout'])
+            ->middleware('permission:pos.staff_consumables.checkout');
+    });
+
     Route::prefix('pos')->middleware('permission:pos.checkout')->group(function () {
         Route::get('/cash-shifts/current', [PosCashShiftController::class, 'current']);
         Route::post('/cash-shifts/open', [PosCashShiftController::class, 'open']);

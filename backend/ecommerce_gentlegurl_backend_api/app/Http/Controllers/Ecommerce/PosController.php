@@ -2994,6 +2994,498 @@ class PosController extends Controller
         ]);
     }
 
+    public function staffConsumableProducts(Request $request)
+    {
+        $query = trim((string) $request->query('q', ''));
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = max(1, min(100, (int) $request->query('per_page', 60)));
+        $categoryId = $request->integer('category_id');
+
+        $products = Product::query()
+            ->with(['images', 'categories:id,name', 'variants' => function ($builder) {
+                $builder->where('is_active', true)->orderBy('sort_order')->orderBy('id');
+            }, 'variants.bundleItems.componentVariant'])
+            ->where('is_active', true)
+            ->where('is_reward_only', false)
+            ->where('is_staff_free', true)
+            ->when($categoryId > 0, function ($builder) use ($categoryId) {
+                $builder->whereHas('categories', fn ($categoryQuery) => $categoryQuery->where('categories.id', $categoryId));
+            })
+            ->when($query !== '', function ($builder) use ($query) {
+                $exact = mb_strtolower($query);
+                $builder->where(function ($search) use ($query, $exact) {
+                    $search
+                        ->where('products.name', 'like', "%{$query}%")
+                        ->orWhere('products.sku', 'like', "%{$query}%")
+                        ->orWhere('products.barcode', 'like', "%{$query}%")
+                        ->orWhereRaw('LOWER(products.sku) = ?', [$exact])
+                        ->orWhereRaw('LOWER(products.barcode) = ?', [$exact])
+                        ->orWhereHas('variants', function ($variantQuery) use ($query, $exact) {
+                            $variantQuery
+                                ->where('product_variants.sku', 'like', "%{$query}%")
+                                ->orWhere('product_variants.barcode', 'like', "%{$query}%")
+                                ->orWhereRaw('LOWER(product_variants.sku) = ?', [$exact])
+                                ->orWhereRaw('LOWER(product_variants.barcode) = ?', [$exact]);
+                        });
+                });
+            })
+            ->orderBy('name')
+            ->paginate($perPage, ['*'], 'page', $page);
+
+        return $this->respond([
+            'data' => collect($products->items())->map(fn (Product $product) => $this->serializeStaffConsumableProduct($product))->values(),
+            'current_page' => $products->currentPage(),
+            'last_page' => $products->lastPage(),
+            'per_page' => $products->perPage(),
+            'total' => $products->total(),
+        ]);
+    }
+
+    public function staffConsumableHistory(Request $request)
+    {
+        $limit = max(1, min(50, (int) $request->query('limit', 15)));
+
+        $items = $this->staffConsumableClaimQuery()
+            ->latest('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))
+            ->values();
+
+        return $this->respond(['data' => $items]);
+    }
+
+    public function myStaffConsumableClaims(Request $request)
+    {
+        $staffId = (int) ($request->user()?->staff_id ?? 0);
+        if ($staffId <= 0) {
+            return $this->respondError(__('Only staff accounts can view their consumable claim history.'), 403);
+        }
+
+        $limit = max(1, min(50, (int) $request->query('limit', 20)));
+
+        $items = $this->staffConsumableClaimQuery()
+            ->where(function ($query) use ($staffId) {
+                $query
+                    ->where('order_items.staff_id', $staffId)
+                    ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', $staffId));
+            })
+            ->latest('order_items.id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))
+            ->values();
+
+        return $this->respond(['data' => $items]);
+    }
+
+    public function adminStaffConsumableLogs(Request $request)
+    {
+        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+        $query = $this->staffConsumableClaimQuery();
+        $this->applyStaffConsumableLogFilters($query, $request);
+
+        $logs = $query
+            ->latest('order_items.id')
+            ->paginate($perPage);
+
+        return $this->respond([
+            'data' => collect($logs->items())->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))->values(),
+            'current_page' => $logs->currentPage(),
+            'last_page' => $logs->lastPage(),
+            'per_page' => $logs->perPage(),
+            'total' => $logs->total(),
+        ]);
+    }
+
+    public function staffConsumableClaims(Request $request, Staff $staff)
+    {
+        $limit = max(1, min(50, (int) $request->query('limit', 10)));
+
+        $items = $this->staffConsumableClaimQuery()
+            ->where(function ($query) use ($staff) {
+                $query
+                    ->where('order_items.staff_id', (int) $staff->id)
+                    ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', (int) $staff->id));
+            })
+            ->latest('order_items.id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))
+            ->values();
+
+        return $this->respond(['data' => $items]);
+    }
+
+    protected function staffConsumableClaimQuery()
+    {
+        return OrderItem::query()
+            ->with([
+                'order.creator.staff:id,name',
+                'staff:id,name',
+                'product:id,name,sku',
+                'productVariant:id,title,sku',
+            ])
+            ->where('is_staff_free_applied', true)
+            ->whereHas('order', function ($builder) {
+                $builder->where(function ($orderQuery) {
+                    $orderQuery
+                        ->where('notes', 'like', '%staff_free_consumable_claim%')
+                        ->orWhere('payment_method', 'staff_free');
+                });
+            });
+    }
+
+    protected function applyStaffConsumableLogFilters($query, Request $request): void
+    {
+        $dateFrom = trim((string) ($request->query('from_date', $request->query('date_from', ''))));
+        $dateTo = trim((string) ($request->query('to_date', $request->query('date_to', ''))));
+        $search = trim((string) ($request->query('search', $request->query('q', ''))));
+        $staffId = (int) $request->query('staff_id', 0);
+
+        if ($dateFrom !== '') {
+            $query->whereHas('order', fn ($orderQuery) => $orderQuery->whereDate('created_at', '>=', $dateFrom));
+        }
+
+        if ($dateTo !== '') {
+            $query->whereHas('order', fn ($orderQuery) => $orderQuery->whereDate('created_at', '<=', $dateTo));
+        }
+
+        if ($staffId > 0) {
+            $query->where(function ($staffQuery) use ($staffId) {
+                $staffQuery
+                    ->where('order_items.staff_id', $staffId)
+                    ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', $staffId));
+            });
+        }
+
+        if ($search !== '') {
+            $query->where(function ($searchQuery) use ($search) {
+                $searchQuery
+                    ->where('product_name_snapshot', 'like', "%{$search}%")
+                    ->orWhere('display_name_snapshot', 'like', "%{$search}%")
+                    ->orWhere('sku_snapshot', 'like', "%{$search}%")
+                    ->orWhere('variant_sku_snapshot', 'like', "%{$search}%")
+                    ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', "%{$search}%"))
+                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('order.creator', function ($creatorQuery) use ($search) {
+                        $creatorQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+    }
+
+    protected function serializeStaffConsumableClaim(OrderItem $item): array
+    {
+        $order = $item->order;
+        $creator = $order?->creator;
+        $staff = $item->staff ?? $creator?->staff;
+
+        return [
+            'id' => (int) $item->id,
+            'claimed_at' => optional($order?->created_at)->toDateTimeString(),
+            'staff_id' => $staff?->id ? (int) $staff->id : null,
+            'staff' => $staff?->name ?? $creator?->name ?? $creator?->email ?? 'Staff',
+            'claimed_by' => $staff?->name ?? $creator?->name ?? $creator?->email ?? 'Staff',
+            'created_by' => $creator?->name ?? $creator?->email ?? 'System',
+            'order_number' => (string) ($order?->order_number ?? '-'),
+            'reference_no' => (string) ($order?->order_number ?? '-'),
+            'product' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: $item->product?->name ?: 'Product'),
+            'sku' => (string) ($item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku ?: $item->product?->sku ?: '-'),
+            'qty' => (int) $item->quantity,
+            'original_price' => (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
+            'line_total_snapshot' => (float) ($item->line_total_snapshot ?? 0),
+            'final_amount' => (float) ($item->effective_line_total ?? $item->line_total ?? 0),
+        ];
+    }
+
+    public function staffConsumableCheckout(Request $request)
+    {
+        if (empty($request->user()?->staff_id)) {
+            return $this->respondError(__('Only staff accounts can claim consumables.'), 403);
+        }
+
+        $validated = $request->validate([
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_id' => ['required', 'integer', 'exists:products,id'],
+            'items.*.variant_id' => ['nullable', 'integer', 'exists:product_variants,id'],
+            'items.*.qty' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $order = DB::transaction(function () use ($validated, $request) {
+            $payloadItems = collect($validated['items']);
+            $order = Order::create([
+                'order_number' => $this->generateOrderNumber(),
+                'customer_id' => null,
+                'created_by_user_id' => $request->user()->id,
+                'status' => 'completed',
+                'payment_status' => 'paid',
+                'payment_method' => 'staff_free',
+                'payment_provider' => 'manual',
+                'subtotal' => 0,
+                'discount_total' => 0,
+                'shipping_fee' => 0,
+                'grand_total' => 0,
+                'pickup_or_shipping' => 'in_store',
+                'placed_at' => now(),
+                'paid_at' => now(),
+                'completed_at' => now(),
+                'notes' => 'staff_free_consumable_claim by staff #' . $request->user()->staff_id . ' user #' . $request->user()->id,
+                'payment_meta' => [
+                    'source' => 'staff_free_consumable_claim',
+                    'staff_id' => (int) $request->user()->staff_id,
+                    'user_id' => (int) $request->user()->id,
+                ],
+            ]);
+
+            foreach ($payloadItems as $payloadItem) {
+                $qty = max(1, (int) $payloadItem['qty']);
+                $variantId = !empty($payloadItem['variant_id']) ? (int) $payloadItem['variant_id'] : null;
+
+                $product = Product::query()
+                    ->with(['images', 'variants.bundleItems.componentVariant'])
+                    ->where('id', (int) $payloadItem['product_id'])
+                    ->where('is_active', true)
+                    ->where('is_reward_only', false)
+                    ->where('is_staff_free', true)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $product) {
+                    abort(422, __('Only staff-free products can be claimed here.'));
+                }
+
+                $variant = null;
+                if ($variantId) {
+                    $variant = ProductVariant::query()
+                        ->with(['product', 'bundleItems.componentVariant.product'])
+                        ->where('id', $variantId)
+                        ->where('product_id', (int) $product->id)
+                        ->where('is_active', true)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (! $variant) {
+                        abort(422, __('Selected variant is not available.'));
+                    }
+                }
+
+                $availableQty = $variant ? $this->resolveVariantAvailableQty($variant) : ($product->track_stock ? (int) $product->stock : null);
+                if ($availableQty !== null && $qty > $availableQty) {
+                    abort(422, __('Insufficient stock for :sku', ['sku' => $variant?->sku ?? $product->sku ?? $product->id]));
+                }
+
+                $pricing = ProductPricing::build($product, $variant);
+                $unitPriceSnapshot = (float) ($pricing['effective_price'] ?? $variant?->sale_price ?? $variant?->price ?? $product->sale_price ?? $product->price ?? 0);
+                $resolvedUnitCost = (float) ($variant
+                    ? ($variant->is_bundle ? $variant->derivedCostPrice() : $variant->cost_price)
+                    : $product->cost_price
+                );
+
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'line_type' => 'product',
+                    'product_id' => $product->id,
+                    'product_variant_id' => $variant?->id,
+                    'product_name_snapshot' => $product->name,
+                    'display_name_snapshot' => $variant ? trim($product->name . ' - ' . $variant->title) : $product->name,
+                    'sku_snapshot' => $product->sku,
+                    'variant_name_snapshot' => $variant?->title,
+                    'variant_sku_snapshot' => $variant?->sku,
+                    'price_snapshot' => $unitPriceSnapshot,
+                    'unit_price_snapshot' => $unitPriceSnapshot,
+                    'variant_price_snapshot' => $variant?->price,
+                    'variant_cost_snapshot' => $variant?->is_bundle ? $variant?->derivedCostPrice() : $variant?->cost_price,
+                    'cost_price_snapshot' => $resolvedUnitCost,
+                    'cost_amount_snapshot' => round($resolvedUnitCost * $qty, 2),
+                    'quantity' => $qty,
+                    'line_total' => 0,
+                    'line_total_snapshot' => round($unitPriceSnapshot * $qty, 2),
+                    'effective_unit_price' => 0,
+                    'effective_line_total' => 0,
+                    'is_staff_free_applied' => true,
+                    'discount_amount' => round($unitPriceSnapshot * $qty, 2),
+                    'line_total_after_discount' => 0,
+                    'staff_id' => (int) $request->user()->staff_id,
+                    'locked' => true,
+                ]);
+
+                $this->deductStaffConsumableStock($product, $variant, $qty, (int) $request->user()->id);
+            }
+
+            return $order->fresh(['items', 'creator']);
+        });
+
+        return $this->respond([
+            'message' => __('Consumable claim recorded.'),
+            'order_id' => (int) $order->id,
+            'order_number' => (string) $order->order_number,
+            'grand_total' => 0,
+        ]);
+    }
+
+    protected function serializeStaffConsumableProduct(Product $product): array
+    {
+        $pricing = ProductPricing::build($product, null);
+
+        return [
+            'id' => (int) $product->id,
+            'product_id' => (int) $product->id,
+            'name' => (string) $product->name,
+            'sku' => (string) ($product->sku ?? ''),
+            'barcode' => (string) ($product->barcode ?? ''),
+            'price' => (float) ($pricing['effective_price'] ?? $product->sale_price ?? $product->price ?? 0),
+            'is_staff_free' => true,
+            'thumbnail_url' => $product->cover_image_url,
+            'image_url' => $product->cover_image_url,
+            'category' => $product->categories->first()?->name,
+            'categories' => $product->categories->map(fn ($category) => ['id' => (int) $category->id, 'name' => (string) $category->name])->values(),
+            'track_stock' => (bool) $product->track_stock,
+            'stock' => $product->track_stock ? (int) $product->stock : null,
+            'variants' => $product->variants->map(function (ProductVariant $variant) use ($product) {
+                $variantPricing = ProductPricing::build($product, $variant);
+                return [
+                    'id' => (int) $variant->id,
+                    'name' => (string) $variant->title,
+                    'title' => (string) $variant->title,
+                    'sku' => (string) ($variant->sku ?? ''),
+                    'barcode' => (string) ($variant->barcode ?? ''),
+                    'price' => (float) ($variantPricing['effective_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
+                    'image_url' => $variant->image_url ?? $product->cover_image_url,
+                    'is_active' => (bool) $variant->is_active,
+                    'is_bundle' => (bool) $variant->is_bundle,
+                    'track_stock' => (bool) $variant->track_stock,
+                    'stock' => $this->resolveVariantAvailableQty($variant),
+                ];
+            })->values(),
+        ];
+    }
+
+    protected function deductStaffConsumableStock(Product $product, ?ProductVariant $variant, int $qty, ?int $actorUserId = null): void
+    {
+        if ($variant) {
+            if ($variant->is_bundle) {
+                $variant->loadMissing('bundleItems.componentVariant.product');
+                foreach ($variant->bundleItems as $bundleItem) {
+                    $component = $bundleItem->componentVariant;
+                    if (! $component || ! $component->track_stock) {
+                        continue;
+                    }
+
+                    $required = max(1, (int) ($bundleItem->quantity ?? 1)) * $qty;
+                    $componentVariant = ProductVariant::query()->where('id', (int) $component->id)->lockForUpdate()->first();
+                    if (! $componentVariant) {
+                        continue;
+                    }
+
+                    $beforeQty = (int) ($componentVariant->stock ?? 0);
+                    $afterQty = max(0, $beforeQty - $required);
+                    if ($afterQty === $beforeQty) {
+                        continue;
+                    }
+
+                    $unitCost = (float) ($componentVariant->cost_price ?? 0);
+                    $componentVariant->stock = $afterQty;
+                    $componentVariant->save();
+
+                    ProductStockMovement::create([
+                        'product_id' => (int) ($component->product_id ?? $product->id),
+                        'product_variant_id' => (int) $componentVariant->id,
+                        'type' => 'stock_out',
+                        'quantity_before' => $beforeQty,
+                        'quantity_change' => $required,
+                        'quantity_after' => $afterQty,
+                        'cost_price_before' => $unitCost,
+                        'cost_price_after' => $unitCost,
+                        'inventory_value_before' => round($beforeQty * $unitCost, 2),
+                        'inventory_value_after' => round($afterQty * $unitCost, 2),
+                        'input_cost_price_per_unit' => null,
+                        'remark' => 'Staff consumable claim (bundle)',
+                        'created_by_user_id' => $actorUserId,
+                    ]);
+                }
+
+                return;
+            }
+
+            if (! $variant->track_stock) {
+                return;
+            }
+
+            $lockedVariant = ProductVariant::query()->where('id', (int) $variant->id)->lockForUpdate()->first();
+            if (! $lockedVariant) {
+                return;
+            }
+
+            $beforeQty = (int) ($lockedVariant->stock ?? 0);
+            $afterQty = max(0, $beforeQty - $qty);
+            if ($afterQty === $beforeQty) {
+                return;
+            }
+
+            $unitCost = (float) ($lockedVariant->cost_price ?? 0);
+            $lockedVariant->stock = $afterQty;
+            $lockedVariant->save();
+
+            ProductStockMovement::create([
+                'product_id' => (int) $product->id,
+                'product_variant_id' => (int) $lockedVariant->id,
+                'type' => 'stock_out',
+                'quantity_before' => $beforeQty,
+                'quantity_change' => $qty,
+                'quantity_after' => $afterQty,
+                'cost_price_before' => $unitCost,
+                'cost_price_after' => $unitCost,
+                'inventory_value_before' => round($beforeQty * $unitCost, 2),
+                'inventory_value_after' => round($afterQty * $unitCost, 2),
+                'input_cost_price_per_unit' => null,
+                'remark' => 'Staff consumable claim',
+                'created_by_user_id' => $actorUserId,
+            ]);
+
+            return;
+        }
+
+        if (! $product->track_stock) {
+            return;
+        }
+
+        $lockedProduct = Product::query()->where('id', (int) $product->id)->lockForUpdate()->first();
+        if (! $lockedProduct) {
+            return;
+        }
+
+        $beforeQty = (int) ($lockedProduct->stock ?? 0);
+        $afterQty = max(0, $beforeQty - $qty);
+        if ($afterQty === $beforeQty) {
+            return;
+        }
+
+        $unitCost = (float) ($lockedProduct->cost_price ?? 0);
+        $lockedProduct->stock = $afterQty;
+        $lockedProduct->stock_quantity = $afterQty;
+        $lockedProduct->inventory_value = round($afterQty * $unitCost, 2);
+        $lockedProduct->save();
+
+        ProductStockMovement::create([
+            'product_id' => (int) $lockedProduct->id,
+            'product_variant_id' => null,
+            'type' => 'stock_out',
+            'quantity_before' => $beforeQty,
+            'quantity_change' => $qty,
+            'quantity_after' => $afterQty,
+            'cost_price_before' => $unitCost,
+            'cost_price_after' => $unitCost,
+            'inventory_value_before' => round($beforeQty * $unitCost, 2),
+            'inventory_value_after' => round($afterQty * $unitCost, 2),
+            'input_cost_price_per_unit' => null,
+            'remark' => 'Staff consumable claim',
+            'created_by_user_id' => $actorUserId,
+        ]);
+    }
+
     public function updateCartItem(Request $request, int $itemId)
     {
         $validated = $request->validate([

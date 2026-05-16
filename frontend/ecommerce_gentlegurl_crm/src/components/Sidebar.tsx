@@ -72,6 +72,23 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
       //   icon: 'fa-solid fa-gauge',
       //   href: '/dashboard',
       // },
+      ...(staffId
+        ? ([
+            {
+              key: 'staff-consumables',
+              label: 'Staff Consumables',
+              icon: 'fa-solid fa-hand-holding-heart',
+              href: '/staff-consumables',
+              requiredPermission: 'pos.staff_consumables.access',
+            },
+            {
+              key: 'staff-consumables-history',
+              label: 'My Consumable History',
+              icon: 'fa-solid fa-box-open',
+              href: '/staff-consumables/history',
+            },
+          ] as MenuItem[])
+        : []),
         // ======================
       // Admin Management
       // ======================
@@ -475,6 +492,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             requiredPermission: 'ecommerce.stock-movements-logs.view',
           },
           {
+            key: 'staff-consumable-logs',
+            label: 'Staff Consumable Logs',
+            href: '/logs/staff-consumables',
+            requiredPermission: 'pos.staff_consumables.view_logs',
+          },
+          {
             key: 'ecommerce-commission-logs',
             label: 'Commission Logs',
             href: '/booking/commissions/logs',
@@ -573,7 +596,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
       //   requiredPermission: 'ecommerce.settings.view',
       // },
     ],
-    [],
+    [staffId],
   );
 
   const bookingMenuItems: MenuItem[] = useMemo(
@@ -670,6 +693,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
               label: 'My Leave',
               icon: 'fa-solid fa-calendar-minus',
               href: '/booking/my-leave',
+            },
+            {
+              key: 'staff-consumables-history',
+              label: 'My Consumable History',
+              icon: 'fa-solid fa-box-open',
+              href: '/staff-consumables/history',
             },
           ] as const)
         : []),

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
+import Link from 'next/link'
 
 import { useI18n } from '@/lib/i18n'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
@@ -11,9 +12,10 @@ type HeaderProps = {
   onToggleSidebar: () => void
   userEmail?: string | null
   permissions?: string[]
+  staffId?: number | null
 }
 
-export default function Header({ onLogout, onToggleSidebar, userEmail, permissions = [] }: HeaderProps) {
+export default function Header({ onLogout, onToggleSidebar, userEmail, permissions = [], staffId = null }: HeaderProps) {
   const { t } = useI18n()
   const [accountOpen, setAccountOpen] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)
@@ -25,6 +27,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
   }
   const [logoUrl, setLogoUrl] = useState<string | null>(getInitialLogoUrl())
   const accountRef = useRef<HTMLDivElement | null>(null)
+  const showStaffConsumablesLink = Boolean(staffId) && permissions.includes('pos.staff_consumables.access')
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -55,7 +58,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
       if (typeof window !== 'undefined' && crmLogo) {
         window.sessionStorage.setItem(storageKey, crmLogo)
       }
-    } catch (error) {
+    } catch {
       if (signal?.aborted) return
     }
   }
@@ -137,6 +140,16 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
             <WorkspaceSwitcher permissions={permissions} />
           </div>
         </div>
+
+        {showStaffConsumablesLink ? (
+          <Link
+            href="/staff-consumables"
+            className="hidden shrink-0 items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-100 sm:inline-flex"
+          >
+            <i className="fa-solid fa-hand-holding-heart" />
+            <span>Consumables</span>
+          </Link>
+        ) : null}
 
         <div className="relative shrink-0" ref={accountRef}>
           <button
