@@ -187,7 +187,8 @@ class PointsService
             }
 
             if ($lockedProduct) {
-                $lockedProduct->stock = (int) $lockedProduct->stock - 1;
+                $lockedProduct->stock = max(0, (int) $lockedProduct->stock - 1);
+                $lockedProduct->stock_quantity = $lockedProduct->stock;
                 $lockedProduct->save();
             }
 

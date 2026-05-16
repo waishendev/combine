@@ -10,7 +10,11 @@ import PaginationControls from './PaginationControls'
 import ProductRow, { type ProductRowData } from './ProductRow'
 import { ProductFilterValues, emptyProductFilters } from './ProductFilters'
 import ProductFiltersWrapper from './ProductFiltersWrapper'
-import { mapProductApiItemToRow, type ProductApiItem } from './productUtils'
+import {
+  mapProductApiItemToRow,
+  resolveStockAdjustmentTarget,
+  type ProductApiItem,
+} from './productUtils'
 import BulkUpdateModal from './BulkUpdateModal'
 import { useI18n } from '@/lib/i18n'
 
@@ -706,7 +710,7 @@ export default function ProductTable({
 
     const selectedVariant = getSelectedVariant(stockAdjustment)
     const hasVariants = (stockAdjustment.product.variants?.length ?? 0) > 0
-    const targetStock = hasVariants ? (selectedVariant?.stock ?? 0) : stockAdjustment.product.stock
+    const targetStock = resolveStockAdjustmentTarget(stockAdjustment.product, selectedVariant)
 
     if (hasVariants && !selectedVariant) {
       window.alert('Please select a variant.')
@@ -762,10 +766,18 @@ export default function ProductTable({
 
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        const message =
-          json && typeof json === 'object' && 'message' in json && typeof json.message === 'string'
-            ? json.message
-            : 'Failed to adjust stock.'
+        let message = 'Failed to adjust stock.'
+        if (json && typeof json === 'object') {
+          const errors = json.errors as Record<string, string[] | undefined> | undefined
+          const firstFieldError = errors
+            ? Object.values(errors).flatMap((items) => (Array.isArray(items) ? items : [])).find(Boolean)
+            : undefined
+          if (typeof firstFieldError === 'string') {
+            message = firstFieldError
+          } else if ('message' in json && typeof json.message === 'string') {
+            message = json.message
+          }
+        }
         throw new Error(message)
       }
 
@@ -845,7 +857,7 @@ export default function ProductTable({
             {(() => {
               const hasVariants = (stockAdjustment.product.variants?.length ?? 0) > 0
               const selectedVariant = getSelectedVariant(stockAdjustment)
-              const currentStock = hasVariants ? (selectedVariant?.stock ?? 0) : stockAdjustment.product.stock
+              const currentStock = resolveStockAdjustmentTarget(stockAdjustment.product, selectedVariant)
               const isBundleSelected = selectedVariant?.isBundle === true
 
               return (
@@ -863,9 +875,11 @@ export default function ProductTable({
                         required
                       >
                         <option value="">Select variant</option>
-                        {(stockAdjustment.product.variants ?? []).map((variant) => (
+                        {(stockAdjustment.product.variants ?? [])
+                          .filter((variant) => !variant.isBundle)
+                          .map((variant) => (
                           <option key={variant.id} value={variant.id}>
-                            {variant.name}{variant.sku ? ` (${variant.sku})` : ''}
+                            {variant.name}{variant.sku ? ` (${variant.sku})` : ''} — stock {resolveStockAdjustmentTarget(stockAdjustment.product, variant)}
                           </option>
                         ))}
                       </select>
@@ -1243,16 +1257,17 @@ export default function ProductTable({
                       handleDelete(product)
                     }
                   }}
-                  onStockAdjustment={() =>
+                  onStockAdjustment={() => {
+                    const firstAdjustable = (product.variants ?? []).find((variant) => !variant.isBundle)
                     setStockAdjustment({
                       product,
-                      selectedVariantId: '',
+                      selectedVariantId: firstAdjustable ? String(firstAdjustable.id) : '',
                       adjustmentType: 'stock_in',
                       quantity: '',
                       costPricePerUnit: '',
                       remark: '',
                     })
-                  }
+                  }}
                   onViewStockLogs={() => router.push(`/products/stock-movements?product_id=${product.id}`)}
                 />
               ))

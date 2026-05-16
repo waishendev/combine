@@ -111,7 +111,7 @@ class ProductStockMovementController extends Controller
 
             $beforeQty = $lockedVariant
                 ? (int) ($lockedVariant->stock ?? 0)
-                : (int) ($lockedProduct->stock_quantity ?? $lockedProduct->stock ?? 0);
+                : $lockedProduct->resolvedStockQuantity();
             $beforeCost = $lockedVariant
                 ? (float) ($lockedVariant->cost_price ?? 0)
                 : (float) ($lockedProduct->cost_price ?? 0);

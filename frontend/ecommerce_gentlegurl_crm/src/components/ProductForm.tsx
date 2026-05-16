@@ -229,21 +229,55 @@ const META_OG_IMAGE_TYPES = [
 
 const META_OG_IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'png', 'webp', 'gif'] as const
 
+function fieldLabelForLaravelKey(key: string): string | null {
+  const variantSku = /^variants\.(\d+)\.sku$/.exec(key)
+  if (variantSku) return `Variant row ${Number(variantSku[1]) + 1} (SKU)`
+  const variantBarcode = /^variants\.(\d+)\.barcode$/.exec(key)
+  if (variantBarcode) return `Variant row ${Number(variantBarcode[1]) + 1} (Barcode)`
+  if (key === 'sku') return 'Product SKU'
+  if (key === 'slug') return 'Slug'
+  if (key === 'barcode') return 'Barcode'
+  return null
+}
+
 function mergeLaravelErrorRecord(errors: unknown): string[] {
   const out: string[] = []
   if (!errors || typeof errors !== 'object') return out
   const record = errors as Record<string, unknown>
   for (const key of Object.keys(record)) {
     const errorValue = record[key]
+    const label = fieldLabelForLaravelKey(key)
     if (Array.isArray(errorValue)) {
       for (const msg of errorValue) {
-        if (typeof msg === 'string') out.push(msg)
+        if (typeof msg === 'string') out.push(label ? `${label}: ${msg}` : msg)
       }
     } else if (typeof errorValue === 'string') {
-      out.push(`${key}: ${errorValue}`)
+      out.push(label ? `${label}: ${errorValue}` : `${key}: ${errorValue}`)
     }
   }
   return out
+}
+
+function collectProductSaveErrorMessages(
+  payload: unknown,
+  fallbackMessage: string,
+): string[] {
+  const messages = collectLaravelValidationErrors(payload)
+  if (
+    messages.length === 0 &&
+    payload &&
+    typeof payload === 'object' &&
+    typeof (payload as { message?: unknown }).message === 'string'
+  ) {
+    const apiMessage = (payload as { message: string }).message.trim()
+    if (apiMessage && apiMessage !== 'Validation failed' && apiMessage !== 'Server Error') {
+      messages.push(apiMessage)
+    }
+  }
+  if (messages.length === 0) {
+    messages.push(fallbackMessage)
+  }
+  return messages
 }
 
 function collectLaravelValidationErrors(payload: unknown): string[] {
@@ -2479,20 +2513,7 @@ export default function ProductForm({
       const data = await res.json().catch(() => null)
 
       if (!res.ok) {
-        const errorMessages = collectLaravelValidationErrors(data)
-        if (
-          errorMessages.length === 0 &&
-          data &&
-          typeof data === 'object' &&
-          typeof (data as { message?: unknown }).message === 'string'
-        ) {
-          errorMessages.push((data as { message: string }).message)
-        }
-        if (errorMessages.length === 0) {
-          errorMessages.push(t('product.saveError'))
-        }
-
-        setError(errorMessages.join('\n'))
+        setError(collectProductSaveErrorMessages(data, t('product.saveError')).join('\n'))
         return
       }
 

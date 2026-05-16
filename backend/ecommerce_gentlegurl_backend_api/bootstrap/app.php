@@ -93,6 +93,13 @@ return Application::configure(basePath: dirname(__DIR__))
             }
         });
 
+        // 唯一约束冲突（如重复 SKU）— 返回 422 与可读说明，避免笼统的 500 Server Error
+        $exceptions->render(function (Illuminate\Database\UniqueConstraintViolationException $e, \Illuminate\Http\Request $request) {
+            if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {
+                return \App\Support\UniqueConstraintViolationResponse::toJsonResponse($e);
+            }
+        });
+
         // 处理 HTTP 异常
         $exceptions->render(function (Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e, \Illuminate\Http\Request $request) {
             if ($request->expectsJson() || $request->is('api/*') || $request->is('public/shop*')) {

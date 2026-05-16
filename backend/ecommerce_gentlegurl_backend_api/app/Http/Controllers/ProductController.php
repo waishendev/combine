@@ -169,6 +169,7 @@ class ProductController extends Controller
             $validated['sku'] = null;
         }
         $this->validateSalePrice($validated, $request);
+        $this->validateVariantSkus($request);
 
         $initialStock = max(0, (int) ($validated['stock'] ?? 0));
         $initialCost = max(0, (float) ($validated['cost_price'] ?? 0));
@@ -287,6 +288,7 @@ class ProductController extends Controller
             $validated['sku'] = null;
         }
         $this->validateSalePrice($validated, $request, $product);
+        $this->validateVariantSkus($request, $product);
 
         unset($validated['cost_price'], $validated['stock'], $validated['stock_quantity'], $validated['inventory_value']);
 
@@ -358,11 +360,15 @@ class ProductController extends Controller
                         'product_variant_id' => [__('Bundle stock is derived from component variants and cannot be adjusted directly.')],
                     ])->status(422);
                 }
+            } elseif ($lockedProduct->variants()->where('is_bundle', false)->exists()) {
+                throw ValidationException::withMessages([
+                    'product_variant_id' => [__('Please select a variant for stock adjustment.')],
+                ])->status(422);
             }
 
             $beforeQty = $lockedVariant
                 ? (int) ($lockedVariant->stock ?? 0)
-                : (int) ($lockedProduct->stock_quantity ?? $lockedProduct->stock ?? 0);
+                : $lockedProduct->resolvedStockQuantity();
             $beforeCost = $lockedVariant
                 ? (float) ($lockedVariant->cost_price ?? 0)
                 : (float) ($lockedProduct->cost_price ?? 0);
@@ -819,6 +825,7 @@ class ProductController extends Controller
 
             try {
                 DB::transaction(function () use ($clean, &$existingSkuLookup, &$existingSlugLookup, &$summary) {
+                    $importStock = max(0, (int) ($clean['stock'] ?? 0));
                     $product = Product::create($clean + [
                         'type' => $clean['type'] ?? 'single',
                         'is_active' => $clean['is_active'] ?? true,
@@ -826,7 +833,8 @@ class ProductController extends Controller
                         'is_hidden_in_shop' => $clean['is_hidden_in_shop'] ?? false,
                         'is_staff_free' => $clean['is_staff_free'] ?? false,
                         'is_reward_only' => $clean['is_reward_only'] ?? false,
-                        'stock' => $clean['stock'] ?? 0,
+                        'stock' => $importStock,
+                        'stock_quantity' => $importStock,
                         'low_stock_threshold' => $clean['low_stock_threshold'] ?? 0,
                         'dummy_sold_count' => $clean['dummy_sold_count'] ?? 0,
                     ]);
@@ -1059,6 +1067,63 @@ class ProductController extends Controller
                 'size_bytes' => $image->getSize() ?? 0,
                 'status' => 'ready',
             ]);
+        }
+    }
+
+    /**
+     * Variant SKUs are globally unique (product_variants.sku). Validate before save to return 422 instead of 500.
+     */
+    protected function validateVariantSkus(Request $request, ?Product $product = null): void
+    {
+        $type = $request->input('type') ?? $product?->type;
+        if ($type !== 'variant' || ! $request->has('variants')) {
+            return;
+        }
+
+        $variants = $request->input('variants', []);
+        if (! is_array($variants)) {
+            return;
+        }
+
+        $errors = [];
+        $seenSkus = [];
+
+        foreach ($variants as $index => $variant) {
+            if (! is_array($variant)) {
+                continue;
+            }
+
+            $sku = trim((string) ($variant['sku'] ?? ''));
+            if ($sku === '') {
+                continue;
+            }
+
+            if (isset($seenSkus[$sku])) {
+                $errors["variants.{$index}.sku"] = [
+                    __('The SKU :sku is duplicated within this product.', ['sku' => $sku]),
+                ];
+
+                continue;
+            }
+            $seenSkus[$sku] = $index;
+
+            $variantId = $variant['id'] ?? null;
+            $query = ProductVariant::query()->where('sku', $sku);
+            if ($variantId) {
+                $query->where('id', '!=', (int) $variantId);
+            }
+
+            $existing = $query->with('product:id,name')->first();
+            if ($existing) {
+                $productName = $existing->product?->name ?? __('another product');
+                $errors["variants.{$index}.sku"] = [
+                    __('The SKU :sku is already used by :product.', ['sku' => $sku, 'product' => $productName]),
+                ];
+            }
+        }
+
+        if ($errors !== []) {
+            throw ValidationException::withMessages($errors);
         }
     }
 

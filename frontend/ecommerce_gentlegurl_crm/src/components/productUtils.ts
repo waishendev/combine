@@ -1,4 +1,39 @@
-import type { ProductRowData } from './ProductRow'
+import type { ProductRowData, ProductVariant } from './ProductRow'
+
+export function resolveVariantAvailableStock(
+  variant: Pick<ProductVariant, 'stock' | 'isBundle' | 'derivedAvailableQty'>,
+): number {
+  if (variant.isBundle && variant.derivedAvailableQty != null) {
+    return variant.derivedAvailableQty
+  }
+  return variant.stock ?? 0
+}
+
+/** Stock shown in list / used for adjustment when no variant is selected. */
+export function resolveProductListStock(
+  product: Pick<ProductRowData, 'stock' | 'variants'>,
+): number {
+  const variants = product.variants ?? []
+  if (variants.length > 0) {
+    return variants.reduce((sum, variant) => sum + resolveVariantAvailableStock(variant), 0)
+  }
+  return product.stock ?? 0
+}
+
+/** Available qty for the stock adjustment modal target (product or one variant). */
+export function resolveStockAdjustmentTarget(
+  product: Pick<ProductRowData, 'stock' | 'variants'>,
+  selectedVariant: ProductVariant | null,
+): number {
+  const variants = product.variants ?? []
+  if (variants.length > 0) {
+    if (!selectedVariant) {
+      return 0
+    }
+    return resolveVariantAvailableStock(selectedVariant)
+  }
+  return product.stock ?? 0
+}
 
 export type ProductApiCategory = {
   id?: number | string | null
@@ -47,6 +82,7 @@ export type ProductApiItem = {
   variants_count?: number | string | null
   cost_price?: string | number | null
   stock?: number | string | null
+  stock_quantity?: number | string | null
   low_stock_threshold?: number | string | null
   dummy_sold_count?: number | string | null
   is_active?: boolean | number | string | null
@@ -140,12 +176,16 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
         ? Number.parseFloat(item.cost_price)
         : 0
 
-  const stockValue =
-    typeof item.stock === 'number'
-      ? item.stock
-      : typeof item.stock === 'string'
-        ? Number.parseInt(item.stock, 10)
+  const parseStockField = (value: unknown) =>
+    typeof value === 'number'
+      ? value
+      : typeof value === 'string'
+        ? Number.parseInt(value, 10)
         : 0
+
+  const stockFromColumn = parseStockField(item.stock)
+  const stockFromQuantity = parseStockField(item.stock_quantity)
+  const stockValue = Math.max(stockFromColumn, stockFromQuantity)
 
   const lowStockValue =
     typeof item.low_stock_threshold === 'number'
@@ -286,7 +326,17 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     maxVariantPrice: Number.isFinite(maxVariantValue ?? NaN) ? maxVariantValue : derivedMaxPrice,
     variantsCount: Number.isFinite(variantsCountValue ?? NaN) ? variantsCountValue : normalizedVariants.length,
     costPrice: Number.isFinite(costValue) ? costValue : 0,
-    stock: Number.isFinite(stockValue) ? stockValue : 0,
+    stock: (() => {
+      const base = Number.isFinite(stockValue) ? stockValue : 0
+      if (normalizedVariants.length > 0) {
+        const variantTotal = normalizedVariants.reduce(
+          (sum, variant) => sum + resolveVariantAvailableStock(variant),
+          0,
+        )
+        return variantTotal
+      }
+      return base
+    })(),
     lowStockThreshold: Number.isFinite(lowStockValue) ? lowStockValue : 0,
     dummySoldCount: Number.isFinite(dummySoldCountValue) ? dummySoldCountValue : undefined,
     isActive: toBoolean(item.is_active),

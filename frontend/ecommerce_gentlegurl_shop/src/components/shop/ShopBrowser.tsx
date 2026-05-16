@@ -130,8 +130,8 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
   const [maxPriceInput, setMaxPriceInput] = useState<string>(queryMaxPrice);
   const [appliedMinPrice, setAppliedMinPrice] = useState<string>(queryMinPrice);
   const [appliedMaxPrice, setAppliedMaxPrice] = useState<string>(queryMaxPrice);
-  /** When browsing all menus, main menu titles can collapse their sub-categories. */
-  const [collapsedMenuSlugs, setCollapsedMenuSlugs] = useState<Set<string>>(() => new Set());
+  /** When browsing all menus, category groups start collapsed until the user expands a menu title. */
+  const [expandedMenuSlugs, setExpandedMenuSlugs] = useState<Set<string>>(() => new Set());
   const requestIdRef = useRef(0);
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -439,14 +439,29 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
     pushParams({ nextCategory: null, nextPage: 1 });
   };
 
-  const toggleMenuCollapsed = useCallback((menuKey: string) => {
-    setCollapsedMenuSlugs((prev) => {
+  const toggleMenuExpanded = useCallback((menuKey: string) => {
+    setExpandedMenuSlugs((prev) => {
       const next = new Set(prev);
       if (next.has(menuKey)) next.delete(menuKey);
       else next.add(menuKey);
       return next;
     });
   }, []);
+
+  useEffect(() => {
+    if (menuSlug || !queryCategory || menus.length === 0) return;
+    const menuWithCategory = menus.find((menu) =>
+      menu.categories.some((category) => category.slug === queryCategory),
+    );
+    if (!menuWithCategory) return;
+    const menuKey = String(menuWithCategory.slug);
+    setExpandedMenuSlugs((prev) => {
+      if (prev.has(menuKey)) return prev;
+      const next = new Set(prev);
+      next.add(menuKey);
+      return next;
+    });
+  }, [menuSlug, queryCategory, menus]);
 
   const mobileCategoryValue = selectedCategory
     ? `${menuSlug ?? ""}::${selectedCategory}`
@@ -535,13 +550,13 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
 
                 {sidebarMenus.map((menu) => {
                   const menuKey = String(menu.slug);
-                  const isMenuCollapsed = !menuSlug && collapsedMenuSlugs.has(menuKey);
+                  const isMenuCollapsed = !menuSlug && !expandedMenuSlugs.has(menuKey);
                   return (
                     <div key={menu.slug} className="space-y-2">
                       {!menuSlug && (
                         <button
                           type="button"
-                          onClick={() => toggleMenuCollapsed(menuKey)}
+                          onClick={() => toggleMenuExpanded(menuKey)}
                           aria-expanded={!isMenuCollapsed}
                           className="flex w-full items-center justify-between gap-2 rounded-xl px-2 py-1.5 text-left text-xs font-semibold uppercase tracking-[0.15em] text-[color:var(--text-muted)] transition hover:bg-[var(--background-soft)]"
                         >

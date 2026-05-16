@@ -1459,6 +1459,12 @@ export default function CheckoutForm() {
                 <span>Self Pickup (RM 0)</span>
               </label>
             </div>
+            {shippingMethod === "self_pickup" && (
+              <p className="rounded border border-[var(--accent)]/25 bg-[var(--accent)]/5 px-3 py-2.5 text-xs leading-relaxed text-[var(--foreground)]/85">
+                <span className="font-semibold text-[var(--foreground)]">Self pickup / Lalamove </span>
+                (Lalamove may contact us via WhatsApp for your details. Delivery fees will be based on the current rate.).
+              </p>
+            )}
           </div>
 
           {shippingMethod === "self_pickup" && (

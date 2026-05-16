@@ -130,6 +130,14 @@ class Product extends Model
     }
 
     /**
+     * Operational stock (shop/POS/CRM). Prefer `stock`; `stock_quantity` is synced on inventory writes.
+     */
+    public function resolvedStockQuantity(): int
+    {
+        return (int) ($this->stock ?? $this->stock_quantity ?? 0);
+    }
+
+    /**
      * Get the meta OG image URL
      */
     public function getMetaOgImageAttribute(?string $value): ?string
