@@ -1,6 +1,7 @@
 'use client'
 
 import BookingServiceFilters, {
+  type BookingServiceCategoryOption,
   BookingServiceFilterValues,
   bookingServiceFiltersFormId,
   emptyBookingServiceFilters,
@@ -9,6 +10,7 @@ import { useI18n } from '@/lib/i18n'
 
 interface Props {
   inputs: BookingServiceFilterValues
+  categories: BookingServiceCategoryOption[]
   onChange: (values: BookingServiceFilterValues) => void
   onSubmit: (values: BookingServiceFilterValues) => void
   onReset: () => void
@@ -18,6 +20,7 @@ interface Props {
 
 export default function BookingServiceFiltersWrapper({
   inputs,
+  categories,
   onChange,
   onSubmit,
   onReset,
@@ -59,6 +62,7 @@ export default function BookingServiceFiltersWrapper({
         <div className="p-5">
           <BookingServiceFilters
             values={inputs}
+            categories={categories}
             onChange={onChange}
             onSubmit={handleSubmit}
             onReset={handleReset}

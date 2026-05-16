@@ -14,12 +14,19 @@ class CategoryController extends Controller
 {
     public function index(Request $request)
     {
-        $categories = BookingServiceCategory::query()
+        $query = BookingServiceCategory::query()
             ->with('services:id,name,cn_name')
-            ->when($request->filled('name'), fn ($query) => $query->where('name', 'like', '%' . $request->string('name') . '%'))
+            ->when($request->filled('name'), fn ($inner) => $inner->where('name', 'like', '%' . $request->string('name') . '%'))
             ->orderBy('sort_order')
-            ->orderBy('name')
-            ->paginate($request->integer('per_page', 20));
+            ->orderBy('name');
+
+        if ($request->boolean('all')) {
+            return $this->respond(
+                $query->get()->map(fn (BookingServiceCategory $category) => $this->formatCategory($category))->values()
+            );
+        }
+
+        $categories = $query->paginate($request->integer('per_page', 20));
 
         $categories->getCollection()->transform(fn (BookingServiceCategory $category) => $this->formatCategory($category));
 

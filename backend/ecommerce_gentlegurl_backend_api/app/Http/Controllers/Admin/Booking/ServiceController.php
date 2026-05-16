@@ -27,7 +27,35 @@ class ServiceController extends Controller
         $perPage = max(1, min(200, $perPage));
 
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])
+            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name'])
+            ->when($request->filled('name'), function ($query) use ($request) {
+                $term = '%' . trim((string) $request->get('name')) . '%';
+                $query->where(function ($inner) use ($term) {
+                    $inner->where('name', 'like', $term)
+                        ->orWhere('cn_name', 'like', $term);
+                });
+            })
+            ->when($request->has('is_active'), function ($query) use ($request) {
+                $isActive = filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($isActive !== null) {
+                    $query->where('is_active', $isActive);
+                }
+            })
+            ->when($request->filled('category_id'), function ($query) use ($request) {
+                $rawCategoryId = strtolower(trim((string) $request->get('category_id')));
+                if ($rawCategoryId === 'none') {
+                    $query->whereDoesntHave('categories');
+
+                    return;
+                }
+
+                $categoryId = (int) $request->integer('category_id');
+                if ($categoryId > 0) {
+                    $query->whereHas('categories', function ($categoryQuery) use ($categoryId) {
+                        $categoryQuery->where('booking_service_categories.id', $categoryId);
+                    });
+                }
+            })
             ->latest()
             ->paginate($perPage);
 

@@ -8,6 +8,8 @@ import TableLoadingRow from '../TableLoadingRow'
 import PaginationControls from '../PaginationControls'
 import BookingServiceRow, { BookingServiceRowData } from './BookingServiceRow'
 import {
+  type BookingServiceCategoryOption,
+  BOOKING_SERVICE_CATEGORY_FILTER_NONE,
   BookingServiceFilterValues,
   emptyBookingServiceFilters,
 } from './BookingServiceFilters'
@@ -103,6 +105,7 @@ export default function BookingServicesTable({
     total: 0,
   })
   const [loading, setLoading] = useState(true)
+  const [categories, setCategories] = useState<BookingServiceCategoryOption[]>([])
 
   function DualSortIcons({
     active,
@@ -133,16 +136,44 @@ export default function BookingServicesTable({
     )
   }
 
+  const fetchCategories = useCallback(async (signal?: AbortSignal) => {
+    try {
+      const res = await fetch('/api/proxy/admin/booking/categories?all=1', {
+        cache: 'no-store',
+        signal,
+      })
+      if (!res.ok) {
+        setCategories([])
+        return
+      }
+      const json = await res.json().catch(() => null)
+      const payload = json?.data ?? json
+      const list = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
+      setCategories(
+        list
+          .map((item: { id?: number | string; name?: string | null; cn_name?: string | null }) => ({
+            id: Number(item?.id) || 0,
+            name: String(item?.name ?? '').trim(),
+            cnName: typeof item?.cn_name === 'string' ? item.cn_name.trim() : '',
+          }))
+          .filter((item: BookingServiceCategoryOption) => item.id > 0 && item.name),
+      )
+    } catch {
+      setCategories([])
+    }
+  }, [])
+
   const fetchServices = useCallback(async (signal?: AbortSignal) => {
     setLoading(true)
     try {
       const qs = new URLSearchParams()
       qs.set('page', String(currentPage))
       qs.set('per_page', String(pageSize))
-      if (filters.name) qs.set('name', filters.name)
+      if (filters.name.trim()) qs.set('name', filters.name.trim())
       if (filters.isActive) {
         qs.set('is_active', filters.isActive === 'active' ? 'true' : 'false')
       }
+      if (filters.categoryId) qs.set('category_id', filters.categoryId)
 
       const res = await fetch(`/api/proxy/admin/booking/services?${qs.toString()}`, {
         cache: 'no-store',
@@ -214,6 +245,12 @@ export default function BookingServicesTable({
       setLoading(false)
     }
   }, [currentPage, filters, pageSize])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    void fetchCategories(controller.signal)
+    return () => controller.abort()
+  }, [fetchCategories])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -353,11 +390,19 @@ export default function BookingServicesTable({
   const filterLabels: Record<keyof BookingServiceFilterValues, string> = {
     name: 'Name',
     isActive: t('common.status'),
+    categoryId: 'Category',
   }
 
   const renderFilterValue = (key: keyof BookingServiceFilterValues, value: string) => {
     if (key === 'isActive') {
       return value === 'active' ? t('common.active') : t('common.inactive')
+    }
+    if (key === 'categoryId') {
+      if (value === BOOKING_SERVICE_CATEGORY_FILTER_NONE) {
+        return 'No category'
+      }
+      const category = categories.find((item) => String(item.id) === value)
+      return category?.name ?? value
     }
     return value
   }
@@ -505,6 +550,7 @@ export default function BookingServicesTable({
       {isFilterModalOpen && (
         <BookingServiceFiltersWrapper
           inputs={inputs}
+          categories={categories}
           onChange={handleFilterChange}
           onSubmit={handleFilterSubmit}
           onReset={handleFilterReset}
