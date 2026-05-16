@@ -3,6 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
+import BookingServicePhotosPanel from '@/components/booking/BookingServicePhotosPanel'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import OrderViewPanel from './OrderViewPanel'
 import {
@@ -5824,6 +5825,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           </p>
                         </div>
                       ) : null}
+                    </div>
+
+                    <div className="mt-3">
+                      <BookingServicePhotosPanel bookingId={settlement.booking_id} compact />
                     </div>
 
                     {(() => {

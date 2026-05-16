@@ -248,6 +248,13 @@ $protectedRoutes = function () {
 
     Route::get('/me', [AuthController::class, 'me']);
 
+    Route::get('/admin/bookings/{booking}/service-photos', [\App\Http\Controllers\Admin\Booking\ServicePhotoController::class, 'index'])
+        ->middleware('permission:booking.appointments.view|pos.checkout|ecommerce.daily-sales-reports.view');
+    Route::post('/admin/bookings/{booking}/service-photos', [\App\Http\Controllers\Admin\Booking\ServicePhotoController::class, 'store'])
+        ->middleware('permission:booking.appointments.update_status|pos.checkout|ecommerce.daily-sales-reports.view');
+    Route::delete('/admin/bookings/{booking}/service-photos/{photo}', [\App\Http\Controllers\Admin\Booking\ServicePhotoController::class, 'destroy'])
+        ->middleware('permission:booking.appointments.update_status|pos.checkout|ecommerce.daily-sales-reports.view');
+
     // Admins (users)
     Route::get('/admins', [AdminController::class, 'index'])
         ->middleware('permission:users.view');

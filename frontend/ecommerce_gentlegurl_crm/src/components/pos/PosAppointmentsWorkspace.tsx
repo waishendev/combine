@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
+import BookingServicePhotosPanel from '@/components/booking/BookingServicePhotosPanel'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
@@ -2722,6 +2723,13 @@ export default function PosAppointmentsWorkspace({
                   </section>
 
                   {/* History */}
+                  <BookingServicePhotosPanel
+                    bookingId={appointmentDetail.id}
+                    initialPhotos={appointmentDetail.service_photos ?? []}
+                    canManage={!cashShiftActionDisabled}
+                    onChanged={(photos) => setAppointmentDetail((prev) => (prev ? { ...prev, service_photos: photos } : prev))}
+                  />
+
                   <section className="rounded-xl border border-slate-200 bg-white">
                     <h4 className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                       Payment history

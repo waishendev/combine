@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingItemPhoto;
+use App\Models\Booking\BookingServicePhoto;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\OrderReceiptToken;
@@ -26,6 +27,7 @@ class MyBookingController extends Controller
                 'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload',
                 'staff:id,name',
                 'itemPhotos',
+                'servicePhotos',
             ])
             ->where('customer_id', $customer->id)
             ->orderByDesc('start_at')
@@ -116,6 +118,14 @@ class MyBookingController extends Controller
                     'original_name' => (string) $photo->original_name,
                     'mime_type' => (string) $photo->mime_type,
                     'size' => (int) $photo->size,
+                ])->values(),
+                'service_photos' => $booking->servicePhotos->map(fn (BookingServicePhoto $photo) => [
+                    'id' => (int) $photo->id,
+                    'booking_id' => (int) $photo->booking_id,
+                    'image_path' => (string) $photo->image_path,
+                    'image_url' => $photo->image_url,
+                    'caption' => $photo->caption,
+                    'created_at' => $photo->created_at?->toIso8601String(),
                 ])->values(),
                 'latest_payment' => (function () use ($latestPaymentsByBooking, $booking) {
                     $payment = $latestPaymentsByBooking->get($booking->id);

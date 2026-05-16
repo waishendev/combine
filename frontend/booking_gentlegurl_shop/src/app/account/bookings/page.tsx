@@ -33,6 +33,14 @@ const BOOKING_ACTION_STATUS = new Set(["CONFIRMED"]);
 const BOOKING_PHOTO_UPLOAD_STATUS = new Set(["CONFIRMED", "HOLD"]);
 const formatCurrency = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
 
+const resolveServicePhotoUrl = (photo: { image_url?: string | null; image_path?: string | null }) => {
+  const path = photo.image_url || photo.image_path || '';
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return normalized.startsWith('/storage/') ? normalized : `/storage${normalized}`;
+};
+
 export default function MyBookingsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
@@ -343,6 +351,28 @@ export default function MyBookingsPage() {
                 Reschedule is only allowed more than {policy.reschedule.cutoff_hours} hours before the booking time.
               </p>
 
+
+              {String(booking.status).toUpperCase() === 'COMPLETED' && (booking.service_photos?.length ?? 0) > 0 ? (
+                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                  <p className="text-sm font-semibold">Salon Service Photos</p>
+                  <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {(booking.service_photos ?? []).map((photo, index) => {
+                      const url = resolveServicePhotoUrl(photo);
+                      return (
+                        <a key={`service-photo-${booking.id}-${photo.id}`} href={url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm">
+                          {url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={url} alt={photo.caption || `Salon service photo ${index + 1}`} className="aspect-square w-full object-cover" />
+                          ) : (
+                            <span className="flex aspect-square items-center justify-center p-2 text-center text-[10px] text-[var(--text-muted)]">Image unavailable</span>
+                          )}
+                          {photo.caption ? <span className="block truncate px-2 py-1 text-[10px] text-[var(--text-muted)]">{photo.caption}</span> : null}
+                        </a>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
 
               {(booking.service?.allow_photo_upload ?? false) || (booking.uploaded_item_photos?.length ?? 0) > 0 ? (
                 <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">

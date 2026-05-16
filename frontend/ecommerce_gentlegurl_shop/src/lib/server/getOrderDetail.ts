@@ -22,6 +22,14 @@ export type OrderDetail = {
   completed_at?: string | null;
   return_window_days?: number | null;
   items: OrderItemSummary[];
+  service_photos?: Array<{
+    id: number;
+    booking_id?: number | null;
+    image_path?: string | null;
+    image_url?: string | null;
+    caption?: string | null;
+    created_at?: string | null;
+  }>;
   voucher?: {
     code: string;
     discount_amount: number | string;

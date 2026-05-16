@@ -48,5 +48,10 @@ class Booking extends Model
     {
         return $this->hasMany(BookingItemPhoto::class, 'booking_id')->orderBy('sort_order')->orderBy('id');
     }
+
+    public function servicePhotos()
+    {
+        return $this->hasMany(BookingServicePhoto::class, 'booking_id')->orderBy('sort_order')->orderBy('id');
+    }
 }
 
