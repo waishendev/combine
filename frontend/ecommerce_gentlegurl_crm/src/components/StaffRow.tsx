@@ -9,6 +9,7 @@ export type { StaffRowData }
 interface StaffRowProps {
   staff: StaffRowData
   showActions?: boolean
+  canView?: boolean
   canUpdate?: boolean
   canDelete?: boolean
   onEdit?: (staff: StaffRowData) => void
@@ -19,6 +20,7 @@ interface StaffRowProps {
 export default function StaffRow({
   staff,
   showActions = false,
+  canView = false,
   canUpdate = false,
   canDelete = false,
   onEdit,
@@ -49,7 +51,9 @@ export default function StaffRow({
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
           <div className="flex items-center gap-2">
-            <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-600 text-white hover:bg-gray-700" onClick={() => onView?.(staff)} title="View"><i className="fa-solid fa-eye" /></button>
+            {canView && (
+              <button type="button" className="inline-flex h-8 w-8 items-center justify-center rounded bg-gray-600 text-white hover:bg-gray-700" onClick={() => onView?.(staff)} title="View"><i className="fa-solid fa-eye" /></button>
+            )}
             {canUpdate && (
               <button
                 type="button"

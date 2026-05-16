@@ -471,7 +471,7 @@ class StaffController extends Controller
             $staffRole->save();
         }
 
-        $permissionSlugs = ['staff.view', 'staff.create', 'staff.update', 'staff.delete', 'pos.checkout', 'pos.orders.view', 'reports.my-pos-summary.view'];
+        $permissionSlugs = ['staff.view', 'staff.create', 'staff.update', 'staff.delete', 'pos.staff_consumables.access', 'pos.staff_consumables.checkout', 'pos.checkout', 'pos.orders.view', 'reports.my-pos-summary.view'];
         $permissionIds = Permission::query()->whereIn('slug', $permissionSlugs)->pluck('id')->all();
         if (! empty($permissionIds)) {
             $staffRole->permissions()->syncWithoutDetaching($permissionIds);

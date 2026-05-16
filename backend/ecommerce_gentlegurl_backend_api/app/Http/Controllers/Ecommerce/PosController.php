@@ -3045,31 +3045,136 @@ class PosController extends Controller
     {
         $limit = max(1, min(50, (int) $request->query('limit', 15)));
 
-        $items = OrderItem::query()
-            ->with(['order.creator:id,name,email,staff_id', 'product:id,name,sku', 'productVariant:id,title,sku'])
-            ->where('is_staff_free_applied', true)
-            ->whereHas('order', function ($builder) {
-                $builder->where('notes', 'like', '%staff_free_consumable_claim%');
-            })
+        $items = $this->staffConsumableClaimQuery()
             ->latest('id')
             ->limit($limit)
             ->get()
-            ->map(function (OrderItem $item) {
-                return [
-                    'id' => (int) $item->id,
-                    'claimed_at' => optional($item->order?->created_at)->toDateTimeString(),
-                    'staff' => $item->order?->creator?->name ?? $item->order?->creator?->email ?? 'Staff',
-                    'order_number' => (string) ($item->order?->order_number ?? '-'),
-                    'product' => (string) ($item->product_name_snapshot ?: $item->product?->name ?: 'Product'),
-                    'sku' => (string) ($item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku ?: $item->product?->sku ?: '-'),
-                    'qty' => (int) $item->quantity,
-                    'original_price' => (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
-                    'final_amount' => (float) ($item->effective_line_total ?? $item->line_total ?? 0),
-                ];
-            })
+            ->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))
             ->values();
 
         return $this->respond(['data' => $items]);
+    }
+
+    public function adminStaffConsumableLogs(Request $request)
+    {
+        $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
+        $query = $this->staffConsumableClaimQuery();
+        $this->applyStaffConsumableLogFilters($query, $request);
+
+        $logs = $query
+            ->latest('order_items.id')
+            ->paginate($perPage);
+
+        return $this->respond([
+            'data' => collect($logs->items())->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))->values(),
+            'current_page' => $logs->currentPage(),
+            'last_page' => $logs->lastPage(),
+            'per_page' => $logs->perPage(),
+            'total' => $logs->total(),
+        ]);
+    }
+
+    public function staffConsumableClaims(Request $request, Staff $staff)
+    {
+        $limit = max(1, min(50, (int) $request->query('limit', 10)));
+
+        $items = $this->staffConsumableClaimQuery()
+            ->where(function ($query) use ($staff) {
+                $query
+                    ->where('order_items.staff_id', (int) $staff->id)
+                    ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', (int) $staff->id));
+            })
+            ->latest('order_items.id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))
+            ->values();
+
+        return $this->respond(['data' => $items]);
+    }
+
+    protected function staffConsumableClaimQuery()
+    {
+        return OrderItem::query()
+            ->with([
+                'order.creator.staff:id,name',
+                'staff:id,name',
+                'product:id,name,sku',
+                'productVariant:id,title,sku',
+            ])
+            ->where('is_staff_free_applied', true)
+            ->whereHas('order', function ($builder) {
+                $builder->where(function ($orderQuery) {
+                    $orderQuery
+                        ->where('notes', 'like', '%staff_free_consumable_claim%')
+                        ->orWhere('payment_method', 'staff_free');
+                });
+            });
+    }
+
+    protected function applyStaffConsumableLogFilters($query, Request $request): void
+    {
+        $dateFrom = trim((string) $request->query('date_from', ''));
+        $dateTo = trim((string) $request->query('date_to', ''));
+        $search = trim((string) $request->query('q', ''));
+        $staffId = (int) $request->query('staff_id', 0);
+
+        if ($dateFrom !== '') {
+            $query->whereHas('order', fn ($orderQuery) => $orderQuery->whereDate('created_at', '>=', $dateFrom));
+        }
+
+        if ($dateTo !== '') {
+            $query->whereHas('order', fn ($orderQuery) => $orderQuery->whereDate('created_at', '<=', $dateTo));
+        }
+
+        if ($staffId > 0) {
+            $query->where(function ($staffQuery) use ($staffId) {
+                $staffQuery
+                    ->where('order_items.staff_id', $staffId)
+                    ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', $staffId));
+            });
+        }
+
+        if ($search !== '') {
+            $query->where(function ($searchQuery) use ($search) {
+                $searchQuery
+                    ->where('product_name_snapshot', 'like', "%{$search}%")
+                    ->orWhere('display_name_snapshot', 'like', "%{$search}%")
+                    ->orWhere('sku_snapshot', 'like', "%{$search}%")
+                    ->orWhere('variant_sku_snapshot', 'like', "%{$search}%")
+                    ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', "%{$search}%"))
+                    ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', "%{$search}%"))
+                    ->orWhereHas('order.creator', function ($creatorQuery) use ($search) {
+                        $creatorQuery
+                            ->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+    }
+
+    protected function serializeStaffConsumableClaim(OrderItem $item): array
+    {
+        $order = $item->order;
+        $creator = $order?->creator;
+        $staff = $item->staff ?? $creator?->staff;
+
+        return [
+            'id' => (int) $item->id,
+            'claimed_at' => optional($order?->created_at)->toDateTimeString(),
+            'staff_id' => $staff?->id ? (int) $staff->id : null,
+            'staff' => $staff?->name ?? $creator?->name ?? $creator?->email ?? 'Staff',
+            'claimed_by' => $staff?->name ?? $creator?->name ?? $creator?->email ?? 'Staff',
+            'created_by' => $creator?->name ?? $creator?->email ?? 'System',
+            'order_number' => (string) ($order?->order_number ?? '-'),
+            'reference_no' => (string) ($order?->order_number ?? '-'),
+            'product' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: $item->product?->name ?: 'Product'),
+            'sku' => (string) ($item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku ?: $item->product?->sku ?: '-'),
+            'qty' => (int) $item->quantity,
+            'original_price' => (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
+            'line_total_snapshot' => (float) ($item->line_total_snapshot ?? 0),
+            'final_amount' => (float) ($item->effective_line_total ?? $item->line_total ?? 0),
+        ];
     }
 
     public function staffConsumableCheckout(Request $request)

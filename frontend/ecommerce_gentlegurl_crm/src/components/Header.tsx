@@ -27,7 +27,7 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
   }
   const [logoUrl, setLogoUrl] = useState<string | null>(getInitialLogoUrl())
   const accountRef = useRef<HTMLDivElement | null>(null)
-  const showStaffConsumablesLink = Boolean(staffId) && permissions.includes('pos.checkout')
+  const showStaffConsumablesLink = Boolean(staffId) && permissions.includes('pos.staff_consumables.access')
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

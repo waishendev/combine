@@ -69,7 +69,7 @@ const getPagedData = <T,>(json: unknown): T[] => {
   return []
 }
 
-export default function StaffConsumablesPageContent() {
+export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }: { canCheckout: boolean; canViewLogs: boolean }) {
   const [products, setProducts] = useState<ConsumableProduct[]>([])
   const [history, setHistory] = useState<ClaimHistoryRow[]>([])
   const [query, setQuery] = useState('')
@@ -110,14 +110,18 @@ export default function StaffConsumablesPageContent() {
   }, [category, query])
 
   const loadHistory = useCallback(async () => {
+    if (!canViewLogs) {
+      setHistory([])
+      return
+    }
     try {
-      const res = await fetch('/api/proxy/pos/staff-consumables/history?limit=15', { cache: 'no-store' })
+      const res = await fetch('/api/proxy/admin/staff-consumables/logs?per_page=15', { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (res.ok) setHistory(getPagedData<ClaimHistoryRow>(json))
     } catch {
       // History is helpful, but claims should still work when it cannot load.
     }
-  }, [])
+  }, [canViewLogs])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -175,7 +179,7 @@ export default function StaffConsumablesPageContent() {
   }
 
   const checkout = async () => {
-    if (cart.length === 0 || checkingOut) return
+    if (cart.length === 0 || checkingOut || !canCheckout) return
     setCheckingOut(true)
     setError(null)
     setMessage(null)
@@ -367,13 +371,14 @@ export default function StaffConsumablesPageContent() {
             <button
               type="button"
               onClick={checkout}
-              disabled={cart.length === 0 || checkingOut}
+              disabled={cart.length === 0 || checkingOut || !canCheckout}
               className="mt-4 w-full rounded-xl bg-emerald-600 px-4 py-3 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
             >
-              {checkingOut ? 'Recording claim...' : 'Checkout RM0 & Deduct Stock'}
+              {!canCheckout ? 'No checkout permission' : checkingOut ? 'Recording claim...' : 'Checkout RM0 & Deduct Stock'}
             </button>
           </section>
 
+          {canViewLogs ? (
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <h2 className="mb-3 text-lg font-bold text-slate-900">Recent Consumable Claims</h2>
             {history.length === 0 ? (
@@ -405,6 +410,7 @@ export default function StaffConsumablesPageContent() {
               </div>
             )}
           </section>
+          ) : null}
         </aside>
       </div>
     </div>

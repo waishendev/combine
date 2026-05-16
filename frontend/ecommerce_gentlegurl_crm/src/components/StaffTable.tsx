@@ -86,7 +86,9 @@ export default function StaffTable({ permissions }: StaffTableProps) {
   const canCreate = permissions.includes('staff.create')
   const canUpdate = permissions.includes('staff.update')
   const canDelete = permissions.includes('staff.delete')
-  const showActions = canUpdate || canDelete
+  const canView = permissions.includes('staff.view')
+  const canViewConsumableClaims = permissions.includes('pos.staff_consumables.view_logs')
+  const showActions = canView || canUpdate || canDelete
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -633,6 +635,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
                   key={staff.id}
                   staff={staff}
                   showActions={showActions}
+                  canView={canView}
                   canUpdate={canUpdate}
                   canDelete={canDelete}
                   onView={(staff) => setViewingStaff(staff)}
@@ -671,6 +674,7 @@ export default function StaffTable({ permissions }: StaffTableProps) {
         <StaffViewModal
           staff={viewingStaff}
           onClose={() => setViewingStaff(null)}
+          canViewConsumableClaims={canViewConsumableClaims}
         />
       )}
       {deleteTarget && (

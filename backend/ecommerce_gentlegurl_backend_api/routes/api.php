@@ -431,6 +431,20 @@ $protectedRoutes = function () {
     Route::delete('/staffs/{staff}', [StaffController::class, 'destroy'])
         ->middleware('permission:staff.delete');
 
+    Route::get('/admin/staff-consumables/logs', [PosController::class, 'adminStaffConsumableLogs'])
+        ->middleware('permission:pos.staff_consumables.view_logs');
+    Route::get('/admin/staffs/{staff}/consumable-claims', [PosController::class, 'staffConsumableClaims'])
+        ->middleware('permission:pos.staff_consumables.view_logs');
+
+    Route::prefix('pos/staff-consumables')->group(function () {
+        Route::get('/products', [PosController::class, 'staffConsumableProducts'])
+            ->middleware('permission:pos.staff_consumables.access');
+        Route::get('/history', [PosController::class, 'staffConsumableHistory'])
+            ->middleware('permission:pos.staff_consumables.view_logs');
+        Route::post('/checkout', [PosController::class, 'staffConsumableCheckout'])
+            ->middleware('permission:pos.staff_consumables.checkout');
+    });
+
     Route::prefix('pos')->middleware('permission:pos.checkout')->group(function () {
         Route::get('/cash-shifts/current', [PosCashShiftController::class, 'current']);
         Route::post('/cash-shifts/open', [PosCashShiftController::class, 'open']);
@@ -439,9 +453,6 @@ $protectedRoutes = function () {
         Route::get('/members/{memberId}', [PosController::class, 'memberDetail']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);
-        Route::get('/staff-consumables/products', [PosController::class, 'staffConsumableProducts']);
-        Route::get('/staff-consumables/history', [PosController::class, 'staffConsumableHistory']);
-        Route::post('/staff-consumables/checkout', [PosController::class, 'staffConsumableCheckout']);
         Route::get('/services/search', [PosController::class, 'serviceSearch']);
         Route::get('/service-packages/search', [PosController::class, 'packageSearch']);
         Route::get('/appointments', [PosController::class, 'appointmentSearch']);
