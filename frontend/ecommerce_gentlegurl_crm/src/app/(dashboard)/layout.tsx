@@ -208,6 +208,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         onLogout={handleLogout}
         onToggleSidebar={toggleSidebar}
         permissions={permissions}
+        staffId={staffId}
       />
       <div className="flex h-screen pt-16">
         <Sidebar

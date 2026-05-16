@@ -72,6 +72,17 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
       //   icon: 'fa-solid fa-gauge',
       //   href: '/dashboard',
       // },
+      ...(staffId
+        ? ([
+            {
+              key: 'staff-consumables',
+              label: 'Staff Consumables',
+              icon: 'fa-solid fa-hand-holding-heart',
+              href: '/staff-consumables',
+              requiredPermission: 'pos.checkout',
+            },
+          ] as MenuItem[])
+        : []),
         // ======================
       // Admin Management
       // ======================
@@ -573,7 +584,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
       //   requiredPermission: 'ecommerce.settings.view',
       // },
     ],
-    [],
+    [staffId],
   );
 
   const bookingMenuItems: MenuItem[] = useMemo(

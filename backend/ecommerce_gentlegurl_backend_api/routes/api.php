@@ -439,6 +439,9 @@ $protectedRoutes = function () {
         Route::get('/members/{memberId}', [PosController::class, 'memberDetail']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
         Route::get('/products/search', [PosController::class, 'productSearch']);
+        Route::get('/staff-consumables/products', [PosController::class, 'staffConsumableProducts']);
+        Route::get('/staff-consumables/history', [PosController::class, 'staffConsumableHistory']);
+        Route::post('/staff-consumables/checkout', [PosController::class, 'staffConsumableCheckout']);
         Route::get('/services/search', [PosController::class, 'serviceSearch']);
         Route::get('/service-packages/search', [PosController::class, 'packageSearch']);
         Route::get('/appointments', [PosController::class, 'appointmentSearch']);
