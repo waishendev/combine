@@ -214,6 +214,14 @@ export type BookingRecord = {
     receipt_public_url?: string | null;
   }>;
   uploaded_item_photos?: BookingCartItemPhoto[];
+  service_photos?: Array<{
+    id: number;
+    booking_id?: number | null;
+    image_path?: string | null;
+    image_url?: string | null;
+    caption?: string | null;
+    created_at?: string | null;
+  }>;
   customer_remarks?: string | null;
   service?: {
     id: number;

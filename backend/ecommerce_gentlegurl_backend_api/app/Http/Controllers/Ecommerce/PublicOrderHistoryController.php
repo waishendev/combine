@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
+use App\Models\Booking\BookingServicePhoto;
 use App\Services\Ecommerce\ProductReviewService;
 use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\OrderPaymentService;
@@ -192,6 +193,7 @@ class PublicOrderHistoryController extends Controller
             'items.review',
             'items.bookingService:id,name,cn_name',
             'items.booking:id,addon_items_json',
+            'items.booking.servicePhotos:id,booking_id,image_path,caption,sort_order,created_at',
             'voucher',
             'uploads',
             'returns',
@@ -247,6 +249,21 @@ class PublicOrderHistoryController extends Controller
             ];
         })->values();
 
+        $servicePhotos = $order->items
+            ->pluck('booking')
+            ->filter()
+            ->unique('id')
+            ->flatMap(fn ($booking) => $booking->servicePhotos ?? collect())
+            ->map(fn (BookingServicePhoto $photo) => [
+                'id' => (int) $photo->id,
+                'booking_id' => (int) $photo->booking_id,
+                'image_path' => (string) $photo->image_path,
+                'image_url' => $photo->image_url,
+                'caption' => $photo->caption,
+                'created_at' => $photo->created_at?->toIso8601String(),
+            ])
+            ->values();
+
         $slips = $order->uploads
             ->where('type', 'payment_slip')
             ->map(fn($upload) => [
@@ -283,6 +300,7 @@ class PublicOrderHistoryController extends Controller
                 'completed_at' => $order->completed_at,
                 'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7),
                 'items' => $items,
+                'service_photos' => $servicePhotos,
                 'voucher' => $order->voucher ? [
                     'code' => $order->voucher->code_snapshot,
                     'discount_amount' => $order->voucher->discount_amount,

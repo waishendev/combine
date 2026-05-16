@@ -17,6 +17,7 @@ use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class AppointmentController extends Controller
 {
@@ -44,6 +45,58 @@ class AppointmentController extends Controller
         return $this->respond($query->orderBy('start_at')->paginate($request->integer('per_page', 20)));
     }
 
+
+
+    public function daily(Request $request)
+    {
+        $date = $request->filled('date')
+            ? Carbon::parse((string) $request->query('date'))->toDateString()
+            : Carbon::today()->toDateString();
+        $search = trim((string) $request->query('search', ''));
+
+        $query = Booking::query()
+            ->with([
+                'service:id,name,cn_name,duration_min,service_price,price,price_mode',
+                'staff:id,name',
+                'customer:id,name,phone,email',
+                'itemPhotos:id,booking_id,file_path,original_name,mime_type,size,sort_order,created_at',
+                'servicePhotos:id,booking_id,image_path,caption,sort_order,created_at,updated_at',
+                'payments:id,booking_id,provider,amount,status,raw_response,created_at,updated_at',
+                'orderItems:id,order_id,booking_id',
+                'orderItems.order:id,payment_method',
+                'orderItems.order.uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
+            ])
+            ->whereDate('start_at', $date)
+            ->where('status', 'COMPLETED');
+
+        if ($request->filled('staff_id')) {
+            $query->where('staff_id', (int) $request->query('staff_id'));
+        }
+
+        if ($search !== '') {
+            $query->where(function ($nested) use ($search) {
+                $nested->where('booking_code', 'like', "%{$search}%")
+                    ->orWhere('guest_name', 'like', "%{$search}%")
+                    ->orWhere('guest_phone', 'like', "%{$search}%")
+                    ->orWhere('guest_email', 'like', "%{$search}%")
+                    ->orWhereHas('customer', function ($customerQuery) use ($search) {
+                        $customerQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('phone', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $rows = $query->orderBy('start_at')
+            ->get()
+            ->map(fn (Booking $booking) => $this->mapDailyBooking($booking))
+            ->values();
+
+        return $this->respond([
+            'date' => $date,
+            'data' => $rows,
+        ]);
+    }
 
     public function history(Request $request)
     {
@@ -136,6 +189,93 @@ class AppointmentController extends Controller
             'source' => $booking->source,
             'logs' => $logs,
         ]));
+    }
+
+
+    private function mapDailyBooking(Booking $booking): array
+    {
+        $row = $this->mapHistoryBooking($booking);
+
+        $referencePhotos = $booking->itemPhotos->map(fn ($photo) => [
+            'id' => (int) $photo->id,
+            'file_url' => $photo->file_url,
+            'original_name' => (string) ($photo->original_name ?? ''),
+            'mime_type' => (string) ($photo->mime_type ?? ''),
+            'size' => (int) ($photo->size ?? 0),
+            'created_at' => optional($photo->created_at)?->toIso8601String(),
+        ])->values();
+
+        $servicePhotos = $booking->servicePhotos->map(fn ($photo) => [
+            'id' => (int) $photo->id,
+            'booking_id' => (int) $photo->booking_id,
+            'image_path' => (string) ($photo->image_path ?? ''),
+            'image_url' => $photo->image_url,
+            'caption' => $photo->caption,
+            'sort_order' => (int) ($photo->sort_order ?? 0),
+            'created_at' => optional($photo->created_at)?->toIso8601String(),
+            'updated_at' => optional($photo->updated_at)?->toIso8601String(),
+        ])->values();
+
+        return array_merge($row, [
+            'customer_reference_photos_count' => $referencePhotos->count(),
+            'customer_reference_photos' => $referencePhotos,
+            'service_photos_count' => $servicePhotos->count(),
+            'service_photos' => $servicePhotos,
+            'payment_proofs' => $this->mapBookingPaymentProofs($booking),
+        ]);
+    }
+
+    private function mapBookingPaymentProofs(Booking $booking): array
+    {
+        $proofs = collect();
+
+        $booking->payments->each(function (BookingPayment $payment) use ($proofs) {
+            $raw = $payment->raw_response ?? [];
+            $manualUrl = data_get($raw, 'manual_slip_url');
+            $proofPath = data_get($raw, 'proof_path');
+            $fileUrl = $manualUrl ?: ($proofPath ? Storage::disk('public')->url((string) $proofPath) : null);
+
+            if (! $fileUrl) {
+                return;
+            }
+
+            $proofs->push([
+                'id' => 'booking-payment-' . $payment->id,
+                'file_url' => (string) $fileUrl,
+                'uploaded_at' => optional($payment->updated_at ?? $payment->created_at)?->toIso8601String(),
+                'payment_method' => (string) data_get($raw, 'payment_method', $payment->provider),
+                'note' => data_get($raw, 'manual_slip_note'),
+                'status' => (string) ($payment->status ?? data_get($raw, 'payment_status', '')),
+            ]);
+        });
+
+        $booking->orderItems
+            ->pluck('order')
+            ->filter()
+            ->unique('id')
+            ->each(function ($order) use ($proofs) {
+                $order->uploads
+                    ->where('type', 'payment_slip')
+                    ->each(function ($upload) use ($proofs, $order) {
+                        if (! $upload->file_url) {
+                            return;
+                        }
+
+                        $proofs->push([
+                            'id' => 'order-upload-' . $upload->id,
+                            'file_url' => $upload->file_url,
+                            'uploaded_at' => optional($upload->created_at)?->toIso8601String(),
+                            'payment_method' => (string) ($order->payment_method ?? ''),
+                            'note' => $upload->note,
+                            'status' => $upload->status,
+                        ]);
+                    });
+            });
+
+        return $proofs
+            ->unique(fn (array $proof) => $proof['file_url'])
+            ->values()
+            ->all();
     }
 
     private function mapHistoryBooking(Booking $booking): array

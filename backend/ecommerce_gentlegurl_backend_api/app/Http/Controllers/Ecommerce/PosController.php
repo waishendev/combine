@@ -448,6 +448,7 @@ class PosController extends Controller
                 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min',
                 'staff:id,name',
                 'itemPhotos:id,booking_id,file_path,created_at',
+                'servicePhotos:id,booking_id,image_path,caption,sort_order,created_at',
             ])
             ->findOrFail($id);
 
@@ -522,6 +523,14 @@ class PosController extends Controller
                 'id' => (int) $photo->id,
                 'image_path' => (string) ($photo->file_path ?? ''),
                 'image_url' => $photo->file_url,
+                'created_at' => optional($photo->created_at)?->toIso8601String(),
+            ])->values()->all(),
+            'service_photos' => $booking->servicePhotos->map(fn ($photo) => [
+                'id' => (int) $photo->id,
+                'booking_id' => (int) $photo->booking_id,
+                'image_path' => (string) ($photo->image_path ?? ''),
+                'image_url' => $photo->image_url,
+                'caption' => $photo->caption,
                 'created_at' => optional($photo->created_at)?->toIso8601String(),
             ])->values()->all(),
         ]);

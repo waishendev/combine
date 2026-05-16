@@ -8,6 +8,8 @@ import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
+import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
+import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 
 type Mode = 'ecommerce' | 'booking'
 
@@ -46,6 +48,7 @@ type BookingRow = {
   payments?: PaymentBreakdownRow[]
   order_total?: number
   type: string
+  booking_id?: number | null
   booking_no: string | null
   package_name: string | null
   package_cn_name?: string | null
@@ -154,6 +157,7 @@ type OrderDetail = {
     booking_no?: string | null
     status: string
     grand_total: number
+    payment_proofs?: PaymentProof[]
   }
   lines: OrderDetailLine[]
 }
@@ -355,6 +359,8 @@ export default function SalesChannelReportPage({
   const [detailLoading, setDetailLoading] = useState(false)
   const [detailError, setDetailError] = useState<string | null>(null)
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
+  const [detailTab, setDetailTab] = useState<'details' | 'photos'>('details')
+  const [detailBookingId, setDetailBookingId] = useState<number | null>(null)
 
   useEffect(() => {
     setInputs(resolved)
@@ -462,11 +468,13 @@ export default function SalesChannelReportPage({
     setIsFilterOpen(false)
   }
 
-  const openOrderDetail = async (orderId: number) => {
+  const openOrderDetail = async (orderId: number, bookingId?: number | null) => {
     setDetailOpen(true)
     setDetailLoading(true)
     setDetailError(null)
     setOrderDetail(null)
+    setDetailTab('details')
+    setDetailBookingId(bookingId ?? null)
 
     try {
       const response = await fetch(`/api/proxy/admin/reports/sales/${orderId}/details`, { cache: 'no-store' })
@@ -487,6 +495,8 @@ export default function SalesChannelReportPage({
     setDetailOpen(false)
     setDetailError(null)
     setOrderDetail(null)
+    setDetailTab('details')
+    setDetailBookingId(null)
   }
 
   const showingRange = `${formatDisplayDate(resolved.dateFrom)} – ${formatDisplayDate(resolved.dateTo)}`
@@ -749,7 +759,7 @@ export default function SalesChannelReportPage({
                     <div className="inline-flex items-center justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => void openOrderDetail(row.order_id)}
+                        onClick={() => void openOrderDetail(row.order_id, row.booking_id)}
                         className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-blue-300 hover:text-blue-700"
                         title="View details"
                         aria-label={`View details for ${row.order_no}`}
@@ -863,8 +873,19 @@ export default function SalesChannelReportPage({
               </button>
             </div>
 
-            <div className="max-h-[calc(90vh-72px)] overflow-y-auto px-5 py-4">
-              {detailLoading ? (
+            {detailBookingId ? (
+              <div className="border-b border-slate-200 px-5 pt-3">
+                <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-semibold">
+                  <button type="button" onClick={() => setDetailTab('details')} className={`rounded-md px-3 py-1.5 ${detailTab === 'details' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>Details</button>
+                  <button type="button" onClick={() => setDetailTab('photos')} className={`rounded-md px-3 py-1.5 ${detailTab === 'photos' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600'}`}>Photos</button>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="max-h-[calc(90vh-120px)] overflow-y-auto px-5 py-4">
+              {detailTab === 'photos' && detailBookingId ? (
+                <BookingServicePhotosPanel bookingId={detailBookingId} />
+              ) : detailLoading ? (
                 <div className="py-10 text-center text-sm text-slate-500">Loading order details…</div>
               ) : detailError ? (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{detailError}</div>
@@ -878,6 +899,11 @@ export default function SalesChannelReportPage({
                     <DetailMeta label="Type" value={orderDetail.order.type} />
                     <DetailMeta label="Booking no" value={orderDetail.order.booking_no ?? '—'} />
                   </div>
+
+                  <section className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h4 className="mb-3 text-sm font-bold text-slate-900">Payment Proof (Optional)</h4>
+                    <PaymentProofPreview proofs={orderDetail.order.payment_proofs} />
+                  </section>
 
                   <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="min-w-full divide-y divide-slate-200 text-sm">

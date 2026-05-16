@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\Ecommerce\Customer;
+use App\Models\Ecommerce\OrderItem;
 use App\Models\Staff;
 use Illuminate\Database\Eloquent\Model;
 
@@ -47,6 +48,21 @@ class Booking extends Model
     public function itemPhotos()
     {
         return $this->hasMany(BookingItemPhoto::class, 'booking_id')->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function servicePhotos()
+    {
+        return $this->hasMany(BookingServicePhoto::class, 'booking_id')->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(BookingPayment::class, 'booking_id')->orderBy('id');
+    }
+
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class, 'booking_id')->orderBy('id');
     }
 }
 

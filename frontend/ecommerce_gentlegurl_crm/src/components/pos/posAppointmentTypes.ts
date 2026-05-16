@@ -87,6 +87,7 @@ export type PosAppointmentDetail = {
   payment_history?: Array<{ order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
   uploaded_item_photos?: Array<{ id: number; image_path?: string | null; image_url?: string | null; created_at?: string | null }>
+  service_photos?: Array<{ id: number; booking_id?: number | null; image_path?: string | null; image_url?: string | null; caption?: string | null; created_at?: string | null }>
 }
 
 export type ServiceAddonOption = {

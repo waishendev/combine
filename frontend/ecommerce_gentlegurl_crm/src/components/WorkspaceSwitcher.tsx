@@ -36,10 +36,12 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const workspaceOptions = staffPortalOnly ? OPTIONS.filter((o) => o.value === 'booking') : OPTIONS
   const showPos = permissions.includes('pos.checkout')
   const showSalesReport = permissions.includes('ecommerce.daily-sales-reports.view')
+  const showDailyBooking = permissions.includes('pos.checkout') || permissions.includes('booking.appointments.view')
   const isPosCheckout = pathname === '/pos'
   const isPosAppointments = pathname === '/pos/appointments' || pathname.startsWith('/pos/appointments/')
   const isPosRoute = pathname === '/pos' || pathname.startsWith('/pos/')
   const isSalesVisualRoute = pathname === '/reports/sales/visual' || pathname.startsWith('/reports/sales/visual/')
+  const isDailyBookingRoute = pathname === '/daily-booking' || pathname.startsWith('/daily-booking/')
 
   useEffect(() => {
     const handleWorkspaceChanged = () => {
@@ -70,6 +72,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
     router.prefetch('/dashboard')
     router.prefetch('/booking/appointment-history')
     router.prefetch('/pos/appointments')
+    router.prefetch('/daily-booking')
     router.prefetch('/reports/sales/visual')
   }, [router])
 
@@ -92,6 +95,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
 
   const mobileActiveLabel = (() => {
     if (isSalesVisualRoute) return 'Daily Sales'
+    if (isDailyBookingRoute) return 'Daily Booking'
     if (isPosAppointments) return 'Appointments'
     if (isPosRoute) return 'POS'
     if (staffPortalOnly) return 'Booking'
@@ -163,6 +167,18 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
                 </Link>
               </>
             )}
+            {showDailyBooking && (
+              <Link
+                href="/daily-booking"
+                role="option"
+                aria-selected={isDailyBookingRoute}
+                onClick={closeMenu}
+                className={mobileRowClass(isDailyBookingRoute)}
+              >
+                {isDailyBookingRoute ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
+                Daily Booking
+              </Link>
+            )}
             {showSalesReport && (
               <Link
                 href="/reports/sales/visual"
@@ -207,6 +223,12 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
               <span className="hidden xl:inline">Appointments</span>
             </Link>
           </>
+        )}
+        {showDailyBooking && (
+          <Link href="/daily-booking" className={segmentClass(isDailyBookingRoute)} title="Daily Booking">
+            <span className="lg:hidden">Daily</span>
+            <span className="hidden lg:inline">Daily Booking</span>
+          </Link>
         )}
         {showSalesReport && (
           <Link href="/reports/sales/visual" className={segmentClass(isSalesVisualRoute)} title="Daily Sales report">

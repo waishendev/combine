@@ -25,6 +25,14 @@ const isWithinReturnWindow = (completedAt?: string | null, windowDays?: number |
   return windowEnds.getTime() >= Date.now();
 };
 
+const resolveServicePhotoUrl = (photo: { image_url?: string | null; image_path?: string | null }) => {
+  const path = photo.image_url || photo.image_path || '';
+  if (!path) return '';
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalized = path.startsWith('/') ? path : `/${path}`;
+  return normalized.startsWith('/storage/') ? normalized : `/storage${normalized}`;
+};
+
 const resolveOrderItemLabel = (item: { line_type?: string | null; name?: string }) => {
   const lineType = String(item.line_type ?? "").toLowerCase();
   if (lineType === "booking_addon") return `Add-on - ${item.name || "Add-on"}`;
@@ -182,6 +190,28 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           </div>
         </div>
       </div>
+
+      {(order.service_photos?.length ?? 0) > 0 ? (
+        <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-[var(--foreground)]">Related Booking Service Photos</h2>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
+            {(order.service_photos ?? []).map((photo, index) => {
+              const url = resolveServicePhotoUrl(photo);
+              return (
+                <a key={`order-service-photo-${photo.id}`} href={url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm">
+                  {url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={url} alt={photo.caption || `Related booking service photo ${index + 1}`} className="aspect-square w-full object-cover" />
+                  ) : (
+                    <span className="flex aspect-square items-center justify-center p-2 text-center text-xs text-[var(--foreground)]/60">Image unavailable</span>
+                  )}
+                  {photo.caption ? <span className="block truncate px-2 py-1 text-xs text-[var(--foreground)]/60">{photo.caption}</span> : null}
+                </a>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
 
       <div className="flex flex-col gap-4 lg:flex-row">
         <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">

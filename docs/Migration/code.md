@@ -43,3 +43,24 @@ Notes:
 - It ensures `pos_cart_package_items` has `discount_type`, `discount_value`, `discount_amount`, `discount_remark`, and `line_total_after_discount` for Service Package discounts.
 - It also ensures `pos_cart_items` has the same discount total fields so Booking Product cart lines can share normal product discount behavior.
 - Existing records default discount totals to zero. `php artisan migrate:fresh --seed` must NOT be used because it drops existing data.
+
+# Booking Service Photos
+
+Migration filename:
+
+- `backend/ecommerce_gentlegurl_backend_api/database/migrations/2026_05_16_000001_create_booking_service_photos_table.php`
+
+```bash
+# Run only normal migrations
+cd backend/ecommerce_gentlegurl_backend_api
+php artisan migrate
+
+# Do NOT run:
+php artisan migrate:fresh --seed
+```
+
+Notes:
+
+- Adds `booking_service_photos` for salon/admin service result photos linked by `booking_id`.
+- This table is separate from customer reference photo uploads and must not be treated as order-level media.
+- `php artisan migrate:fresh --seed` must NOT be used because it drops existing data.
