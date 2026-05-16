@@ -9,6 +9,7 @@ export type BookingServicePhoto = {
   image_url?: string | null
   caption?: string | null
   created_at?: string | null
+  updated_at?: string | null
 }
 
 type Props = {
@@ -19,6 +20,8 @@ type Props = {
   canManage?: boolean
   onChanged?: (photos: BookingServicePhoto[]) => void
 }
+
+const EMPTY_PHOTOS: BookingServicePhoto[] = []
 
 function resolveImageUrl(imageUrl?: string | null, imagePath?: string | null) {
   if (imageUrl && /^https?:\/\//i.test(imageUrl)) return imageUrl
@@ -35,16 +38,25 @@ function normalizeResponse(json: unknown): BookingServicePhoto[] {
   return Array.isArray(data?.service_photos) ? data.service_photos as BookingServicePhoto[] : []
 }
 
+function photosSignature(photos: BookingServicePhoto[] | undefined) {
+  return (photos ?? EMPTY_PHOTOS)
+    .map((photo) => [photo.id, photo.image_url ?? photo.image_path ?? '', photo.caption ?? '', photo.updated_at ?? photo.created_at ?? ''].join(':'))
+    .join('|')
+}
+
 export default function BookingServicePhotosPanel({
   bookingId,
-  initialPhotos = [],
+  initialPhotos,
   title = 'Salon Service Photos',
   compact = false,
   canManage = true,
   onChanged,
 }: Props) {
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const [photos, setPhotos] = useState<BookingServicePhoto[]>(initialPhotos)
+  const onChangedRef = useRef<Props['onChanged']>(onChanged)
+  const initialPhotoList = initialPhotos ?? EMPTY_PHOTOS
+  const initialPhotoSignature = photosSignature(initialPhotos)
+  const [photos, setPhotos] = useState<BookingServicePhoto[]>(initialPhotoList)
   const [caption, setCaption] = useState('')
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -52,34 +64,46 @@ export default function BookingServicePhotosPanel({
   const [preview, setPreview] = useState<BookingServicePhoto | null>(null)
 
   useEffect(() => {
-    setPhotos(initialPhotos)
-  }, [initialPhotos])
+    onChangedRef.current = onChanged
+  }, [onChanged])
+
+  useEffect(() => {
+    setPhotos((current) => (photosSignature(current) === initialPhotoSignature ? current : initialPhotoList))
+    // Depend on primitive booking/signature only. Some callers create fallback arrays inline.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bookingId ?? null, initialPhotoSignature])
 
   useEffect(() => {
     if (!bookingId) return
-    let cancelled = false
+
+    const controller = new AbortController()
     const load = async () => {
       setLoading(true)
       setError(null)
       try {
-        const res = await fetch(`/api/proxy/admin/bookings/${bookingId}/service-photos`, { cache: 'no-store' })
+        const res = await fetch(`/api/proxy/admin/bookings/${bookingId}/service-photos`, {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
         const json = await res.json().catch(() => null)
         if (!res.ok) throw new Error(json?.message ?? 'Unable to load service photos.')
         const next = normalizeResponse(json)
-        if (!cancelled) {
-          setPhotos(next)
-          onChanged?.(next)
+        if (!controller.signal.aborted) {
+          setPhotos((current) => (photosSignature(current) === photosSignature(next) ? current : next))
+          onChangedRef.current?.(next)
         }
       } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Unable to load service photos.')
+        if (!controller.signal.aborted) {
+          setError(err instanceof Error ? err.message : 'Unable to load service photos.')
+        }
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!controller.signal.aborted) setLoading(false)
       }
     }
+
     void load()
-    return () => { cancelled = true }
-  // Reload only when the booking changes; callers may pass inline onChanged handlers.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    return () => controller.abort()
   }, [bookingId])
 
   const resolvedPhotos = useMemo(
@@ -106,7 +130,7 @@ export default function BookingServicePhotosPanel({
       const next = normalizeResponse(json)
       setPhotos(next)
       setCaption('')
-      onChanged?.(next)
+      onChangedRef.current?.(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to upload service photos.')
     } finally {
@@ -124,7 +148,7 @@ export default function BookingServicePhotosPanel({
       if (!res.ok) throw new Error(json?.message ?? 'Unable to delete service photo.')
       const next = normalizeResponse(json)
       setPhotos(next)
-      onChanged?.(next)
+      onChangedRef.current?.(next)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to delete service photo.')
     } finally {
