@@ -104,6 +104,14 @@ class SettingSeeder extends Seeder
                 'send_at' => '10:00',
             ]]
         );
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_feedback_email'],
+            ['value' => [
+                'enabled' => true,
+                'send_at' => '10:00',
+            ]]
+        );
     }
 
     private function seedDefaultBookingDepositTncImage(): ?string

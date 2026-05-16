@@ -36,6 +36,7 @@ class ShopSettingController extends Controller
                 'booking_hold_minutes' => (int) SettingService::get('BOOKING_HOLD_MINUTES', 10, $type),
                 'booking_service_deposit_note' => SettingService::get('booking_service_deposit_note', null, $type),
                 'booking_reminder_email' => SettingService::get('booking_reminder_email', ['enabled' => true, 'send_at' => '10:00'], $type),
+                'booking_feedback_email' => SettingService::get('booking_feedback_email', ['enabled' => true, 'send_at' => '10:00'], $type),
                 'booking_deposit_tnc_enabled' => (bool) SettingService::get('booking_deposit_tnc_enabled', false, $type),
                 'booking_deposit_tnc_text' => (string) SettingService::get('booking_deposit_tnc_text', '', $type),
                 'booking_deposit_tnc_image' => $this->resolveStorageUrl(SettingService::get('booking_deposit_tnc_image', null, $type)),
@@ -132,6 +133,7 @@ class ShopSettingController extends Controller
             'BOOKING_HOLD_MINUTES' => 10,
             'booking_service_deposit_note' => null,
             'booking_reminder_email' => ['enabled' => true, 'send_at' => '10:00'],
+            'booking_feedback_email' => ['enabled' => true, 'send_at' => '10:00'],
             'booking_deposit_tnc_enabled' => false,
             'booking_deposit_tnc_text' => '',
             'booking_deposit_tnc_image' => null,
@@ -222,6 +224,9 @@ class ShopSettingController extends Controller
 
             case 'booking_reminder_email':
                 $data = $this->validateBookingReminderEmail($request);
+                break;
+            case 'booking_feedback_email':
+                $data = $this->validateBookingFeedbackEmail($request);
                 break;
             case 'booking_deposit_tnc_enabled':
                 $data = $this->validateBookingDepositTncEnabled($request);
@@ -546,6 +551,19 @@ class ShopSettingController extends Controller
         ];
     }
 
+    protected function validateBookingFeedbackEmail(Request $request): array
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'send_at' => ['required', 'string', 'date_format:H:i'],
+        ]);
+
+        return [
+            'enabled' => (bool) $validated['enabled'],
+            'send_at' => $validated['send_at'],
+        ];
+    }
+
     protected function validateBookingDepositTncEnabled(Request $request): bool
     {
         $validated = $request->validate([
@@ -769,6 +787,7 @@ class ShopSettingController extends Controller
                 'BOOKING_HOLD_MINUTES',
                 'booking_service_deposit_note',
                 'booking_reminder_email',
+                'booking_feedback_email',
                 'booking_deposit_tnc_enabled',
                 'booking_deposit_tnc_text',
                 'booking_deposit_tnc_image',

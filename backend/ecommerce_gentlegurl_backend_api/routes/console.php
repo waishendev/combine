@@ -51,3 +51,12 @@ Schedule::command('booking:send-reminder-emails')
     ->everyMinute()
     ->onOneServer()
     ->withoutOverlapping();
+
+// =========================
+// Booking feedback emails
+// =========================
+
+Schedule::command('booking:send-feedback-emails')
+    ->everyMinute()
+    ->onOneServer()
+    ->withoutOverlapping();
