@@ -373,7 +373,7 @@ class PosController extends Controller
                 'staff_id' => $booking->staff_id ? (int) $booking->staff_id : null,
                 'staff_name' => (string) ($booking->staff?->name ?? '-'),
                 'status' => (string) $booking->status,
-                'payment_status' => (string) ($booking->payment_status ?? ''),
+                'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
                 'deposit_contribution' => (float) $summary['deposit_contribution'],
                 'deposit_paid' => (float) $summary['deposit_contribution'],
                 'linked_booking_deposit' => (float) $summary['linked_booking_deposit'],
@@ -5048,7 +5048,8 @@ class PosController extends Controller
                     ]);
                 }
 
-                $booking->payment_status = 'PAID';
+                $freshSummary = $this->resolveAppointmentFinancialSummary($booking->fresh(['service', 'customer']));
+                $booking->payment_status = $this->calculateAppointmentPaymentStatus($freshSummary);
                 $booking->save();
 
                 $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
@@ -6480,7 +6481,7 @@ class PosController extends Controller
             'id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'status' => (string) $booking->status,
-            'payment_status' => (string) ($booking->payment_status ?? ''),
+            'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
@@ -6518,6 +6519,32 @@ class PosController extends Controller
             'package_status' => $summary['package_status'],
             'receipts' => $receiptHistory,
         ];
+    }
+
+
+    protected function calculateAppointmentPaymentStatus(array $summary): string
+    {
+        $paidTotal = round(
+            max(0.0, (float) ($summary['deposit_paid'] ?? $summary['deposit_contribution'] ?? 0))
+            + max(0.0, (float) ($summary['settlement_paid'] ?? 0))
+            + max(0.0, (float) ($summary['package_offset'] ?? 0)),
+            2
+        );
+        $payableTotal = round(
+            max(0.0, (float) ($summary['service_total'] ?? 0))
+            + max(0.0, (float) ($summary['addon_total_price'] ?? 0)),
+            2
+        );
+
+        if ($paidTotal <= 0.0001) {
+            return 'UNPAID';
+        }
+
+        if ($paidTotal + 0.0001 < $payableTotal) {
+            return 'PARTIAL';
+        }
+
+        return 'PAID';
     }
 
     protected function resolveAppointmentPaymentHistory(int $bookingId): array
@@ -6831,7 +6858,10 @@ class PosController extends Controller
         })->values();
         $serviceBalanceDue = round((float) $serviceOutstandingRows->sum('balance_due'), 2);
         $addonBalanceDue = round((float) $addonSettlementItems->sum('balance_due'), 2);
-        $balanceDue = max(0, $serviceBalanceDue + $addonBalanceDue);
+        $settlementPaid = round($serviceSettlementPaid + $addonPaidSettlement, 2);
+        $payableTotal = round($serviceTotal + $addonTotalPrice, 2);
+        $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
+        $balanceDue = max(0.0, round($payableTotal - $paidTotal, 2));
 
         return [
             'service_total' => round($serviceTotal, 2),
@@ -6853,7 +6883,7 @@ class PosController extends Controller
             'deposit_previously_collected_amount' => round($actualAppointmentDepositCollected, 2),
             'package_offset' => round($packageOffset, 2),
             'service_balance_due' => round($serviceBalanceDue, 2),
-            'settlement_paid' => round($serviceSettlementPaid + $addonPaidSettlement, 2),
+            'settlement_paid' => $settlementPaid,
             'addon_paid_online' => round($addonPaid, 2),
             'addon_paid_settlement' => round($addonPaidSettlement, 2),
             'addon_balance_due' => round($addonBalanceDue, 2),
