@@ -22,6 +22,13 @@ type StaffOption = {
   name: string
 }
 
+export type StaffConsumableLogInitialFilters = {
+  staffId?: string
+  dateFrom?: string
+  dateTo?: string
+  search?: string
+}
+
 type Meta = {
   current_page: number
   last_page: number
@@ -55,14 +62,19 @@ const extractMeta = (json: unknown): Meta => {
   }
 }
 
-export default function StaffConsumableLogsPageContent() {
+export default function StaffConsumableLogsPageContent({ initialFilters = {} }: { initialFilters?: StaffConsumableLogInitialFilters }) {
   const [rows, setRows] = useState<LogRow[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
-  const [dateFrom, setDateFrom] = useState('')
-  const [dateTo, setDateTo] = useState('')
-  const [staffId, setStaffId] = useState('')
-  const [search, setSearch] = useState('')
-  const [appliedFilters, setAppliedFilters] = useState({ dateFrom: '', dateTo: '', staffId: '', search: '' })
+  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom ?? '')
+  const [dateTo, setDateTo] = useState(initialFilters.dateTo ?? '')
+  const [staffId, setStaffId] = useState(initialFilters.staffId ?? '')
+  const [search, setSearch] = useState(initialFilters.search ?? '')
+  const [appliedFilters, setAppliedFilters] = useState({
+    dateFrom: initialFilters.dateFrom ?? '',
+    dateTo: initialFilters.dateTo ?? '',
+    staffId: initialFilters.staffId ?? '',
+    search: initialFilters.search ?? '',
+  })
   const [page, setPage] = useState(1)
   const [meta, setMeta] = useState<Meta>({ current_page: 1, last_page: 1, per_page: 20, total: 0 })
   const [loading, setLoading] = useState(true)
@@ -84,10 +96,10 @@ export default function StaffConsumableLogsPageContent() {
     setError(null)
     try {
       const params = new URLSearchParams({ page: String(page), per_page: '20' })
-      if (appliedFilters.dateFrom) params.set('date_from', appliedFilters.dateFrom)
-      if (appliedFilters.dateTo) params.set('date_to', appliedFilters.dateTo)
+      if (appliedFilters.dateFrom) params.set('from_date', appliedFilters.dateFrom)
+      if (appliedFilters.dateTo) params.set('to_date', appliedFilters.dateTo)
       if (appliedFilters.staffId) params.set('staff_id', appliedFilters.staffId)
-      if (appliedFilters.search.trim()) params.set('q', appliedFilters.search.trim())
+      if (appliedFilters.search.trim()) params.set('search', appliedFilters.search.trim())
       const res = await fetch(`/api/proxy/admin/staff-consumables/logs?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to load staff consumable logs.')
@@ -124,12 +136,27 @@ export default function StaffConsumableLogsPageContent() {
     setAppliedFilters({ dateFrom: '', dateTo: '', staffId: '', search: '' })
   }
 
+  const clearStaffFilter = () => {
+    setStaffId('')
+    setPage(1)
+    setAppliedFilters((current) => ({ ...current, staffId: '' }))
+  }
+
   return (
     <div className="px-4 py-6 sm:px-6 lg:px-10">
       <div className="mb-6">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Logs</p>
         <h1 className="text-3xl font-semibold text-slate-900">Staff Consumable Logs</h1>
         <p className="mt-1 text-sm text-slate-500">Audit trail for staff-free consumable claims. These are RM0 internal claims, not normal customer sales.</p>
+        {appliedFilters.staffId ? (
+          <button
+            type="button"
+            onClick={clearStaffFilter}
+            className="mt-3 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 hover:bg-emerald-100"
+          >
+            Clear staff filter
+          </button>
+        ) : null}
       </div>
 
       <section className="mb-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

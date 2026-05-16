@@ -2,10 +2,16 @@ export const dynamic = 'force-dynamic'
 
 import { redirect } from 'next/navigation'
 
-import StaffConsumableLogsPageContent from '@/components/StaffConsumableLogsPageContent'
+import StaffConsumableLogsPageContent, { type StaffConsumableLogInitialFilters } from '@/components/StaffConsumableLogsPageContent'
 import { getCurrentUser } from '@/lib/auth'
 
-export default async function StaffConsumableLogsPage() {
+type StaffConsumableLogsPageProps = {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>
+}
+
+const firstParam = (value: string | string[] | undefined) => Array.isArray(value) ? value[0] : value ?? ''
+
+export default async function StaffConsumableLogsPage({ searchParams }: StaffConsumableLogsPageProps) {
   const user = await getCurrentUser()
 
   if (!user) {
@@ -16,5 +22,13 @@ export default async function StaffConsumableLogsPage() {
     redirect('/dashboard')
   }
 
-  return <StaffConsumableLogsPageContent />
+  const resolvedSearchParams = searchParams ? await searchParams : {}
+  const initialFilters: StaffConsumableLogInitialFilters = {
+    staffId: firstParam(resolvedSearchParams.staff_id),
+    dateFrom: firstParam(resolvedSearchParams.from_date),
+    dateTo: firstParam(resolvedSearchParams.to_date),
+    search: firstParam(resolvedSearchParams.search),
+  }
+
+  return <StaffConsumableLogsPageContent initialFilters={initialFilters} />
 }

@@ -3055,6 +3055,30 @@ class PosController extends Controller
         return $this->respond(['data' => $items]);
     }
 
+    public function myStaffConsumableClaims(Request $request)
+    {
+        $staffId = (int) ($request->user()?->staff_id ?? 0);
+        if ($staffId <= 0) {
+            return $this->respondError(__('Only staff accounts can view their consumable claim history.'), 403);
+        }
+
+        $limit = max(1, min(50, (int) $request->query('limit', 20)));
+
+        $items = $this->staffConsumableClaimQuery()
+            ->where(function ($query) use ($staffId) {
+                $query
+                    ->where('order_items.staff_id', $staffId)
+                    ->orWhereHas('order.creator', fn ($creatorQuery) => $creatorQuery->where('staff_id', $staffId));
+            })
+            ->latest('order_items.id')
+            ->limit($limit)
+            ->get()
+            ->map(fn (OrderItem $item) => $this->serializeStaffConsumableClaim($item))
+            ->values();
+
+        return $this->respond(['data' => $items]);
+    }
+
     public function adminStaffConsumableLogs(Request $request)
     {
         $perPage = max(1, min(100, (int) $request->query('per_page', 20)));
@@ -3114,9 +3138,9 @@ class PosController extends Controller
 
     protected function applyStaffConsumableLogFilters($query, Request $request): void
     {
-        $dateFrom = trim((string) $request->query('date_from', ''));
-        $dateTo = trim((string) $request->query('date_to', ''));
-        $search = trim((string) $request->query('q', ''));
+        $dateFrom = trim((string) ($request->query('from_date', $request->query('date_from', ''))));
+        $dateTo = trim((string) ($request->query('to_date', $request->query('date_to', ''))));
+        $search = trim((string) ($request->query('search', $request->query('q', ''))));
         $staffId = (int) $request->query('staff_id', 0);
 
         if ($dateFrom !== '') {
