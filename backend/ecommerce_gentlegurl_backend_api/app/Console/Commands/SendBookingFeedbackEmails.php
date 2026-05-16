@@ -76,12 +76,25 @@ class SendBookingFeedbackEmails extends Command
                 ?: $booking->customer?->name
                 ?: 'Customer';
 
+            $addonItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : [])
+                ->map(fn ($item) => is_array($item) ? [
+                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
+                    'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                ] : null)
+                ->filter()
+                ->values()
+                ->all();
+
             try {
                 Mail::to($email)->queue(new BookingFeedbackMail(
                     customerName: $customerName,
                     serviceName: (string) ($booking->service?->name ?? ''),
+                    addonItems: $addonItems,
                     staffName: (string) ($booking->staff?->name ?? ''),
                     appointmentDate: $booking->start_at ? $booking->start_at->format('l, d M Y') : '',
+                    appointmentStartTime: $booking->start_at ? $booking->start_at->format('h:i A') : '',
+                    appointmentEndTime: $booking->end_at ? $booking->end_at->format('h:i A') : '',
+                    durationMin: (int) ($booking->service?->duration_min ?? 0),
                     whatsappUrl: $whatsappUrl,
                     contactPhone: $contactPhone,
                 ));
