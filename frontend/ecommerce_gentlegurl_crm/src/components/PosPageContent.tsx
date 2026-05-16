@@ -497,6 +497,9 @@ type ProductOption = {
   price: number
   is_staff_free: boolean
   thumbnail_url?: string | null
+  main_image_url?: string | null
+  cover_image_url?: string | null
+  image_url?: string | null
   variants: ProductVariantOption[]
   variants_count?: number
   default_variant_id?: number | null
@@ -531,6 +534,8 @@ type ProductVariantOption = {
   barcode: string
   price: number
   thumbnail_url?: string | null
+  image_url?: string | null
+  image_path?: string | null
   is_active: boolean
   track_stock?: boolean | null
   stock?: number | null
@@ -695,6 +700,7 @@ type VariantPayload = {
   price?: number | string | null
   sale_price?: number | string | null
   image_url?: string | null
+  image_path?: string | null
   is_active?: boolean | string | number
   track_stock?: boolean | string | number | null
   stock?: number | string | null
@@ -722,6 +728,9 @@ type ProductApiItem = {
   stock_quantity?: number | string | null
   track_stock?: boolean | string | number | null
   cover_image_url?: string | null
+  main_image_url?: string | null
+  image_url?: string | null
+  images?: Array<{ url?: string | null; image_path?: string | null }>
   variants?: Array<{
     id?: number
     name?: string | null
@@ -731,6 +740,7 @@ type ProductApiItem = {
     price?: number | string | null
     sale_price?: number | string | null
     image_url?: string | null
+    image_path?: string | null
     is_active?: boolean | string | number
     track_stock?: boolean | string | number | null
     stock?: number | string | null
@@ -775,6 +785,10 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
 
 type PosPageContentProps = {
   currentUser: PosCurrentUser
+}
+
+const getModalImageUrl = (value: unknown): string | null => {
+  return typeof value === 'string' && value.trim() ? value.trim() : null
 }
 
 export default function PosPageContent({ currentUser }: PosPageContentProps) {
@@ -1782,7 +1796,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               sku,
               barcode: barcode || sku,
               price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
-              thumbnail_url: variant?.image_url ?? item.cover_image_url ?? null,
+              thumbnail_url: variant?.image_url ?? variant?.image_path ?? item.cover_image_url ?? null,
+              image_url: variant?.image_url ?? null,
+              image_path: variant?.image_path ?? null,
               is_active: toApiBoolean(variant?.is_active),
               track_stock: normalizeVariantTrackStock(variantAny),
               stock: availableQty,
@@ -1819,7 +1835,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       barcode: activeBarcode || itemBarcode || sku,
       price: Number.isFinite(price) ? price : 0,
       is_staff_free: item.is_staff_free === true || item.is_staff_free === 1 || item.is_staff_free === '1' || item.is_staff_free === 'true',
-      thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? null,
+      thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? item.main_image_url ?? item.image_url ?? null,
+      main_image_url: item.main_image_url ?? null,
+      cover_image_url: item.cover_image_url ?? null,
+      image_url: item.image_url ?? null,
       variants,
       variants_count: typeof item.variants_count === 'number'
         ? item.variants_count
@@ -3958,7 +3977,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ? String((variant as any).barcode).trim()
                   : sku,
                 price: Number.isFinite(price) ? price : 0,
-                thumbnail_url: variant?.image_url ?? payload?.cover_image_url ?? null,
+                thumbnail_url: variant?.image_url ?? variant?.image_path ?? payload?.cover_image_url ?? null,
+                image_url: variant?.image_url ?? null,
+                image_path: variant?.image_path ?? null,
                 is_active: toApiBoolean(variant?.is_active),
                 track_stock: normalizeVariantTrackStock(vPayload),
                 stock: resolveVariantAvailableQty(vPayload),
@@ -4889,6 +4910,36 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       checkoutResult.change_amount > 0 &&
       checkoutResult.paid_amount > checkoutResult.total,
   )
+
+  const selectedModalVariant = useMemo(() => {
+    if (!selectedProduct || selectedProduct.variants.length === 0) return null
+    return selectedProduct.variants.find((variant) => variant.id === selectedVariantId) ?? null
+  }, [selectedProduct, selectedVariantId])
+
+  const selectedProductDisplayImage = useMemo(() => {
+    if (!selectedProduct) return null
+
+    const galleryImages = Array.isArray(fullProductData?.images) ? fullProductData.images : []
+    const firstGalleryImage = galleryImages
+      .map((image: { url?: string | null; image_path?: string | null } | null) =>
+        getModalImageUrl(image?.url) || getModalImageUrl(image?.image_path),
+      )
+      .find((url: string | null): url is string => Boolean(url))
+
+    return (
+      getModalImageUrl(selectedModalVariant?.image_url) ||
+      getModalImageUrl(selectedModalVariant?.image_path) ||
+      getModalImageUrl(fullProductData?.main_image_url) ||
+      getModalImageUrl(fullProductData?.cover_image_url) ||
+      getModalImageUrl(fullProductData?.image_url) ||
+      getModalImageUrl(selectedProduct.main_image_url) ||
+      getModalImageUrl(selectedProduct.cover_image_url) ||
+      getModalImageUrl(selectedProduct.image_url) ||
+      firstGalleryImage ||
+      getModalImageUrl(selectedProduct.thumbnail_url) ||
+      null
+    )
+  }, [fullProductData, selectedModalVariant, selectedProduct])
 
   return (
     <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -6119,11 +6170,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 ) : (
                   <>
-                    {fullProductData?.images?.[0]?.url || fullProductData?.cover_image_url || selectedProduct.thumbnail_url ? (
+                    {selectedProductDisplayImage ? (
                       <div className="aspect-square w-full bg-gradient-to-br from-gray-100 to-gray-50 rounded-xl overflow-hidden border-2 border-gray-200 shadow-sm">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
-                          src={fullProductData?.images?.[0]?.url || fullProductData?.cover_image_url || selectedProduct.thumbnail_url || ''}
+                          src={selectedProductDisplayImage}
                           alt={selectedProduct.name || ''}
                           className="w-full h-full object-cover"
                         />
@@ -6140,10 +6191,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     )}
                     {fullProductData?.images && fullProductData.images.length > 1 && (
                       <div className="grid grid-cols-4 gap-2">
-                        {fullProductData.images.slice(0, 4).map((img: { url?: string } | null, idx: number) => (
+                        {fullProductData.images.slice(0, 4).map((img: { url?: string | null; image_path?: string | null } | null, idx: number) => (
                           <div key={idx} className="aspect-square bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-200">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={img?.url || ''} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
+                            <img src={getModalImageUrl(img?.url) || getModalImageUrl(img?.image_path) || ''} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
                           </div>
                         ))}
                       </div>
