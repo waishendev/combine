@@ -9,6 +9,7 @@ import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
+import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 
 type Mode = 'ecommerce' | 'booking'
 
@@ -156,6 +157,7 @@ type OrderDetail = {
     booking_no?: string | null
     status: string
     grand_total: number
+    payment_proofs?: PaymentProof[]
   }
   lines: OrderDetailLine[]
 }
@@ -897,6 +899,11 @@ export default function SalesChannelReportPage({
                     <DetailMeta label="Type" value={orderDetail.order.type} />
                     <DetailMeta label="Booking no" value={orderDetail.order.booking_no ?? '—'} />
                   </div>
+
+                  <section className="rounded-xl border border-slate-200 bg-white p-4">
+                    <h4 className="mb-3 text-sm font-bold text-slate-900">Payment Proof (Optional)</h4>
+                    <PaymentProofPreview proofs={orderDetail.order.payment_proofs} />
+                  </section>
 
                   <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="min-w-full divide-y divide-slate-200 text-sm">

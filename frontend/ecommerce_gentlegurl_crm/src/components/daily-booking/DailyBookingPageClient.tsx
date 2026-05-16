@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import BookingServicePhotosPanel, { type BookingServicePhoto } from '@/components/booking/BookingServicePhotosPanel'
+import PaymentProofPreview, { type PaymentProof } from '@/components/payment/PaymentProofPreview'
 
 type Photo = {
   id: number
@@ -34,6 +35,7 @@ type DailyBookingRow = {
   customer_reference_photos?: Photo[]
   service_photos_count?: number
   service_photos?: BookingServicePhoto[]
+  payment_proofs?: PaymentProof[]
 }
 
 type DailyBookingResponse = {
@@ -286,6 +288,11 @@ export default function DailyBookingPageClient() {
                 initialPhotos={selected.service_photos ?? []}
                 onChanged={updateSelectedPhotos}
               />
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4">
+                <h4 className="mb-3 text-sm font-bold text-slate-900">Payment Proof (Optional)</h4>
+                <PaymentProofPreview proofs={selected.payment_proofs} />
+              </section>
             </div>
           </div>
         </div>

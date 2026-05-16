@@ -17,6 +17,7 @@ use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class AppointmentController extends Controller
 {
@@ -60,6 +61,10 @@ class AppointmentController extends Controller
                 'customer:id,name,phone,email',
                 'itemPhotos:id,booking_id,file_path,original_name,mime_type,size,sort_order,created_at',
                 'servicePhotos:id,booking_id,image_path,caption,sort_order,created_at,updated_at',
+                'payments:id,booking_id,provider,amount,status,raw_response,created_at,updated_at',
+                'orderItems:id,order_id,booking_id',
+                'orderItems.order:id,payment_method',
+                'orderItems.order.uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
             ])
             ->whereDate('start_at', $date)
             ->where('status', 'COMPLETED');
@@ -216,7 +221,61 @@ class AppointmentController extends Controller
             'customer_reference_photos' => $referencePhotos,
             'service_photos_count' => $servicePhotos->count(),
             'service_photos' => $servicePhotos,
+            'payment_proofs' => $this->mapBookingPaymentProofs($booking),
         ]);
+    }
+
+    private function mapBookingPaymentProofs(Booking $booking): array
+    {
+        $proofs = collect();
+
+        $booking->payments->each(function (BookingPayment $payment) use ($proofs) {
+            $raw = $payment->raw_response ?? [];
+            $manualUrl = data_get($raw, 'manual_slip_url');
+            $proofPath = data_get($raw, 'proof_path');
+            $fileUrl = $manualUrl ?: ($proofPath ? Storage::disk('public')->url((string) $proofPath) : null);
+
+            if (! $fileUrl) {
+                return;
+            }
+
+            $proofs->push([
+                'id' => 'booking-payment-' . $payment->id,
+                'file_url' => (string) $fileUrl,
+                'uploaded_at' => optional($payment->updated_at ?? $payment->created_at)?->toIso8601String(),
+                'payment_method' => (string) data_get($raw, 'payment_method', $payment->provider),
+                'note' => data_get($raw, 'manual_slip_note'),
+                'status' => (string) ($payment->status ?? data_get($raw, 'payment_status', '')),
+            ]);
+        });
+
+        $booking->orderItems
+            ->pluck('order')
+            ->filter()
+            ->unique('id')
+            ->each(function ($order) use ($proofs) {
+                $order->uploads
+                    ->where('type', 'payment_slip')
+                    ->each(function ($upload) use ($proofs, $order) {
+                        if (! $upload->file_url) {
+                            return;
+                        }
+
+                        $proofs->push([
+                            'id' => 'order-upload-' . $upload->id,
+                            'file_url' => $upload->file_url,
+                            'uploaded_at' => optional($upload->created_at)?->toIso8601String(),
+                            'payment_method' => (string) ($order->payment_method ?? ''),
+                            'note' => $upload->note,
+                            'status' => $upload->status,
+                        ]);
+                    });
+            });
+
+        return $proofs
+            ->unique(fn (array $proof) => $proof['file_url'])
+            ->values()
+            ->all();
     }
 
     private function mapHistoryBooking(Booking $booking): array

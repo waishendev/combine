@@ -2,11 +2,13 @@
 
 namespace App\Services\Reports;
 
+use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
 class SalesChannelReportService
 {
@@ -49,6 +51,7 @@ class SalesChannelReportService
             ->with([
                 'customer:id,name',
                 'payments:id,order_id,payment_method,amount,reference_no',
+                'uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
                 'items' => fn ($query) => $query->orderBy('id'),
                 'items.product:id,name',
                 'items.productVariant:id,title,sku',
@@ -85,6 +88,8 @@ class SalesChannelReportService
             ->unique()
             ->values();
 
+        $paymentProofs = $this->paymentProofsForOrder($order);
+
         $lineTypes = $order->items
             ->pluck('line_type')
             ->map(fn ($type) => $this->displayLineType((string) $type))
@@ -104,9 +109,71 @@ class SalesChannelReportService
                 'booking_no' => $bookingNumbers->isEmpty() ? null : $bookingNumbers->implode(', '),
                 'status' => (string) $order->status,
                 'grand_total' => (float) $order->grand_total,
+                'payment_proofs' => $paymentProofs,
             ],
             'lines' => $order->items->map(fn (OrderItem $item) => $this->formatOrderDetailLine($item))->values()->all(),
         ];
+    }
+
+
+    private function paymentProofsForOrder(Order $order): array
+    {
+        $proofs = collect();
+
+        $order->uploads
+            ->where('type', 'payment_slip')
+            ->each(function ($upload) use ($proofs, $order) {
+                if (! $upload->file_url) {
+                    return;
+                }
+
+                $proofs->push([
+                    'id' => 'order-upload-' . $upload->id,
+                    'file_url' => $upload->file_url,
+                    'uploaded_at' => optional($upload->created_at)?->toIso8601String(),
+                    'payment_method' => (string) ($order->payment_method ?? ''),
+                    'note' => $upload->note,
+                    'status' => $upload->status,
+                ]);
+            });
+
+        $bookingIds = $order->items
+            ->pluck('booking_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+
+        if ($bookingIds->isNotEmpty()) {
+            BookingPayment::query()
+                ->whereIn('booking_id', $bookingIds->all())
+                ->orderBy('id')
+                ->get(['id', 'booking_id', 'provider', 'status', 'raw_response', 'created_at', 'updated_at'])
+                ->each(function (BookingPayment $payment) use ($proofs) {
+                    $raw = $payment->raw_response ?? [];
+                    $manualUrl = data_get($raw, 'manual_slip_url');
+                    $proofPath = data_get($raw, 'proof_path');
+                    $fileUrl = $manualUrl ?: ($proofPath ? Storage::disk('public')->url((string) $proofPath) : null);
+
+                    if (! $fileUrl) {
+                        return;
+                    }
+
+                    $proofs->push([
+                        'id' => 'booking-payment-' . $payment->id,
+                        'file_url' => (string) $fileUrl,
+                        'uploaded_at' => optional($payment->updated_at ?? $payment->created_at)?->toIso8601String(),
+                        'payment_method' => (string) data_get($raw, 'payment_method', $payment->provider),
+                        'note' => data_get($raw, 'manual_slip_note'),
+                        'status' => (string) ($payment->status ?? data_get($raw, 'payment_status', '')),
+                    ]);
+                });
+        }
+
+        return $proofs
+            ->unique(fn (array $proof) => $proof['file_url'])
+            ->values()
+            ->all();
     }
 
     private function formatOrderDetailLine(OrderItem $item): array
