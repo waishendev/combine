@@ -33,6 +33,31 @@ const defaultPolicy: BookingPolicy = {
 const BOOKING_ACTION_STATUS = new Set(["CONFIRMED"]);
 const BOOKING_PHOTO_UPLOAD_STATUS = new Set(["CONFIRMED", "HOLD"]);
 const formatCurrency = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+const formatDate = (value: string) =>
+  new Date(value).toLocaleDateString("en-MY", { dateStyle: "medium" });
+const formatTime = (value: string) =>
+  new Date(value).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" }).toUpperCase();
+const formatAppointmentRange = (booking: BookingRecord) => {
+  const startValue = booking.appointment_start_at || booking.starts_at;
+  const endValue = booking.appointment_end_at;
+  const startAt = new Date(startValue);
+
+  if (!endValue) {
+    return `${formatDate(startValue)}, ${formatTime(startValue)}`;
+  }
+
+  const endAt = new Date(endValue);
+  const isSameDay =
+    startAt.getFullYear() === endAt.getFullYear() &&
+    startAt.getMonth() === endAt.getMonth() &&
+    startAt.getDate() === endAt.getDate();
+
+  if (isSameDay) {
+    return `${formatDate(startValue)}, ${formatTime(startValue)} - ${formatTime(endValue)}`;
+  }
+
+  return `${formatDate(startValue)}, ${formatTime(startValue)} - ${formatDate(endValue)}, ${formatTime(endValue)}`;
+};
 const normalizeStatus = (value?: string | null) => String(value || "—").toUpperCase();
 
 const bookingBadgeClass = (value?: string | null) => {
@@ -446,7 +471,6 @@ export default function BookingDetailPage() {
         {bookings.map((booking) => {
           const state = getActionState(booking);
           const payment = getPaymentSummary(booking);
-          const startsAt = new Date(booking.starts_at);
           const duration = Number(booking.estimated_duration_min ?? 0) ||
             Number(booking.service?.duration_min ?? 0) + Number(booking.addon_total_duration_min ?? 0);
           const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
@@ -486,13 +510,9 @@ export default function BookingDetailPage() {
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Staff</p>
                     <p className="mt-1 font-medium">{booking.staff_name || "Any staff"}</p>
                   </div>
-                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Date</p>
-                    <p className="mt-1 font-medium">{startsAt.toLocaleDateString("en-MY", { dateStyle: "medium" })}</p>
-                  </div>
-                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Time</p>
-                    <p className="mt-1 font-medium">{startsAt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" })}</p>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Date &amp; Time</p>
+                    <p className="mt-1 font-medium">{formatAppointmentRange(booking)}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Duration</p>

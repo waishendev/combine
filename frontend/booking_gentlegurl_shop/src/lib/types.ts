@@ -189,7 +189,11 @@ export type BookingRecord = {
   total_paid?: number | null;
   estimated_duration_min?: number | null;
   staff_name?: string | null;
+  start_at?: string | null;
   starts_at: string;
+  end_at?: string | null;
+  appointment_start_at?: string | null;
+  appointment_end_at?: string | null;
   deposit_amount: number;
   payment_status?: string;
   reschedule_count?: number;
