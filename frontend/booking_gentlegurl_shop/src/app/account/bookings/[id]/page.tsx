@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -33,6 +33,50 @@ const defaultPolicy: BookingPolicy = {
 const BOOKING_ACTION_STATUS = new Set(["CONFIRMED"]);
 const BOOKING_PHOTO_UPLOAD_STATUS = new Set(["CONFIRMED", "HOLD"]);
 const formatCurrency = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+const normalizeStatus = (value?: string | null) => String(value || "—").toUpperCase();
+
+const bookingBadgeClass = (value?: string | null) => {
+  const status = normalizeStatus(value);
+  if (["CONFIRMED", "PAID", "COMPLETED"].includes(status)) return "bg-emerald-100 text-emerald-700";
+  if (["HOLD", "PARTIAL", "PENDING"].includes(status)) return "bg-amber-100 text-amber-700";
+  if (["CANCELLED", "CANCELED", "UNPAID", "FAILED"].includes(status)) return "bg-rose-100 text-rose-700";
+  return "bg-[var(--background)] text-[var(--foreground)]";
+};
+
+const pickPaymentNumber = (...values: Array<number | null | undefined>) => {
+  for (const value of values) {
+    const numeric = Number(value ?? NaN);
+    if (Number.isFinite(numeric) && numeric > 0) return numeric;
+  }
+  return 0;
+};
+
+const getPaymentSummary = (booking: BookingRecord) => {
+  const serviceTotal = Number(booking.service_total ?? 0);
+  const addonTotal = Number(booking.addon_total_price ?? 0);
+  const depositPaid = pickPaymentNumber(
+    booking.deposit_paid,
+    booking.linked_booking_deposit_total,
+    booking.deposit_previously_collected_amount,
+  );
+  const settlementPaid = Number(booking.settlement_paid ?? 0);
+  const packageOffset = Number(booking.package_offset ?? 0);
+  const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
+  const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
+  const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
+  const paymentStatus = normalizeStatus(booking.payment_status);
+  const helperText = paymentStatus === "PAID"
+    ? "Fully paid."
+    : paymentStatus === "PARTIAL"
+      ? "Deposit received. Balance is still due."
+      : paymentStatus === "UNPAID"
+        ? "No payment received yet."
+        : balanceDue > 0
+          ? "Remaining balance will be paid at the salon."
+          : "Payment summary is up to date.";
+
+  return { serviceTotal, addonTotal, depositPaid, settlementPaid, packageOffset, balanceDue, totalPaid, paymentStatus, helperText };
+};
 
 const resolveServicePhotoUrl = (photo: { image_url?: string | null; image_path?: string | null }) => {
   const path = photo.image_url || photo.image_path || '';
@@ -69,7 +113,7 @@ export default function BookingDetailPage() {
     }
   }, [authLoading, user, router, bookingId]);
 
-  const reload = async () => {
+  const reload = useCallback(async () => {
     setError(null);
     const [myBookings, bookingPolicy] = await Promise.all([getMyBookings(), getBookingPolicySettings()]);
     const matchedBooking = myBookings.find((item) => item.id === bookingId);
@@ -78,7 +122,7 @@ export default function BookingDetailPage() {
     if (!matchedBooking) {
       setError("Booking not found.");
     }
-  };
+  }, [bookingId]);
 
   useEffect(() => {
     if (!user || !Number.isFinite(bookingId)) return;
@@ -93,7 +137,7 @@ export default function BookingDetailPage() {
       }
     };
     run();
-  }, [user, bookingId]);
+  }, [user, bookingId, reload]);
 
   const getActionState = (booking: BookingRecord) => {
     const now = Date.now();
@@ -319,69 +363,162 @@ export default function BookingDetailPage() {
 
   return (
     <>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-[var(--text-muted)]">Account / My Bookings / {bookings[0]?.booking_code || (bookingId ? `BOOKING-${bookingId}` : "Booking")}</p>
-          <h1 className="text-3xl font-semibold">Booking Details</h1>
+      <div className="space-y-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-[var(--text-muted)]">Account / My Bookings / {bookings[0]?.booking_code || (bookingId ? `BOOKING-${bookingId}` : "Booking")}</p>
+            <h1 className="text-3xl font-semibold">Booking Details</h1>
+          </div>
+          <Link href="/account/bookings" className="inline-flex w-fit rounded-full border border-[var(--card-border)] px-4 py-2 text-sm font-medium">
+            Back to My Bookings
+          </Link>
         </div>
-        <Link href="/account/bookings" className="inline-flex w-fit rounded-full border border-[var(--card-border)] px-4 py-2 text-sm font-medium">
-          Back to My Bookings
-        </Link>
+
+        {bookings.map((booking) => {
+          const payment = getPaymentSummary(booking);
+          return (
+            <section key={`booking-header-${booking.id}`} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-[var(--text-muted)]">Booking Details</p>
+                  <p className="mt-1 font-mono text-sm text-[var(--text-muted)]">{booking.booking_code || `BOOKING-${booking.id}`}</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${bookingBadgeClass(booking.status)}`}>
+                    Status: {normalizeStatus(booking.status)}
+                  </span>
+                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${bookingBadgeClass(payment.paymentStatus)}`}>
+                    Payment: {payment.paymentStatus}
+                  </span>
+                </div>
+              </div>
+            </section>
+          );
+        })}
       </div>
+
       {loading ? <p className="mt-4">Loading booking...</p> : null}
       {error ? <p className="mt-4 text-[var(--status-error)]">{error}</p> : null}
 
-      <div className="mt-6 space-y-3">
+      <div className="mt-6 space-y-4">
         {bookings.map((booking) => {
           const state = getActionState(booking);
+          const payment = getPaymentSummary(booking);
+          const startsAt = new Date(booking.starts_at);
+          const duration = Number(booking.estimated_duration_min ?? 0) ||
+            Number(booking.service?.duration_min ?? 0) + Number(booking.addon_total_duration_min ?? 0);
+          const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
+          const hasActions = canPayNow || state.canReschedule || state.canRequestCancellation || state.hasPendingCancellation;
 
           return (
-            <div key={booking.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5">
-              <section>
-                <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div key={booking.id} className="space-y-4">
+              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--background)]">
+                    <i className="fa-regular fa-calendar-check text-[var(--text-muted)]" aria-hidden />
+                  </span>
                   <div>
-                    <p className="text-sm font-semibold text-[var(--text-muted)]">Booking Details</p>
-                    <p className="font-mono text-xs text-[var(--text-muted)]">{booking.booking_code || `BOOKING-${booking.id}`}</p>
+                    <p className="text-lg font-semibold">Appointment Summary</p>
+                    <p className="text-xs text-[var(--text-muted)]">Your salon appointment details</p>
                   </div>
-                  <span className="w-fit rounded-full bg-[var(--background)] px-3 py-1 text-xs font-semibold">{booking.status}</span>
                 </div>
-                <ServiceNameStack name={booking.service_name} cnName={booking.service_cn_name ?? booking.service?.cn_name} />
-              {(booking.add_ons?.length ?? 0) > 0 ? (
-                <div className="mt-2 mb-2 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                  <p className="text-sm font-semibold">Add-ons</p>
-                  <div className="mt-1 space-y-1">
-                    {booking.add_ons?.map((addon, index) => (
-                      <div key={`${addon.id ?? addon.name}-${index}`} className="text-sm text-[var(--text-muted)]">
-                        <p>{addon.name} (+{Number(addon.extra_duration_min ?? 0)} mins, +{formatCurrency(Number(addon.extra_price ?? 0))})</p>
-                        {addon.cn_name ? <p className="mt-0.5 text-xs">{addon.cn_name}</p> : null}
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Service</p>
+                    <div className="mt-1">
+                      <ServiceNameStack name={booking.service_name} cnName={booking.service_cn_name ?? booking.service?.cn_name} />
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
+                    {(booking.add_ons?.length ?? 0) > 0 ? (
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {booking.add_ons?.map((addon, index) => (
+                          <div key={`${addon.id ?? addon.name}-${index}`} className="rounded-lg bg-[var(--card)] p-3 text-sm">
+                            <p className="font-medium">{addon.name}</p>
+                            {addon.cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{addon.cn_name}</p> : null}
+                            <p className="mt-1 text-xs text-[var(--text-muted)]">
+                              +{Number(addon.extra_duration_min ?? 0)} mins · {formatCurrency(Number(addon.extra_price ?? 0))}
+                            </p>
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                    {/* <p className="pt-1 text-sm font-medium text-[var(--foreground)]">
-                      Summary: +{Number(booking.addon_total_duration_min ?? 0)} mins, +{formatCurrency(booking.addon_total_price)}
-                    </p> */}
+                    ) : (
+                      <p className="mt-1 text-sm text-[var(--text-muted)]">No add-ons selected.</p>
+                    )}
+                  </div>
+
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Staff</p>
+                    <p className="mt-1 font-medium">{booking.staff_name || "Any staff"}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Date</p>
+                    <p className="mt-1 font-medium">{startsAt.toLocaleDateString("en-MY", { dateStyle: "medium" })}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Time</p>
+                    <p className="mt-1 font-medium">{startsAt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" })}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Duration</p>
+                    <p className="mt-1 font-medium">{duration > 0 ? `${duration} mins` : "—"}</p>
+                  </div>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Rescheduled</p>
+                    <p className="mt-1 font-medium">{state.currentCount} / {policy.reschedule.max_changes}</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                      Reschedule is only allowed more than {policy.reschedule.cutoff_hours} hours before the booking time.
+                    </p>
                   </div>
                 </div>
-              ) : null}
-              <p className="text-sm text-[var(--text-muted)]">Staff: {booking.staff_name || "Any staff"}</p>
-              <p className="text-sm text-[var(--text-muted)]">
-                Date: {new Date(booking.starts_at).toLocaleDateString("en-MY", { dateStyle: "medium" })}
-              </p>
-              <p className="text-sm text-[var(--text-muted)]">
-                Time: {new Date(booking.starts_at).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" })}
-              </p>
-              <p className="mt-1 text-sm">Status: {booking.status}</p>
-              <p className="mt-1 text-sm">Payment: {booking.payment_status || "—"}</p>
-              <p className="mt-1 text-sm">Deposit: {formatCurrency(booking.deposit_amount)}</p>
-              <p className="mt-1 text-sm">Rescheduled: {state.currentCount} / {policy.reschedule.max_changes}</p>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">
-                Reschedule is only allowed more than {policy.reschedule.cutoff_hours} hours before the booking time.
-              </p>
+
+                {booking.customer_remarks ? (
+                  <div className="mt-4 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                    <p className="text-sm font-semibold">Remarks</p>
+                    <p className="mt-1 whitespace-pre-wrap text-sm text-[var(--text-muted)]">{booking.customer_remarks}</p>
+                  </div>
+                ) : null}
               </section>
 
-              <section className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                <p className="text-sm font-semibold">Salon Service Photos</p>
+              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-lg font-semibold">Payment Summary</p>
+                    <p className="text-xs text-[var(--text-muted)]">Deposit and remaining balance</p>
+                  </div>
+                  <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-semibold ${bookingBadgeClass(payment.paymentStatus)}`}>
+                    {payment.paymentStatus}
+                  </span>
+                </div>
+
+                <div className="space-y-3 text-sm">
+                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Service Total</span><span className="font-medium">{formatCurrency(payment.serviceTotal)}</span></div>
+                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Add-ons</span><span className="font-medium">{formatCurrency(payment.addonTotal)}</span></div>
+                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Deposit Paid</span><span className="font-medium text-emerald-700">{formatCurrency(payment.depositPaid)}</span></div>
+                  {payment.packageOffset > 0 ? (
+                    <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Package Offset</span><span className="font-medium">-{formatCurrency(payment.packageOffset)}</span></div>
+                  ) : null}
+                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Paid In Store</span><span className="font-medium">{formatCurrency(payment.settlementPaid)}</span></div>
+                  <div className="flex items-center justify-between gap-4"><span className="text-[var(--text-muted)]">Total Paid</span><span className="font-medium">{formatCurrency(payment.totalPaid)}</span></div>
+                  <div className="border-t border-[var(--card-border)] pt-3">
+                    <div className="flex items-center justify-between gap-4 text-base"><span className="font-semibold">Balance Due</span><span className="font-semibold text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span></div>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl bg-[var(--background)]/30 p-3 text-sm text-[var(--text-muted)]">
+                  <p>{payment.helperText}</p>
+                  {payment.balanceDue > 0 ? <p className="mt-1">Remaining balance will be paid at the salon.</p> : null}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+                <p className="text-lg font-semibold">Salon Service Photos</p>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Photos uploaded by our salon team for this booking.</p>
                 {(booking.service_photos?.length ?? 0) > 0 ? (
-                  <div className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
                     {(booking.service_photos ?? []).map((photo, index) => {
                       const url = resolveServicePhotoUrl(photo);
                       return (
@@ -398,248 +535,189 @@ export default function BookingDetailPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="mt-2 text-xs text-[var(--text-muted)]">No salon service photos yet.</p>
+                  <p className="mt-3 rounded-xl bg-[var(--background)]/20 p-3 text-xs text-[var(--text-muted)]">No salon service photos yet.</p>
                 )}
               </section>
 
-              {(booking.service?.allow_photo_upload ?? false) || (booking.uploaded_item_photos?.length ?? 0) > 0 ? (
-                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-semibold">Customer Reference Photos</p>
-                    <span className="text-xs font-semibold text-[var(--text-muted)]">
-                      {(booking.uploaded_item_photos?.length ?? 0)}/3
-                    </span>
+              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-lg font-semibold">Customer Reference Photos</p>
+                    <p className="mt-1 text-xs text-[var(--text-muted)]">Upload references for our salon team. Upload is available only for HOLD or CONFIRMED bookings.</p>
                   </div>
-                  <p className="mt-1 text-xs text-[var(--text-muted)]">
-                    You can upload up to 3 photos. Upload is available only for HOLD or CONFIRMED bookings.
-                  </p>
-
-                  <input
-                    id={`booking-photo-input-${booking.id}`}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    disabled={
-                      photoBusyBookingId === booking.id ||
-                      !BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ||
-                      !(booking.service?.allow_photo_upload ?? false) ||
-                      (booking.uploaded_item_photos?.length ?? 0) >= 3
-                    }
-                    onChange={(event) => {
-                      void handleBookingPhotoUpload(booking, event.target.files);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-
-                  <div className="mt-2 grid grid-cols-3 gap-2">
-                    {Array.from({ length: 3 }).map((_, index) => {
-                      const photo = booking.uploaded_item_photos?.[index] ?? null;
-                      const isEmpty = !photo;
-                      const canUpload =
-                        BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) &&
-                        (booking.service?.allow_photo_upload ?? false) &&
-                        (booking.uploaded_item_photos?.length ?? 0) < 3 &&
-                        photoBusyBookingId !== booking.id;
-
-                      return (
-                        <button
-                          key={index}
-                          type="button"
-                          className={[
-                            "group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200",
-                            isEmpty
-                              ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
-                              : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
-                          ].join(" ")}
-                          onClick={() => {
-                            if (isEmpty && canUpload) {
-                              const input = document.getElementById(
-                                `booking-photo-input-${booking.id}`
-                              ) as HTMLInputElement | null;
-                              input?.click();
-                            }
-                          }}
-                          disabled={photoBusyBookingId === booking.id || (isEmpty && !canUpload)}
-                          aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
-                        >
-                          {isEmpty ? (
-                            <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
-                              <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--muted)]/40 group-hover:bg-[var(--muted)]/60 transition">
-                                <i className="fa-solid fa-cloud-arrow-up text-[var(--text-muted)] text-sm" aria-hidden />
-                              </div>
-                              <span className="text-[10px] font-medium text-[var(--text-muted)]">Click to upload</span>
-                            </div>
-                          ) : (
-                            <>
-                              <a
-                                href={photo.file_url}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="block h-full w-full"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
-                                  <img
-                                    src={photo.file_url}
-                                    alt={photo.original_name || "Booking photo"}
-                                    className="h-full w-full object-contain"
-                                  />
-                                </div>
-                              </a>
-                              {BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ? (
-                                <button
-                                  type="button"
-                                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
-                                  disabled={photoBusyBookingId === booking.id}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void handleRemoveBookingPhoto(booking.id, photo.id);
-                                  }}
-                                  aria-label={`Remove ${photo.original_name || "photo"}`}
-                                >
-                                  <i className="fa-solid fa-xmark text-[10px]" />
-                                </button>
-                              ) : null}
-                            </>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <span className="text-xs font-semibold text-[var(--text-muted)]">{(booking.uploaded_item_photos?.length ?? 0)}/3</span>
                 </div>
-              ) : null}
-              {booking.customer_remarks ? (
-                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                  <p className="text-sm font-semibold">Remarks</p>
-                  <p className="mt-1 text-sm text-[var(--text-muted)] whitespace-pre-wrap">{booking.customer_remarks}</p>
-                </div>
-              ) : null}
-              {/* {(booking.receipts?.length ?? 0) > 0 ? (
-                <div className="mt-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                  <p className="text-sm font-semibold">Receipts</p>
-                  <div className="mt-2 space-y-2">
-                    {booking.receipts?.map((receipt, index) => (
-                      <div key={`${receipt.order_id}-${receipt.line_type}-${index}`} className="flex flex-wrap items-center justify-between gap-2 text-xs text-[var(--text-muted)]">
-                        <div>
-                          <p className="font-medium text-[var(--foreground)]">{receipt.stage_label || "Receipt"}</p>
-                          <p>Order: {receipt.order_number} · Amount: RM {Number(receipt.amount ?? 0).toFixed(2)}</p>
-                        </div>
-                        {receipt.receipt_public_url ? (
-                          <a
-                            href={receipt.receipt_public_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-full border px-3 py-1 text-[11px] font-medium text-[var(--foreground)]"
-                          >
-                            Open Receipt
-                          </a>
-                        ) : null}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : null} */}
 
-              {state.hasPendingCancellation ? (
-                <span className="mt-2 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
-                  Cancellation Requested
-                </span>
-              ) : null}
-
-              <section className="mt-4 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                <p className="text-sm font-semibold">Actions</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                {/* <button
-                  onClick={() => {
-                    const nextParams = new URLSearchParams({
-                      order_id: String(booking.id),
-                      payment_method: String(booking.latest_payment?.payment_method || "manual_transfer"),
-                      provider: String(booking.latest_payment?.provider || "manual"),
-                    });
-                    if (booking.booking_code) {
-                      nextParams.set("order_no", booking.booking_code);
-                    }
-                    router.push(`/payment-result?${nextParams.toString()}`);
+                <input
+                  id={`booking-photo-input-${booking.id}`}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  className="hidden"
+                  disabled={
+                    photoBusyBookingId === booking.id ||
+                    !BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ||
+                    !(booking.service?.allow_photo_upload ?? false) ||
+                    (booking.uploaded_item_photos?.length ?? 0) >= 3
+                  }
+                  onChange={(event) => {
+                    void handleBookingPhotoUpload(booking, event.target.files);
+                    event.currentTarget.value = "";
                   }}
-                  className="rounded-full border px-4 py-2 text-sm"
-                >
-                  View
-                </button> */}
+                />
 
-                {String(booking.status).toUpperCase() === "HOLD" ? (
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const method = booking.latest_payment?.payment_method || "manual_transfer";
-                      if (method === "manual_transfer") {
-                        const nextParams = new URLSearchParams({
-                          order_id: String(booking.id),
-                          payment_method: method,
-                          provider: String(booking.latest_payment?.provider || "manual"),
-                        });
-                        if (booking.booking_code) {
-                          nextParams.set("order_no", booking.booking_code);
-                        }
-                        router.push(`/payment-result?${nextParams.toString()}`);
-                        return;
-                      }
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  {Array.from({ length: 3 }).map((_, index) => {
+                    const photo = booking.uploaded_item_photos?.[index] ?? null;
+                    const isEmpty = !photo;
+                    const canUpload =
+                      BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) &&
+                      (booking.service?.allow_photo_upload ?? false) &&
+                      (booking.uploaded_item_photos?.length ?? 0) < 3 &&
+                      photoBusyBookingId !== booking.id;
 
-                      try {
-                        const normalizedMethod =
-                          method === "billplz_fpx"
-                            ? "billplz_online_banking"
-                            : method === "billplz_card"
-                              ? "billplz_credit_card"
-                              : method;
-                        const resp = await payBooking(booking.id, { payment_method: normalizedMethod as "billplz_online_banking" | "billplz_credit_card" | "manual_transfer" });
-                        const redirectUrl = resp?.data?.payment_url || booking.latest_payment?.payment_url;
-                        if (redirectUrl) {
-                          window.location.href = redirectUrl;
-                        } else {
-                          const nextParams = new URLSearchParams({
-                            order_id: String(resp?.data?.order_id ?? booking.id),
-                            payment_method: String(resp?.data?.payment_method ?? method),
-                            provider: String(resp?.data?.provider ?? booking.latest_payment?.provider ?? "billplz"),
-                          });
-                          if (resp?.data?.order_no || booking.booking_code) {
-                            nextParams.set("order_no", String(resp?.data?.order_no || booking.booking_code));
+                    return (
+                      <button
+                        key={index}
+                        type="button"
+                        className={[
+                          "group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200",
+                          isEmpty
+                            ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
+                            : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
+                        ].join(" ")}
+                        onClick={() => {
+                          if (isEmpty && canUpload) {
+                            const input = document.getElementById(`booking-photo-input-${booking.id}`) as HTMLInputElement | null;
+                            input?.click();
                           }
-                          router.push(`/payment-result?${nextParams.toString()}`);
-                        }
-                      } catch (err) {
-                        setError(err instanceof Error ? err.message : "Unable to continue payment.");
-                      }
-                    }}
-                    className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white"
-                  >
-                    Pay Now
-                  </button>
-                ) : null}
-
-                {state.canReschedule ? (
-                  <button
-                    type="button"
-                    onClick={() => openRescheduleModal(booking)}
-                    className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white"
-                  >
-                    Reschedule
-                  </button>
-                ) : null}
-
-                {state.canRequestCancellation ? (
-                  <button
-                    onClick={() => {
-                      setModalBooking(booking);
-                      setCancelReason("");
-                      setCancelFeedback(null);
-                    }}
-                    className="rounded-full border px-4 py-2 text-sm"
-                  >
-                    Request Cancellation
-                  </button>
-                ) : null}
+                        }}
+                        disabled={photoBusyBookingId === booking.id || (isEmpty && !canUpload)}
+                        aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
+                      >
+                        {isEmpty ? (
+                          <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
+                            <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--muted)]/40 transition group-hover:bg-[var(--muted)]/60">
+                              <i className="fa-solid fa-cloud-arrow-up text-sm text-[var(--text-muted)]" aria-hidden />
+                            </div>
+                            <span className="text-[10px] font-medium text-[var(--text-muted)]">Click to upload</span>
+                          </div>
+                        ) : (
+                          <>
+                            <a href={photo.file_url} target="_blank" rel="noreferrer" className="block h-full w-full" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={photo.file_url} alt={photo.original_name || "Booking photo"} className="h-full w-full object-contain" />
+                              </div>
+                            </a>
+                            {BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ? (
+                              <button
+                                type="button"
+                                className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
+                                disabled={photoBusyBookingId === booking.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  void handleRemoveBookingPhoto(booking.id, photo.id);
+                                }}
+                                aria-label={`Remove ${photo.original_name || "photo"}`}
+                              >
+                                <i className="fa-solid fa-xmark text-[10px]" />
+                              </button>
+                            ) : null}
+                          </>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {!(booking.service?.allow_photo_upload ?? false) && (booking.uploaded_item_photos?.length ?? 0) === 0 ? (
+                  <p className="mt-3 text-xs text-[var(--text-muted)]">Photo upload is not enabled for this service.</p>
+                ) : null}
+              </section>
+
+              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+                <p className="text-lg font-semibold">Actions</p>
+                {hasActions ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {canPayNow ? (
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          const method = booking.latest_payment?.payment_method || "manual_transfer";
+                          if (method === "manual_transfer") {
+                            const nextParams = new URLSearchParams({
+                              order_id: String(booking.id),
+                              payment_method: method,
+                              provider: String(booking.latest_payment?.provider || "manual"),
+                            });
+                            if (booking.booking_code) {
+                              nextParams.set("order_no", booking.booking_code);
+                            }
+                            router.push(`/payment-result?${nextParams.toString()}`);
+                            return;
+                          }
+
+                          try {
+                            const normalizedMethod =
+                              method === "billplz_fpx"
+                                ? "billplz_online_banking"
+                                : method === "billplz_card"
+                                  ? "billplz_credit_card"
+                                  : method;
+                            const resp = await payBooking(booking.id, { payment_method: normalizedMethod as "billplz_online_banking" | "billplz_credit_card" | "manual_transfer" });
+                            const redirectUrl = resp?.data?.payment_url || booking.latest_payment?.payment_url;
+                            if (redirectUrl) {
+                              window.location.href = redirectUrl;
+                            } else {
+                              const nextParams = new URLSearchParams({
+                                order_id: String(resp?.data?.order_id ?? booking.id),
+                                payment_method: String(resp?.data?.payment_method ?? method),
+                                provider: String(resp?.data?.provider ?? booking.latest_payment?.provider ?? "billplz"),
+                              });
+                              if (resp?.data?.order_no || booking.booking_code) {
+                                nextParams.set("order_no", String(resp?.data?.order_no || booking.booking_code));
+                              }
+                              router.push(`/payment-result?${nextParams.toString()}`);
+                            }
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : "Unable to continue payment.");
+                          }
+                        }}
+                        className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white"
+                      >
+                        Pay Now
+                      </button>
+                    ) : null}
+
+                    {state.canReschedule ? (
+                      <button type="button" onClick={() => openRescheduleModal(booking)} className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white">
+                        Reschedule
+                      </button>
+                    ) : null}
+
+                    {state.canRequestCancellation ? (
+                      <button
+                        onClick={() => {
+                          setModalBooking(booking);
+                          setCancelReason("");
+                          setCancelFeedback(null);
+                        }}
+                        className="rounded-full border px-4 py-2 text-sm"
+                      >
+                        Request Cancellation
+                      </button>
+                    ) : null}
+
+                    {state.hasPendingCancellation ? (
+                      <span className="inline-flex rounded-full bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700">
+                        Cancellation Requested
+                      </span>
+                    ) : null}
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-[var(--text-muted)]">No actions are currently available for this booking.</p>
+                )}
               </section>
             </div>
           );

@@ -178,6 +178,16 @@ export type BookingRecord = {
   }>;
   addon_total_duration_min?: number;
   addon_total_price?: number;
+  service_total?: number | null;
+  deposit_paid?: number | null;
+  linked_booking_deposit_total?: number | null;
+  deposit_previously_collected_amount?: number | null;
+  settlement_paid?: number | null;
+  package_offset?: number | null;
+  balance_due?: number | null;
+  amount_due_now?: number | null;
+  total_paid?: number | null;
+  estimated_duration_min?: number | null;
   staff_name?: string | null;
   starts_at: string;
   deposit_amount: number;
