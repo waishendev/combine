@@ -22,6 +22,7 @@ use App\Models\Ecommerce\ProductStockMovement;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Booking\Booking;
 use App\Models\Booking\CustomerServicePackage;
+use App\Models\Booking\CustomerServicePackageBalance;
 use App\Models\Booking\BookingCancellationRequest;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPayment;
@@ -394,6 +395,9 @@ class PosController extends Controller
                 'addon_total_price' => (float) ($summary['addon_total_price'] ?? 0),
                 'add_ons' => $summary['add_ons'] ?? [],
                 'package_status' => $summary['package_status'],
+                'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
+                'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
+                'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
             ];
         })->when($statusFilterNeedsActiveCheck, function ($rows) {
             return $rows->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row));
@@ -5951,6 +5955,9 @@ class PosController extends Controller
                 'service_balance_due' => (float) ($hasPerLineDiscounts ? $mainSettlementItems->sum('line_total_after_discount') : ($summary['service_balance_due'] ?? 0)),
                 'addon_settlement_items' => $addonSettlementItems->all(),
                 'package_status' => $summary['package_status'] ?? null,
+                'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
+                'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
+                'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
             ];
         })->filter()->values();
 
@@ -6517,6 +6524,9 @@ class PosController extends Controller
             'addon_paid_settlement' => (float) $summary['addon_paid_settlement'],
             'addon_balance_due' => (float) $summary['addon_balance_due'],
             'package_status' => $summary['package_status'],
+            'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
+            'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
+            'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
             'receipts' => $receiptHistory,
         ];
     }
@@ -6841,6 +6851,7 @@ class PosController extends Controller
 
         $coveredByPackage = $packageUsage !== null && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true);
         $packageOffset = $coveredByPackage ? max(0.0, $originalServiceAmount) : 0.0;
+        $packageEligibility = $this->resolveAppointmentPackageEligibility($booking, $packageUsage);
 
         $serviceOutstandingRows = $mainSettlementItems->map(function (array $item, int $idx) use ($depositPaid, $packageOffset) {
             $lineAmount = max(0, (float) ($item['extra_price'] ?? 0));
@@ -6895,7 +6906,70 @@ class PosController extends Controller
                 'reserved_at' => optional($packageUsage->reserved_at)?->toIso8601String(),
                 'consumed_at' => optional($packageUsage->consumed_at)?->toIso8601String(),
             ] : null,
+            'can_apply_package' => (bool) $packageEligibility['can_apply_package'],
+            'package_disabled_reason' => $packageEligibility['package_disabled_reason'],
+            'eligible_package_count' => (int) $packageEligibility['eligible_package_count'],
         ];
+    }
+
+    protected function resolveAppointmentPackageEligibility(Booking $booking, ?CustomerServicePackageUsage $packageUsage = null): array
+    {
+        if ($packageUsage && in_array((string) $packageUsage->status, ['reserved', 'consumed'], true)) {
+            return [
+                'can_apply_package' => false,
+                'package_disabled_reason' => null,
+                'eligible_package_count' => 0,
+            ];
+        }
+
+        if (! $booking->customer_id) {
+            return [
+                'can_apply_package' => false,
+                'package_disabled_reason' => __('Package can only be applied for members.'),
+                'eligible_package_count' => 0,
+            ];
+        }
+
+        if (! $booking->service_id) {
+            return [
+                'can_apply_package' => false,
+                'package_disabled_reason' => __('No eligible package available.'),
+                'eligible_package_count' => 0,
+            ];
+        }
+
+        $eligibleCount = $this->countAvailablePackageBalance((int) $booking->customer_id, (int) $booking->service_id);
+
+        return [
+            'can_apply_package' => $eligibleCount > 0,
+            'package_disabled_reason' => $eligibleCount > 0 ? null : __('No eligible package available.'),
+            'eligible_package_count' => $eligibleCount,
+        ];
+    }
+
+    protected function countAvailablePackageBalance(int $customerId, int $bookingServiceId): int
+    {
+        $balances = CustomerServicePackageBalance::query()
+            ->select('customer_service_package_balances.*')
+            ->join('customer_service_packages', 'customer_service_packages.id', '=', 'customer_service_package_balances.customer_service_package_id')
+            ->where('customer_service_packages.customer_id', $customerId)
+            ->where('customer_service_package_balances.booking_service_id', $bookingServiceId)
+            ->where('customer_service_packages.status', 'active')
+            ->where(function ($query) {
+                $query->whereNull('customer_service_packages.expires_at')
+                    ->orWhere('customer_service_packages.expires_at', '>=', now());
+            })
+            ->get();
+
+        return (int) $balances->sum(function (CustomerServicePackageBalance $balance) use ($bookingServiceId) {
+            $reservedQty = (int) CustomerServicePackageUsage::query()
+                ->where('customer_service_package_id', (int) $balance->customer_service_package_id)
+                ->where('booking_service_id', $bookingServiceId)
+                ->where('status', 'reserved')
+                ->sum('used_qty');
+
+            return max(0, (int) $balance->remaining_qty - $reservedQty);
+        });
     }
 
     protected function resolveBookingStaffSplits(int $bookingId, int $fallbackStaffId = 0)

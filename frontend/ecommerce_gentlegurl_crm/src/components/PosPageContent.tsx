@@ -153,6 +153,9 @@ type AppointmentSettlementCartItem = {
     discount_remark?: string | null
   }>
   package_status?: { status?: 'reserved' | 'consumed' | 'released' | null } | null
+  can_apply_package?: boolean
+  package_disabled_reason?: string | null
+  eligible_package_count?: number
 }
 
 
@@ -5660,6 +5663,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const hasAddons = depositBlocks.some((block) => (block.add_ons ?? []).length > 0)
                   const staffSplitSummary = formatPosServiceStaffSplitSummary(serviceItem)
                   const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
+                  const servicePackageDisabledReason = !selectedMember?.id
+                    ? 'Package can only be applied for members.'
+                    : (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0
+                      ? 'No eligible package available.'
+                      : null
 
                   return (
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-3 shadow-sm sm:p-4">
@@ -5682,29 +5690,36 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               {serviceUnclaimingIds[serviceItem.id] ? 'Releasing…' : 'Unclaim Package'}
                             </button>
                           ) : (
-                            <button
-                              type="button"
-                              disabled={
-                                !selectedMember?.id ||
-                                (serviceAvailabilityMap[serviceItem.id] ?? 0) <= 0 ||
-                                serviceRedeemingIds[serviceItem.id] ||
-                                serviceUnclaimingIds[serviceItem.id] ||
-                                serviceItem.claimed_by_package ||
-                                serviceItem.package_claim_status === 'consumed'
-                              }
-                              onClick={() => void redeemServiceItem(serviceItem)}
-                              className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                                isPkgClaimed
-                                  ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200'
-                                  : 'border-emerald-400/80 bg-white text-emerald-800'
-                              }`}
-                            >
-                              {serviceRedeemingIds[serviceItem.id]
-                                ? 'Reserving…'
-                                : isPkgClaimed
-                                  ? 'Package applied'
-                                  : 'Claim package'}
-                            </button>
+                            <span className="inline-flex flex-col items-end gap-0.5">
+                              <button
+                                type="button"
+                                disabled={
+                                  !!servicePackageDisabledReason ||
+                                  serviceRedeemingIds[serviceItem.id] ||
+                                  serviceUnclaimingIds[serviceItem.id] ||
+                                  serviceItem.claimed_by_package ||
+                                  serviceItem.package_claim_status === 'consumed'
+                                }
+                                title={servicePackageDisabledReason ?? undefined}
+                                onClick={() => void redeemServiceItem(serviceItem)}
+                                className={`rounded-lg border px-3 py-1.5 text-[11px] font-semibold shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                                  isPkgClaimed
+                                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900 ring-1 ring-emerald-200'
+                                    : 'border-emerald-400/80 bg-white text-emerald-800'
+                                }`}
+                              >
+                                {serviceRedeemingIds[serviceItem.id]
+                                  ? 'Reserving…'
+                                  : isPkgClaimed
+                                    ? 'Package applied'
+                                    : 'Claim package'}
+                              </button>
+                              {servicePackageDisabledReason && !isPkgClaimed ? (
+                                <span className="max-w-[12rem] text-right text-[10px] font-medium leading-tight text-amber-700">
+                                  {servicePackageDisabledReason}
+                                </span>
+                              ) : null}
+                            </span>
                           )}
                           <button
                             type="button"
@@ -5783,9 +5798,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
                         <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                          {settlement.package_status?.status === 'reserved' || (settlementAvailabilityMap[settlement.id] ?? 0) > 0 ? (
+                          {settlement.package_status?.status === 'reserved' || Number(settlement.eligible_package_count ?? settlementAvailabilityMap[settlement.id] ?? 0) > 0 ? (
                             <span className="text-[10px] text-gray-500 tabular-nums">
-                              Pkg bal. {settlementAvailabilityMap[settlement.id] ?? 0}
+                              Pkg bal. {Number(settlement.eligible_package_count ?? settlementAvailabilityMap[settlement.id] ?? 0)}
                             </span>
                           ) : null}
                             {settlement.package_status?.status === 'reserved' ? (
@@ -5798,21 +5813,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 {settlementUnclaimingIds[settlement.id] ? 'Releasing…' : 'Unclaim Package'}
                               </button>
                             ) : (
-                              <button
-                                type="button"
-                                disabled={
-                                  !selectedMember?.id ||
-                                  !settlement.customer_id ||
-                                  (settlementAvailabilityMap[settlement.id] ?? 0) <= 0 ||
-                                  settlementRedeemingIds[settlement.id] ||
-                                  settlementUnclaimingIds[settlement.id] ||
-                                  settlement.package_status?.status === 'consumed'
-                                }
-                                onClick={() => void claimSettlementPackage(settlement.booking_id, settlement.id)}
-                                className="rounded-lg border border-cyan-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-cyan-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                {settlementRedeemingIds[settlement.id] ? 'Reserving…' : 'Claim package'}
-                              </button>
+                              <span className="inline-flex flex-col items-end gap-0.5">
+                                <button
+                                  type="button"
+                                  disabled={
+                                    !settlement.can_apply_package ||
+                                    settlementRedeemingIds[settlement.id] ||
+                                    settlementUnclaimingIds[settlement.id] ||
+                                    settlement.package_status?.status === 'consumed'
+                                  }
+                                  title={!settlement.can_apply_package ? (settlement.package_disabled_reason ?? 'No eligible package available.') : undefined}
+                                  onClick={() => void claimSettlementPackage(settlement.booking_id, settlement.id)}
+                                  className="rounded-lg border border-cyan-300 bg-white px-3 py-1.5 text-[11px] font-semibold text-cyan-800 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {settlementRedeemingIds[settlement.id] ? 'Reserving…' : 'Claim package'}
+                                </button>
+                                {!settlement.can_apply_package ? (
+                                  <span className="max-w-[12rem] text-right text-[10px] font-medium leading-tight text-amber-700">
+                                    {settlement.package_disabled_reason ?? 'No eligible package available.'}
+                                  </span>
+                                ) : null}
+                              </span>
                             )}
                           <button
                             type="button"
@@ -5887,18 +5908,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                     {(() => {
                       const pkgOffset = Number(settlement.package_offset ?? 0)
-                      const serviceTotal = Number(settlement.service_total ?? 0)
-                      const serviceDue = Number(settlement.service_balance_due ?? serviceTotal)
-                      const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotal > 0.0001
-                      const hasServiceBlocks = (settlement.main_service_settlement_items ?? []).length > 0
+                      const settlementPackageClaimed = ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
+                      const mainCoveredByPkg = (settlementPackageClaimed || pkgOffset > 0.0001) && pkgOffset > 0.0001
+                      const serviceBlocks = settlement.main_service_settlement_items ?? []
+                      const hasServiceBlocks = serviceBlocks.length > 0
+                      const originalServiceBlock = serviceBlocks.find((service, idx) => service.is_original ?? idx === 0)
+                      const originalServiceReference = Number(
+                        originalServiceBlock?.gross_amount ??
+                        originalServiceBlock?.extra_price ??
+                        originalServiceBlock?.balance_due ??
+                        settlement.service_total ??
+                        0,
+                      )
                       const addonRows = settlement.addon_settlement_items ?? []
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const totalDue = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
                       const isRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
-                      const servicePriceLabel = isRangeUnsettled
-                        ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
-                        : `RM ${serviceTotal.toFixed(2)}`
                       const totalDueLabel = isRangeUnsettled
                         ? `RM ${(Number(settlement.service_price_range_min) + addonDueSum - depositCredit - pkgOffset).toFixed(2)} - ${(Number(settlement.service_price_range_max) + addonDueSum - depositCredit - pkgOffset).toFixed(2)}`
                         : `RM ${totalDue.toFixed(2)}`
@@ -5907,41 +5933,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <div className="mt-3 rounded-lg bg-white/90 px-3 py-2.5 ring-1 ring-cyan-200/80">
                           {/* <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Deposits</p> */}
                           <div className="mt-2 space-y-2 text-[11px]">
-                            {mainCoveredByPkg ? (
-                              <div className="flex flex-wrap items-start justify-between gap-2 border-b border-gray-200 pb-2">
-                                <div className="min-w-0">
-                                  <p className="text-sm font-medium text-gray-900">{settlement.service_name ?? 'Service'}</p>
-                                  <p className="mt-0.5 text-[10px] leading-snug text-cyan-800">
-                                    Included in your package (main service)
-                                  </p>
-                                </div>
-                                <div className="shrink-0 text-right tabular-nums">
-                                  <span className="text-gray-400 line-through">{servicePriceLabel}</span>{' '}
-                                  <span className="text-sm font-semibold text-gray-900">RM 0.00</span>
-                                </div>
-                              </div>
-                            ) : (
-                              <div>
-                                
-                              </div>
-                            )}
-
-                         
-
                             {hasServiceBlocks ? (
                               <div className="space-y-2 border-b border-gray-200 pb-2">
                                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service</p>
-                                {(settlement.main_service_settlement_items ?? []).map((service, idx) => {
+                                {serviceBlocks.map((service, idx) => {
                                   const gross = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
                                   const discount = Number(service.discount_amount ?? 0)
                                   const net = Number(service.line_total_after_discount ?? Math.max(0, gross - discount))
+                                  const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
+                                  const displayGross = coveredByPackage ? Number(service.extra_price ?? gross) : gross
+                                  const displayNet = coveredByPackage ? 0 : net
                                   return (
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-800">
-                                        <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="text-xs font-medium text-gray-800" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                        <div className="min-w-0">
+                                          <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="text-xs font-medium text-gray-800" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                          {coveredByPackage ? (
+                                            <p className="mt-0.5 text-[10px] font-medium leading-snug text-emerald-700">
+                                              Included in your package (main service)
+                                            </p>
+                                          ) : null}
+                                        </div>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
-                                          <span className="block">RM {net.toFixed(2)}</span>
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {displayGross.toFixed(2)}</span> : null}
+                                          {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
+                                          <span className="block">RM {displayNet.toFixed(2)}</span>
                                         </span>
                                       </div>
                                     </div>
@@ -5949,15 +5965,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 })}
                                 {addonRows.map((addon, idx) => {
                                   const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
+                                  const addonReference = Number(addon.extra_price ?? gross)
                                   const discount = Number(addon.discount_amount ?? 0)
                                   const net = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+                                  const coveredByPackage = pkgOffset > originalServiceReference + 0.0001 && net <= 0.0001 && addonReference > 0.0001
+                                  const displayGross = coveredByPackage ? addonReference : gross
+                                  const displayNet = coveredByPackage ? 0 : net
                                   return (
                                     <div key={`settlement-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-700">
-                                        <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</span>
+                                        <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</span>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {gross.toFixed(2)}</span> : null}
-                                          <span className="block">RM {net.toFixed(2)}</span>
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {displayGross.toFixed(2)}</span> : null}
+                                          {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
+                                          <span className="block">RM {displayNet.toFixed(2)}</span>
                                         </span>
                                       </div>
                                     </div>
@@ -7164,14 +7185,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       const addons = settlement.addon_settlement_items ?? []
                       const addonCount = addons.length
-                      const hasServiceBlocks = (settlement.main_service_settlement_items ?? []).length > 0
+                      const checkoutServiceBlocks = settlement.main_service_settlement_items ?? []
+                      const hasServiceBlocks = checkoutServiceBlocks.length > 0
                       const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
-                      const serviceDue = Number(settlement.service_balance_due ?? settlement.service_total ?? 0)
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const pkgOffset = Number(settlement.package_offset ?? 0)
-                      const totalDue = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
-                      const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotalRef > 0.0001
+                      const settlementPackageClaimed = ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
+                      const mainCoveredByPkg = (settlementPackageClaimed || pkgOffset > 0.0001) && pkgOffset > 0.0001
+                      const checkoutOriginalServiceBlock = checkoutServiceBlocks.find((service, idx) => service.is_original ?? idx === 0)
+                      const checkoutOriginalServiceReference = Number(
+                        checkoutOriginalServiceBlock?.gross_amount ??
+                        checkoutOriginalServiceBlock?.extra_price ??
+                        checkoutOriginalServiceBlock?.balance_due ??
+                        settlement.service_total ??
+                        0,
+                      )
                       const stIsRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
                       const stServiceLabel = stIsRangeUnsettled
                         ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
@@ -7220,29 +7249,45 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                           {hasServiceBlocks ? (
                             <>
-                              {(settlement.main_service_settlement_items ?? []).map((service, idx) => {
+                              {checkoutServiceBlocks.map((service, idx) => {
                                 const servicePrice = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
                                 const serviceDiscount = Number(service.discount_amount ?? 0)
                                 const serviceNet = Number(service.line_total_after_discount ?? Math.max(0, servicePrice - serviceDiscount))
+                                const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
+                                const displayServiceNet = coveredByPackage ? 0 : serviceNet
                                 return (
                                   <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
                                     <tr className={`${stRowClass} align-top`}>
                                       <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Services Block</p>
                                         <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="mt-1 text-xs text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                        {coveredByPackage ? (
+                                          <p className="mt-1 text-[10px] font-medium leading-snug text-emerald-700">
+                                            Included in your package (main service)
+                                          </p>
+                                        ) : null}
                                       </td>
                                       <td className="min-w-[260px] px-4 py-2.5 align-top">
                                         <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
                                       </td>
-                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs font-semibold text-gray-700">RM {serviceNet.toFixed(2)}</td>
+                                      <td className="px-4 py-2.5 align-top tabular-nums text-xs font-semibold text-gray-700">
+                                        {coveredByPackage ? (
+                                          <span>
+                                            <span className="text-gray-400 line-through">RM {servicePrice.toFixed(2)}</span>{' '}
+                                            <span>RM 0.00</span>
+                                          </span>
+                                        ) : (
+                                          <>RM {serviceNet.toFixed(2)}</>
+                                        )}
+                                      </td>
                                       <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                                        {serviceDiscount > 0 ? (
+                                        {coveredByPackage || serviceDiscount > 0 ? (
                                           <div className="space-y-0.5">
                                             <p className="text-xs text-gray-400 line-through">RM {servicePrice.toFixed(2)}</p>
-                                            <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
-                                            <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>
+                                            {!coveredByPackage && serviceDiscount > 0 ? <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p> : null}
+                                            <p className="text-lg font-bold leading-tight text-orange-700">RM {displayServiceNet.toFixed(2)}</p>
                                           </div>
                                         ) : (
                                           <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>
@@ -7262,14 +7307,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               })}
                               {addonCount > 0 ? addons.map((addon, idx) => {
                                 const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
+                                const addonReference = Number(addon.extra_price ?? gross)
                                 const discount = Number(addon.discount_amount ?? 0)
                                 const due = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+                                const coveredByPackage = pkgOffset > checkoutOriginalServiceReference + 0.0001 && due <= 0.0001 && addonReference > 0.0001
+                                const displayGross = coveredByPackage ? addonReference : gross
+                                const displayDue = coveredByPackage ? 0 : due
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
-                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}</td>
+                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</td>
                                     <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? (<span><span className="text-gray-400 line-through">RM {displayGross.toFixed(2)}</span>{' '}<span>RM 0.00</span></span>) : <>RM {due.toFixed(2)}</>}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage || discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {displayGross.toFixed(2)}</p>{!coveredByPackage && discount > 0 ? <p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p> : null}<p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
                                 )
                               }) : null}

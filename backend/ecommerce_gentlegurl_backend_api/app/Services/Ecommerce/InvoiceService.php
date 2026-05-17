@@ -2,6 +2,7 @@
 
 namespace App\Services\Ecommerce;
 
+use App\Models\Booking\Booking;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\Order;
@@ -132,13 +133,14 @@ class InvoiceService
 
     public function buildPdf(Order $order)
     {
-        $order->loadMissing(['items.bookingService', 'items.booking', 'serviceItems.bookingService', 'pickupStore', 'customer']);
+        $order->loadMissing(['items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'customer']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
         $mixedItems = $order->items->map(fn (OrderItem $item) => $this->mapOrderItemToInvoiceRow($item))->values();
 
         $bookingIdsForPackage = $order->serviceItems
             ->pluck('booking_id')
+            ->concat($order->items->pluck('booking_id'))
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->unique()
@@ -196,6 +198,18 @@ class InvoiceService
         $hasSettlementLine = $mixedItems->contains(fn (array $item) => (string) ($item['line_type'] ?? '') === 'booking_settlement');
         $coveredServiceItems = $serviceItems
             ->filter(fn (array $item) => $this->isBookingCoveredByPackage((int) ($item['booking_id'] ?? 0)))
+            ->map(fn (array $item) => [
+                ...$item,
+                'covered_by_package' => true,
+                'line_total_snapshot' => (float) ($item['line_total'] ?? 0),
+                'line_total_after_discount' => 0.0,
+            ])
+            ->values()
+            ->concat($this->buildFallbackPackageCoveredServiceItems(
+                $order,
+                $packageNameByBooking,
+                $serviceItems->pluck('booking_id')->map(fn ($id) => (int) $id)->all(),
+            ))
             ->values();
         $hasPackageCoverage = $coveredServiceItems->isNotEmpty();
         $canRenderServiceCoverageLines = $hasPackageCoverage;
@@ -307,6 +321,82 @@ class InvoiceService
                 'package_names' => $packageNames,
             ],
         ]);
+    }
+
+
+    protected function buildFallbackPackageCoveredServiceItems(Order $order, $packageNameByBooking, array $existingBookingIds)
+    {
+        $existing = collect($existingBookingIds)->map(fn ($id) => (int) $id)->filter()->values();
+        $bookingIds = $order->items
+            ->pluck('booking_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->reject(fn (int $id) => $existing->contains($id))
+            ->filter(fn (int $id) => $this->isBookingCoveredByPackage($id))
+            ->values();
+
+        if ($bookingIds->isEmpty()) {
+            return collect();
+        }
+
+        $loadedBookings = $order->items
+            ->pluck('booking')
+            ->filter()
+            ->keyBy(fn ($booking) => (int) $booking->id);
+        $missingBookingIds = $bookingIds
+            ->reject(fn (int $id) => $loadedBookings->has($id))
+            ->values();
+
+        if ($missingBookingIds->isNotEmpty()) {
+            Booking::query()
+                ->with('service:id,name,cn_name,service_price,price')
+                ->whereIn('id', $missingBookingIds->all())
+                ->get()
+                ->each(function (Booking $booking) use ($loadedBookings) {
+                    $loadedBookings->put((int) $booking->id, $booking);
+                });
+        }
+
+        return $bookingIds
+            ->map(function (int $bookingId) use ($loadedBookings, $packageNameByBooking) {
+                $booking = $loadedBookings->get($bookingId);
+                if (! $booking) {
+                    return null;
+                }
+
+                $serviceAmount = $booking->settled_service_amount !== null
+                    ? (float) $booking->settled_service_amount
+                    : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+                $serviceAmount = round(max(0, $serviceAmount), 2);
+                $packageName = (string) ($packageNameByBooking->get($bookingId) ?? '');
+
+                return [
+                    'line_type' => 'service',
+                    'product_name' => (string) ($booking->service?->name ?? 'Service'),
+                    'product_cn_name' => $booking->service?->cn_name,
+                    'product_sku' => null,
+                    'variant_name' => 'Service',
+                    'variant_sku' => null,
+                    'quantity' => 1,
+                    'unit_price' => $serviceAmount,
+                    'line_total_snapshot' => $serviceAmount,
+                    'discount_type' => null,
+                    'discount_value' => 0.0,
+                    'discount_amount' => 0.0,
+                    'discount_remark' => null,
+                    'line_total' => $serviceAmount,
+                    'line_total_after_discount' => 0.0,
+                    'promotion_summary' => null,
+                    'is_staff_free_applied' => false,
+                    'staff_free_list_line_total' => 0.0,
+                    'booking_id' => $bookingId,
+                    'covered_by_package' => true,
+                    'package_applied_name' => $packageName !== '' ? $packageName : null,
+                ];
+            })
+            ->filter()
+            ->values();
     }
 
     protected function isBookingCoveredByPackage(int $bookingId): bool
