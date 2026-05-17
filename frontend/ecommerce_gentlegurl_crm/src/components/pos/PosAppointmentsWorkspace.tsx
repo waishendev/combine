@@ -2378,31 +2378,68 @@ export default function PosAppointmentsWorkspace({
                       <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-3 shadow-sm ring-1 ring-slate-200/80">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Service</p>
                         <div className="mt-2 space-y-2">
-                          {appointmentDisplayMainServices.map((service, serviceIdx) => (
-                            <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="min-w-0">
-                                  <PosServiceNameStack
-                                    name={`${service.name}${service.is_original ? ' (Original)' : ''}`}
-                                    cnName={service.cn_name}
-                                    primaryClassName="text-sm font-semibold text-slate-900"
-                                    secondaryClassName="mt-0.5 text-xs text-slate-500"
-                                  />
+                          {(() => {
+                            const packageRemainingForAddons = Math.max(0, appointmentPackageOffsetAmount - appointmentServiceAmount)
+                            let addonCoverageUsed = 0
+
+                            return appointmentDisplayMainServices.map((service, serviceIdx) => {
+                              const servicePrice = Number(service.extra_price ?? 0)
+                              const packageCoversMainService =
+                                appointmentPackageApplied &&
+                                appointmentIsFullyPackageCovered &&
+                                (service.is_original ?? serviceIdx === 0) &&
+                                appointmentPackageOffsetAmount > 0.0001
+
+                              return (
+                                <div key={`appt-main-block-${service.id ?? service.name}-${serviceIdx}`} className="rounded-md border border-slate-200 bg-white px-2.5 py-2">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <PosServiceNameStack
+                                        name={`${service.name}${service.is_original ? ' (Original)' : ''}`}
+                                        cnName={service.cn_name}
+                                        primaryClassName="text-sm font-semibold text-slate-900"
+                                        secondaryClassName="mt-0.5 text-xs text-slate-500"
+                                      />
+                                      {packageCoversMainService ? (
+                                        <p className="mt-0.5 text-[11px] font-medium leading-snug text-emerald-700">
+                                          Included in your package (main service)
+                                        </p>
+                                      ) : null}
+                                    </div>
+                                    <span className="text-xs font-semibold tabular-nums text-slate-900">RM {servicePrice.toFixed(2)}</span>
+                                  </div>
+                                  {(service.add_ons ?? []).length > 0 ? (
+                                    <ul className="mt-1.5 space-y-0.5 text-xs text-slate-700">
+                                      {(service.add_ons ?? []).map((addon, addonIdx) => {
+                                        const addonPrice = Number(addon.extra_price ?? 0)
+                                        const packageCoversAddon =
+                                          appointmentPackageApplied &&
+                                          packageRemainingForAddons > addonCoverageUsed + 0.0001 &&
+                                          addonPrice > 0.0001 &&
+                                          packageRemainingForAddons + 0.0001 >= addonCoverageUsed + addonPrice
+                                        if (packageCoversAddon) addonCoverageUsed += addonPrice
+
+                                        return (
+                                          <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2">
+                                            <span>
+                                              + {addon.name}
+                                              {addon.cn_name ? <span className="block pl-2 text-[11px] text-slate-500">{addon.cn_name}</span> : null}
+                                              {packageCoversAddon ? (
+                                                <span className="mt-0.5 block pl-2 text-[11px] font-medium leading-snug text-emerald-700">
+                                                  Included in your package (add-on)
+                                                </span>
+                                              ) : null}
+                                            </span>
+                                            <span className="tabular-nums">RM {addonPrice.toFixed(2)}</span>
+                                          </li>
+                                        )
+                                      })}
+                                    </ul>
+                                  ) : null}
                                 </div>
-                                <span className="text-xs font-semibold tabular-nums text-slate-900">RM {Number(service.extra_price ?? 0).toFixed(2)}</span>
-                              </div>
-                              {(service.add_ons ?? []).length > 0 ? (
-                                <ul className="mt-1.5 space-y-0.5 text-xs text-slate-700">
-                                  {(service.add_ons ?? []).map((addon, addonIdx) => (
-                                    <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2">
-                                      <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[11px] text-slate-500">{addon.cn_name}</span> : null}</span>
-                                      <span className="tabular-nums">RM {Number(addon.extra_price ?? 0).toFixed(2)}</span>
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : null}
-                            </div>
-                          ))}
+                              )
+                            })
+                          })()}
                         </div>
                       </div>
                     ) : null}
