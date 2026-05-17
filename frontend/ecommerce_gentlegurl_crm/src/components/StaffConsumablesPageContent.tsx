@@ -2,30 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
-type ConsumableVariant = {
-  id: number
-  name: string
-  sku?: string | null
-  price: number
-  image_url?: string | null
-  stock?: number | null
-  track_stock?: boolean | null
-}
-
-type ConsumableProduct = {
-  id: number
-  product_id: number
-  name: string
-  sku?: string | null
-  price: number
-  image_url?: string | null
-  thumbnail_url?: string | null
-  category?: string | null
-  categories?: Array<{ id: number; name: string }>
-  stock?: number | null
-  track_stock?: boolean | null
-  variants: ConsumableVariant[]
-}
+import StaffConsumableProductModal, {
+  type ConsumableProduct,
+  type ConsumableVariant,
+} from '@/components/staff-consumables/StaffConsumableProductModal'
 
 type CartItem = {
   key: string
@@ -76,6 +56,8 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('all')
   const [cart, setCart] = useState<CartItem[]>([])
+  const [selectedProduct, setSelectedProduct] = useState<ConsumableProduct | null>(null)
+  const [productModalOpen, setProductModalOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [checkingOut, setCheckingOut] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
@@ -136,18 +118,30 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
     loadHistory()
   }, [loadHistory])
 
-  const addProduct = (product: ConsumableProduct, variant?: ConsumableVariant) => {
+  const openProductModal = (product: ConsumableProduct) => {
+    setMessage(null)
+    setError(null)
+    setSelectedProduct(product)
+    setProductModalOpen(true)
+  }
+
+  const addProduct = (product: ConsumableProduct, variant: ConsumableVariant | null, qty = 1) => {
     setMessage(null)
     setError(null)
     const key = variant ? `v-${variant.id}` : `p-${product.product_id}`
     const stock = variant ? variant.stock : product.stock
     const trackStock = variant ? variant.track_stock : product.track_stock
+    const addQty = Math.max(1, Math.floor(qty || 1))
     setCart((current) => {
       const existing = current.find((item) => item.key === key)
       if (existing) {
-        if (typeof stock === 'number' && existing.qty >= stock) return current
-        return current.map((item) => (item.key === key ? { ...item, qty: item.qty + 1 } : item))
+        const nextQty = existing.qty + addQty
+        const cappedQty = typeof stock === 'number' ? Math.min(nextQty, stock) : nextQty
+        if (cappedQty <= existing.qty) return current
+        return current.map((item) => (item.key === key ? { ...item, qty: cappedQty } : item))
       }
+      const initialQty = typeof stock === 'number' ? Math.min(addQty, stock) : addQty
+      if (initialQty < 1) return current
       return [
         ...current,
         {
@@ -161,10 +155,18 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
           original_price: Number(variant?.price ?? product.price ?? 0),
           stock,
           track_stock: trackStock,
-          qty: 1,
+          qty: initialQty,
         },
       ]
     })
+  }
+
+  const isProductOutOfStock = (product: ConsumableProduct) => {
+    const variants = product.variants ?? []
+    if (variants.length > 0) {
+      return variants.every((variant) => variant.track_stock === true && typeof variant.stock === 'number' && variant.stock <= 0)
+    }
+    return product.track_stock === true && typeof product.stock === 'number' && product.stock <= 0
   }
 
   const updateQty = (key: string, qty: number) => {
@@ -213,9 +215,11 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
       <div className="mb-4 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Staff Free</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Staff supplies</p>
             <h1 className="text-2xl font-bold text-slate-900">Staff Consumables</h1>
-            <p className="mt-1 text-sm text-slate-500">Claim staff-free consumable items. Checkout is always RM0 and stock is deducted normally.</p>
+            <p className="mt-1 text-sm text-slate-500">
+              Pick service supplies your team uses on the floor. Tap a product to choose variant and quantity, then claim at RM0.
+            </p>
           </div>
           <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
             STAFF FREE APPLIED · Total RM0
@@ -241,19 +245,26 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
                 className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
               />
             </div>
-            <div className="md:w-56">
-              <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Category</label>
-              <select
-                value={category}
-                onChange={(event) => setCategory(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none transition focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+          </div>
+
+          <div className="mb-4 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setCategory('all')}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === 'all' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
+            >
+              All
+            </button>
+            {categories.map((cat) => (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setCategory(cat.id)}
+                className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${category === cat.id ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-100 text-slate-700 hover:bg-slate-200'}`}
               >
-                <option value="all">All categories</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
-            </div>
+                {cat.name}
+              </button>
+            ))}
           </div>
 
           {loading ? (
@@ -261,64 +272,55 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
           ) : products.length === 0 ? (
             <div className="rounded-xl border border-dashed border-slate-200 p-8 text-center text-sm text-slate-500">No staff-free consumable products found.</div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid min-h-[260px] auto-rows-max grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               {products.map((product) => {
-                const variants = product.variants ?? []
-                const productStock = product.track_stock ? product.stock : null
-                const outOfStock = typeof productStock === 'number' && productStock <= 0 && variants.length === 0
+                const variantsCount = product.variants?.length ?? product.variants_count ?? 0
+                const outOfStock = isProductOutOfStock(product)
+                const imageUrl = product.thumbnail_url ?? product.image_url
                 return (
-                  <article key={product.product_id} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-emerald-200 hover:shadow-md">
-                    <div className="flex gap-3 p-3">
-                      <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl bg-slate-100">
-                        {product.image_url || product.thumbnail_url ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={product.image_url ?? product.thumbnail_url ?? ''} alt={product.name} className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center text-slate-300"><i className="fa-solid fa-box" /></div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="mb-1 flex flex-wrap gap-1">
-                          <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">Staff Free</span>
-                          {product.category || product.categories?.[0]?.name ? <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">{product.category ?? product.categories?.[0]?.name}</span> : null}
-                        </div>
-                        <h3 className="line-clamp-2 text-sm font-semibold text-slate-900">{product.name}</h3>
-                        <p className="mt-1 truncate text-xs text-slate-500">SKU: {product.sku || '-'}</p>
-                        <p className="mt-1 text-xs font-semibold text-slate-600">Stock: {product.track_stock ? product.stock ?? 0 : 'Not tracked'}</p>
-                      </div>
-                    </div>
-                    <div className="border-t border-slate-100 p-3">
-                      {variants.length > 0 ? (
-                        <div className="space-y-2">
-                          {variants.map((variant) => {
-                            const stock = variant.track_stock ? variant.stock : null
-                            const disabled = typeof stock === 'number' && stock <= 0
-                            return (
-                              <button
-                                key={variant.id}
-                                type="button"
-                                onClick={() => addProduct(product, variant)}
-                                disabled={disabled}
-                                className="flex w-full items-center justify-between rounded-xl border border-slate-200 px-3 py-2 text-left text-xs transition hover:border-emerald-300 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <span className="min-w-0"><span className="block truncate font-semibold text-slate-700">{variant.name || variant.sku}</span><span className="block truncate text-slate-500">{variant.sku || '-'} · Stock {variant.track_stock ? variant.stock ?? 0 : 'N/A'}</span></span>
-                                <span className="ml-2 font-bold text-emerald-700">Add</span>
-                              </button>
-                            )
-                          })}
-                        </div>
+                  <div
+                    key={product.product_id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => openProductModal(product)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        openProductModal(product)
+                      }
+                    }}
+                    className={`group flex h-[124px] cursor-pointer flex-row overflow-hidden rounded-xl border-2 bg-white shadow-sm transition hover:shadow-lg ${
+                      outOfStock ? 'border-red-100 opacity-90' : 'border-slate-200 hover:border-emerald-400'
+                    }`}
+                  >
+                    <div className="h-full w-[120px] shrink-0 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-50">
+                      {imageUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={imageUrl}
+                          alt={product.name}
+                          className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+                        />
                       ) : (
-                        <button
-                          type="button"
-                          onClick={() => addProduct(product)}
-                          disabled={outOfStock}
-                          className="w-full rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-                        >
-                          {outOfStock ? 'Out of stock' : 'Add to claim'}
-                        </button>
+                        <div className="flex h-full w-full items-center justify-center text-slate-300">
+                          <i className="fa-solid fa-box text-2xl" />
+                        </div>
                       )}
                     </div>
-                  </article>
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-between p-4">
+                      <div className="min-w-0">
+                        <p className="mb-1 line-clamp-2 text-sm font-bold leading-tight text-slate-900">{product.name}</p>
+                        <p className="truncate font-mono text-xs text-slate-500">{product.sku || '—'}</p>
+                        {variantsCount > 0 ? (
+                          <p className="mt-0.5 text-[11px] font-medium text-emerald-700">({variantsCount} variants)</p>
+                        ) : null}
+                        {outOfStock ? (
+                          <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-red-600">Out of stock</p>
+                        ) : null}
+                      </div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Tap to add</p>
+                    </div>
+                  </div>
                 )
               })}
             </div>
@@ -328,11 +330,11 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
         <aside className="space-y-4">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-slate-900">Selected Items</h2>
+              <h2 className="text-lg font-bold text-slate-900">Claim cart</h2>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{claimCount} item(s)</span>
             </div>
             {cart.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">Add staff-free products to start a consumable claim.</div>
+              <div className="rounded-xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500">Tap a product to add supplies to your claim.</div>
             ) : (
               <div className="space-y-3">
                 {cart.map((item) => (
@@ -416,6 +418,16 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
           ) : null}
         </aside>
       </div>
+
+      <StaffConsumableProductModal
+        product={selectedProduct}
+        open={productModalOpen}
+        onClose={() => {
+          setProductModalOpen(false)
+          setSelectedProduct(null)
+        }}
+        onAdd={addProduct}
+      />
     </div>
   )
 }

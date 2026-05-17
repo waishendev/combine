@@ -6,8 +6,6 @@ type LogRow = {
   id: number
   claimed_at?: string | null
   staff?: string | null
-  claimed_by?: string | null
-  created_by?: string | null
   product?: string | null
   sku?: string | null
   qty: number
@@ -197,30 +195,29 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
                 <th className="px-4 py-3">Date/time</th>
                 <th className="px-4 py-3">Staff</th>
                 <th className="px-4 py-3">Product</th>
-                <th className="px-4 py-3">SKU</th>
-                <th className="px-4 py-3 text-right">Qty</th>
-                <th className="px-4 py-3 text-right">Original price</th>
-                <th className="px-4 py-3 text-right">Final amount</th>
-                <th className="px-4 py-3">Claimed by / created by</th>
-                <th className="px-4 py-3">Reference no</th>
+                <th className="px-4 py-3 text-left">Qty</th>
+                <th className="px-4 py-3 text-left">Original price</th>
+                <th className="px-4 py-3 text-left">Final amount</th>
+                <th className="px-4 py-3 text-left">Reference no</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading logs...</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Loading logs...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">No staff consumable logs found.</td></tr>
+                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No staff consumable logs found.</td></tr>
               ) : rows.map((row) => (
                 <tr key={row.id} className="align-top">
                   <td className="px-4 py-3 text-slate-600">{row.claimed_at ?? '-'}</td>
                   <td className="px-4 py-3 font-medium text-slate-800">{row.staff ?? '-'}</td>
-                  <td className="px-4 py-3 text-slate-800">{row.product ?? '-'}</td>
-                  <td className="px-4 py-3 text-slate-600">{row.sku ?? '-'}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{row.qty}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(row.original_price)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
-                  <td className="px-4 py-3 text-slate-600"><span className="block">Claimed: {row.claimed_by ?? row.staff ?? '-'}</span><span className="block text-xs text-slate-400">Created: {row.created_by ?? '-'}</span></td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{row.reference_no ?? row.order_number ?? '-'}</td>
+                  <td className="px-4 py-3">
+                    <span className="block font-medium text-slate-800">{row.product ?? '-'}</span>
+                    <span className="mt-0.5 block font-mono text-xs text-slate-500">{row.sku ?? '-'}</span>
+                  </td>
+                  <td className="px-4 py-3 text-left text-slate-700">{row.qty}</td>
+                  <td className="px-4 py-3 text-left text-slate-700">{formatCurrency(row.original_price)}</td>
+                  <td className="px-4 py-3 text-left font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
+                  <td className="px-4 py-3 font-mono text-xs text-slate-600 text-left">{row.reference_no ?? row.order_number ?? '-'}</td>
                 </tr>
               ))}
             </tbody>

@@ -86,6 +86,25 @@ const resolveServicePhotoUrl = (photo: { image_url?: string | null; image_path?:
   return normalized.startsWith('/storage/') ? normalized : `/storage${normalized}`;
 };
 
+type PhotoLightboxItem = { url: string; alt?: string };
+
+const getReferencePhotoUploadState = (booking: BookingRecord) => {
+  const count = booking.uploaded_item_photos?.length ?? 0;
+  const serviceAllows = booking.service?.allow_photo_upload ?? false;
+  const statusAllows = BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status));
+
+  if (!serviceAllows) {
+    return { canUpload: false, reason: "Photo upload is not available for this service." };
+  }
+  if (!statusAllows) {
+    return { canUpload: false, reason: "Upload is not available for this booking status." };
+  }
+  if (count >= 3) {
+    return { canUpload: false, reason: "You have reached the maximum of 3 reference photos." };
+  }
+  return { canUpload: true, reason: null };
+};
+
 export default function BookingDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
@@ -106,6 +125,20 @@ export default function BookingDetailPage() {
   const [rescheduleSubmitting, setRescheduleSubmitting] = useState(false);
   const [rescheduleFeedback, setRescheduleFeedback] = useState<string | null>(null);
   const [photoBusyBookingId, setPhotoBusyBookingId] = useState<number | null>(null);
+  const [photoModal, setPhotoModal] = useState<"completed" | "reference" | null>(null);
+  const [referenceUploadOpen, setReferenceUploadOpen] = useState(false);
+  const [photoLightbox, setPhotoLightbox] = useState<{ items: PhotoLightboxItem[]; index: number } | null>(null);
+
+  const closePhotoModals = () => {
+    setPhotoModal(null);
+    setReferenceUploadOpen(false);
+    setPhotoLightbox(null);
+  };
+
+  const openPhotoLightbox = (items: PhotoLightboxItem[], index: number) => {
+    if (!items[index]?.url) return;
+    setPhotoLightbox({ items, index });
+  };
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -363,6 +396,23 @@ export default function BookingDetailPage() {
 
   const currentBooking = bookings[0] ?? null;
   const currentPayment = currentBooking ? getPaymentSummary(currentBooking) : null;
+  const referenceUploadState = currentBooking ? getReferencePhotoUploadState(currentBooking) : null;
+  const completedLightboxItems: PhotoLightboxItem[] = currentBooking
+    ? (currentBooking.service_photos ?? [])
+        .map((photo, index) => ({
+          url: resolveServicePhotoUrl(photo),
+          alt: photo.caption || `Completed photo ${index + 1}`,
+        }))
+        .filter((item) => Boolean(item.url))
+    : [];
+  const referenceLightboxItems: PhotoLightboxItem[] = currentBooking
+    ? (currentBooking.uploaded_item_photos ?? [])
+        .map((photo) => ({
+          url: photo.file_url,
+          alt: photo.original_name || "Reference photo",
+        }))
+        .filter((item) => Boolean(item.url))
+    : [];
 
   return (
     <>
@@ -404,17 +454,7 @@ export default function BookingDetailPage() {
 
           return (
             <div key={booking.id} className="space-y-4">
-              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-                <div className="mb-4 flex items-center gap-2">
-                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--background)]">
-                    <i className="fa-regular fa-calendar-check text-[var(--text-muted)]" aria-hidden />
-                  </span>
-                  <div>
-                    <p className="text-lg font-semibold">Appointment Summary</p>
-                    <p className="text-xs text-[var(--text-muted)]">Your salon appointment details</p>
-                  </div>
-                </div>
-
+              <section>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Service</p>
@@ -506,125 +546,51 @@ export default function BookingDetailPage() {
               </section>
 
               <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-                <p className="text-lg font-semibold">Salon Service Photos</p>
-                <p className="mt-1 text-xs text-[var(--text-muted)]">Photos uploaded by our salon team for this booking.</p>
-                {(booking.service_photos?.length ?? 0) > 0 ? (
-                  <div className="mt-3 grid grid-cols-3 gap-2 sm:grid-cols-4">
-                    {(booking.service_photos ?? []).map((photo, index) => {
-                      const url = resolveServicePhotoUrl(photo);
-                      return (
-                        <a key={`service-photo-${booking.id}-${photo.id}`} href={url} target="_blank" rel="noreferrer" className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--card)] shadow-sm">
-                          {url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={url} alt={photo.caption || `Salon service photo ${index + 1}`} className="aspect-square w-full object-cover" />
-                          ) : (
-                            <span className="flex aspect-square items-center justify-center p-2 text-center text-[10px] text-[var(--text-muted)]">Image unavailable</span>
-                          )}
-                          {photo.caption ? <span className="block truncate px-2 py-1 text-[10px] text-[var(--text-muted)]">{photo.caption}</span> : null}
-                        </a>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="mt-3 rounded-xl bg-[var(--background)]/20 p-3 text-xs text-[var(--text-muted)]">No salon service photos yet.</p>
-                )}
-              </section>
-
-              <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-                <div className="flex items-center justify-between gap-2">
+                <div className="mb-4 flex items-center gap-2">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[var(--background)]">
+                    <i className="fa-regular fa-images text-[var(--text-muted)]" aria-hidden />
+                  </span>
                   <div>
-                    <p className="text-lg font-semibold">Customer Reference Photos</p>
-                    <p className="mt-1 text-xs text-[var(--text-muted)]">Upload references for our salon team. Upload is available only for HOLD or CONFIRMED bookings.</p>
+                    <p className="text-lg font-semibold">Booking Photos</p>
+                    <p className="text-xs text-[var(--text-muted)]">View your reference uploads and completed service photos</p>
                   </div>
-                  <span className="text-xs font-semibold text-[var(--text-muted)]">{(booking.uploaded_item_photos?.length ?? 0)}/3</span>
                 </div>
-
-                <input
-                  id={`booking-photo-input-${booking.id}`}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  disabled={
-                    photoBusyBookingId === booking.id ||
-                    !BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ||
-                    !(booking.service?.allow_photo_upload ?? false) ||
-                    (booking.uploaded_item_photos?.length ?? 0) >= 3
-                  }
-                  onChange={(event) => {
-                    void handleBookingPhotoUpload(booking, event.target.files);
-                    event.currentTarget.value = "";
-                  }}
-                />
-
-                <div className="mt-3 grid grid-cols-3 gap-2">
-                  {Array.from({ length: 3 }).map((_, index) => {
-                    const photo = booking.uploaded_item_photos?.[index] ?? null;
-                    const isEmpty = !photo;
-                    const canUpload =
-                      BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) &&
-                      (booking.service?.allow_photo_upload ?? false) &&
-                      (booking.uploaded_item_photos?.length ?? 0) < 3 &&
-                      photoBusyBookingId !== booking.id;
-
-                    return (
-                      <button
-                        key={index}
-                        type="button"
-                        className={[
-                          "group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200",
-                          isEmpty
-                            ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
-                            : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
-                        ].join(" ")}
-                        onClick={() => {
-                          if (isEmpty && canUpload) {
-                            const input = document.getElementById(`booking-photo-input-${booking.id}`) as HTMLInputElement | null;
-                            input?.click();
-                          }
-                        }}
-                        disabled={photoBusyBookingId === booking.id || (isEmpty && !canUpload)}
-                        aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
-                      >
-                        {isEmpty ? (
-                          <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
-                            <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--muted)]/40 transition group-hover:bg-[var(--muted)]/60">
-                              <i className="fa-solid fa-cloud-arrow-up text-sm text-[var(--text-muted)]" aria-hidden />
-                            </div>
-                            <span className="text-[10px] font-medium text-[var(--text-muted)]">Click to upload</span>
-                          </div>
-                        ) : (
-                          <>
-                            <a href={photo.file_url} target="_blank" rel="noreferrer" className="block h-full w-full" onClick={(e) => e.stopPropagation()}>
-                              <div className="flex h-full w-full items-center justify-center bg-[var(--muted)]/20">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={photo.file_url} alt={photo.original_name || "Booking photo"} className="h-full w-full object-contain" />
-                              </div>
-                            </a>
-                            {BOOKING_PHOTO_UPLOAD_STATUS.has(String(booking.status)) ? (
-                              <button
-                                type="button"
-                                className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
-                                disabled={photoBusyBookingId === booking.id}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void handleRemoveBookingPhoto(booking.id, photo.id);
-                                }}
-                                aria-label={`Remove ${photo.original_name || "photo"}`}
-                              >
-                                <i className="fa-solid fa-xmark text-[10px]" />
-                              </button>
-                            ) : null}
-                          </>
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <button
+                    type="button"
+                    onClick={() => setPhotoModal("completed")}
+                    className="flex items-start gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-4 text-left transition hover:border-[var(--accent-strong)]/40 hover:bg-[var(--background)]/40"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--card)]">
+                      <i className="fa-solid fa-check text-[var(--accent-strong)]" aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-[var(--foreground)]">Completed Photo</span>
+                      <span className="mt-0.5 block text-xs text-[var(--text-muted)]">Photos from your completed visit</span>
+                      {(booking.service_photos?.length ?? 0) > 0 ? (
+                        <span className="mt-2 inline-flex rounded-full bg-[var(--muted)]/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                          {booking.service_photos?.length} photo(s)
+                        </span>
+                      ) : null}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPhotoModal("reference")}
+                    className="flex items-start gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-4 text-left transition hover:border-[var(--accent-strong)]/40 hover:bg-[var(--background)]/40"
+                  >
+                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[var(--card)]">
+                      <i className="fa-regular fa-image text-[var(--text-muted)]" aria-hidden />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-[var(--foreground)]">Reference Photo</span>
+                      <span className="mt-0.5 block text-xs text-[var(--text-muted)]">Your uploads for the salon team</span>
+                      <span className="mt-2 inline-flex rounded-full bg-[var(--muted)]/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                        {booking.uploaded_item_photos?.length ?? 0}/3 uploaded
+                      </span>
+                    </span>
+                  </button>
                 </div>
-
-                {!(booking.service?.allow_photo_upload ?? false) && (booking.uploaded_item_photos?.length ?? 0) === 0 ? (
-                  <p className="mt-3 text-xs text-[var(--text-muted)]">Photo upload is not enabled for this service.</p>
-                ) : null}
               </section>
 
               <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
@@ -707,7 +673,7 @@ export default function BookingDetailPage() {
                     ) : null}
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-[var(--text-muted)]">No actions are currently available for this booking.</p>
+                  <p className="mt-3 text-sm text-[var(--text-muted)]">No payment or booking changes are available right now.</p>
                 )}
               </section>
             </div>
@@ -815,6 +781,338 @@ export default function BookingDetailPage() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {photoModal && currentBooking ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={closePhotoModals}
+        >
+          <div
+            className="flex max-h-[min(90dvh,800px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--card-border)] px-5 py-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[var(--foreground)]">
+                  {photoModal === "completed" ? "Completed Photo" : "Reference Photo"}
+                </h2>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Tap a photo to view it larger.</p>
+                {photoModal === "reference" && referenceUploadState?.canUpload ? (
+                  <p className="mt-1 text-xs text-[var(--text-muted)]">Use Upload Photo below to add more.</p>
+                ) : null}
+                {photoModal === "reference" && !referenceUploadState?.canUpload && referenceUploadState?.reason ? (
+                  <p className="mt-2 rounded-lg bg-amber-50 text-xs font-medium text-amber-800">
+                    {referenceUploadState.reason}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={closePhotoModals}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+                aria-label="Close"
+              >
+                <i className="fa-solid fa-xmark" aria-hidden />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-5 py-4">
+              {photoModal === "completed" ? (
+                (currentBooking.service_photos?.length ?? 0) > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {(currentBooking.service_photos ?? []).map((photo, index) => {
+                      const url = resolveServicePhotoUrl(photo);
+                      return (
+                        <button
+                          key={`service-photo-modal-${currentBooking.id}-${photo.id}`}
+                          type="button"
+                          onClick={() => {
+                            if (!url) return;
+                            const lbIndex = completedLightboxItems.findIndex((item) => item.url === url);
+                            openPhotoLightbox(completedLightboxItems, lbIndex >= 0 ? lbIndex : 0);
+                          }}
+                          className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 shadow-sm transition hover:ring-2 hover:ring-[var(--accent-strong)]/50"
+                        >
+                          {url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={url}
+                              alt={photo.caption || `Completed photo ${index + 1}`}
+                              className="aspect-square w-full object-cover"
+                            />
+                          ) : (
+                            <span className="flex aspect-square items-center justify-center p-2 text-center text-[10px] text-[var(--text-muted)]">
+                              Image unavailable
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-xl bg-[var(--background)]/20 p-4 text-sm text-[var(--text-muted)]">
+                    No completed photos yet. They will appear here after your visit.
+                  </p>
+                )
+              ) : referenceLightboxItems.length > 0 ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {referenceLightboxItems.map((item, index) => (
+                    <button
+                      key={`reference-view-${currentBooking.id}-${index}`}
+                      type="button"
+                      onClick={() => openPhotoLightbox(referenceLightboxItems, index)}
+                      className="overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 shadow-sm transition hover:ring-2 hover:ring-[var(--accent-strong)]/50"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={item.url} alt={item.alt} className="aspect-square w-full object-cover" />
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="rounded-xl bg-[var(--background)]/20 p-4 text-sm text-[var(--text-muted)]">
+                  No reference photos uploaded yet.
+                </p>
+              )}
+            </div>
+
+            <div
+              className={[
+                "border-t border-[var(--card-border)] px-5 py-4",
+                photoModal === "reference" && referenceUploadState?.canUpload
+                  ? "flex flex-col gap-2 sm:flex-row sm:items-stretch sm:gap-3"
+                  : "",
+              ].join(" ")}
+            >
+              {photoModal === "reference" && referenceUploadState?.canUpload ? (
+                <button
+                  type="button"
+                  onClick={() => setReferenceUploadOpen(true)}
+                  className="w-full rounded-full bg-[var(--accent-strong)] px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 sm:flex-1"
+                >
+                  <i className="fa-solid fa-cloud-arrow-up mr-2" aria-hidden />
+                  Upload Photo
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={closePhotoModals}
+                className={[
+                  "w-full rounded-full border border-[var(--card-border)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--background)]/40",
+                  photoModal === "reference" && referenceUploadState?.canUpload ? "sm:flex-1" : "",
+                ].join(" ")}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {referenceUploadOpen && currentBooking && photoModal === "reference" ? (
+        <div
+          className="fixed inset-0 z-[55] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm"
+          role="presentation"
+          onClick={() => setReferenceUploadOpen(false)}
+        >
+          <div
+            className="flex max-h-[min(90dvh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="reference-upload-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-[var(--card-border)] px-5 py-4">
+              <div>
+                <h2 id="reference-upload-title" className="text-xl font-semibold text-[var(--foreground)]">
+                  Upload Reference Photo
+                </h2>
+                <p className="mt-1 text-xs text-[var(--text-muted)]">Up to 3 photos. Tap an empty slot to add.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReferenceUploadOpen(false)}
+                className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[var(--text-muted)] transition hover:bg-[var(--muted)]/40 hover:text-[var(--foreground)]"
+                aria-label="Close upload"
+              >
+                <i className="fa-solid fa-xmark" aria-hidden />
+              </button>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              <input
+                id={`booking-photo-input-${currentBooking.id}`}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                disabled={
+                  photoBusyBookingId === currentBooking.id || !referenceUploadState?.canUpload
+                }
+                onChange={(event) => {
+                  void handleBookingPhotoUpload(currentBooking, event.target.files);
+                  event.currentTarget.value = "";
+                }}
+              />
+
+              <div className="mb-3 flex items-center justify-between gap-2 text-xs font-semibold text-[var(--text-muted)]">
+                <span>Slots</span>
+                <span>{(currentBooking.uploaded_item_photos?.length ?? 0)}/3</span>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2">
+                    {Array.from({ length: 3 }).map((_, index) => {
+                      const photo = currentBooking.uploaded_item_photos?.[index] ?? null;
+                      const isEmpty = !photo;
+                      const canUpload =
+                        Boolean(referenceUploadState?.canUpload) &&
+                        photoBusyBookingId !== currentBooking.id;
+
+                      return (
+                        <button
+                          key={index}
+                          type="button"
+                          className={[
+                            "group relative aspect-square overflow-hidden rounded-xl border-2 border-dashed transition-all duration-200",
+                            isEmpty
+                              ? "border-[var(--card-border)] bg-[var(--muted)]/10 hover:bg-[var(--muted)]/20"
+                              : "border-[var(--card-border)] bg-[var(--card)] shadow-sm hover:shadow-md",
+                          ].join(" ")}
+                          onClick={() => {
+                            if (isEmpty && canUpload) {
+                              const input = document.getElementById(
+                                `booking-photo-input-${currentBooking.id}`,
+                              ) as HTMLInputElement | null;
+                              input?.click();
+                            }
+                          }}
+                          disabled={photoBusyBookingId === currentBooking.id || (isEmpty && !canUpload)}
+                          aria-label={isEmpty ? "Click to upload" : `Photo ${index + 1}`}
+                        >
+                          {isEmpty ? (
+                            <div className="flex h-full w-full flex-col items-center justify-center p-2 text-center">
+                              <div className="mb-1.5 flex h-8 w-8 items-center justify-center rounded-full bg-[var(--muted)]/40 transition group-hover:bg-[var(--muted)]/60">
+                                <i className="fa-solid fa-cloud-arrow-up text-sm text-[var(--text-muted)]" aria-hidden />
+                              </div>
+                              <span className="text-[10px] font-medium text-[var(--text-muted)]">Click to upload</span>
+                            </div>
+                          ) : (
+                            <>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={photo.file_url}
+                                alt={photo.original_name || "Reference photo"}
+                                className="h-full w-full object-cover"
+                              />
+                              {BOOKING_PHOTO_UPLOAD_STATUS.has(String(currentBooking.status)) ? (
+                                <button
+                                  type="button"
+                                  className="absolute right-1 top-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/60 text-white disabled:opacity-50"
+                                  disabled={photoBusyBookingId === currentBooking.id}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void handleRemoveBookingPhoto(currentBooking.id, photo.id);
+                                  }}
+                                  aria-label={`Remove ${photo.original_name || "photo"}`}
+                                >
+                                  <i className="fa-solid fa-xmark text-[10px]" />
+                                </button>
+                              ) : null}
+                            </>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+              {photoBusyBookingId === currentBooking.id ? (
+                <p className="mt-3 text-center text-xs text-[var(--text-muted)]">Uploading…</p>
+              ) : null}
+            </div>
+
+            <div className="border-t border-[var(--card-border)] px-5 py-4">
+              <button
+                type="button"
+                onClick={() => setReferenceUploadOpen(false)}
+                className="w-full rounded-full border border-[var(--card-border)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition hover:bg-[var(--background)]/40"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {photoLightbox ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4"
+          role="presentation"
+          onClick={() => setPhotoLightbox(null)}
+        >
+          <button
+            type="button"
+            onClick={() => setPhotoLightbox(null)}
+            className="absolute right-4 top-4 inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+            aria-label="Close preview"
+          >
+            <i className="fa-solid fa-xmark text-lg" aria-hidden />
+          </button>
+
+          {photoLightbox.items.length > 1 ? (
+            <>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPhotoLightbox((prev) => {
+                    if (!prev) return prev;
+                    const nextIndex = (prev.index - 1 + prev.items.length) % prev.items.length;
+                    return { ...prev, index: nextIndex };
+                  });
+                }}
+                className="absolute left-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:left-6"
+                aria-label="Previous photo"
+              >
+                <i className="fa-solid fa-chevron-left" aria-hidden />
+              </button>
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPhotoLightbox((prev) => {
+                    if (!prev) return prev;
+                    const nextIndex = (prev.index + 1) % prev.items.length;
+                    return { ...prev, index: nextIndex };
+                  });
+                }}
+                className="absolute right-3 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20 sm:right-6"
+                aria-label="Next photo"
+              >
+                <i className="fa-solid fa-chevron-right" aria-hidden />
+              </button>
+            </>
+          ) : null}
+
+          <div
+            className="flex max-h-[92dvh] max-w-[min(96vw,1100px)] flex-col items-center"
+            onClick={(event) => event.stopPropagation()}
+          >
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={photoLightbox.items[photoLightbox.index]?.url}
+              alt={photoLightbox.items[photoLightbox.index]?.alt || "Photo preview"}
+              className="max-h-[min(82dvh,900px)] w-auto max-w-full rounded-lg object-contain"
+            />
+            {photoLightbox.items.length > 1 ? (
+              <p className="mt-3 text-sm text-white/80">
+                {photoLightbox.index + 1} / {photoLightbox.items.length}
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}

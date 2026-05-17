@@ -5,18 +5,9 @@ import { useCallback, useEffect, useState } from 'react'
 type ClaimHistoryRow = {
   id: number
   claimed_at?: string | null
-  order_number?: string | null
-  reference_no?: string | null
   product?: string | null
   sku?: string | null
   qty: number
-  original_price: number
-  final_amount: number
-}
-
-const formatCurrency = (value: number | string | null | undefined) => {
-  const numeric = Number(value ?? 0)
-  return `RM${(Number.isFinite(numeric) ? numeric : 0).toFixed(2)}`
 }
 
 const extractRows = <T,>(json: unknown): T[] => {
@@ -73,25 +64,19 @@ export default function StaffConsumableHistoryPageContent() {
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">SKU</th>
                 <th className="px-4 py-3 text-right">Qty</th>
-                <th className="px-4 py-3 text-right">Original price</th>
-                <th className="px-4 py-3 text-right">Final amount</th>
-                <th className="px-4 py-3">Reference/order no</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">Loading your consumable history...</td></tr>
+                <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">Loading your consumable history...</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-slate-500">No consumable claims found for your staff account.</td></tr>
+                <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">No consumable claims found for your staff account.</td></tr>
               ) : rows.map((row) => (
                 <tr key={row.id}>
                   <td className="px-4 py-3 text-slate-600">{row.claimed_at ?? '-'}</td>
                   <td className="px-4 py-3 font-medium text-slate-800">{row.product ?? '-'}</td>
                   <td className="px-4 py-3 text-slate-600">{row.sku ?? '-'}</td>
                   <td className="px-4 py-3 text-right text-slate-700">{row.qty}</td>
-                  <td className="px-4 py-3 text-right text-slate-700">{formatCurrency(row.original_price)}</td>
-                  <td className="px-4 py-3 text-right font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-600">{row.reference_no ?? row.order_number ?? '-'}</td>
                 </tr>
               ))}
             </tbody>
