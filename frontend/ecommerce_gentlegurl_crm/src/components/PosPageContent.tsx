@@ -4,6 +4,13 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Chang
 import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
+import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
+import {
+  getSettlementRangeBounds,
+  parseSettlementAmountInput,
+  settlementNeedsSettledAmount,
+  validateSettlementAmountInput,
+} from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import OrderViewPanel from './OrderViewPanel'
 import {
@@ -920,8 +927,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageMembersLoading, setPackageMembersLoading] = useState(false)
   const [packageMemberPickerOpen, setPackageMemberPickerOpen] = useState(false)
   const [assignMemberContext, setAssignMemberContext] = useState<'checkout' | 'service' | 'package'>('checkout')
-  const [packageInternalNote, setPackageInternalNote] = useState('')
   const [packageModalError, setPackageModalError] = useState<string | null>(null)
+  const packageRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
   const [bookingSubmitting, setBookingSubmitting] = useState(false)
@@ -930,8 +937,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingDate, setBookingDate] = useState('')
   const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
   const [bookingSlotValue, setBookingSlotValue] = useState('')
-  const [bookingNotes, setBookingNotes] = useState('')
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
+  const bookingRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
   const [bookingExtraServiceBlocks, setBookingExtraServiceBlocks] = useState<BookingExtraServiceBlock[]>([])
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
@@ -2448,7 +2455,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingDate('')
     setBookingSlots([])
     setBookingSlotValue('')
-    setBookingNotes('')
     setBookingQuestions([])
     setBookingSelectedOptionIds([])
     setBookingExtraServiceBlocks([])
@@ -2674,7 +2680,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           })),
       ],
       start_at: bookingSlotValue,
-      notes: bookingNotes || null,
+      notes: bookingRemarkRef.current?.getValue().trim() || null,
       staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
       qty: 1,
     }
@@ -2718,7 +2724,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     bookingAssignedStaffId,
     bookingDate,
     bookingIdentityMode,
-    bookingNotes,
     bookingQuestions,
     bookingExtraServiceBlocks,
     bookingSelectedOptionIds,
@@ -2799,7 +2804,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setPackageMembers([])
     setPackageMembersLoading(false)
     setPackageMemberPickerOpen(false)
-    setPackageInternalNote('')
     setPackageModalError(null)
     setPackageModalOpen(true)
   }, [activeStaffs, fetchStaffOptions, hasCartAppointmentSettlements, selectedMember])
@@ -3274,7 +3278,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSettlementError(null)
     setCartEditSettlementLoading(true)
     try {
-      const isRange = cartEditSettlementItem?.is_range_priced
+      const needsSettledAmount = settlementNeedsSettledAmount(cartEditSettlementItem)
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(cartEditSelectedAddonIds),
         main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
@@ -3287,19 +3291,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           })),
         })),
       }
-      if (isRange) {
-        const amt = parseFloat(cartEditSettledAmount)
-        if (!Number.isFinite(amt) || amt < 0) {
-          setCartEditSettlementError('Please enter a valid service amount.')
+      if (needsSettledAmount) {
+        const amountCheck = validateSettlementAmountInput(cartEditSettledAmount, cartEditSettlementItem)
+        if (!amountCheck.ok) {
+          setCartEditSettlementError(amountCheck.message)
           return
         }
-        const min = Number(cartEditSettlementItem?.service_price_range_min ?? 0)
-        const max = Number(cartEditSettlementItem?.service_price_range_max ?? 0)
-        if (amt < min - 0.005 || amt > max + 0.005) {
-          setCartEditSettlementError(`Service amount must be between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.`)
-          return
-        }
-        payload.settled_service_amount = amt
+        payload.settled_service_amount = amountCheck.amount
       }
       const normalizedSplits = cartEditStaffSplits.map((row) => ({
         staff_id: Number(row.staff_id ?? 0),
@@ -6504,23 +6502,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <div className="flex-1 overflow-y-auto px-5 py-4">
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
-              {cartEditSettlementItem.is_range_priced ? (
+              {settlementNeedsSettledAmount(cartEditSettlementItem) ? (
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-1">Service Amount</label>
                   <p className="text-xs text-gray-500 mb-2">
-                    Range: RM {Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} – RM {Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}
+                    Range: RM {getSettlementRangeBounds(cartEditSettlementItem).min.toFixed(2)} – RM{' '}
+                    {getSettlementRangeBounds(cartEditSettlementItem).max.toFixed(2)}
                   </p>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
                     <input
-                      type="number"
-                      min={Number(cartEditSettlementItem.service_price_range_min ?? 0)}
-                      max={Number(cartEditSettlementItem.service_price_range_max ?? 0)}
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       value={cartEditSettledAmount}
-                      onChange={(e) => { setCartEditSettlementError(null); setCartEditSettledAmount(e.target.value) }}
+                      onChange={(e) => {
+                        setCartEditSettlementError(null)
+                        setCartEditSettledAmount(e.target.value)
+                      }}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder={`${Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} - ${Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}`}
+                      placeholder={`${getSettlementRangeBounds(cartEditSettlementItem).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditSettlementItem).max.toFixed(2)}`}
                     />
                   </div>
                 </div>
@@ -6824,9 +6825,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
                   return sum + Number(service.price ?? 0) + addonTotal
                 }, 0)
-                const isRange = cartEditSettlementItem.is_range_priced
-                const settledAmt = parseFloat(cartEditSettledAmount)
-                const originalServiceAmt = isRange && Number.isFinite(settledAmt)
+                const isRange = settlementNeedsSettledAmount(cartEditSettlementItem)
+                const settledAmt = parseSettlementAmountInput(cartEditSettledAmount)
+                const originalServiceAmt = isRange && settledAmt != null
                   ? settledAmt
                   : Number(
                     (cartEditSettlementItem.main_services ?? [])
@@ -6845,7 +6846,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex justify-between">
                         <span className="text-gray-600">Original Service</span>
                         <span className="font-semibold tabular-nums text-gray-900">
-                          {isRange && !Number.isFinite(settledAmt)
+                          {isRange && settledAmt == null
                             ? `RM ${Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} - ${Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}`
                             : `RM ${originalServiceAmt.toFixed(2)}`}
                         </span>
@@ -8214,16 +8215,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     : 'No member selected'}
                 </div>
 
-                <div className="mt-3">
-                  <label className="text-xs font-semibold text-gray-600">Remark / Note (optional)</label>
-                  <textarea
-                    value={packageInternalNote}
-                    onChange={(e) => setPackageInternalNote(e.target.value)}
-                    rows={2}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                    placeholder="Internal note for staff (optional)"
-                  />
-                </div>
+                <PosModalRemarkField
+                  ref={packageRemarkRef}
+                  resetKey={packageDraft?.id ?? 'package'}
+                  className="mt-3"
+                  label="Remark / Note (optional)"
+                  placeholder="Internal note for staff (optional)"
+                />
 
                 {hasCartAppointmentSettlements ? (
                   <p className="mt-2 text-[11px] text-amber-700">
@@ -8730,15 +8728,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-xs font-semibold text-gray-600">Remarks (optional)</label>
-                  <textarea
-                    value={bookingNotes}
-                    onChange={(e) => setBookingNotes(e.target.value)}
-                    rows={2}
-                    className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                  />
-                </div>
+                <PosModalRemarkField
+                  ref={bookingRemarkRef}
+                  resetKey={bookingServiceDraft?.id ?? 'booking'}
+                  label="Remarks (optional)"
+                />
               </div>
             </div>
             </div>

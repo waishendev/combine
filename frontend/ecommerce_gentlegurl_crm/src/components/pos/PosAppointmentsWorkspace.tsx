@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
+import {
+  getSettlementRangeBounds,
+  parseSettlementAmountInput,
+  settlementNeedsSettledAmount,
+  validateSettlementAmountInput,
+} from '@/components/pos/settlementAmountUtils'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
@@ -1433,7 +1439,14 @@ export default function PosAppointmentsWorkspace({
     setEditSettlementError(null)
     setEditSettlementLoading(true)
     try {
-      const isRange = appointmentDetail.is_range_priced
+      const needsSettledAmount = settlementNeedsSettledAmount({
+        is_range_priced: appointmentDetail.is_range_priced,
+        requires_settled_amount: appointmentDetail.requires_settled_amount,
+        service_price_mode: appointmentDetail.service?.price_mode,
+        service_price_range_min: appointmentDetail.service?.price_range_min,
+        service_price_range_max: appointmentDetail.service?.price_range_max,
+        service: appointmentDetail.service,
+      })
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
         main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
@@ -1446,19 +1459,20 @@ export default function PosAppointmentsWorkspace({
           })),
         })),
       }
-      if (isRange) {
-        const amt = parseFloat(editSettledAmount)
-        if (!Number.isFinite(amt) || amt < 0) {
-          setEditSettlementError('Please enter a valid service amount.')
+      if (needsSettledAmount) {
+        const amountCheck = validateSettlementAmountInput(editSettledAmount, {
+          is_range_priced: appointmentDetail.is_range_priced,
+          requires_settled_amount: appointmentDetail.requires_settled_amount,
+          service_price_mode: appointmentDetail.service?.price_mode,
+          service_price_range_min: appointmentDetail.service?.price_range_min,
+          service_price_range_max: appointmentDetail.service?.price_range_max,
+          service: appointmentDetail.service,
+        })
+        if (!amountCheck.ok) {
+          setEditSettlementError(amountCheck.message)
           return
         }
-        const min = Number(appointmentDetail.service?.price_range_min ?? 0)
-        const max = Number(appointmentDetail.service?.price_range_max ?? 0)
-        if (amt < min - 0.005 || amt > max + 0.005) {
-          setEditSettlementError(`Service amount must be between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.`)
-          return
-        }
-        payload.settled_service_amount = amt
+        payload.settled_service_amount = amountCheck.amount
       }
       const normalizedSplits = editStaffSplits.map((row) => ({
         staff_id: Number(row.staff_id ?? 0),
@@ -3781,25 +3795,35 @@ export default function PosAppointmentsWorkspace({
               </div>
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
-              {appointmentDetail.is_range_priced ? (
+              {settlementNeedsSettledAmount({
+                is_range_priced: appointmentDetail.is_range_priced,
+                requires_settled_amount: appointmentDetail.requires_settled_amount,
+                service_price_mode: appointmentDetail.service?.price_mode,
+                service_price_range_min: appointmentDetail.service?.price_range_min,
+                service_price_range_max: appointmentDetail.service?.price_range_max,
+                service: appointmentDetail.service,
+              }) ? (
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-1">
                     Service Amount
                   </label>
                   <p className="text-xs text-gray-500 mb-2">
-                    Range: RM {Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} – RM {Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}
+                    Range: RM {getSettlementRangeBounds({ service: appointmentDetail.service }).min.toFixed(2)} – RM{' '}
+                    {getSettlementRangeBounds({ service: appointmentDetail.service }).max.toFixed(2)}
                   </p>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
                     <input
-                      type="number"
-                      min={Number(appointmentDetail.service?.price_range_min ?? 0)}
-                      max={Number(appointmentDetail.service?.price_range_max ?? 0)}
-                      step="0.01"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       value={editSettledAmount}
-                      onChange={(e) => { setEditSettlementError(null); setEditSettledAmount(e.target.value) }}
+                      onChange={(e) => {
+                        setEditSettlementError(null)
+                        setEditSettledAmount(e.target.value)
+                      }}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder={`${Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - ${Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}`}
+                      placeholder={`${getSettlementRangeBounds({ service: appointmentDetail.service }).min.toFixed(2)} - ${getSettlementRangeBounds({ service: appointmentDetail.service }).max.toFixed(2)}`}
                     />
                   </div>
                 </div>
@@ -4130,9 +4154,14 @@ export default function PosAppointmentsWorkspace({
                     const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
                     return sum + Number(service.price ?? 0) + addonTotal
                   }, 0)
-                  const isRange = appointmentDetail.is_range_priced
-                  const settledAmt = parseFloat(editSettledAmount)
-                  const originalServiceAmt = isRange && Number.isFinite(settledAmt)
+                  const isRange = settlementNeedsSettledAmount({
+                    is_range_priced: appointmentDetail.is_range_priced,
+                    requires_settled_amount: appointmentDetail.requires_settled_amount,
+                    service_price_mode: appointmentDetail.service?.price_mode,
+                    service: appointmentDetail.service,
+                  })
+                  const settledAmt = parseSettlementAmountInput(editSettledAmount)
+                  const originalServiceAmt = isRange && settledAmt != null
                     ? settledAmt
                     : Number(
                       appointmentDisplayMainServices
@@ -4151,8 +4180,8 @@ export default function PosAppointmentsWorkspace({
                         <div className="flex justify-between">
                           <span className="text-gray-600">Original Service</span>
                           <span className="font-semibold tabular-nums text-gray-900">
-                            {isRange && !Number.isFinite(settledAmt)
-                              ? `RM ${Number(appointmentDetail.service?.price_range_min ?? 0).toFixed(2)} - ${Number(appointmentDetail.service?.price_range_max ?? 0).toFixed(2)}`
+                            {isRange && settledAmt == null
+                              ? `RM ${getSettlementRangeBounds({ service: appointmentDetail.service }).min.toFixed(2)} - ${getSettlementRangeBounds({ service: appointmentDetail.service }).max.toFixed(2)}`
                               : `RM ${originalServiceAmt.toFixed(2)}`}
                           </span>
                         </div>
