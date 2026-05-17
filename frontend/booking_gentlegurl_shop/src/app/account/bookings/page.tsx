@@ -59,7 +59,7 @@ const getCustomerPaymentSummary = (booking: BookingRecord) => {
       ? "PARTIAL"
       : "PAID";
 
-  return { balanceDue, paymentStatus, totalPaid };
+  return { balanceDue, depositPaid, paymentStatus, totalPaid };
 };
 
 function statusClass(status: string) {
@@ -207,8 +207,11 @@ export default function MyBookingsPage() {
                       <p className="min-w-0 truncate">
                         Add-ons: <span className="text-[var(--foreground)]">{addOns || "None"}</span>
                       </p>
+                      <p className="min-w-0 truncate">
+                        Deposit Paid: <span className="text-emerald-700">{formatCurrency(payment.depositPaid)}</span>
+                      </p>
                       {payment.balanceDue > 0 ? (
-                        <p className="min-w-0 truncate font-medium sm:col-span-2">
+                        <p className="min-w-0 truncate font-medium">
                           Balance Due: <span className="text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span>
                         </p>
                       ) : null}
