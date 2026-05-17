@@ -29,6 +29,19 @@ const toPaymentCents = (value: number | string | null | undefined) => {
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
 }
 
+const parseMoneyAmount = (value: number | string | null | undefined): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  if (typeof value !== 'string') return null
+
+  const normalized = value.trim().replace(/^RM\s*/i, '').replace(/,/g, '')
+  if (!normalized) return null
+
+  const amount = Number(normalized)
+  return Number.isFinite(amount) ? amount : null
+}
+
+const hasSettledMoneyAmount = (value: number | string | null | undefined): boolean => parseMoneyAmount(value) !== null
+
 type CartItem = {
   id: number
   item_type?: 'PRODUCT' | 'BOOKING_PRODUCT'
@@ -112,9 +125,9 @@ type AppointmentSettlementCartItem = {
   service_name?: string | null
   service_cn_name?: string | null
   service_price_mode?: string | null
-  service_price_range_min?: number | null
-  service_price_range_max?: number | null
-  settled_service_amount?: number | null
+  service_price_range_min?: number | string | null
+  service_price_range_max?: number | string | null
+  settled_service_amount?: number | string | null
   is_range_priced?: boolean
   requires_settled_amount?: boolean
   staff_name?: string | null
@@ -870,7 +883,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageMembersLoading, setPackageMembersLoading] = useState(false)
   const [packageMemberPickerOpen, setPackageMemberPickerOpen] = useState(false)
   const [assignMemberContext, setAssignMemberContext] = useState<'checkout' | 'service' | 'package'>('checkout')
-  const [packageInternalNote, setPackageInternalNote] = useState('')
+  const packageInternalNoteRef = useRef<HTMLTextAreaElement>(null)
   const [packageModalError, setPackageModalError] = useState<string | null>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
@@ -880,7 +893,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingDate, setBookingDate] = useState('')
   const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
   const [bookingSlotValue, setBookingSlotValue] = useState('')
-  const [bookingNotes, setBookingNotes] = useState('')
+  const bookingNotesRef = useRef<HTMLTextAreaElement>(null)
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
   const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
   const [bookingExtraServiceBlocks, setBookingExtraServiceBlocks] = useState<BookingExtraServiceBlock[]>([])
@@ -2398,7 +2411,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingDate('')
     setBookingSlots([])
     setBookingSlotValue('')
-    setBookingNotes('')
+    if (bookingNotesRef.current) bookingNotesRef.current.value = ''
     setBookingQuestions([])
     setBookingSelectedOptionIds([])
     setBookingExtraServiceBlocks([])
@@ -2624,7 +2637,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           })),
       ],
       start_at: bookingSlotValue,
-      notes: bookingNotes || null,
+      notes: (bookingNotesRef.current?.value ?? '').trim() || null,
       staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
       qty: 1,
     }
@@ -2668,7 +2681,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     bookingAssignedStaffId,
     bookingDate,
     bookingIdentityMode,
-    bookingNotes,
     bookingQuestions,
     bookingExtraServiceBlocks,
     bookingSelectedOptionIds,
@@ -2749,7 +2761,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setPackageMembers([])
     setPackageMembersLoading(false)
     setPackageMemberPickerOpen(false)
-    setPackageInternalNote('')
+    if (packageInternalNoteRef.current) packageInternalNoteRef.current.value = ''
     setPackageModalError(null)
     setPackageModalOpen(true)
   }, [activeStaffs, fetchStaffOptions, hasCartAppointmentSettlements, selectedMember])
@@ -3238,8 +3250,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         })),
       }
       if (isRange) {
-        const amt = parseFloat(cartEditSettledAmount)
-        if (!Number.isFinite(amt) || amt < 0) {
+        const amt = parseMoneyAmount(cartEditSettledAmount)
+        if (amt == null || amt < 0) {
           setCartEditSettlementError('Please enter a valid service amount.')
           return
         }
@@ -4055,7 +4067,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const splitPaymentMatchesTotal = splitTotalPaidCents === cartTotalCents
   const splitPaymentValid = checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
 
-  const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
+  const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => Boolean(s.is_range_priced) && !hasSettledMoneyAmount(s.settled_service_amount))
   const cashShiftBlocksCheckout = cashShiftLoading || !hasOpenShift
   const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart && !cashShiftBlocksCheckout
 
@@ -5869,7 +5881,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           ))}
                         </div>
                       ) : null} */}
-                      {settlement.requires_settled_amount ? (
+                      {Boolean(settlement.is_range_priced) && !hasSettledMoneyAmount(settlement.settled_service_amount) ? (
                         <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
                           <p className="text-[11px] font-semibold text-amber-900">
                             Range pricing — click Edit to set the service amount before checkout.
@@ -5892,7 +5904,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const totalDue = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
-                      const isRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
+                      const isRangeUnsettled = Boolean(settlement.is_range_priced) && !hasSettledMoneyAmount(settlement.settled_service_amount)
                       const servicePriceLabel = isRangeUnsettled
                         ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
                         : `RM ${serviceTotal.toFixed(2)}`
@@ -6745,8 +6757,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   return sum + Number(service.price ?? 0) + addonTotal
                 }, 0)
                 const isRange = cartEditSettlementItem.is_range_priced
-                const settledAmt = parseFloat(cartEditSettledAmount)
-                const originalServiceAmt = isRange && Number.isFinite(settledAmt)
+                const settledAmt = parseMoneyAmount(cartEditSettledAmount)
+                const originalServiceAmt = isRange && settledAmt != null
                   ? settledAmt
                   : Number(
                     (cartEditSettlementItem.main_services ?? [])
@@ -6765,7 +6777,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex justify-between">
                         <span className="text-gray-600">Original Service</span>
                         <span className="font-semibold tabular-nums text-gray-900">
-                          {isRange && !Number.isFinite(settledAmt)
+                          {isRange && settledAmt == null
                             ? `RM ${Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} - ${Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}`
                             : `RM ${originalServiceAmt.toFixed(2)}`}
                         </span>
@@ -8099,8 +8111,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <div className="mt-3">
                   <label className="text-xs font-semibold text-gray-600">Remark / Note (optional)</label>
                   <textarea
-                    value={packageInternalNote}
-                    onChange={(e) => setPackageInternalNote(e.target.value)}
+                    ref={packageInternalNoteRef}
+                    defaultValue=""
                     rows={2}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     placeholder="Internal note for staff (optional)"
@@ -8615,8 +8627,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <div>
                   <label className="text-xs font-semibold text-gray-600">Remarks (optional)</label>
                   <textarea
-                    value={bookingNotes}
-                    onChange={(e) => setBookingNotes(e.target.value)}
+                    ref={bookingNotesRef}
+                    defaultValue=""
                     rows={2}
                     className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                   />
