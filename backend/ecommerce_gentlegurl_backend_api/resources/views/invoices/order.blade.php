@@ -12,6 +12,15 @@
       'Booking Deposit',
       'Booking Add-on Deposit',
     ];
+    $combinedBookingSettlementLineTypes = ['booking_settlement', 'booking_addon'];
+    $shouldShowReceiptItem = function ($item) use ($combinedBookingSettlementLineTypes) {
+      $lineType = (string) ($item['line_type'] ?? $item['type'] ?? '');
+      $productName = (string) ($item['product_name'] ?? $item['name'] ?? '');
+
+      return !($productName !== ''
+        && str_contains($productName, '::')
+        && in_array($lineType, $combinedBookingSettlementLineTypes, true));
+    };
 
     // Check if CJK font exists (supports Chinese, Japanese, Korean)
     $cjkFontPath = collect([
@@ -592,6 +601,7 @@
         </thead>
         <tbody>
           <?php foreach($items as $item): ?>
+            <?php if(! $shouldShowReceiptItem($item)) { continue; } ?>
             <tr>
               <td>
                 <div class="item-name">{{ $item['product_name'] }}</div>

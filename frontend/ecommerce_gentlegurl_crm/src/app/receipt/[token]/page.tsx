@@ -8,8 +8,17 @@ const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
   'Booking Add-on Deposit',
 ])
 
+const COMBINED_BOOKING_SETTLEMENT_LINE_TYPES = new Set(['booking_settlement', 'booking_addon'])
+
 function shouldShowReceiptVariant(variantName?: string | null) {
   return Boolean(variantName && !HIDDEN_RECEIPT_VARIANT_LABELS.has(variantName))
+}
+
+function shouldShowReceiptItem(item: Pick<ReceiptItem, 'type' | 'name'>) {
+  return !(
+    item.name.includes('::') &&
+    COMBINED_BOOKING_SETTLEMENT_LINE_TYPES.has(String(item.type ?? ''))
+  )
 }
 
 function formatPaymentMethod(method?: string) {
@@ -30,7 +39,7 @@ type ReceiptPayment = {
 }
 
 type ReceiptItem = {
-  type?: 'product' | 'booking_deposit' | 'booking_settlement' | 'service_package' | string
+  type?: 'product' | 'booking_deposit' | 'booking_settlement' | 'booking_addon' | 'service_package' | string
   sku?: string
   name: string
   cn_name?: string | null
@@ -154,7 +163,7 @@ export default async function PublicReceiptPage({ params }: Props) {
   const docTitle = isPaid ? 'RECEIPT' : 'INVOICE'
   const receiptPayments = normalizeReceiptPayments(receipt.payments)
   const isPackageCoveredReceipt = Boolean(receipt.package_coverage?.covered)
-  const receiptItems = receipt.items ?? []
+  const receiptItems = (receipt.items ?? []).filter(shouldShowReceiptItem)
   const packageOffset = Number(receipt.package_coverage?.package_offset ?? 0)
   const packageNames = receipt.package_coverage?.package_names ?? []
 
