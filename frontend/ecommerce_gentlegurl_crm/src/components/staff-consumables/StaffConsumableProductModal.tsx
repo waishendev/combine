@@ -103,7 +103,7 @@ export default function StaffConsumableProductModal({
             is_active: variant.is_active !== false && variant.is_active !== 0 && variant.is_active !== '0',
           }
         })
-        .filter((row): row is ConsumableVariant => Boolean(row))
+        .filter((row: ConsumableVariant | null): row is ConsumableVariant => row != null)
       setVariants(mapped)
     } catch {
       setVariants([])
