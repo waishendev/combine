@@ -2034,6 +2034,8 @@ export default function PosAppointmentsWorkspace({
       !['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()),
     [appointmentCheckoutCompleted, appointmentDetail?.package_status?.status, appointmentPackageApplied],
   )
+  const appointmentPackageDisabledReason = appointmentDetail?.package_disabled_reason ?? 'No eligible package available.'
+  const appointmentCanApplyPackage = Boolean(appointmentDetail?.can_apply_package)
   const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
   /** Cancelled / no-show / late cancel — no checkout or “complete visit” CTAs. */
   const appointmentIsTerminalCancelled = ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION'].includes(appointmentStatusUpper)
@@ -2407,7 +2409,16 @@ export default function PosAppointmentsWorkspace({
                                         </p>
                                       ) : null}
                                     </div>
-                                    <span className="text-xs font-semibold tabular-nums text-slate-900">RM {servicePrice.toFixed(2)}</span>
+                                    <span className="text-right text-xs font-semibold tabular-nums text-slate-900">
+                                      {packageCoversMainService ? (
+                                        <>
+                                          <span className="block text-slate-400 line-through">RM {servicePrice.toFixed(2)}</span>
+                                          <span className="block text-emerald-800">RM 0.00</span>
+                                        </>
+                                      ) : (
+                                        <>RM {servicePrice.toFixed(2)}</>
+                                      )}
+                                    </span>
                                   </div>
                                   {(service.add_ons ?? []).length > 0 ? (
                                     <ul className="mt-1.5 space-y-0.5 text-xs text-slate-700">
@@ -2431,7 +2442,16 @@ export default function PosAppointmentsWorkspace({
                                                 </span>
                                               ) : null}
                                             </span>
-                                            <span className="tabular-nums">RM {addonPrice.toFixed(2)}</span>
+                                            <span className="text-right tabular-nums">
+                                              {packageCoversAddon ? (
+                                                <>
+                                                  <span className="block text-slate-400 line-through">RM {addonPrice.toFixed(2)}</span>
+                                                  <span className="block font-semibold text-emerald-800">RM 0.00</span>
+                                                </>
+                                              ) : (
+                                                <>RM {addonPrice.toFixed(2)}</>
+                                              )}
+                                            </span>
                                           </li>
                                         )
                                       })}
@@ -2629,8 +2649,8 @@ export default function PosAppointmentsWorkspace({
                           {appointmentShowApplyPackageButton ? (
                             <button
                               type="button"
-                              disabled={cashShiftActionDisabled || appointmentActionLoading}
-                              title={cashShiftActionTitle}
+                              disabled={cashShiftActionDisabled || appointmentActionLoading || !appointmentCanApplyPackage}
+                              title={cashShiftActionTitle ?? (!appointmentCanApplyPackage ? appointmentPackageDisabledReason : undefined)}
                               onClick={() => void applyAppointmentPackage()}
                               className="min-h-[44px] rounded-lg bg-amber-500 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-amber-600 disabled:pointer-events-none disabled:opacity-50"
                             >
@@ -2648,6 +2668,9 @@ export default function PosAppointmentsWorkspace({
                             </button>
                           ) : null}
                         </div>
+                        {appointmentShowApplyPackageButton && !appointmentCanApplyPackage ? (
+                          <p className="text-[11px] font-medium text-amber-700">{appointmentPackageDisabledReason}</p>
+                        ) : null}
                       </div>
                     ) : null}
 

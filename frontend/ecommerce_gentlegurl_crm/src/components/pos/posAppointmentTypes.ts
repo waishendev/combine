@@ -33,6 +33,9 @@ export type PosAppointmentListItem = {
   /** From `resolveAppointmentFinancialSummary` — used with `package_status` for completed paid vs unpaid colours. */
   settlement_paid?: number
   package_status?: { status?: string; used_qty?: number } | null
+  can_apply_package?: boolean
+  package_disabled_reason?: string | null
+  eligible_package_count?: number
   service_total?: number
   settled_service_amount?: number | null
   is_range_priced?: boolean
@@ -84,6 +87,9 @@ export type PosAppointmentDetail = {
   balance_due: number
   amount_due_now?: number
   package_status?: { status?: string; used_qty?: number } | null
+  can_apply_package?: boolean
+  package_disabled_reason?: string | null
+  eligible_package_count?: number
   payment_history?: Array<{ order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
   uploaded_item_photos?: Array<{ id: number; image_path?: string | null; image_url?: string | null; created_at?: string | null }>
