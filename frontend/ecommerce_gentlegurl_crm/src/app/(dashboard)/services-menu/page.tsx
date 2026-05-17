@@ -27,7 +27,7 @@ export default async function ServicesMenuPage() {
   const t = await getTranslator(lang)
 
   return (
-    <div className="overflow-y-auto py-6 px-10">
+    <div className="crm-page-shell py-6 px-10">
       <div className="text-xs mb-4">
         <span className="text-gray-500">Catalog</span>
         <span className="mx-1">/</span>

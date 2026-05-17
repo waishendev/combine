@@ -905,6 +905,18 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
   }, [visibleItems, pathname])
 
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({})
+  const [isLargeDesktop, setIsLargeDesktop] = useState(false)
+
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 1024px)')
+    const sync = () => setIsLargeDesktop(mq.matches)
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [])
+
+  /** Icon-only narrow sidebar — desktop (lg+) only; iPad always shows full labels + scroll. */
+  const compactSidebar = collapsed && !overlayMode && isLargeDesktop
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- keep active sidebar parents expanded after route/workspace changes.
@@ -922,28 +934,43 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
     })
   }, [activeParentKeys, pathname])
 
+  const closeOverlayDrawer = () => {
+    if (overlayMode && !collapsed) {
+      onToggleSidebar?.()
+    }
+  }
+
+  // Close drawer after navigation so the backdrop does not block the page on touch devices.
+  useEffect(() => {
+    closeOverlayDrawer()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only react to route changes
+  }, [pathname])
+
+  const touchItemClass = 'min-h-[44px] touch-manipulation'
+  const iconClass = 'pointer-events-none shrink-0'
+
   return (
     <>
-      {/* Mobile overlay backdrop */}
+      {/* Mobile / tablet overlay backdrop */}
       {!collapsed && overlayMode && (
         <div
-          className="fixed inset-0 z-40 bg-black/50"
+          className="fixed inset-0 z-[55] touch-none bg-black/50"
           onClick={onToggleSidebar}
           aria-hidden="true"
         />
       )}
       <aside
-        className={`fixed top-16 left-0 h-[calc(100vh-4rem)] bg-white border-r border-slate-200 transition-all duration-300 ease-in-out flex flex-col shadow-sm z-50 ${
+        className={`fixed top-16 left-0 z-[50] flex min-h-0 flex-col border-r border-slate-200 bg-white shadow-sm transition-[transform,width,visibility] duration-300 ease-in-out ${
           overlayMode
             ? collapsed
-              ? 'w-20 -translate-x-full'
-              : 'w-64 translate-x-0'
-            : collapsed
-              ? 'w-20 -translate-x-full lg:translate-x-0 lg:static'
-              : 'w-64 translate-x-0 lg:static'
+              ? 'pointer-events-none invisible h-[calc(100dvh-4rem)] w-64 -translate-x-full'
+              : 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-64 translate-x-0'
+            : compactSidebar
+              ? 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-20 translate-x-0 md:static md:shrink-0'
+              : 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-64 translate-x-0 md:static md:shrink-0'
         }`}
       >
-        <nav className="flex-1 overflow-y-auto px-3 py-6 text-sm text-slate-600">
+        <nav className="crm-sidebar-nav min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 text-sm text-slate-600 [-webkit-overflow-scrolling:touch] touch-pan-y md:py-6">
           <div className="space-y-1">
             {visibleItems.map((item) => {
               if (item.children) {
@@ -960,26 +987,26 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                           [item.key]: !(prev[item.key] ?? false),
                         }))
                       }
-                      className={`flex w-full items-center rounded-lg px-3 py-2 transition-colors ${
+                      className={`flex w-full items-center rounded-lg px-3 py-2 transition-colors ${touchItemClass} ${
                         isChildActive
                           ? 'bg-blue-50 text-blue-600'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                      } ${collapsed ? 'justify-center' : ''}`}
-                      title={collapsed ? item.label : undefined}
+                      } ${compactSidebar ? 'justify-center' : ''}`}
+                      title={compactSidebar ? item.label : undefined}
                     >
-                      <i className={`${item.icon} text-lg`} />
-                      {!collapsed && (
+                      <i className={`${item.icon} ${iconClass} text-lg`} />
+                      {!compactSidebar && (
                         <>
                           <span className="ml-3 font-medium">{item.label}</span>
                           <i
-                            className={`fa-solid fa-chevron-down ml-auto text-xs transition-transform ${
+                            className={`fa-solid fa-chevron-down ${iconClass} ml-auto text-xs transition-transform ${
                               isExpanded ? 'rotate-180' : ''
                             }`}
                           />
                         </>
                       )}
                     </button>
-                    {!collapsed && isExpanded && (
+                    {!compactSidebar && isExpanded && (
                       <div className="space-y-1 pl-9">
                         {item.children.map((child) => {
                           if (child.children) {
@@ -998,7 +1025,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                                       [childKey]: !(prev[childKey] ?? false),
                                     }))
                                   }
-                                  className={`flex w-full items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                                  className={`flex w-full items-center rounded-lg px-3 py-2 text-sm transition-colors ${touchItemClass} ${
                                     hasActiveChild
                                       ? 'bg-blue-50 text-blue-600'
                                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -1006,7 +1033,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                                 >
                                   <span className="font-medium">{child.label}</span>
                                   <i
-                                    className={`fa-solid fa-chevron-down ml-auto text-xs transition-transform ${
+                                    className={`fa-solid fa-chevron-down ${iconClass} ml-auto text-xs transition-transform ${
                                       isChildExpanded ? 'rotate-180' : ''
                                     }`}
                                   />
@@ -1020,7 +1047,8 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                                         <Link
                                           key={subChild.key}
                                           href={subChild.href}
-                                          className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                                          onClick={closeOverlayDrawer}
+                                          className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${touchItemClass} ${
                                             isActive
                                               ? 'bg-blue-50 text-blue-600'
                                               : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -1041,7 +1069,8 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                             <Link
                               key={child.key}
                               href={child.href}
-                              className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${
+                              onClick={closeOverlayDrawer}
+                              className={`flex items-center rounded-lg px-3 py-2 text-sm transition-colors ${touchItemClass} ${
                                 isActive
                                   ? 'bg-blue-50 text-blue-600'
                                   : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
@@ -1067,15 +1096,16 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                 <Link
                   key={item.key}
                   href={item.href}
-                  className={`flex items-center rounded-lg px-3 py-2 transition-colors ${
+                  onClick={closeOverlayDrawer}
+                  className={`flex items-center rounded-lg px-3 py-2 transition-colors ${touchItemClass} ${
                     isActive
                       ? 'bg-blue-50 text-blue-600'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                  } ${collapsed ? 'justify-center' : ''}`}
-                  title={collapsed ? item.label : undefined}
+                  } ${compactSidebar ? 'justify-center' : ''}`}
+                  title={compactSidebar ? item.label : undefined}
                 >
-                  <i className={`${item.icon} text-lg`} />
-                  {!collapsed && <span className="ml-3 font-medium">{item.label}</span>}
+                  <i className={`${item.icon} ${iconClass} text-lg`} />
+                  {!compactSidebar && <span className="ml-3 font-medium">{item.label}</span>}
                 </Link>
               )
             })}

@@ -24,7 +24,7 @@ export default async function RewardProductCreatePage() {
   const t = await getTranslator(lang)
 
   return (
-    <div className="overflow-y-auto py-6 px-10">
+    <div className="crm-page-shell py-6 px-10">
       {/* Breadcrumb Navigation */}
       <div className="text-xs mb-4">
         <span className="text-gray-500">{t('sidebar.admin.management')}</span>

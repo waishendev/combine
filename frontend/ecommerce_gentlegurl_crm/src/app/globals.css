@@ -72,6 +72,43 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* CRM dashboard: single scrollport for main content (fixes iPad nested-scroll traps). */
+.crm-dashboard-root {
+  height: 100dvh;
+  height: 100vh;
+}
+
+@supports (height: 100dvh) {
+  .crm-dashboard-root {
+    height: 100dvh;
+  }
+}
+
+.crm-dashboard-shell {
+  min-height: 0;
+}
+
+.crm-dashboard-main {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.crm-page-shell {
+  min-height: min-content;
+}
+
+/* CRM sidebar: scroll inside nav so long menus stay reachable on iPad (nothing clipped). */
+.crm-sidebar-nav {
+  min-height: 0;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+
 /**
  * POS checkout: use two columns only when the viewport is wide *and* tall enough.
  * Prevents broken overlap on phone landscape (e.g. width ≥768px but height ~390px).

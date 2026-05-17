@@ -22,7 +22,7 @@ export default async function BillplzPaymentOptionsPage() {
   }
 
   return (
-    <div className="overflow-y-auto px-10 py-6">
+    <div className="crm-page-shell px-10 py-6">
       <div className="mb-4 text-xs">
         <span className="text-gray-500">Payment Gateway</span>
         <span className="mx-1">/</span>

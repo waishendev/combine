@@ -25,7 +25,7 @@ export default async function ShopSettingsPage() {
   const t = await getTranslator(lang)
 
   return (
-    <div className="overflow-y-auto py-6 px-10">
+    <div className="crm-page-shell py-6 px-10">
       <div className="text-xs mb-4 flex items-center text-gray-500">
         <span>Shop Settings</span>
         <span className="mx-1">/</span>

@@ -151,22 +151,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [router])
 
-  // Desktop keeps persistent sidebar; phone/tablet (touch) uses overlay drawer
+  // Phone uses overlay drawer; iPad+ keeps a persistent scrollable sidebar (all menu items stay available).
   useEffect(() => {
-    const handleResize = () => {
-      const isTouchDevice =
-        window.matchMedia('(hover: none), (pointer: coarse)').matches ||
-        navigator.maxTouchPoints > 0
-      const shouldOverlay = window.innerWidth < 1024 || isTouchDevice
+    const mq = window.matchMedia('(max-width: 767px)')
 
+    const applySidebarMode = () => {
+      const shouldOverlay = mq.matches
       setOverlaySidebar(shouldOverlay)
       setCollapsed(shouldOverlay)
     }
 
-    handleResize()
-
-    window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    applySidebarMode()
+    mq.addEventListener('change', applySidebarMode)
+    return () => mq.removeEventListener('change', applySidebarMode)
   }, [])
 
   const toggleSidebar = () => setCollapsed((c) => !c)
@@ -203,6 +200,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
   return (
     <LogoLoader>
+      <div className="crm-dashboard-root flex h-[100dvh] min-h-0 flex-col overflow-hidden">
       <Header
         userEmail={userEmail}
         onLogout={handleLogout}
@@ -210,18 +208,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         permissions={permissions}
         staffId={staffId}
       />
-      <div className="flex h-screen pt-16">
-        <Sidebar
-          collapsed={collapsed}
-          overlayMode={overlaySidebar}
-          permissions={permissions}
-          staffId={staffId}
-          onToggleSidebar={toggleSidebar}
-        />
-        <main className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-slate-100">
-          <DashboardNavigationProgress />
-          {children}
-        </main>
+      <div className="crm-dashboard-shell flex min-h-0 flex-1 pt-16">
+          <Sidebar
+            collapsed={collapsed}
+            overlayMode={overlaySidebar}
+            permissions={permissions}
+            staffId={staffId}
+            onToggleSidebar={toggleSidebar}
+          />
+          <main className="crm-dashboard-main relative min-h-0 min-w-0 flex-1 bg-slate-100">
+            <DashboardNavigationProgress />
+            {children}
+          </main>
+        </div>
       </div>
     </LogoLoader>
   )

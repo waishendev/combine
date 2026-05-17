@@ -23,7 +23,7 @@ export default async function Page() {
   const t = await getTranslator(lang)
 
   return (
-    <div className="overflow-y-auto py-6 px-10">
+    <div className="crm-page-shell py-6 px-10">
       <div className="mb-4 text-xs">
         <span className="text-gray-500">Booking</span>
         <span className="mx-1">/</span>

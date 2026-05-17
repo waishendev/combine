@@ -137,7 +137,7 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
   return (
     <div className="fixed inset-0 z-50 m-0 flex items-center justify-center bg-[var(--foreground)]/25 px-4 backdrop-blur-sm">
       <div 
-        className="relative w-[90%] max-w-lg overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] p-8 shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)] cursor-grab active:cursor-grabbing"
+        className="relative flex max-h-[min(90dvh,880px)] w-[90%] max-w-lg flex-col overflow-hidden rounded-3xl border border-[var(--card-border)] bg-gradient-to-br from-[var(--background)] via-[var(--background-soft)] to-[var(--card)] shadow-[0_25px_90px_-45px_rgba(var(--accent-rgb),0.55)] cursor-grab active:cursor-grabbing"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
@@ -149,12 +149,14 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
         <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent" aria-hidden />
 
         <button
-          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-0.5 hover:text-[var(--foreground)]"
+          className="absolute right-4 top-4 z-10 inline-flex h-9 w-9 items-center justify-center rounded-full border border-[var(--card-border)] bg-[var(--card)]/80 text-[var(--foreground)]/70 shadow-sm transition hover:-translate-y-0.5 hover:text-[var(--foreground)]"
           onClick={() => setOpen(false)}
           aria-label="Close announcement"
         >
           ×
         </button>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-8 pb-8 pt-8 pr-12">
         {item.title && (
           <div className="mb-3 inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
             Latest Drop
@@ -203,6 +205,7 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
             ))}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

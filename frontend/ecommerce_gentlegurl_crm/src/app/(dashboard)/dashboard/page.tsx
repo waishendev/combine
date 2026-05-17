@@ -212,7 +212,7 @@ export default function DashboardPage() {
   }, [data, t])
 
   return (
-    <div className="space-y-4 sm:space-y-6 overflow-y-auto py-4 sm:py-6 px-4 sm:px-6 lg:px-10">
+    <div className="crm-page-shell space-y-4 sm:space-y-6 py-4 sm:py-6 px-4 sm:px-6 lg:px-10">
       <div className="flex flex-col gap-2">
         <div className="text-xs mb-4">
           <span className="text-gray-500">Home</span>

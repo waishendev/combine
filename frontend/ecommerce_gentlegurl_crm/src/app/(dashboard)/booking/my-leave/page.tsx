@@ -16,7 +16,7 @@ export default async function Page() {
   const hasStaffProfile = Boolean(user.staff_id)
 
   return (
-    <div className="overflow-y-auto py-6 px-10 space-y-4">
+    <div className="crm-page-shell py-6 px-10 space-y-4">
       <div className="text-xs">
         <span className="text-gray-500">Booking</span>
         <span className="mx-1">/</span>

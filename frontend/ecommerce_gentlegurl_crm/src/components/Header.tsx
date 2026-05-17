@@ -30,14 +30,20 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
   const showStaffConsumablesLink = Boolean(staffId) && permissions.includes('pos.staff_consumables.access')
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (accountRef.current && !accountRef.current.contains(event.target as Node)) {
+    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (accountRef.current && !accountRef.current.contains(target)) {
         setAccountOpen(false)
       }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    document.addEventListener('touchstart', handleClickOutside, { passive: true })
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      document.removeEventListener('touchstart', handleClickOutside)
+    }
   }, [])
 
   const loadBranding = async (signal?: AbortSignal) => {
@@ -114,9 +120,9 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
           aria-label="Toggle sidebar"
           type="button"
           onClick={onToggleSidebar}
-          className="inline-flex h-10 w-10 shrink-0 touch-manipulation items-center justify-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+          className="inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
         >
-          <i className="fa-solid fa-bars text-lg" />
+          <i className="fa-solid fa-bars pointer-events-none text-lg" />
         </button>
         <div className="flex h-7 w-[72px] shrink-0 items-center justify-center sm:h-8 sm:w-[120px]">
           <Image

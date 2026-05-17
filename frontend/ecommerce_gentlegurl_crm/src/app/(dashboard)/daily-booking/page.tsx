@@ -18,7 +18,7 @@ export default async function DailyBookingPage() {
   }
 
   return (
-    <div className="min-h-0 h-full overflow-y-auto overflow-x-hidden px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8 xl:px-10">
+    <div className="crm-page-shell min-h-0 px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8 xl:px-10">
       <DailyBookingPageClient />
     </div>
   )

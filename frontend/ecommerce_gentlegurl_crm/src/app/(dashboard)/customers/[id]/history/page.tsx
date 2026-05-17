@@ -20,7 +20,7 @@ export default async function Page({ params }: { params: Promise<{ id: string }>
   const { id } = await params
 
   return (
-    <div className="overflow-y-auto px-10 py-6">
+    <div className="crm-page-shell px-10 py-6">
       <div className="mb-4 text-xs">
         <span className="text-gray-500">Customers & Loyalty</span>
         <span className="mx-1">/</span>
