@@ -64,16 +64,16 @@ const getPaymentSummary = (booking: BookingRecord) => {
   const calculatedBalance = Math.max(0, serviceTotal + addonTotal - depositPaid - settlementPaid - packageOffset);
   const balanceDue = Number(booking.balance_due ?? booking.amount_due_now ?? calculatedBalance);
   const totalPaid = Number(booking.total_paid ?? depositPaid + settlementPaid);
-  const paymentStatus = normalizeStatus(booking.payment_status);
-  const helperText = paymentStatus === "PAID"
-    ? "Fully paid."
+  const paymentStatus = totalPaid <= 0
+    ? "UNPAID"
+    : balanceDue > 0
+      ? "PARTIAL"
+      : "PAID";
+  const helperText = paymentStatus === "UNPAID"
+    ? "No payment received yet."
     : paymentStatus === "PARTIAL"
-      ? "Deposit received. Balance is still due."
-      : paymentStatus === "UNPAID"
-        ? "No payment received yet."
-        : balanceDue > 0
-          ? "Remaining balance will be paid at the salon."
-          : "Payment summary is up to date.";
+      ? "Deposit received. Remaining balance will be paid at the salon."
+      : "Fully paid.";
 
   return { serviceTotal, addonTotal, depositPaid, settlementPaid, packageOffset, balanceDue, totalPaid, paymentStatus, helperText };
 };
@@ -361,40 +361,32 @@ export default function BookingDetailPage() {
     }
   };
 
+  const currentBooking = bookings[0] ?? null;
+  const currentPayment = currentBooking ? getPaymentSummary(currentBooking) : null;
+
   return (
     <>
-      <div className="space-y-4">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm text-[var(--text-muted)]">Account / My Bookings / {bookings[0]?.booking_code || (bookingId ? `BOOKING-${bookingId}` : "Booking")}</p>
-            <h1 className="text-3xl font-semibold">Booking Details</h1>
-          </div>
-          <Link href="/account/bookings" className="inline-flex w-fit rounded-full border border-[var(--card-border)] px-4 py-2 text-sm font-medium">
-            Back to My Bookings
-          </Link>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm text-[var(--text-muted)]">Account / My Bookings / {currentBooking?.booking_code || (bookingId ? `BOOKING-${bookingId}` : "Booking")}</p>
+          <h1 className="text-3xl font-semibold">Booking Details</h1>
+          <p className="mt-1 font-mono text-sm text-[var(--text-muted)]">
+            {currentBooking?.booking_code || (bookingId ? `BOOKING-${bookingId}` : "Booking")}
+          </p>
+          {currentBooking && currentPayment ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${bookingBadgeClass(currentBooking.status)}`}>
+                Status: {normalizeStatus(currentBooking.status)}
+              </span>
+              <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${bookingBadgeClass(currentPayment.paymentStatus)}`}>
+                Payment: {currentPayment.paymentStatus}
+              </span>
+            </div>
+          ) : null}
         </div>
-
-        {bookings.map((booking) => {
-          const payment = getPaymentSummary(booking);
-          return (
-            <section key={`booking-header-${booking.id}`} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-[var(--text-muted)]">Booking Details</p>
-                  <p className="mt-1 font-mono text-sm text-[var(--text-muted)]">{booking.booking_code || `BOOKING-${booking.id}`}</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${bookingBadgeClass(booking.status)}`}>
-                    Status: {normalizeStatus(booking.status)}
-                  </span>
-                  <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${bookingBadgeClass(payment.paymentStatus)}`}>
-                    Payment: {payment.paymentStatus}
-                  </span>
-                </div>
-              </div>
-            </section>
-          );
-        })}
+        <Link href="/account/bookings" className="inline-flex w-fit rounded-full border border-[var(--card-border)] px-4 py-2 text-sm font-medium">
+          Back to My Bookings
+        </Link>
       </div>
 
       {loading ? <p className="mt-4">Loading booking...</p> : null}
@@ -510,7 +502,6 @@ export default function BookingDetailPage() {
 
                 <div className="mt-4 rounded-xl bg-[var(--background)]/30 p-3 text-sm text-[var(--text-muted)]">
                   <p>{payment.helperText}</p>
-                  {payment.balanceDue > 0 ? <p className="mt-1">Remaining balance will be paid at the salon.</p> : null}
                 </div>
               </section>
 
