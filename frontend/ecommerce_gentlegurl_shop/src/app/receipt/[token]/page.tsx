@@ -1,5 +1,16 @@
 export const dynamic = "force-dynamic";
 
+const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
+  'Final Settlement',
+  'Booking Add-on Settlement',
+  'Service',
+  'Booking Deposit',
+]);
+
+function shouldShowReceiptVariant(variantName?: string | null) {
+  return Boolean(variantName && !HIDDEN_RECEIPT_VARIANT_LABELS.has(variantName));
+}
+
 function formatPaymentMethod(method?: string) {
   const key = String(method ?? '').toLowerCase();
   if (key === 'cash') return 'Cash';
@@ -187,7 +198,7 @@ export default async function PublicReceiptPage({ params }: Props) {
                   <td className="px-4 py-3">
                     <ItemNameStack name={resolveItemLabel(item)} cnName={item.cn_name} />
                     {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
-                    {item.variant_name ? (
+                    {shouldShowReceiptVariant(item.variant_name) ? (
                       <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>
                     ) : null}
                     {isCoveredByPackage ? (

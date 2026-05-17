@@ -5,6 +5,13 @@
   <title>Invoice {{ $order->order_number }}</title>
 
   @php
+    $hiddenReceiptVariantLabels = [
+      'Final Settlement',
+      'Booking Add-on Settlement',
+      'Service',
+      'Booking Deposit',
+    ];
+
     // Check if CJK font exists (supports Chinese, Japanese, Korean)
     $cjkFontPath = collect([
       public_path('fonts/NotoSansCJKkr-Regular.otf'),
@@ -597,7 +604,7 @@
                 <?php if($sku): ?>
                   <div class="sku">SKU: {{ $sku }}</div>
                 <?php endif; ?>
-                <?php if($item['variant_name']): ?>
+                <?php if($item['variant_name'] && !in_array($item['variant_name'], $hiddenReceiptVariantLabels, true)): ?>
                   <div class="sku">
                     Variant: {{ $item['variant_name'] }}
                     <?php if($item['variant_sku']): ?>
