@@ -2379,14 +2379,15 @@ export default function PosAppointmentsWorkspace({
                         <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Service</p>
                         <div className="mt-2 space-y-2">
                           {(() => {
-                            const packageRemainingForAddons = Math.max(0, appointmentPackageOffsetAmount - appointmentServiceAmount)
+                            const originalServiceForPackage = appointmentDisplayMainServices.find((service, idx) => service.is_original ?? idx === 0)
+                            const packageMainReference = Number(originalServiceForPackage?.extra_price ?? appointmentDetail.service_total ?? 0)
+                            const packageRemainingForAddons = Math.max(0, appointmentPackageOffsetAmount - packageMainReference)
                             let addonCoverageUsed = 0
 
                             return appointmentDisplayMainServices.map((service, serviceIdx) => {
                               const servicePrice = Number(service.extra_price ?? 0)
                               const packageCoversMainService =
                                 appointmentPackageApplied &&
-                                appointmentIsFullyPackageCovered &&
                                 (service.is_original ?? serviceIdx === 0) &&
                                 appointmentPackageOffsetAmount > 0.0001
 

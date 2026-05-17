@@ -5887,10 +5887,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                     {(() => {
                       const pkgOffset = Number(settlement.package_offset ?? 0)
-                      const serviceTotal = Number(settlement.service_total ?? 0)
-                      const serviceDue = Number(settlement.service_balance_due ?? serviceTotal)
-                      const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotal > 0.0001
-                      const hasServiceBlocks = (settlement.main_service_settlement_items ?? []).length > 0
+                      const settlementPackageClaimed = ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
+                      const mainCoveredByPkg = (settlementPackageClaimed || pkgOffset > 0.0001) && pkgOffset > 0.0001
+                      const serviceBlocks = settlement.main_service_settlement_items ?? []
+                      const hasServiceBlocks = serviceBlocks.length > 0
+                      const originalServiceBlock = serviceBlocks.find((service, idx) => service.is_original ?? idx === 0)
+                      const originalServiceReference = Number(
+                        originalServiceBlock?.gross_amount ??
+                        originalServiceBlock?.extra_price ??
+                        originalServiceBlock?.balance_due ??
+                        settlement.service_total ??
+                        0,
+                      )
                       const addonRows = settlement.addon_settlement_items ?? []
                       const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
@@ -5907,7 +5915,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {hasServiceBlocks ? (
                               <div className="space-y-2 border-b border-gray-200 pb-2">
                                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service</p>
-                                {(settlement.main_service_settlement_items ?? []).map((service, idx) => {
+                                {serviceBlocks.map((service, idx) => {
                                   const gross = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
                                   const discount = Number(service.discount_amount ?? 0)
                                   const net = Number(service.line_total_after_discount ?? Math.max(0, gross - discount))
@@ -5937,7 +5945,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
                                   const discount = Number(addon.discount_amount ?? 0)
                                   const net = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
-                                  const coveredByPackage = pkgOffset > serviceTotal + 0.0001 && net <= 0.0001 && gross > 0.0001
+                                  const coveredByPackage = pkgOffset > originalServiceReference + 0.0001 && net <= 0.0001 && gross > 0.0001
                                   const displayNet = coveredByPackage ? 0 : net
                                   return (
                                     <div key={`settlement-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
@@ -7153,13 +7161,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       const addons = settlement.addon_settlement_items ?? []
                       const addonCount = addons.length
-                      const hasServiceBlocks = (settlement.main_service_settlement_items ?? []).length > 0
+                      const checkoutServiceBlocks = settlement.main_service_settlement_items ?? []
+                      const hasServiceBlocks = checkoutServiceBlocks.length > 0
                       const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
-                      const serviceDue = Number(settlement.service_balance_due ?? settlement.service_total ?? 0)
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const pkgOffset = Number(settlement.package_offset ?? 0)
-                      const mainCoveredByPkg = pkgOffset > 0.0001 && serviceDue <= 0.0001 && serviceTotalRef > 0.0001
+                      const settlementPackageClaimed = ['reserved', 'consumed'].includes(String(settlement.package_status?.status ?? '').toLowerCase())
+                      const mainCoveredByPkg = (settlementPackageClaimed || pkgOffset > 0.0001) && pkgOffset > 0.0001
+                      const checkoutOriginalServiceBlock = checkoutServiceBlocks.find((service, idx) => service.is_original ?? idx === 0)
+                      const checkoutOriginalServiceReference = Number(
+                        checkoutOriginalServiceBlock?.gross_amount ??
+                        checkoutOriginalServiceBlock?.extra_price ??
+                        checkoutOriginalServiceBlock?.balance_due ??
+                        settlement.service_total ??
+                        0,
+                      )
                       const stIsRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
                       const stServiceLabel = stIsRangeUnsettled
                         ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
@@ -7208,7 +7225,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                           {hasServiceBlocks ? (
                             <>
-                              {(settlement.main_service_settlement_items ?? []).map((service, idx) => {
+                              {checkoutServiceBlocks.map((service, idx) => {
                                 const servicePrice = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
                                 const serviceDiscount = Number(service.discount_amount ?? 0)
                                 const serviceNet = Number(service.line_total_after_discount ?? Math.max(0, servicePrice - serviceDiscount))
@@ -7268,7 +7285,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
                                 const discount = Number(addon.discount_amount ?? 0)
                                 const due = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
-                                const coveredByPackage = pkgOffset > serviceTotalRef + 0.0001 && due <= 0.0001 && gross > 0.0001
+                                const coveredByPackage = pkgOffset > checkoutOriginalServiceReference + 0.0001 && due <= 0.0001 && gross > 0.0001
                                 const displayDue = coveredByPackage ? 0 : due
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
