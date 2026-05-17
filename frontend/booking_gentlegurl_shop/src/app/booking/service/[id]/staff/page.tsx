@@ -418,7 +418,7 @@ export default function ServiceStaffPage() {
           onClick={() => !adding && setConfirmStaff(null)}
         >
           <div
-            className="relative flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--card-border)] bg-[var(--card)] shadow-[0_-8px_40px_-12px_rgba(60,36,50,0.2)] ring-1 ring-black/[0.04] sm:max-h-[min(92dvh,880px)] sm:rounded-3xl sm:shadow-2xl"
+            className="relative flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--card-border)] bg-[var(--card)] shadow-[0_-8px_40px_-12px_rgba(60,36,50,0.2)] ring-1 ring-black/[0.04] sm:max-h-[min(92dvh,880px)] sm:max-w-xl sm:rounded-3xl sm:shadow-2xl md:max-w-2xl lg:max-w-3xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="staff-confirm-title"
@@ -436,7 +436,7 @@ export default function ServiceStaffPage() {
             </button>
 
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-7 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8">
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-7 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8 md:px-10 lg:px-12">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Almost there</p>
               <h3 id="staff-confirm-title" className="font-[var(--font-heading)] pr-10 text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:text-3xl">
                 Confirm your slot
@@ -557,7 +557,7 @@ export default function ServiceStaffPage() {
               {error && confirmStaff ? <p className="mt-3 text-base text-[var(--status-error)]">{error}</p> : null}
             </div>
 
-            <div className="shrink-0 border-t border-[var(--card-border)] bg-[var(--card)] px-6 pb-6 pt-4 sm:px-8">
+            <div className="shrink-0 border-t border-[var(--card-border)] bg-[var(--card)] px-6 pb-6 pt-4 sm:px-8 md:px-10 lg:px-12">
               <div className="flex flex-col-reverse gap-3 sm:flex-row">
                 <button
                   type="button"

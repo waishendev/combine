@@ -10,8 +10,10 @@ use App\Models\Booking\BookingServicePhoto;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\OrderReceiptToken;
+use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderServiceItem;
+use App\Models\Booking\BookingSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -24,7 +26,7 @@ class MyBookingController extends Controller
 
         $bookings = Booking::query()
             ->with([
-                'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload',
+                'service:id,name,cn_name,duration_min,deposit_amount,buffer_min,allow_photo_upload,service_price,price,service_type,price_mode',
                 'staff:id,name',
                 'itemPhotos',
                 'servicePhotos',
@@ -62,6 +64,7 @@ class MyBookingController extends Controller
                 ->first();
 
             $receiptRows = $this->resolveBookingReceipts((int) $booking->id);
+            $summary = $this->resolveAppointmentFinancialSummary($booking);
 
             return [
                 'id' => (int) $booking->id,
@@ -95,8 +98,18 @@ class MyBookingController extends Controller
                 'service_name' => $booking->service?->name,
                 'service_cn_name' => $booking->service?->cn_name,
                 'add_ons' => $addonItems = $this->mapAddonItems($booking->addon_items_json),
-                'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
-                'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
+                'addon_total_duration_min' => (int) $summary['addon_total_duration_min'],
+                'addon_total_price' => (float) $summary['addon_total_price'],
+                'service_total' => (float) $summary['service_total'],
+                'deposit_paid' => (float) $summary['deposit_paid'],
+                'linked_booking_deposit_total' => (float) $summary['linked_booking_deposit_total'],
+                'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
+                'settlement_paid' => (float) $summary['settlement_paid'],
+                'package_offset' => (float) $summary['package_offset'],
+                'balance_due' => (float) $summary['balance_due'],
+                'amount_due_now' => (float) $summary['amount_due_now'],
+                'total_paid' => (float) $summary['total_paid'],
+                'estimated_duration_min' => (int) $summary['estimated_duration_min'],
                 'staff_name' => $booking->staff?->name,
                 'customer_remarks' => $this->extractCustomerRemarks($booking->notes),
                 'service' => $booking->service ? [
@@ -153,6 +166,173 @@ class MyBookingController extends Controller
         })->values();
 
         return $this->respond($payload);
+    }
+
+
+    protected function resolveAppointmentFinancialSummary(Booking $booking): array
+    {
+        $settlementItems = collect($booking->addon_items_json ?? []);
+        $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
+        $originalServiceAmount = $settledServiceAmount !== null
+            ? $settledServiceAmount
+            : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+
+        $extraMainServices = $settlementItems
+            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
+            ->map(fn ($item) => [
+                'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+                'add_ons' => collect($item['addon_items'] ?? [])->map(fn ($addon) => [
+                    'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
+                    'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
+                ])->values()->all(),
+            ])
+            ->values();
+
+        $serviceTotal = round($originalServiceAmount + (float) $extraMainServices->sum('extra_price'), 2);
+        $originalMainServiceItem = $settlementItems
+            ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
+        $originalAddonSource = is_array($originalMainServiceItem)
+            ? collect((array) ($originalMainServiceItem['addon_items'] ?? []))
+            : $settlementItems->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service');
+        $addonItems = $originalAddonSource->map(fn ($item) => [
+            'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
+            'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+        ])->concat($extraMainServices->flatMap(fn (array $service) => $service['add_ons'] ?? []))->values();
+        $addonTotalDurationMin = (int) $addonItems->sum('extra_duration_min');
+        $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum('extra_price')), 2);
+
+        $actualAppointmentDepositCollected = (float) OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_deposit')
+            ->sum('line_total');
+        $linkedOrderIds = OrderServiceItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->pluck('order_id')
+            ->merge(
+                OrderItem::query()
+                    ->where('booking_id', (int) $booking->id)
+                    ->where('line_type', 'booking_deposit')
+                    ->pluck('order_id')
+            )
+            ->filter()
+            ->unique()
+            ->values();
+
+        $linkedBookingRows = $linkedOrderIds->isNotEmpty()
+            ? OrderServiceItem::query()
+                ->leftJoin('bookings', 'bookings.id', '=', 'order_service_items.booking_id')
+                ->leftJoin('booking_services', 'booking_services.id', '=', 'bookings.service_id')
+                ->whereIn('order_service_items.order_id', $linkedOrderIds->all())
+                ->whereNotNull('order_service_items.booking_id')
+                ->get([
+                    'order_service_items.booking_id',
+                    'booking_services.service_type',
+                ])
+                ->unique('booking_id')
+                ->values()
+            : collect();
+
+        $settings = BookingSetting::query()->first();
+        $premiumDeposit = (float) ($settings?->deposit_amount_per_premium ?? 0);
+        $standardDeposit = (float) ($settings?->deposit_base_amount_if_only_standard ?? 0);
+        $premiumBookings = $linkedBookingRows
+            ->filter(fn ($row) => strtoupper((string) ($row->service_type ?? 'STANDARD')) === 'PREMIUM')
+            ->values();
+        $standardBookings = $linkedBookingRows
+            ->filter(fn ($row) => strtoupper((string) ($row->service_type ?? 'STANDARD')) !== 'PREMIUM')
+            ->sortBy(fn ($row) => (int) ($row->booking_id ?? 0))
+            ->values();
+        $expectedDepositTotal = $premiumBookings->isNotEmpty()
+            ? (float) $premiumBookings->count() * $premiumDeposit
+            : ($standardBookings->isNotEmpty() ? $standardDeposit : 0.0);
+        $depositFromOrderItems = $linkedOrderIds->isNotEmpty()
+            ? (float) OrderItem::query()
+                ->whereIn('order_id', $linkedOrderIds->all())
+                ->where('line_type', 'booking_deposit')
+                ->sum('line_total')
+            : 0.0;
+        $depositFromOrderNotes = $linkedOrderIds->isNotEmpty()
+            ? (float) Order::query()
+                ->whereIn('id', $linkedOrderIds->all())
+                ->get(['notes'])
+                ->reduce(function (float $carry, Order $order) {
+                    $notes = (string) ($order->notes ?? '');
+                    if (preg_match('/booking_deposit=([0-9]+(?:\.[0-9]+)?)/', $notes, $matches) === 1) {
+                        return $carry + (float) ($matches[1] ?? 0);
+                    }
+
+                    return $carry;
+                }, 0.0)
+            : 0.0;
+        $linkedBookingDeposit = $depositFromOrderNotes > 0
+            ? $depositFromOrderNotes
+            : ($depositFromOrderItems > 0
+                ? ($expectedDepositTotal > 0 ? min($depositFromOrderItems, $expectedDepositTotal) : $depositFromOrderItems)
+                : 0.0);
+        $depositPaid = 0.0;
+        $currentType = strtoupper((string) ($booking->service?->service_type ?? 'STANDARD'));
+        if ($premiumBookings->isNotEmpty()) {
+            $depositPaid = $currentType === 'PREMIUM'
+                ? round($linkedBookingDeposit / max(1, $premiumBookings->count()), 2)
+                : 0.0;
+        } elseif ($standardBookings->isNotEmpty()) {
+            $firstStandardBookingId = (int) ($standardBookings->first()?->booking_id ?? 0);
+            $depositPaid = (int) $booking->id === $firstStandardBookingId ? $linkedBookingDeposit : 0.0;
+        }
+        if ($depositPaid <= 0.0001 && $actualAppointmentDepositCollected > 0.0001) {
+            $depositPaid = $actualAppointmentDepositCollected;
+        }
+        if ($linkedBookingDeposit <= 0.0001 && $actualAppointmentDepositCollected > 0.0001) {
+            $linkedBookingDeposit = $actualAppointmentDepositCollected;
+        }
+
+        $serviceSettlementPaid = (float) OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_settlement')
+            ->sum('line_total');
+        $addonPaidSettlement = (float) OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_addon')
+            ->where('variant_name_snapshot', 'Booking Add-on Settlement')
+            ->sum('line_total');
+        $settlementPaid = round($serviceSettlementPaid + $addonPaidSettlement, 2);
+
+        $packageUsage = CustomerServicePackageUsage::query()
+            ->where('booking_id', (int) $booking->id)
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->latest('id')
+            ->first();
+        if (! $packageUsage && $booking->customer_id && $booking->service_id) {
+            $packageUsage = CustomerServicePackageUsage::query()
+                ->where('customer_id', (int) $booking->customer_id)
+                ->where('booking_service_id', (int) $booking->service_id)
+                ->where('used_from', 'POS')
+                ->where('used_ref_id', (int) $booking->id)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->latest('id')
+                ->first();
+        }
+        $packageOffset = $packageUsage ? max(0.0, $originalServiceAmount) : 0.0;
+        $payableTotal = round($serviceTotal + $addonTotalPrice, 2);
+        $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
+        $balanceDue = max(0.0, round($payableTotal - $paidTotal, 2));
+
+        return [
+            'service_total' => round($serviceTotal, 2),
+            'addon_total_duration_min' => $addonTotalDurationMin,
+            'estimated_duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)) + $addonTotalDurationMin,
+            'addon_total_price' => round($addonTotalPrice, 2),
+            'deposit_paid' => round($depositPaid, 2),
+            'linked_booking_deposit_total' => round($linkedBookingDeposit, 2),
+            'deposit_previously_collected_amount' => round($actualAppointmentDepositCollected, 2),
+            'package_offset' => round($packageOffset, 2),
+            'settlement_paid' => $settlementPaid,
+            'balance_due' => round($balanceDue, 2),
+            'amount_due_now' => round($balanceDue, 2),
+            'total_paid' => round($depositPaid + $settlementPaid, 2),
+        ];
     }
 
     public function uploadItemPhotos(Request $request, int $id)
