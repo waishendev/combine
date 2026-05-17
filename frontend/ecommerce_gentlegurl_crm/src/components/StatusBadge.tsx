@@ -107,6 +107,21 @@ export default function StatusBadge({
       bgColor: 'bg-green-100',
       dotColor: 'bg-green-500',
     },
+    paid: {
+      textColor: 'text-emerald-700',
+      bgColor: 'bg-emerald-100',
+      dotColor: 'bg-emerald-500',
+    },
+    unpaid: {
+      textColor: 'text-amber-700',
+      bgColor: 'bg-amber-100',
+      dotColor: 'bg-amber-500',
+    },
+    partial: {
+      textColor: 'text-sky-700',
+      bgColor: 'bg-sky-100',
+      dotColor: 'bg-sky-500',
+    },
     late_cancellation: {
       textColor: 'text-orange-700',
       bgColor: 'bg-orange-100',

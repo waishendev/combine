@@ -2,8 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-import BookingServicePhotosPanel, { type BookingServicePhoto } from '@/components/booking/BookingServicePhotosPanel'
-import PaymentProofPreview, { type PaymentProof } from '@/components/payment/PaymentProofPreview'
+import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
+import { type BookingServicePhoto } from '@/components/booking/BookingServicePhotosPanel'
+import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
+import PaymentProofModal from '@/components/payment/PaymentProofModal'
+import { type PaymentProof } from '@/components/payment/PaymentProofPreview'
+import StatusBadge from '@/components/StatusBadge'
 
 type Photo = {
   id: number
@@ -67,30 +71,74 @@ const formatTimeRange = (start?: string | null, end?: string | null) => {
 
 const money = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`
 
-function NameStack({ name, cnName }: { name?: string | null; cnName?: string | null }) {
+function formatPaymentStatusKey(status?: string | null) {
+  return String(status ?? '')
+    .trim()
+    .toLowerCase()
+    .replaceAll('_', ' ')
+}
+
+function formatPaymentStatusLabel(status?: string | null) {
+  const raw = String(status ?? '').trim()
+  if (!raw) return '—'
+  return raw.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function PaymentStatusBadgeCell({ status }: { status?: string | null }) {
+  const resolved = status?.trim()
+  if (!resolved) return <span className="text-xs text-slate-400">—</span>
   return (
-    <div className="min-w-0">
-      <p className="font-semibold text-slate-900">{name || '—'}</p>
-      {cnName ? <p className="mt-0.5 text-xs text-slate-500">{cnName}</p> : null}
+    <StatusBadge status={formatPaymentStatusKey(resolved)} label={formatPaymentStatusLabel(resolved)} />
+  )
+}
+
+function TableServicesCell({
+  service,
+  addOns,
+}: {
+  service?: DailyBookingRow['service']
+  addOns?: DailyBookingRow['add_ons']
+}) {
+  const addonCount = addOns?.length ?? 0
+
+  return (
+    <div className="min-w-0 max-w-[12rem] sm:max-w-[14rem]">
+      <p className="line-clamp-2 font-semibold leading-snug text-slate-900" title={service?.name ?? undefined}>
+        {service?.name || '—'}
+      </p>
+      {service?.cn_name ? (
+        <p className="mt-0.5 line-clamp-1 text-xs leading-snug text-slate-500" title={service.cn_name}>
+          {service.cn_name}
+        </p>
+      ) : null}
+      {addonCount > 0 ? (
+        <p className="mt-1 text-xs font-medium text-slate-500">
+          ({addonCount} add-on{addonCount === 1 ? '' : 's'})
+        </p>
+      ) : null}
     </div>
   )
 }
 
-function PhotoGrid({ photos, emptyText }: { photos?: Photo[]; emptyText: string }) {
-  const list = photos ?? []
-  if (list.length === 0) return <p className="rounded-lg bg-slate-50 px-3 py-4 text-center text-xs text-slate-500">{emptyText}</p>
-
+function ServiceDetailCard({
+  name,
+  cnName,
+  durationText,
+  price,
+}: {
+  name?: string | null
+  cnName?: string | null
+  durationText?: string | null
+  price?: number | null
+}) {
   return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {list.map((photo, index) => (
-        <a key={photo.id} href={photo.file_url || '#'} target="_blank" rel="noreferrer" className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50">
-          {photo.file_url ? (
-            <img src={photo.file_url} alt={photo.original_name || `Reference photo ${index + 1}`} className="h-24 w-full object-cover" />
-          ) : (
-            <span className="flex h-24 items-center justify-center px-2 text-center text-[11px] text-slate-500">Image unavailable</span>
-          )}
-        </a>
-      ))}
+    <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
+      <p className="break-words font-semibold text-slate-900">{name || '—'}</p>
+      {cnName ? <p className="mt-0.5 break-words text-sm text-slate-500">{cnName}</p> : null}
+      {durationText ? <p className="mt-2 text-xs font-medium tabular-nums text-slate-600">{durationText}</p> : null}
+      {price != null && Number(price) > 0 ? (
+        <p className="mt-1 text-sm font-semibold tabular-nums text-slate-900">{money(price)}</p>
+      ) : null}
     </div>
   )
 }
@@ -139,6 +187,16 @@ export default function DailyBookingPageClient() {
     setSelected((current) => (current ? { ...current, service_photos: photos, service_photos_count: photos.length } : current))
     setRows((current) => current.map((row) => (row.id === selected?.id ? { ...row, service_photos: photos, service_photos_count: photos.length } : row)))
   }
+
+  const selectedCustomerReferencePhotos = useMemo(
+    () =>
+      (selected?.customer_reference_photos ?? []).map((photo) => ({
+        id: photo.id,
+        resolved_url: photo.file_url ?? '',
+        created_at: null,
+      })),
+    [selected?.customer_reference_photos],
+  )
 
   return (
     <div className="space-y-5">
@@ -189,9 +247,8 @@ export default function DailyBookingPageClient() {
                   <th className="px-4 py-3 text-left font-semibold">Customer</th>
                   <th className="px-4 py-3 text-left font-semibold">Staff</th>
                   <th className="px-4 py-3 text-left font-semibold">Time</th>
-                  <th className="px-4 py-3 text-left font-semibold">Services</th>
-                  <th className="px-4 py-3 text-left font-semibold">Payment</th>
-                  <th className="px-4 py-3 text-center font-semibold">Photos</th>
+                  <th className="min-w-[9rem] px-4 py-3 text-left font-semibold">Services</th>
+                  <th className="px-4 py-3 text-left font-semibold">Status</th>
                   <th className="px-4 py-3 text-right font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -202,23 +259,15 @@ export default function DailyBookingPageClient() {
                     <td className="px-4 py-3 font-semibold text-slate-900">{row.customer_display_name}</td>
                     <td className="px-4 py-3 text-slate-700">{row.staff?.name ?? '—'}</td>
                     <td className="px-4 py-3 text-slate-700">{formatTimeRange(row.start_at, row.end_at)}</td>
-                    <td className="px-4 py-3">
-                      <NameStack name={row.service?.name} cnName={row.service?.cn_name} />
-                      {(row.add_ons?.length ?? 0) > 0 ? <p className="mt-1 text-xs text-slate-500">+ {row.add_ons?.map((addon) => addon.name).join(', ')}</p> : null}
+                    <td className="px-4 py-3 align-top">
+                      <TableServicesCell service={row.service} addOns={row.add_ons} />
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-600">
-                      <p>Status: <span className="font-semibold">{row.payment_status ?? row.computed_payment_status ?? '—'}</span></p>
-                      <p>Paid: {money(row.paid_amount)}</p>
-                      <p>Balance: {money(row.balance_due)}</p>
-                    </td>
-                    <td className="px-4 py-3 text-center text-xs text-slate-600">
-                      <p>Ref: {row.customer_reference_photos_count ?? 0}</p>
-                      <p>Salon: {row.service_photos_count ?? 0}</p>
+                    <td className="px-4 py-3 align-top">
+                      <PaymentStatusBadgeCell status={row.payment_status ?? row.computed_payment_status} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-2">
-                        <button type="button" onClick={() => setSelected(row)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700">View Details</button>
-                        <button type="button" onClick={() => setSelected(row)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white">Upload Photos</button>
+                        <button type="button" onClick={() => setSelected(row)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700">View</button>
                       </div>
                     </td>
                   </tr>
@@ -253,20 +302,35 @@ export default function DailyBookingPageClient() {
 
               <section className="rounded-xl border border-slate-200 bg-white p-4">
                 <h4 className="text-sm font-bold text-slate-900">Services / Add-ons</h4>
-                <div className="mt-3 space-y-2 text-sm">
-                  <NameStack name={selected.service?.name} cnName={selected.service?.cn_name} />
-                  {selected.service?.duration_min ? <p className="text-xs text-slate-500">Duration: {selected.service.duration_min} min</p> : null}
+                <div className="mt-3 space-y-3 text-sm">
+                  <div>
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Main treatment</p>
+                    <ServiceDetailCard
+                      name={selected.service?.name}
+                      cnName={selected.service?.cn_name}
+                      durationText={selected.service?.duration_min ? `${selected.service.duration_min} min` : null}
+                    />
+                  </div>
                   {(selected.add_ons?.length ?? 0) > 0 ? (
-                    <div className="rounded-lg bg-slate-50 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
-                      {selected.add_ons?.map((addon, index) => (
-                        <div key={`${addon.id ?? addon.name}-${index}`} className="mt-2 text-sm text-slate-700">
-                          <p>{addon.name} · +{addon.extra_duration_min} min · {money(addon.extra_price)}</p>
-                          {addon.cn_name ? <p className="text-xs text-slate-500">{addon.cn_name}</p> : null}
-                        </div>
-                      ))}
+                    <div>
+                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
+                      <div className="space-y-2">
+                        {selected.add_ons?.map((addon, index) => (
+                          <ServiceDetailCard
+                            key={`${addon.id ?? addon.name}-${index}`}
+                            name={addon.name}
+                            cnName={addon.cn_name}
+                            durationText={
+                              addon.extra_duration_min != null ? `+${addon.extra_duration_min} min` : null
+                            }
+                            price={addon.extra_price}
+                          />
+                        ))}
+                      </div>
                     </div>
-                  ) : <p className="text-xs text-slate-500">No add-ons.</p>}
+                  ) : (
+                    <p className="text-xs text-slate-500">No add-ons.</p>
+                  )}
                 </div>
               </section>
 
@@ -279,19 +343,29 @@ export default function DailyBookingPageClient() {
               </section>
 
               <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 className="mb-3 text-sm font-bold text-slate-900">Customer Reference Photos</h4>
-                <PhotoGrid photos={selected.customer_reference_photos} emptyText="No customer reference photos." />
-              </section>
-
-              <BookingServicePhotosPanel
-                bookingId={selected.id}
-                initialPhotos={selected.service_photos ?? []}
-                onChanged={updateSelectedPhotos}
-              />
-
-              <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 className="mb-3 text-sm font-bold text-slate-900">Payment Proof (Optional)</h4>
-                <PaymentProofPreview proofs={selected.payment_proofs} />
+                <h4 className="mb-3 text-sm font-bold text-slate-900">Photos & payment proof</h4>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <CustomerUploadedPhotosModal
+                    photos={selectedCustomerReferencePhotos}
+                    bookingCode={selected.booking_code}
+                    layout="tile"
+                    buttonLabel="Customer reference photos"
+                    modalTitle="Customer reference photos"
+                    modalDescription="Reference photos submitted by the customer for this booking."
+                    gallerySectionTitle="Reference photos"
+                    emptyTitle="No reference photos"
+                    emptyDescription="The customer has not uploaded any reference photos for this booking."
+                  />
+                  <BookingServicePhotosModal
+                    bookingId={selected.id}
+                    bookingCode={selected.booking_code}
+                    initialPhotos={selected.service_photos ?? []}
+                    layout="tile"
+                    buttonLabel="Salon service photos"
+                    onChanged={updateSelectedPhotos}
+                  />
+                  <PaymentProofModal proofs={selected.payment_proofs} bookingCode={selected.booking_code} layout="tile" />
+                </div>
               </section>
             </div>
           </div>

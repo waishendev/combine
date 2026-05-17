@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
-import BookingServicePhotosPanel from '@/components/booking/BookingServicePhotosPanel'
+import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
+import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
@@ -296,8 +297,6 @@ export default function PosAppointmentsWorkspace({
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
   const [sendingConfirmationEmail, setSendingConfirmationEmail] = useState(false)
   const [confirmationEmailCooldownUntil, setConfirmationEmailCooldownUntil] = useState(0)
-  const [appointmentPhotoPreviewOpen, setAppointmentPhotoPreviewOpen] = useState(false)
-  const [appointmentPhotoPreviewIndex, setAppointmentPhotoPreviewIndex] = useState(0)
 
   const [editSettlementOpen, setEditSettlementOpen] = useState(false)
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
@@ -2691,44 +2690,23 @@ export default function PosAppointmentsWorkspace({
                     </section>
                   ) : null}
 
-                  <section className="rounded-xl border border-slate-200 bg-white">
-                    <h4 className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                      Customer Uploaded Photos
-                    </h4>
-                    {appointmentUploadedPhotos.length > 0 ? (
-                      <div className="space-y-2 p-3">
-                        <div className="grid grid-cols-3 gap-2">
-                          {appointmentUploadedPhotos.map((photo, idx) => (
-                            <button
-                              key={`appt-photo-${photo.id}`}
-                              type="button"
-                              onClick={() => {
-                                setAppointmentPhotoPreviewIndex(idx)
-                                setAppointmentPhotoPreviewOpen(true)
-                              }}
-                              className="overflow-hidden rounded-lg border border-slate-200 bg-slate-50"
-                            >
-                              {photo.resolved_url ? (
-                                <img src={photo.resolved_url} alt={`Uploaded photo ${idx + 1}`} className="h-20 w-full object-cover" />
-                              ) : (
-                                <span className="flex h-20 items-center justify-center px-2 text-center text-[11px] text-slate-500">Image unavailable</span>
-                              )}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="px-3 py-4 text-center text-xs text-slate-500">No uploaded photos.</p>
-                    )}
+                  <section className="rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <CustomerUploadedPhotosModal
+                        photos={appointmentUploadedPhotos}
+                        bookingCode={appointmentDetail.booking_code}
+                        layout="tile"
+                      />
+                      <BookingServicePhotosModal
+                        bookingId={appointmentDetail.id}
+                        bookingCode={appointmentDetail.booking_code}
+                        initialPhotos={appointmentDetail.service_photos ?? []}
+                        canManage={!cashShiftActionDisabled}
+                        layout="tile"
+                        onChanged={(photos) => setAppointmentDetail((prev) => (prev ? { ...prev, service_photos: photos } : prev))}
+                      />
+                    </div>
                   </section>
-
-                  {/* History */}
-                  <BookingServicePhotosPanel
-                    bookingId={appointmentDetail.id}
-                    initialPhotos={appointmentDetail.service_photos ?? []}
-                    canManage={!cashShiftActionDisabled}
-                    onChanged={(photos) => setAppointmentDetail((prev) => (prev ? { ...prev, service_photos: photos } : prev))}
-                  />
 
                   <section className="rounded-xl border border-slate-200 bg-white">
                     <h4 className="border-b border-slate-100 px-3 py-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
@@ -4585,53 +4563,6 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
       )}
-
-      {appointmentPhotoPreviewOpen && appointmentUploadedPhotos.length > 0 ? (
-        <div
-          className="fixed inset-0 z-[140] flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
-          onClick={() => setAppointmentPhotoPreviewOpen(false)}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="relative max-h-[90vh] w-full max-w-4xl" onClick={(event) => event.stopPropagation()}>
-            <img
-              src={appointmentUploadedPhotos[appointmentPhotoPreviewIndex]?.resolved_url || ''}
-              alt={`Uploaded photo preview ${appointmentPhotoPreviewIndex + 1}`}
-              className="max-h-[80vh] w-full rounded-xl bg-white object-contain"
-            />
-            <div className="mt-3 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={() => setAppointmentPhotoPreviewOpen(false)}
-                className="rounded-md bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-900"
-              >
-                Close
-              </button>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setAppointmentPhotoPreviewIndex((prev) => Math.max(0, prev - 1))}
-                  disabled={appointmentPhotoPreviewIndex <= 0}
-                  className="rounded-md bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-900 disabled:opacity-40"
-                >
-                  Prev
-                </button>
-                <span className="text-xs font-medium text-white">
-                  {appointmentPhotoPreviewIndex + 1} / {appointmentUploadedPhotos.length}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAppointmentPhotoPreviewIndex((prev) => Math.min(appointmentUploadedPhotos.length - 1, prev + 1))}
-                  disabled={appointmentPhotoPreviewIndex >= appointmentUploadedPhotos.length - 1}
-                  className="rounded-md bg-white/90 px-3 py-1.5 text-xs font-semibold text-slate-900 disabled:opacity-40"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {appointmentQrCodeFullscreen && appointmentSettlementResult?.receipt_public_url ? (
         <div
