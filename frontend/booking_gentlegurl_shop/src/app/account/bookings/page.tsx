@@ -20,7 +20,29 @@ const formatDate = (value: string) =>
   new Date(value).toLocaleDateString("en-MY", { dateStyle: "medium" });
 
 const formatTime = (value: string) =>
-  new Date(value).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" });
+  new Date(value).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" }).toUpperCase();
+
+const formatAppointmentRange = (booking: BookingRecord) => {
+  const startValue = booking.appointment_start_at || booking.starts_at;
+  const endValue = booking.appointment_end_at;
+  const startAt = new Date(startValue);
+
+  if (!endValue) {
+    return `${formatDate(startValue)}, ${formatTime(startValue)}`;
+  }
+
+  const endAt = new Date(endValue);
+  const isSameDay =
+    startAt.getFullYear() === endAt.getFullYear() &&
+    startAt.getMonth() === endAt.getMonth() &&
+    startAt.getDate() === endAt.getDate();
+
+  if (isSameDay) {
+    return `${formatDate(startValue)}, ${formatTime(startValue)} - ${formatTime(endValue)}`;
+  }
+
+  return `${formatDate(startValue)}, ${formatTime(startValue)} - ${formatDate(endValue)}, ${formatTime(endValue)}`;
+};
 
 const addonSummary = (booking: BookingRecord) => {
   const addOns = booking.add_ons ?? [];
@@ -195,11 +217,8 @@ export default function MyBookingsPage() {
                     </div>
 
                     <div className="grid min-w-0 gap-2 rounded-xl bg-[var(--background)]/20 p-3 text-sm text-[var(--text-muted)] sm:grid-cols-2 sm:gap-x-6">
-                      <p className="min-w-0 truncate">
-                        Date: <span className="text-[var(--foreground)]">{formatDate(booking.starts_at)}</span>
-                      </p>
-                      <p className="min-w-0 truncate">
-                        Time: <span className="text-[var(--foreground)]">{formatTime(booking.starts_at)}</span>
+                      <p className="min-w-0 sm:col-span-2">
+                        Appointment: <span className="text-[var(--foreground)]">{formatAppointmentRange(booking)}</span>
                       </p>
                       <p className="min-w-0 truncate">
                         Staff: <span className="text-[var(--foreground)]">{booking.staff_name || "Any staff"}</span>
