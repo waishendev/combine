@@ -14,6 +14,7 @@ import {
 } from "@/lib/apiClient";
 import { BookingPolicy, BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatBookingDateTime, formatBookingTime } from "@/lib/bookingTime";
 
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
@@ -492,7 +493,7 @@ export default function BookingDetailPage() {
                   </div>
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Time</p>
-                    <p className="mt-1 font-medium">{startsAt.toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" })}</p>
+                    <p className="mt-1 font-medium">{formatBookingTime(booking)}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Duration</p>
@@ -688,7 +689,7 @@ export default function BookingDetailPage() {
             <div className="mt-2 text-sm text-slate-600">
               <p>Booking #{modalBooking.id}</p>
               <ServiceNameStack name={modalBooking.service_name} cnName={modalBooking.service_cn_name ?? modalBooking.service?.cn_name} />
-              <p>{new Date(modalBooking.starts_at).toLocaleString("en-MY")}</p>
+              <p>{formatBookingDateTime(modalBooking)}</p>
             </div>
             <p className="mt-2 text-sm text-slate-600">
               This sends a request to our team. Your booking remains CONFIRMED until review.
@@ -729,7 +730,7 @@ export default function BookingDetailPage() {
                 name={rescheduleBookingModal.service_name}
                 cnName={rescheduleBookingModal.service_cn_name ?? rescheduleBookingModal.service?.cn_name}
               />
-              <p>Current: {new Date(rescheduleBookingModal.starts_at).toLocaleString("en-MY")}</p>
+              <p>Current: {formatBookingDateTime(rescheduleBookingModal)}</p>
             </div>
             <p className="mt-2 text-sm text-slate-600">Pick a new date and time. We’ll confirm availability after you submit.</p>
             <p className="mt-2 text-xs text-slate-500">

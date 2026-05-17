@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { getMyBookings, payBooking } from "@/lib/apiClient";
 import { BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
+import { formatBookingTime } from "@/lib/bookingTime";
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
@@ -18,9 +19,6 @@ function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | nu
 
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString("en-MY", { dateStyle: "medium" });
-
-const formatTime = (value: string) =>
-  new Date(value).toLocaleTimeString("en-MY", { hour: "numeric", minute: "2-digit" });
 
 const addonSummary = (booking: BookingRecord) => {
   const addOns = booking.add_ons ?? [];
@@ -199,7 +197,7 @@ export default function MyBookingsPage() {
                         Date: <span className="text-[var(--foreground)]">{formatDate(booking.starts_at)}</span>
                       </p>
                       <p className="min-w-0 truncate">
-                        Time: <span className="text-[var(--foreground)]">{formatTime(booking.starts_at)}</span>
+                        Time: <span className="text-[var(--foreground)]">{formatBookingTime(booking)}</span>
                       </p>
                       <p className="min-w-0 truncate">
                         Staff: <span className="text-[var(--foreground)]">{booking.staff_name || "Any staff"}</span>
