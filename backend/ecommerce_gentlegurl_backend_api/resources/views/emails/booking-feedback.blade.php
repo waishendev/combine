@@ -32,7 +32,7 @@
                     <td style="padding: 6px 4px; color: #666; vertical-align: top;">Add-Ons:</td>
                     <td style="padding: 6px 4px;">
                         @foreach ($addonItems as $addon)
-                            {{ $addon['name'] }}@if ($addon['extra_price'] > 0) (RM {{ number_format($addon['extra_price'], 2) }})@endif<br>
+                            {{ $addon['name'] }}<br>
                         @endforeach
                     </td>
                 </tr>

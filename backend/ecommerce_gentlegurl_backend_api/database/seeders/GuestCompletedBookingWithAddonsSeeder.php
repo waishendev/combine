@@ -38,16 +38,14 @@ class GuestCompletedBookingWithAddonsSeeder extends Seeder
         }
 
         $questionOptions = $this->resolveQuestionOptions($mainService);
-        $extraMainServices = BookingService::query()
-            ->whereIn('name', ['Treatment', 'Haircut'])
-            ->where('id', '!=', $mainService->id)
-            ->orderBy('id')
-            ->get();
+        $addonItemsJson = $questionOptions
+            ->map(fn (BookingServiceQuestionOption $option) => $this->mapOptionToAddonRow($option))
+            ->values()
+            ->all();
 
-        $addonItemsJson = $this->buildAddonItemsJson($mainService, $questionOptions, $extraMainServices);
-        $addonDurationMin = $this->sumTopLevelAddonDuration($addonItemsJson);
-        $addonPrice = $this->sumTopLevelAddonPrice($addonItemsJson);
-        $totalDurationMin = $this->calculateTotalDurationMin($mainService, $addonItemsJson);
+        $addonDurationMin = $this->sumAddonDuration($addonItemsJson);
+        $addonPrice = $this->sumAddonPrice($addonItemsJson);
+        $totalDurationMin = max(0, (int) $mainService->duration_min) + $addonDurationMin;
 
         $startAt = Carbon::parse('2026-05-16 14:00:00', 'Asia/Kuala_Lumpur');
         $completedAt = $startAt->copy()->addMinutes($totalDurationMin);
@@ -74,21 +72,17 @@ class GuestCompletedBookingWithAddonsSeeder extends Seeder
                 'payment_status' => 'PAID',
                 'completed_at' => $completedAt,
                 'created_by_staff_id' => $staffId,
-                'notes' => 'Guest completed booking with add-ons and extra services (16 May 2026)',
+                'notes' => 'Guest completed booking with add-ons (16 May 2026)',
             ]
         );
 
         $this->seedBookingLogs($booking, $staffId, $startAt, $completedAt);
 
-        $addonCount = collect($addonItemsJson)
-            ->filter(fn (array $item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
-            ->count();
-
         $this->command?->info(sprintf(
-            'Guest completed booking (with add-ons) seeded: %s (id=%d, %d add-on rows, %d min total)',
+            'Guest completed booking (with add-ons) seeded: %s (id=%d, %d add-on(s), %d min total)',
             $booking->booking_code,
             $booking->id,
-            $addonCount,
+            count($addonItemsJson),
             $totalDurationMin
         ));
     }
@@ -133,53 +127,6 @@ class GuestCompletedBookingWithAddonsSeeder extends Seeder
             });
     }
 
-    private function buildAddonItemsJson(
-        BookingService $mainService,
-        Collection $questionOptions,
-        Collection $extraMainServices
-    ): array {
-        $primaryAddons = $questionOptions
-            ->map(fn (BookingServiceQuestionOption $option) => $this->mapOptionToAddonRow($option))
-            ->values()
-            ->all();
-
-        $rows = [[
-            'item_kind' => 'main_service',
-            'id' => 'main_service_1',
-            'name' => (string) $mainService->name,
-            'cn_name' => $mainService->cn_name,
-            'extra_duration_min' => max(0, (int) $mainService->duration_min),
-            'extra_price' => round(max(0, (float) ($mainService->service_price ?? 0)), 2),
-            'linked_booking_service_id' => (int) $mainService->id,
-            'is_original' => true,
-            'addon_items' => array_slice($primaryAddons, 0, 2),
-        ]];
-
-        foreach (array_slice($primaryAddons, 0, 2) as $addonRow) {
-            $rows[] = $addonRow;
-        }
-
-        foreach (array_slice($primaryAddons, 2) as $addonRow) {
-            $rows[] = $addonRow;
-        }
-
-        foreach ($extraMainServices as $index => $service) {
-            $rows[] = [
-                'item_kind' => 'main_service',
-                'id' => 'main_service_' . ($index + 2),
-                'name' => (string) $service->name,
-                'cn_name' => $service->cn_name,
-                'extra_duration_min' => max(0, (int) $service->duration_min),
-                'extra_price' => round(max(0, (float) ($service->service_price ?? 0)), 2),
-                'linked_booking_service_id' => (int) $service->id,
-                'is_original' => false,
-                'addon_items' => [],
-            ];
-        }
-
-        return array_values($rows);
-    }
-
     private function mapOptionToAddonRow(BookingServiceQuestionOption $option): array
     {
         $linked = $option->linkedBookingService;
@@ -198,50 +145,19 @@ class GuestCompletedBookingWithAddonsSeeder extends Seeder
                 : round(max(0, (float) ($option->extra_price ?? 0)), 2),
             'linked_booking_service_id' => $linked ? (int) $linked->id : null,
             'linked_cn_name' => $linked?->cn_name,
-            'linked_service_type' => $linked ? (string) $linked->service_type : null,
-            'linked_deposit_amount' => $linked
-                ? round(max(0, (float) ($linked->deposit_amount ?? 0)), 2)
-                : null,
         ];
     }
 
-    private function sumTopLevelAddonDuration(array $addonItemsJson): int
+    private function sumAddonDuration(array $addonItemsJson): int
     {
         return (int) collect($addonItemsJson)
-            ->filter(fn (array $item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
             ->sum(fn (array $item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
     }
 
-    private function sumTopLevelAddonPrice(array $addonItemsJson): float
+    private function sumAddonPrice(array $addonItemsJson): float
     {
         return round((float) collect($addonItemsJson)
-            ->filter(fn (array $item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
             ->sum(fn (array $item) => max(0, (float) ($item['extra_price'] ?? 0))), 2);
-    }
-
-    private function calculateTotalDurationMin(BookingService $mainService, array $addonItemsJson): int
-    {
-        $items = collect($addonItemsJson);
-        $baseDurationMin = max(0, (int) $mainService->duration_min);
-
-        $extraMainDurationMin = (int) $items
-            ->filter(fn (array $item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
-            ->filter(fn (array $item) => ! (bool) ($item['is_original'] ?? false))
-            ->filter(fn (array $item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) $mainService->id)
-            ->sum(fn (array $item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
-
-        $topLevelAddonDurationMin = (int) $items
-            ->filter(fn (array $item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
-            ->sum(fn (array $item) => max(0, (int) ($item['extra_duration_min'] ?? 0)));
-
-        $nestedAddonDurationMin = (int) $items
-            ->filter(fn (array $item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
-            ->filter(fn (array $item) => ! (bool) ($item['is_original'] ?? false))
-            ->filter(fn (array $item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) $mainService->id)
-            ->sum(fn (array $item) => collect($item['addon_items'] ?? [])
-                ->sum(fn ($addon) => max(0, (int) (is_array($addon) ? ($addon['extra_duration_min'] ?? 0) : 0))));
-
-        return $baseDurationMin + $extraMainDurationMin + $topLevelAddonDurationMin + $nestedAddonDurationMin;
     }
 
     private function seedBookingLogs(Booking $booking, int $staffId, Carbon $startAt, Carbon $completedAt): void
