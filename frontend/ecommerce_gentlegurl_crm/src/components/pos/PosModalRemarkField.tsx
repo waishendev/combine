@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useRef } from 'react'
 
 export type PosModalRemarkFieldHandle = {
   getValue: () => string
@@ -19,8 +19,8 @@ type Props = {
 }
 
 /**
- * Remark field isolated from the parent tree — typing does not update parent state,
- * so large POS pages do not re-render on every keystroke.
+ * Uncontrolled remark field — no React state updates while typing (avoids fighting
+ * the POS barcode keydown handler and huge parent re-renders).
  */
 const PosModalRemarkField = forwardRef<PosModalRemarkFieldHandle, Props>(function PosModalRemarkField(
   {
@@ -34,25 +34,25 @@ const PosModalRemarkField = forwardRef<PosModalRemarkFieldHandle, Props>(functio
   },
   ref,
 ) {
-  const [localValue, setLocalValue] = useState(defaultValue)
-  const localValueRef = useRef(localValue)
-  localValueRef.current = localValue
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useImperativeHandle(
     ref,
     () => ({
-      getValue: () => localValueRef.current,
+      getValue: () => textareaRef.current?.value ?? '',
       setValue: (value: string) => {
-        localValueRef.current = value
-        setLocalValue(value)
+        if (textareaRef.current) {
+          textareaRef.current.value = value
+        }
       },
     }),
     [],
   )
 
   useEffect(() => {
-    setLocalValue(defaultValue)
-    localValueRef.current = defaultValue
+    if (textareaRef.current) {
+      textareaRef.current.value = defaultValue
+    }
   }, [resetKey, defaultValue])
 
   return (
@@ -61,13 +61,9 @@ const PosModalRemarkField = forwardRef<PosModalRemarkFieldHandle, Props>(functio
         {label}
       </label>
       <textarea
+        ref={textareaRef}
         id={id}
-        value={localValue}
-        onChange={(event) => {
-          const next = event.target.value
-          localValueRef.current = next
-          setLocalValue(next)
-        }}
+        defaultValue={defaultValue}
         rows={rows}
         className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         placeholder={placeholder}

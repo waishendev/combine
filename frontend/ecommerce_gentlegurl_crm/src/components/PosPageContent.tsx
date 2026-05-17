@@ -3772,6 +3772,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const hasOpenModal =
         memberOpen ||
         checkoutConfirmationOpen ||
+        bookingModalOpen ||
+        packageModalOpen ||
+        discountModalOpen ||
         productSelectModalOpen ||
         voucherModalOpen ||
         itemSplitEditorOpen ||
@@ -3904,10 +3907,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     }
   }, [
+    bookingModalOpen,
     checkoutConfirmationOpen,
     checkoutResult,
+    discountModalOpen,
     itemSplitEditorOpen,
     memberOpen,
+    packageModalOpen,
     productSelectModalOpen,
     qrCodeFullscreen,
     voucherModalOpen,
