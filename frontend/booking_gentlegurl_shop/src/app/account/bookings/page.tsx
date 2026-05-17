@@ -10,8 +10,8 @@ import { useAuth } from "@/contexts/AuthContext";
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
     <>
-      <p className="font-semibold text-[var(--foreground)]">{name}</p>
-      {cnName ? <p className="mt-0.5 text-sm text-[var(--text-muted)]">{cnName}</p> : null}
+      <p className="line-clamp-2 font-semibold text-[var(--foreground)]">{name}</p>
+      {cnName ? <p className="mt-0.5 line-clamp-2 text-sm text-[var(--text-muted)]">{cnName}</p> : null}
     </>
   );
 }
@@ -87,42 +87,63 @@ export default function MyBookingsPage() {
         </div>
       ) : null}
 
-      <div className="mt-6 grid gap-3">
-        {bookings.map((booking) => {
-          const addOns = addonSummary(booking);
-          const serviceCnName = booking.service_cn_name ?? booking.service?.cn_name;
+      {!loading && !error && bookings.length > 0 ? (
+        <div className="mt-6 max-h-[min(70vh,720px)] overflow-y-auto overscroll-contain pr-1">
+          <div className="grid gap-3">
+            {bookings.map((booking) => {
+              const addOns = addonSummary(booking);
+              const serviceCnName = booking.service_cn_name ?? booking.service?.cn_name;
 
-          return (
-            <article key={booking.id} className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5">
-              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                <div className="min-w-0 space-y-2">
-                  <div>
-                    <ServiceNameStack name={booking.service_name} cnName={serviceCnName} />
-                    <p className="mt-1 font-mono text-xs text-[var(--text-muted)]">{booking.booking_code || `BOOKING-${booking.id}`}</p>
+              return (
+                <article
+                  key={booking.id}
+                  className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md sm:p-5"
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1 space-y-2 overflow-hidden">
+                      <div className="min-w-0">
+                        <ServiceNameStack name={booking.service_name} cnName={serviceCnName} />
+                        <p className="mt-1 truncate font-mono text-xs text-[var(--text-muted)]">
+                          {booking.booking_code || `BOOKING-${booking.id}`}
+                        </p>
+                      </div>
+
+                      <div className="grid min-w-0 gap-1 text-sm text-[var(--text-muted)] sm:grid-cols-2 sm:gap-x-6">
+                        <p className="min-w-0 truncate">
+                          Date: <span className="text-[var(--foreground)]">{formatDate(booking.starts_at)}</span>
+                        </p>
+                        <p className="min-w-0 truncate">
+                          Time: <span className="text-[var(--foreground)]">{formatTime(booking.starts_at)}</span>
+                        </p>
+                        <p className="min-w-0 truncate">
+                          Staff: <span className="text-[var(--foreground)]">{booking.staff_name || "Any staff"}</span>
+                        </p>
+                        {addOns ? (
+                          <p className="min-w-0 truncate sm:col-span-2">
+                            Add-ons: <span className="text-[var(--foreground)]">{addOns}</span>
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 flex-row items-center justify-between gap-3 sm:flex-col sm:items-end">
+                      <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(booking.status)}`}>
+                        {booking.status}
+                      </span>
+                      <Link
+                        href={`/account/bookings/${booking.id}`}
+                        className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm font-medium text-white"
+                      >
+                        View Details
+                      </Link>
+                    </div>
                   </div>
-
-                  <div className="grid gap-1 text-sm text-[var(--text-muted)] sm:grid-cols-2 sm:gap-x-6">
-                    <p>Date: <span className="text-[var(--foreground)]">{formatDate(booking.starts_at)}</span></p>
-                    <p>Time: <span className="text-[var(--foreground)]">{formatTime(booking.starts_at)}</span></p>
-                    <p>Staff: <span className="text-[var(--foreground)]">{booking.staff_name || "Any staff"}</span></p>
-                    {addOns ? <p className="truncate sm:col-span-2">Add-ons: <span className="text-[var(--foreground)]">{addOns}</span></p> : null}
-                  </div>
-                </div>
-
-                <div className="flex shrink-0 flex-row items-center justify-between gap-3 sm:flex-col sm:items-end">
-                  <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusClass(booking.status)}`}>{booking.status}</span>
-                  <Link
-                    href={`/account/bookings/${booking.id}`}
-                    className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm font-medium text-white"
-                  >
-                    View Details
-                  </Link>
-                </div>
-              </div>
-            </article>
-          );
-        })}
-      </div>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
     </>
   );
 }

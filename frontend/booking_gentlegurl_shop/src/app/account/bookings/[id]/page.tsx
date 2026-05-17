@@ -567,8 +567,9 @@ export default function BookingDetailPage() {
                   View
                 </button> */}
 
-                {booking.payment_status !== "PAID" ? (
+                {String(booking.status).toUpperCase() === "HOLD" ? (
                   <button
+                    type="button"
                     onClick={async () => {
                       const method = booking.latest_payment?.payment_method || "manual_transfer";
                       if (method === "manual_transfer") {
@@ -618,20 +619,13 @@ export default function BookingDetailPage() {
 
                 {state.canReschedule ? (
                   <button
+                    type="button"
                     onClick={() => openRescheduleModal(booking)}
                     className="rounded-full bg-[var(--accent-strong)] px-4 py-2 text-sm text-white"
                   >
                     Reschedule
                   </button>
-                ) : (
-                  <button
-                    disabled
-                    className="rounded-full border border-[var(--card-border)] px-4 py-2 text-sm text-[var(--text-muted)]"
-                    title={!state.isFuture ? "Booking is in the past." : !state.passesCutoff ? `Booking time cannot be changed within ${policy.reschedule.cutoff_hours} hours.` : "Reschedule is unavailable for this booking status."}
-                  >
-                    Reschedule
-                  </button>
-                )}
+                ) : null}
 
                 {state.canRequestCancellation ? (
                   <button

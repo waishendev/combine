@@ -41,8 +41,8 @@ function resolveLineLabel(item: NonNullable<PublicAccountOrder["items"]>[number]
 function LineNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
     <>
-      <p className="text-sm font-semibold text-[var(--foreground)]">{name}</p>
-      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
+      <p className="line-clamp-2 text-sm font-semibold text-[var(--foreground)]">{name}</p>
+      {cnName ? <p className="mt-0.5 line-clamp-2 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
     </>
   );
 }
@@ -116,7 +116,7 @@ export default function BookingAccountOrdersPage() {
       ) : null}
 
       {!loading && hasOrders ? (
-        <div className="space-y-4">
+        <div className="max-h-[min(70vh,720px)] space-y-4 overflow-y-auto overscroll-contain pr-1">
           {orders.map((order) => {
             const statusKey = (order.status || "").toLowerCase();
             const paymentStatusKey = (order.payment_status || "").toLowerCase();
@@ -137,16 +137,16 @@ export default function BookingAccountOrdersPage() {
                 className="rounded-xl border border-[var(--muted)] bg-[var(--myorder-background)] p-5 shadow-sm transition hover:shadow-md"
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-lg font-semibold text-[var(--foreground)]">Order No:</p>
-                    <p className="text-sm tracking-[0.08em] text-[var(--foreground)]/60">{order.order_no}</p>
+                    <p className="truncate text-sm tracking-[0.08em] text-[var(--foreground)]/60">{order.order_no}</p>
                   </div>
                   <span className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide ${badgeStyle}`}>
                     {order.status} / {order.payment_status}
                   </span>
                 </div>
 
-                <div className="mt-4 grid gap-3 text-sm text-[var(--foreground)]/80 sm:grid-cols-3">
+                <div className="mt-4 grid min-w-0 gap-3 text-sm text-[var(--foreground)]/80 sm:grid-cols-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Date</p>
                     <p className="text-base font-medium text-[var(--foreground)]">{formatDate(order.created_at)}</p>
@@ -156,9 +156,11 @@ export default function BookingAccountOrdersPage() {
                     <div className="text-base font-medium text-[var(--foreground)]">
                       <p>{order.payment_status}</p>
                       {order.payments?.length ? (
-                        <div className="mt-1 text-xs text-[var(--foreground)]/70">
+                        <div className="mt-1 max-h-24 overflow-y-auto text-xs text-[var(--foreground)]/70">
                           {order.payments.map((payment) => (
-                            <p key={`${payment.method}-${payment.amount}`}>{formatPaymentMethod(payment.method)} {money(payment.amount)}</p>
+                            <p key={`${payment.method}-${payment.amount}`} className="truncate">
+                              {formatPaymentMethod(payment.method)} {money(payment.amount)}
+                            </p>
                           ))}
                         </div>
                       ) : (
@@ -206,13 +208,13 @@ export default function BookingAccountOrdersPage() {
                   {isExpanded && Array.isArray(order.items) && order.items.length > 0 ? (
                     <div className="sm:col-span-3">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Items</p>
-                      <div className="space-y-2">
+                      <div className="max-h-56 space-y-2 overflow-y-auto overscroll-contain pr-1">
                         {order.items.map((item) => (
                           <div
                             key={item.id}
                             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                           >
-                            <div>
+                            <div className="min-w-0 flex-1 overflow-hidden">
                               <LineNameStack name={resolveLineLabel(item)} cnName={item.cn_name} />
                               {item.line_type === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
