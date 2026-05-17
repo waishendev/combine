@@ -46,6 +46,9 @@
   "header.logout": "Logout",
 
   "dashboard.overviewTitle": "Dashboard",
+  "dashboard.welcomeTitle": "Welcome",
+  "dashboard.welcomeGreeting": "Hello, {name}. You are signed in to Gentle Gurl CRM.",
+  "dashboard.welcomeHint": "Use the menu on the left to open the pages you have access to.",
   "dashboard.overviewSubtitle": "Track revenue, orders, and customer behavior across your storefront.",
   "dashboard.manageAdmins": "Manage Admins",
   "dashboard.goToStorefront": "Go to Storefront",

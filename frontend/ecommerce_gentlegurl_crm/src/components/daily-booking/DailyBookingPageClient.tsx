@@ -143,8 +143,19 @@ function ServiceDetailCard({
   )
 }
 
+const formatTodayLabel = () => {
+  const [y, m, d] = todayYmd().split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('en-MY', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  })
+}
+
 export default function DailyBookingPageClient() {
-  const [date, setDate] = useState(todayYmd())
+  const date = todayYmd()
+  const todayLabel = formatTodayLabel()
   const [staffId, setStaffId] = useState('')
   const [search, setSearch] = useState('')
   const [rows, setRows] = useState<DailyBookingRow[]>([])
@@ -204,16 +215,18 @@ export default function DailyBookingPageClient() {
         <div>
           <p className="text-xs text-slate-500">Booking / Daily operation</p>
           <h1 className="text-3xl font-semibold text-slate-900">Daily Booking</h1>
-          <p className="mt-1 text-sm text-slate-600">Completed bookings for the selected day. Upload salon service photos by booking.</p>
+          <p className="mt-1 text-sm text-slate-600">Completed bookings for today. Upload salon service photos by booking.</p>
         </div>
         <span className="w-fit rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-800">COMPLETED only</span>
       </div>
 
       <section className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[12rem_12rem_minmax(0,1fr)]">
-        <label className="grid gap-1 text-sm font-semibold text-slate-700">
-          Date
-          <input type="date" value={date} onChange={(event) => setDate(event.target.value || todayYmd())} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal" />
-        </label>
+        <div className="grid gap-1 text-sm font-semibold text-slate-700">
+          <span>Date</span>
+          <p className="flex h-10 items-center rounded-lg border border-slate-100 bg-slate-50 px-3 text-sm font-normal text-slate-900">
+            {todayLabel}
+          </p>
+        </div>
         <label className="grid gap-1 text-sm font-semibold text-slate-700">
           Staff
           <select value={staffId} onChange={(event) => setStaffId(event.target.value)} className="h-10 rounded-lg border border-slate-200 px-3 text-sm font-normal">
