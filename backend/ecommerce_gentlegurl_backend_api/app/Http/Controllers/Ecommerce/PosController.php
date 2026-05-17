@@ -5767,7 +5767,7 @@ class PosController extends Controller
                         'extra_price' => (float) ($service['extra_price'] ?? 0),
                         'linked_booking_service_id' => isset($service['linked_booking_service_id']) ? (int) $service['linked_booking_service_id'] : null,
                         'is_original' => $isOriginal,
-                        'add_ons' => $isOriginal ? $originalAddonItems->all() : $serviceAddons->all(),
+                        'add_ons' => $serviceAddons->all(),
                         'staff_splits' => collect($service['staff_splits'] ?? [])->map(fn ($split) => [
                             'staff_id' => (int) ($split['staff_id'] ?? 0),
                             'share_percent' => (int) ($split['share_percent'] ?? 0),
@@ -6645,8 +6645,12 @@ class PosController extends Controller
         ]])->concat($extraMainServices)->values();
 
         $serviceTotal = round((float) $mainServices->sum('extra_price'), 2);
-        $originalAddonItems = $settlementItems
-            ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
+        $originalMainServiceItem = $settlementItems
+            ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
+        $originalAddonSource = is_array($originalMainServiceItem)
+            ? collect((array) ($originalMainServiceItem['addon_items'] ?? []))
+            : $settlementItems->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service');
+        $originalAddonItems = $originalAddonSource
             ->map(fn ($item) => [
             'id' => isset($item['id']) ? (int) $item['id'] : null,
             'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),

@@ -314,7 +314,7 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
       add_ons: (service.add_ons ?? []).map((addon) => {
         const addonDeposit = getPosServiceAddonDeposit(item, addon.id)
         const addonReferenceDeposit = getPosServiceAddonDepositReference(item, addon)
-        const addonCoveredByPackage = addonReferenceDeposit > addonDeposit + 0.0001 && addonDeposit < 0.0001
+        const addonCoveredByPackage = isMainPackageClaimed && addonReferenceDeposit > addonDeposit + 0.0001 && addonDeposit < 0.0001
 
         return {
           ...addon,
@@ -5720,7 +5720,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-3 shadow-sm sm:p-4">
                     <div className="border-b border-emerald-200/50 pb-2">
                       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Type: Services</p>
+                          {servicePackageDisabledReason && !isPkgClaimed ? (
+                            <p className="mt-1 text-[10px] font-medium leading-tight text-amber-700">{servicePackageDisabledReason}</p>
+                          ) : null}
+                        </div>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
                           {isPkgClaimed || (serviceAvailabilityMap[serviceItem.id] ?? 0) > 0 ? (
                             <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums ${isPkgClaimed ? 'bg-emerald-100 text-emerald-800' : 'text-gray-500'}`}>
@@ -5737,7 +5742,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               {serviceUnclaimingIds[serviceItem.id] ? 'Releasing…' : 'Unclaim Package'}
                             </button>
                           ) : (
-                            <span className="inline-flex flex-col items-end gap-0.5">
+                            <span className="inline-flex items-center">
                               <button
                                 type="button"
                                 disabled={
@@ -5761,11 +5766,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     ? 'Package applied'
                                     : 'Claim package'}
                               </button>
-                              {servicePackageDisabledReason && !isPkgClaimed ? (
-                                <span className="max-w-[12rem] text-right text-[10px] font-medium leading-tight text-amber-700">
-                                  {servicePackageDisabledReason}
-                                </span>
-                              ) : null}
                             </span>
                           )}
                           <button
@@ -5843,7 +5843,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   >
                     <div className="border-b border-cyan-200/60 pb-2">
                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
+                          {!settlement.can_apply_package ? (
+                            <p className="mt-1 text-[10px] font-medium leading-tight text-amber-700">
+                              {settlement.package_disabled_reason ?? 'No eligible package available.'}
+                            </p>
+                          ) : null}
+                        </div>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
                           {settlement.package_status?.status === 'reserved' || Number(settlement.eligible_package_count ?? settlementAvailabilityMap[settlement.id] ?? 0) > 0 ? (
                             <span className="text-[10px] text-gray-500 tabular-nums">
@@ -5860,7 +5867,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 {settlementUnclaimingIds[settlement.id] ? 'Releasing…' : 'Unclaim Package'}
                               </button>
                             ) : (
-                              <span className="inline-flex flex-col items-end gap-0.5">
+                              <span className="inline-flex items-center">
                                 <button
                                   type="button"
                                   disabled={
@@ -5875,11 +5882,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 >
                                   {settlementRedeemingIds[settlement.id] ? 'Reserving…' : 'Claim package'}
                                 </button>
-                                {!settlement.can_apply_package ? (
-                                  <span className="max-w-[12rem] text-right text-[10px] font-medium leading-tight text-amber-700">
-                                    {settlement.package_disabled_reason ?? 'No eligible package available.'}
-                                  </span>
-                                ) : null}
                               </span>
                             )}
                           <button
