@@ -32,6 +32,8 @@ type ReceiptItem = {
   discount_amount?: number
   line_total_after_discount?: number
   discount_remark?: string | null
+  covered_by_package?: boolean
+  package_applied_name?: string | null
 }
 
 function lineTypeLabel(type?: string) {
@@ -140,9 +142,7 @@ export default async function PublicReceiptPage({ params }: Props) {
   const docTitle = isPaid ? 'RECEIPT' : 'INVOICE'
   const receiptPayments = normalizeReceiptPayments(receipt.payments)
   const isPackageCoveredReceipt = Boolean(receipt.package_coverage?.covered)
-  const packageCoveredItems = isPackageCoveredReceipt
-    ? (receipt.service_items ?? [])
-    : receipt.items
+  const receiptItems = receipt.items ?? []
   const packageOffset = Number(receipt.package_coverage?.package_offset ?? 0)
   const packageNames = receipt.package_coverage?.package_names ?? []
 
@@ -193,7 +193,7 @@ export default async function PublicReceiptPage({ params }: Props) {
             </tr>
           </thead>
           <tbody>
-            {packageCoveredItems.map((item, idx) => {
+            {receiptItems.map((item, idx) => {
               const gross = Number(
                 ('line_total_snapshot' in item ? (item as { line_total_snapshot?: number | string | null }).line_total_snapshot : undefined) ??
                   item.line_total ??
@@ -202,7 +202,8 @@ export default async function PublicReceiptPage({ params }: Props) {
               const discountAmount = Number(
                 ('discount_amount' in item ? (item as { discount_amount?: number | string | null }).discount_amount : undefined) ?? 0,
               )
-              const net = Number(
+              const isCoveredByPackage = Boolean(item.covered_by_package)
+              const net = isCoveredByPackage ? 0 : Number(
                 ('line_total_after_discount' in item
                   ? (item as { line_total_after_discount?: number | string | null }).line_total_after_discount
                   : undefined) ??
@@ -214,11 +215,17 @@ export default async function PublicReceiptPage({ params }: Props) {
                 <td className="px-4 py-3">
                   <ReceiptItemNameStack name={item.name} cnName={item.cn_name} />
                   <p className="text-xs text-gray-500">
-                    Type: {isPackageCoveredReceipt ? 'Package-Covered Service' : lineTypeLabel(item.type)}
+                    Type: {isCoveredByPackage ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>
-                  {!isPackageCoveredReceipt && item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
-                  {!isPackageCoveredReceipt && item.variant_name ? <p className="text-xs text-gray-500">Variant: {item.variant_name}</p> : null}
-                  {isPackageCoveredReceipt ? <p className="text-xs text-gray-500">Variant: Service</p> : null}
+                  {!isCoveredByPackage && item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
+                  {!isCoveredByPackage && item.variant_name ? <p className="text-xs text-gray-500">Variant: {item.variant_name}</p> : null}
+                  {isCoveredByPackage ? <p className="text-xs text-gray-500">Variant: Service</p> : null}
+                  {isCoveredByPackage ? (
+                    <div className="mt-1 space-y-0.5 text-xs font-semibold text-emerald-700">
+                      <p>Included in package</p>
+                      {item.package_applied_name ? <p className="font-medium">Package Applied: {item.package_applied_name}</p> : null}
+                    </div>
+                  ) : null}
                   {discountAmount > 0 ? (
                     <div className="mt-1 space-y-0.5 text-xs text-amber-700">
                       <p>Original: {money(gross)}</p>
@@ -240,10 +247,10 @@ export default async function PublicReceiptPage({ params }: Props) {
                 <td className="px-4 py-3 text-right">{item.qty}</td>
                 <td className="px-4 py-3 text-right">{money(item.unit_price)}</td>
                 <td className="px-4 py-3 text-right">
-                  {discountAmount > 0 ? (
+                  {isCoveredByPackage || discountAmount > 0 ? (
                     <div>
                       <p className="text-xs text-gray-400 line-through">{money(gross)}</p>
-                      <p className="font-semibold text-amber-700">{money(net)}</p>
+                      <p className={isCoveredByPackage ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700'}>{money(net)}</p>
                     </div>
                   ) : money(net)}
                 </td>
@@ -286,7 +293,7 @@ export default async function PublicReceiptPage({ params }: Props) {
       {isPackageCoveredReceipt ? (
         <div className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           {/* <p className="font-semibold">{receipt.package_coverage?.note || 'Covered by Package'}</p> */}
-          <p>Payment collected at checkout: RM 0.00</p>
+          <p>Payment collected at checkout: {money(receipt.grand_total)}</p>
           {packageNames.length > 0 ? (
             <p className="mt-1 text-xs text-emerald-900">Package Applied: {packageNames.join(', ')}</p>
           ) : null}

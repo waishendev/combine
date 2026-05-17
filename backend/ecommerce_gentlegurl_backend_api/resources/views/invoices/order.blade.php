@@ -628,7 +628,7 @@
                   </div>
                 <?php endif; ?>
                 <?php if(!empty($item['covered_by_package'])): ?>
-              
+                  <div class="sku" style="color:#065f46;margin-top:2px;font-weight:600;">Included in package</div>
                   <?php if(!empty($item['package_applied_name'])): ?>
                     <div class="sku" style="color:#065f46;">Package Applied: {{ $item['package_applied_name'] }}</div>
                   <?php endif; ?>
@@ -644,12 +644,19 @@
               <td class="numeric">{{ (int) $item['quantity'] }}</td>
               <td class="numeric">{{ $currency }} {{ number_format((float) $item['unit_price'], 2) }}</td>
               <td class="numeric">
-                <?php if(((float) ($item['discount_amount'] ?? 0)) > 0): ?>
+                <?php if(!empty($item['covered_by_package'])): ?>
                   <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
-                    {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
+                    {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? $item['line_total'] ?? 0), 2) }}
                   </div>
+                  <div style="color:#047857;font-weight:700;">{{ $currency }} 0.00</div>
+                <?php else: ?>
+                  <?php if(((float) ($item['discount_amount'] ?? 0)) > 0): ?>
+                    <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
+                      {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
+                    </div>
+                  <?php endif; ?>
+                  <div>{{ $currency }} {{ number_format((float) $item['line_total'], 2) }}</div>
                 <?php endif; ?>
-                <div>{{ $currency }} {{ number_format((float) $item['line_total'], 2) }}</div>
               </td>
             </tr>
           <?php endforeach; ?>

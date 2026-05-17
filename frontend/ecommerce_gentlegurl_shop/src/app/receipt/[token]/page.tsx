@@ -26,6 +26,9 @@ type ReceiptItem = {
   qty: number;
   unit_price: number;
   line_total?: number;
+  line_total_snapshot?: number;
+  discount_amount?: number;
+  line_total_after_discount?: number;
   covered_by_package?: boolean;
   package_applied_name?: string | null;
 };
@@ -174,28 +177,41 @@ export default async function PublicReceiptPage({ params }: Props) {
             </tr>
           </thead>
           <tbody>
-            {receipt.items.map((item, index) => (
-              <tr key={`${item.sku ?? item.name}-${index}`} className="border-t border-[var(--card-border)] text-sm">
-                <td className="px-4 py-3">
-                  <ItemNameStack name={resolveItemLabel(item)} cnName={item.cn_name} />
-                  {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
-                  {item.variant_name ? (
-                    <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>
-                  ) : null}
-                  {item.covered_by_package ? (
-                    <>
-                      <p className="text-xs font-semibold text-emerald-700">Covered by Package</p>
-                      {item.package_applied_name ? (
-                        <p className="text-xs text-emerald-700">Package Applied: {item.package_applied_name}</p>
-                      ) : null}
-                    </>
-                  ) : null}
-                </td>
-                <td className="px-4 py-3 text-right">{item.qty}</td>
-                <td className="px-4 py-3 text-right">{money(item.unit_price)}</td>
-                <td className="px-4 py-3 text-right">{money(item.line_total ?? item.qty * item.unit_price)}</td>
-              </tr>
-            ))}
+            {receipt.items.map((item, index) => {
+              const isCoveredByPackage = Boolean(item.covered_by_package);
+              const gross = Number(item.line_total_snapshot ?? item.line_total ?? item.qty * item.unit_price);
+              const net = isCoveredByPackage ? 0 : Number(item.line_total_after_discount ?? item.line_total ?? gross - Number(item.discount_amount ?? 0));
+
+              return (
+                <tr key={`${item.sku ?? item.name}-${index}`} className="border-t border-[var(--card-border)] text-sm">
+                  <td className="px-4 py-3">
+                    <ItemNameStack name={resolveItemLabel(item)} cnName={item.cn_name} />
+                    {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
+                    {item.variant_name ? (
+                      <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>
+                    ) : null}
+                    {isCoveredByPackage ? (
+                      <>
+                        <p className="text-xs font-semibold text-emerald-700">Included in package</p>
+                        {item.package_applied_name ? (
+                          <p className="text-xs text-emerald-700">Package Applied: {item.package_applied_name}</p>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-3 text-right">{item.qty}</td>
+                  <td className="px-4 py-3 text-right">{money(item.unit_price)}</td>
+                  <td className="px-4 py-3 text-right">
+                    {isCoveredByPackage ? (
+                      <div>
+                        <p className="text-xs text-[var(--foreground)]/50 line-through">{money(gross)}</p>
+                        <p className="font-semibold text-emerald-700">{money(net)}</p>
+                      </div>
+                    ) : money(net)}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
