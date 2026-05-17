@@ -1,6 +1,6 @@
 'use client'
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, memo, useImperativeHandle, useRef } from 'react'
 
 export type PosModalRemarkFieldHandle = {
   getValue: () => string
@@ -19,10 +19,13 @@ type Props = {
 }
 
 /**
- * Remark field isolated from the parent tree — typing does not update parent state,
- * so large POS pages do not re-render on every keystroke.
+ * Uncontrolled remark field isolated from the parent tree.
+ *
+ * The POS page is very large and can re-render while a modal is open. Keeping
+ * this textarea uncontrolled prevents React from re-applying stale values while
+ * the cashier is typing quickly; callers read the DOM value only on submit.
  */
-const PosModalRemarkField = forwardRef<PosModalRemarkFieldHandle, Props>(function PosModalRemarkField(
+const PosModalRemarkField = memo(forwardRef<PosModalRemarkFieldHandle, Props>(function PosModalRemarkField(
   {
     id,
     label,
@@ -34,26 +37,20 @@ const PosModalRemarkField = forwardRef<PosModalRemarkFieldHandle, Props>(functio
   },
   ref,
 ) {
-  const [localValue, setLocalValue] = useState(defaultValue)
-  const localValueRef = useRef(localValue)
-  localValueRef.current = localValue
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useImperativeHandle(
     ref,
     () => ({
-      getValue: () => localValueRef.current,
+      getValue: () => textareaRef.current?.value ?? defaultValue,
       setValue: (value: string) => {
-        localValueRef.current = value
-        setLocalValue(value)
+        if (textareaRef.current) {
+          textareaRef.current.value = value
+        }
       },
     }),
-    [],
+    [defaultValue],
   )
-
-  useEffect(() => {
-    setLocalValue(defaultValue)
-    localValueRef.current = defaultValue
-  }, [resetKey, defaultValue])
 
   return (
     <div className={className}>
@@ -61,19 +58,26 @@ const PosModalRemarkField = forwardRef<PosModalRemarkFieldHandle, Props>(functio
         {label}
       </label>
       <textarea
+        key={resetKey}
+        ref={textareaRef}
         id={id}
-        value={localValue}
-        onChange={(event) => {
-          const next = event.target.value
-          localValueRef.current = next
-          setLocalValue(next)
-        }}
+        defaultValue={defaultValue}
         rows={rows}
         className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
         placeholder={placeholder}
       />
     </div>
   )
-})
+}), (prev, next) => (
+  prev.id === next.id &&
+  prev.label === next.label &&
+  prev.defaultValue === next.defaultValue &&
+  prev.resetKey === next.resetKey &&
+  prev.placeholder === next.placeholder &&
+  prev.rows === next.rows &&
+  prev.className === next.className
+))
+
+PosModalRemarkField.displayName = 'PosModalRemarkField'
 
 export default PosModalRemarkField
