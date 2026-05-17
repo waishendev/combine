@@ -5,6 +5,23 @@
   <title>Invoice {{ $order->order_number }}</title>
 
   @php
+    $hiddenReceiptVariantLabels = [
+      'Final Settlement',
+      'Booking Add-on Settlement',
+      'Service',
+      'Booking Deposit',
+      'Booking Add-on Deposit',
+    ];
+    $combinedBookingSettlementLineTypes = ['booking_settlement', 'booking_addon'];
+    $shouldShowReceiptItem = function ($item) use ($combinedBookingSettlementLineTypes) {
+      $lineType = (string) ($item['line_type'] ?? $item['type'] ?? '');
+      $productName = (string) ($item['product_name'] ?? $item['name'] ?? '');
+
+      return !($productName !== ''
+        && str_contains($productName, '::')
+        && in_array($lineType, $combinedBookingSettlementLineTypes, true));
+    };
+
     // Check if CJK font exists (supports Chinese, Japanese, Korean)
     $cjkFontPath = collect([
       public_path('fonts/NotoSansCJKkr-Regular.otf'),
@@ -584,6 +601,7 @@
         </thead>
         <tbody>
           <?php foreach($items as $item): ?>
+            <?php if(! $shouldShowReceiptItem($item)) { continue; } ?>
             <tr>
               <td>
                 <div class="item-name">{{ $item['product_name'] }}</div>
@@ -597,7 +615,7 @@
                 <?php if($sku): ?>
                   <div class="sku">SKU: {{ $sku }}</div>
                 <?php endif; ?>
-                <?php if($item['variant_name']): ?>
+                <?php if($item['variant_name'] && !in_array($item['variant_name'], $hiddenReceiptVariantLabels, true)): ?>
                   <div class="sku">
                     Variant: {{ $item['variant_name'] }}
                     <?php if($item['variant_sku']): ?>

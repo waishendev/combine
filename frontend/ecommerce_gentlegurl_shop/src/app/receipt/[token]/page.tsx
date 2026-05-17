@@ -1,5 +1,26 @@
 export const dynamic = "force-dynamic";
 
+const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
+  'Final Settlement',
+  'Booking Add-on Settlement',
+  'Service',
+  'Booking Deposit',
+  'Booking Add-on Deposit',
+]);
+
+const COMBINED_BOOKING_SETTLEMENT_LINE_TYPES = new Set(['booking_settlement', 'booking_addon']);
+
+function shouldShowReceiptVariant(variantName?: string | null) {
+  return Boolean(variantName && !HIDDEN_RECEIPT_VARIANT_LABELS.has(variantName));
+}
+
+function shouldShowReceiptItem(item: Pick<ReceiptItem, 'type' | 'name'>) {
+  return !(
+    item.name.includes('::') &&
+    COMBINED_BOOKING_SETTLEMENT_LINE_TYPES.has(String(item.type ?? ''))
+  );
+}
+
 function formatPaymentMethod(method?: string) {
   const key = String(method ?? '').toLowerCase();
   if (key === 'cash') return 'Cash';
@@ -177,7 +198,7 @@ export default async function PublicReceiptPage({ params }: Props) {
             </tr>
           </thead>
           <tbody>
-            {receipt.items.map((item, index) => {
+            {receipt.items.filter(shouldShowReceiptItem).map((item, index) => {
               const isCoveredByPackage = Boolean(item.covered_by_package);
               const gross = Number(item.line_total_snapshot ?? item.line_total ?? item.qty * item.unit_price);
               const net = isCoveredByPackage ? 0 : Number(item.line_total_after_discount ?? item.line_total ?? gross - Number(item.discount_amount ?? 0));
@@ -187,7 +208,7 @@ export default async function PublicReceiptPage({ params }: Props) {
                   <td className="px-4 py-3">
                     <ItemNameStack name={resolveItemLabel(item)} cnName={item.cn_name} />
                     {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
-                    {item.variant_name ? (
+                    {shouldShowReceiptVariant(item.variant_name) ? (
                       <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>
                     ) : null}
                     {isCoveredByPackage ? (

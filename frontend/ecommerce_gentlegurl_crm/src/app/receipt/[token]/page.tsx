@@ -1,5 +1,26 @@
 export const dynamic = 'force-dynamic'
 
+const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
+  'Final Settlement',
+  'Booking Add-on Settlement',
+  'Service',
+  'Booking Deposit',
+  'Booking Add-on Deposit',
+])
+
+const COMBINED_BOOKING_SETTLEMENT_LINE_TYPES = new Set(['booking_settlement', 'booking_addon'])
+
+function shouldShowReceiptVariant(variantName?: string | null) {
+  return Boolean(variantName && !HIDDEN_RECEIPT_VARIANT_LABELS.has(variantName))
+}
+
+function shouldShowReceiptItem(item: Pick<ReceiptItem, 'type' | 'name'>) {
+  return !(
+    item.name.includes('::') &&
+    COMBINED_BOOKING_SETTLEMENT_LINE_TYPES.has(String(item.type ?? ''))
+  )
+}
+
 function formatPaymentMethod(method?: string) {
   const key = String(method ?? '').toLowerCase();
   if (key === 'cash') return 'Cash';
@@ -18,7 +39,7 @@ type ReceiptPayment = {
 }
 
 type ReceiptItem = {
-  type?: 'product' | 'booking_deposit' | 'booking_settlement' | 'service_package' | string
+  type?: 'product' | 'booking_deposit' | 'booking_settlement' | 'booking_addon' | 'service_package' | string
   sku?: string
   name: string
   cn_name?: string | null
@@ -142,7 +163,7 @@ export default async function PublicReceiptPage({ params }: Props) {
   const docTitle = isPaid ? 'RECEIPT' : 'INVOICE'
   const receiptPayments = normalizeReceiptPayments(receipt.payments)
   const isPackageCoveredReceipt = Boolean(receipt.package_coverage?.covered)
-  const receiptItems = receipt.items ?? []
+  const receiptItems = (receipt.items ?? []).filter(shouldShowReceiptItem)
   const packageOffset = Number(receipt.package_coverage?.package_offset ?? 0)
   const packageNames = receipt.package_coverage?.package_names ?? []
 
@@ -218,8 +239,9 @@ export default async function PublicReceiptPage({ params }: Props) {
                     Type: {isCoveredByPackage ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>
                   {!isCoveredByPackage && item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
-                  {!isCoveredByPackage && item.variant_name ? <p className="text-xs text-gray-500">Variant: {item.variant_name}</p> : null}
-                  {isCoveredByPackage ? <p className="text-xs text-gray-500">Variant: Service</p> : null}
+                  {!isCoveredByPackage && shouldShowReceiptVariant(item.variant_name) ? (
+                    <p className="text-xs text-gray-500">Variant: {item.variant_name}</p>
+                  ) : null}
                   {isCoveredByPackage ? (
                     <div className="mt-1 space-y-0.5 text-xs font-semibold text-emerald-700">
                       <p>Included in package</p>
