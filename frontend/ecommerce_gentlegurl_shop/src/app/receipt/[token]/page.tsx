@@ -5,6 +5,7 @@ const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
   'Booking Add-on Settlement',
   'Service',
   'Booking Deposit',
+  'Booking Add-on Deposit',
 ]);
 
 function shouldShowReceiptVariant(variantName?: string | null) {

@@ -10,6 +10,7 @@
       'Booking Add-on Settlement',
       'Service',
       'Booking Deposit',
+      'Booking Add-on Deposit',
     ];
 
     // Check if CJK font exists (supports Chinese, Japanese, Korean)
