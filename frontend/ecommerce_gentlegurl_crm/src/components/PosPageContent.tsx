@@ -352,6 +352,53 @@ function PosDepositAmount({
   return <span className={className}>RM {payable.toFixed(2)}</span>
 }
 
+function resolveSettlementLineOriginalPrice(
+  line: { extra_price?: number; gross_amount?: number; balance_due?: number },
+  ...fallbacks: Array<number | null | undefined>
+): number {
+  const candidates = [
+    Number(line.extra_price ?? 0),
+    ...fallbacks.map((value) => Number(value ?? 0)),
+    Number(line.gross_amount ?? 0),
+    Number(line.balance_due ?? 0),
+  ]
+  return candidates.find((amount) => amount > 0.0001) ?? 0
+}
+
+function PosPackageIncludedAmount({
+  originalAmount,
+  inline = false,
+  unitClassName = 'text-xs font-semibold text-gray-700',
+  lineClassName = 'text-lg font-bold leading-tight text-orange-700',
+}: {
+  originalAmount: number
+  inline?: boolean
+  unitClassName?: string
+  lineClassName?: string
+}) {
+  const original = Math.max(0, Number(originalAmount ?? 0))
+
+  if (inline) {
+    return (
+      <span className={unitClassName}>
+        {original > 0.0001 ? (
+          <>
+            <span className="font-normal text-gray-400 line-through">RM {original.toFixed(2)}</span>{' '}
+          </>
+        ) : null}
+        <span>RM 0.00</span>
+      </span>
+    )
+  }
+
+  return (
+    <div className="space-y-0.5">
+      {original > 0.0001 ? <p className="text-xs text-gray-400 line-through">RM {original.toFixed(2)}</p> : null}
+      <p className={lineClassName}>RM 0.00</p>
+    </div>
+  )
+}
+
 function formatPosServiceStaffSplitSummary(item: ServiceCartItem): string {
   const splits = (item.staff_splits ?? [])
     .map((split) => ({
@@ -5941,7 +5988,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   const discount = Number(service.discount_amount ?? 0)
                                   const net = Number(service.line_total_after_discount ?? Math.max(0, gross - discount))
                                   const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
-                                  const displayGross = coveredByPackage ? Number(service.extra_price ?? gross) : gross
+                                  const displayGross = coveredByPackage
+                                    ? resolveSettlementLineOriginalPrice(
+                                        service,
+                                        originalServiceReference,
+                                        settlement.service_total,
+                                        pkgOffset,
+                                      )
+                                    : gross
                                   const displayNet = coveredByPackage ? 0 : net
                                   return (
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
@@ -7205,6 +7259,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const stServiceLabel = stIsRangeUnsettled
                         ? `RM ${Number(settlement.service_price_range_min).toFixed(2)} - ${Number(settlement.service_price_range_max).toFixed(2)}`
                         : `RM ${serviceTotalRef.toFixed(2)}`
+                      const fallbackMainOriginal = resolveSettlementLineOriginalPrice(
+                        checkoutOriginalServiceBlock ?? {},
+                        checkoutOriginalServiceReference,
+                        settlement.service_total,
+                        pkgOffset,
+                      )
 
                       return (
                         <Fragment key={`checkout-settlement-${settlement.id}`}>
@@ -7255,6 +7315,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const serviceNet = Number(service.line_total_after_discount ?? Math.max(0, servicePrice - serviceDiscount))
                                 const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
                                 const displayServiceNet = coveredByPackage ? 0 : serviceNet
+                                const packageOriginalPrice = resolveSettlementLineOriginalPrice(
+                                  service,
+                                  checkoutOriginalServiceReference,
+                                  settlement.service_total,
+                                  pkgOffset,
+                                )
                                 return (
                                   <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
                                     <tr className={`${stRowClass} align-top`}>
@@ -7274,19 +7340,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       </td>
                                       <td className="px-4 py-2.5 align-top tabular-nums text-xs font-semibold text-gray-700">
                                         {coveredByPackage ? (
-                                          <span>
-                                            <span className="text-gray-400 line-through">RM {servicePrice.toFixed(2)}</span>{' '}
-                                            <span>RM 0.00</span>
-                                          </span>
+                                          <PosPackageIncludedAmount originalAmount={packageOriginalPrice} inline />
                                         ) : (
                                           <>RM {serviceNet.toFixed(2)}</>
                                         )}
                                       </td>
                                       <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                                        {coveredByPackage || serviceDiscount > 0 ? (
+                                        {coveredByPackage ? (
+                                          <PosPackageIncludedAmount originalAmount={packageOriginalPrice} />
+                                        ) : serviceDiscount > 0 ? (
                                           <div className="space-y-0.5">
                                             <p className="text-xs text-gray-400 line-through">RM {servicePrice.toFixed(2)}</p>
-                                            {!coveredByPackage && serviceDiscount > 0 ? <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p> : null}
+                                            <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
                                             <p className="text-lg font-bold leading-tight text-orange-700">RM {displayServiceNet.toFixed(2)}</p>
                                           </div>
                                         ) : (
@@ -7311,14 +7376,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const discount = Number(addon.discount_amount ?? 0)
                                 const due = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
                                 const coveredByPackage = pkgOffset > checkoutOriginalServiceReference + 0.0001 && due <= 0.0001 && addonReference > 0.0001
-                                const displayGross = coveredByPackage ? addonReference : gross
+                                const addonOriginalPrice = resolveSettlementLineOriginalPrice(addon, addonReference, gross)
                                 const displayDue = coveredByPackage ? 0 : due
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</td>
                                     <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? (<span><span className="text-gray-400 line-through">RM {displayGross.toFixed(2)}</span>{' '}<span>RM 0.00</span></span>) : <>RM {due.toFixed(2)}</>}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage || discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {displayGross.toFixed(2)}</p>{!coveredByPackage && discount > 0 ? <p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p> : null}<p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <>RM {due.toFixed(2)}</>}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
                                 )
                               }) : null}
@@ -7338,18 +7403,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
                                 <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
                                   {mainCoveredByPkg ? (
-                                    <span>
-                                      <span className="text-gray-400 line-through">{stServiceLabel}</span>{' '}
-                                      <span className="font-medium">RM 0.00</span>
-                                    </span>
+                                    <PosPackageIncludedAmount originalAmount={fallbackMainOriginal} inline />
                                   ) : (
                                     <span className="text-gray-400">—</span>
                                   )}
                                 </td>
                                 <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
-                                  <p className="text-lg font-bold leading-tight text-orange-700">
-                                    {mainCoveredByPkg ? 'RM 0.00' : stServiceLabel}
-                                  </p>
+                                  {mainCoveredByPkg ? (
+                                    <PosPackageIncludedAmount originalAmount={fallbackMainOriginal} />
+                                  ) : (
+                                    <p className="text-lg font-bold leading-tight text-orange-700">{stServiceLabel}</p>
+                                  )}
                                 </td>
                               </tr>
 
