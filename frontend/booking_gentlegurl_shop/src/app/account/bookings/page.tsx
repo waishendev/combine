@@ -208,12 +208,18 @@ export default function MyBookingsPage() {
                         Add-ons: <span className="text-[var(--foreground)]">{addOns || "None"}</span>
                       </p>
                       <p className="min-w-0 truncate">
-                        Deposit Paid: <span className="text-emerald-700">{formatCurrency(payment.depositPaid)}</span>
+                        Deposit Paid: <span className="font-medium text-emerald-700">{formatCurrency(payment.depositPaid)}</span>
                       </p>
                       {payment.balanceDue > 0 ? (
-                        <p className="min-w-0 truncate font-medium">
-                          Balance Due: <span className="text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span>
-                        </p>
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-medium text-amber-800 sm:col-span-2">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span>Balance Due</span>
+                            <span className="text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span>
+                          </div>
+                          <p className="mt-1 text-xs font-normal text-amber-700">
+                            Remaining balance will be paid at the salon.
+                          </p>
+                        </div>
                       ) : null}
                     </div>
 
