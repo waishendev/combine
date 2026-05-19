@@ -954,7 +954,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
       {/* Mobile / tablet overlay backdrop */}
       {!collapsed && overlayMode && (
         <div
-          className="fixed inset-0 z-[55] touch-none bg-black/50"
+          className="fixed inset-x-0 bottom-0 top-16 z-[45] bg-black/50"
           onClick={onToggleSidebar}
           aria-hidden="true"
         />
