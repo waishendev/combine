@@ -14,6 +14,7 @@ class PosCartItem extends Model
         'variant_id',
         'qty',
         'price_snapshot',
+        'selected_booking_product_options',
         'discount_type',
         'discount_value',
         'discount_amount',
@@ -30,6 +31,7 @@ class PosCartItem extends Model
             'discount_amount' => 'decimal:2',
             'line_total_after_discount' => 'decimal:2',
             'discount_remark' => 'string',
+            'selected_booking_product_options' => 'array',
         ];
     }
 

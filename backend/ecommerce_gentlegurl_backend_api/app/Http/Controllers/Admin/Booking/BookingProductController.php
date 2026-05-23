@@ -16,7 +16,7 @@ class BookingProductController extends Controller
         $perPage = max(1, min(200, $request->integer('per_page', 20)));
 
         $query = BookingProduct::query()
-            ->with('categories')
+            ->with(['categories', 'questions.options'])
             ->orderByRaw("COALESCE(booking_products.name, '') asc")
             ->orderBy('booking_products.id');
 
@@ -44,6 +44,7 @@ class BookingProductController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'cn_name' => ['nullable', 'string', 'max:255'],
             'price' => ['required', 'numeric', 'min:0'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
@@ -51,6 +52,7 @@ class BookingProductController extends Controller
             'category_ids.*' => ['integer', 'exists:booking_product_categories,id'],
             'is_active' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
+            'questions' => ['nullable', 'array'],
         ]);
 
         if ($request->hasFile('image')) {
@@ -64,15 +66,17 @@ class BookingProductController extends Controller
         $categoryIds = $data['category_ids'] ?? [];
         unset($data['category_ids']);
 
+        $questions = $request->input('questions', []);
         $product = BookingProduct::create($data);
         $product->categories()->sync($categoryIds);
+        $this->syncQuestions($product, is_array($questions) ? $questions : []);
 
         return $this->respond($product->load('categories'), 'Created', true, 201);
     }
 
     public function show(int $id)
     {
-        return $this->respond(BookingProduct::query()->with('categories')->findOrFail($id));
+        return $this->respond(BookingProduct::query()->with(['categories', 'questions.options'])->findOrFail($id));
     }
 
     public function update(Request $request, int $id)
@@ -81,6 +85,7 @@ class BookingProductController extends Controller
 
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
+            'cn_name' => ['nullable', 'string', 'max:255'],
             'price' => ['sometimes', 'numeric', 'min:0'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
@@ -88,6 +93,7 @@ class BookingProductController extends Controller
             'category_ids.*' => ['integer', 'exists:booking_product_categories,id'],
             'is_active' => ['sometimes', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
+            'questions' => ['nullable', 'array'],
         ]);
 
         $oldImagePath = $product->image_path;
@@ -103,6 +109,9 @@ class BookingProductController extends Controller
         unset($data['category_ids']);
 
         $product->update($data);
+        if ($request->has('questions')) {
+            $this->syncQuestions($product, is_array($request->input('questions')) ? $request->input('questions') : []);
+        }
 
         if ($categoryIds !== null) {
             $product->categories()->sync($categoryIds);
@@ -112,7 +121,66 @@ class BookingProductController extends Controller
             Storage::disk('public')->delete($oldImagePath);
         }
 
-        return $this->respond($product->fresh()->load('categories'));
+        return $this->respond($product->fresh()->load(['categories', 'questions.options']));
+    }
+
+
+
+    private function syncQuestions(BookingProduct $product, array $questions): void
+    {
+        $existingIds = $product->questions()->pluck('id')->all();
+        $keepQuestionIds = [];
+
+        foreach ($questions as $question) {
+            if (! is_array($question) || trim((string) ($question['title'] ?? '')) === '') {
+                continue;
+            }
+
+            $questionModel = $product->questions()->updateOrCreate(
+                ['id' => (int) ($question['id'] ?? 0)],
+                [
+                    'title' => trim((string) ($question['title'] ?? '')),
+                    'cn_title' => trim((string) ($question['cn_title'] ?? '')) ?: null,
+                    'description' => trim((string) ($question['description'] ?? '')) ?: null,
+                    'cn_description' => trim((string) ($question['cn_description'] ?? '')) ?: null,
+                    'question_type' => in_array(($question['question_type'] ?? 'single_choice'), ['single_choice', 'multi_choice'], true) ? $question['question_type'] : 'single_choice',
+                    'sort_order' => (int) ($question['sort_order'] ?? 0),
+                    'is_required' => (bool) ($question['is_required'] ?? false),
+                    'is_active' => (bool) ($question['is_active'] ?? true),
+                ]
+            );
+
+            $keepQuestionIds[] = $questionModel->id;
+            $existingOptionIds = $questionModel->options()->pluck('id')->all();
+            $keepOptionIds = [];
+
+            foreach (($question['options'] ?? []) as $option) {
+                if (! is_array($option) || trim((string) ($option['label'] ?? '')) === '') {
+                    continue;
+                }
+                $optionModel = $questionModel->options()->updateOrCreate(
+                    ['id' => (int) ($option['id'] ?? 0)],
+                    [
+                        'label' => trim((string) ($option['label'] ?? '')),
+                        'cn_label' => trim((string) ($option['cn_label'] ?? '')) ?: null,
+                        'extra_price' => max(0, (float) ($option['extra_price'] ?? 0)),
+                        'sort_order' => (int) ($option['sort_order'] ?? 0),
+                        'is_active' => (bool) ($option['is_active'] ?? true),
+                    ]
+                );
+                $keepOptionIds[] = $optionModel->id;
+            }
+
+            $deleteOptionIds = array_diff($existingOptionIds, $keepOptionIds);
+            if (! empty($deleteOptionIds)) {
+                $questionModel->options()->whereIn('id', $deleteOptionIds)->delete();
+            }
+        }
+
+        $deleteQuestionIds = array_diff($existingIds, $keepQuestionIds);
+        if (! empty($deleteQuestionIds)) {
+            $product->questions()->whereIn('id', $deleteQuestionIds)->delete();
+        }
     }
 
     public function destroy(int $id)
@@ -153,7 +221,7 @@ class BookingProductController extends Controller
 
     public function exportCsv(Request $request)
     {
-        $rows = BookingProduct::query()->with('categories')->orderBy('id')->get();
+        $rows = BookingProduct::query()->with(['categories', 'questions.options'])->orderBy('id')->get();
         $stream = fopen('php://temp', 'r+');
         if (! $stream) {
             return response()->json(['message' => 'Unable to build booking products CSV export.'], 500);
@@ -236,7 +304,8 @@ class BookingProductController extends Controller
 
             $validator = Validator::make($data, [
                 'name' => ['required', 'string', 'max:255'],
-                'price' => ['required', 'numeric', 'min:0'],
+                'cn_name' => ['nullable', 'string', 'max:255'],
+            'price' => ['required', 'numeric', 'min:0'],
                 'barcode' => ['nullable', 'string', 'max:255'],
                 'description' => ['nullable', 'string'],
                 'is_active' => ['nullable', 'boolean'],

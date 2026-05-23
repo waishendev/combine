@@ -23,6 +23,7 @@ export default function BookingProductUpsertModal({
 }: Props) {
   const isEditing = Boolean(product?.id)
   const [name, setName] = useState('')
+  const [cnName, setCnName] = useState('')
   const [price, setPrice] = useState('0')
   const [barcode, setBarcode] = useState('')
   const [description, setDescription] = useState('')
@@ -38,6 +39,7 @@ export default function BookingProductUpsertModal({
   useEffect(() => {
     if (!show) return
     setName(product?.name ?? '')
+    setCnName(product?.cn_name ?? '')
     setPrice(String(product?.price ?? 0))
     setBarcode(product?.barcode ?? '')
     setDescription(product?.description ?? '')
@@ -92,6 +94,7 @@ export default function BookingProductUpsertModal({
     try {
       const fd = new FormData()
       fd.append('name', trimmedName)
+      if (cnName.trim()) fd.append('cn_name', cnName.trim())
       fd.append('price', String(p))
       if (barcode.trim()) fd.append('barcode', barcode.trim())
       if (description.trim()) fd.append('description', description.trim())
@@ -242,6 +245,20 @@ export default function BookingProductUpsertModal({
                   onChange={(e) => setName(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Product name"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div>
+                <label htmlFor="booking-product-cn-name" className="block text-sm font-medium text-gray-700 mb-1">
+                  Chinese Name
+                </label>
+                <input
+                  id="booking-product-cn-name"
+                  value={cnName}
+                  onChange={(e) => setCnName(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="中文名（可选）"
                   disabled={submitting}
                 />
               </div>

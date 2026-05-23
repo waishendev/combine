@@ -1412,6 +1412,8 @@ class PosController extends Controller
         $validator = Validator::make($request->all(), [
             'barcode' => ['nullable', 'string'],
             'qty' => ['nullable', 'integer', 'min:1'],
+            'selected_option_ids' => ['nullable', 'array'],
+            'selected_option_ids.*' => ['integer'],
         ]);
 
         if ($validator->fails()) {
@@ -1498,6 +1500,8 @@ class PosController extends Controller
             'variant_id' => ['nullable', 'integer', 'exists:product_variants,id', 'required_without:product_id'],
             'product_id' => ['nullable', 'integer', 'exists:products,id', 'required_without:variant_id'],
             'qty' => ['nullable', 'integer', 'min:1'],
+            'selected_option_ids' => ['nullable', 'array'],
+            'selected_option_ids.*' => ['integer'],
         ]);
 
         $qty = (int) ($validated['qty'] ?? 1);
@@ -1543,6 +1547,8 @@ class PosController extends Controller
         $validated = $request->validate([
             'booking_product_id' => ['required', 'integer', 'exists:booking_products,id'],
             'qty' => ['nullable', 'integer', 'min:1'],
+            'selected_option_ids' => ['nullable', 'array'],
+            'selected_option_ids.*' => ['integer'],
         ]);
         $qty = (int) ($validated['qty'] ?? 1);
         $hasItemType = Schema::hasColumn('pos_cart_items', 'item_type');
@@ -1550,7 +1556,42 @@ class PosController extends Controller
         if (! $hasItemType || ! $hasBookingProductId) {
             return $this->respondError(__('POS booking product fields are not ready. Please run latest migrations.'), 422);
         }
-        $bookingProduct = BookingProduct::query()->where('is_active', true)->findOrFail((int) $validated['booking_product_id']);
+        $bookingProduct = BookingProduct::query()->where('is_active', true)->with(['activeQuestions.options' => fn ($q) => $q->where('is_active', true)])->findOrFail((int) $validated['booking_product_id']);
+        $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values();
+        $activeQuestions = $bookingProduct->activeQuestions;
+        $optionsById = $activeQuestions->flatMap(fn ($question) => $question->options)->keyBy('id');
+        $invalidIds = $selectedOptionIds->filter(fn ($id) => ! $optionsById->has($id))->values();
+        if ($invalidIds->isNotEmpty()) {
+            return $this->respondError(__('Invalid booking product options selected.'), 422);
+        }
+        foreach ($activeQuestions as $question) {
+            if (! $question->is_required) {
+                continue;
+            }
+            $hasAnswer = $question->options->contains(fn ($option) => $selectedOptionIds->contains((int) $option->id));
+            if (! $hasAnswer) {
+                return $this->respondError(__('Required booking product options were not selected.'), 422);
+            }
+        }
+        $selectedSnapshots = $activeQuestions->map(function ($question) use ($selectedOptionIds) {
+            $selectedOptions = $question->options->filter(fn ($option) => $selectedOptionIds->contains((int) $option->id))->values();
+            if ($selectedOptions->isEmpty()) {
+                return null;
+            }
+            return [
+                'question_id' => (int) $question->id,
+                'title' => $question->title,
+                'cn_title' => $question->cn_title,
+                'question_type' => $question->question_type,
+                'options' => $selectedOptions->map(fn ($option) => [
+                    'id' => (int) $option->id,
+                    'label' => $option->label,
+                    'cn_label' => $option->cn_label,
+                    'extra_price' => (float) $option->extra_price,
+                ])->values()->all(),
+            ];
+        })->filter()->values();
+        $extraPrice = (float) $selectedSnapshots->flatMap(fn ($q) => $q['options'])->sum('extra_price');
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = PosCartItem::query()->firstOrNew([
             'pos_cart_id' => $cart->id,
@@ -1560,7 +1601,8 @@ class PosController extends Controller
             'product_id' => null,
         ]);
         $item->qty = (int) ($item->exists ? $item->qty : 0) + $qty;
-        $item->price_snapshot = (float) $bookingProduct->price;
+        $item->price_snapshot = (float) $bookingProduct->price + $extraPrice;
+        $item->selected_booking_product_options = $selectedSnapshots->all();
         $item->item_type = 'booking_product';
         $item->booking_product_id = (int) $bookingProduct->id;
         $item->variant_id = null;
@@ -1708,6 +1750,8 @@ class PosController extends Controller
             'main_service_items.*.selected_option_ids' => ['nullable', 'array'],
             'main_service_items.*.selected_option_ids.*' => ['integer', 'exists:booking_service_question_options,id'],
             'qty' => ['nullable', 'integer', 'min:1'],
+            'selected_option_ids' => ['nullable', 'array'],
+            'selected_option_ids.*' => ['integer'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'staff_splits' => ['nullable', 'array'],
             'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
