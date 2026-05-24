@@ -1,5 +1,11 @@
 import type { BankAccountRowData } from './BankAccountRow'
 
+/** Standard bank transfer QR upload size (portrait). */
+export const BANK_QR_IMAGE_WIDTH = 834
+export const BANK_QR_IMAGE_HEIGHT = 1280
+export const bankQrImagePreviewClass =
+  'mx-auto w-full max-w-[220px] aspect-[834/1280] object-contain rounded border border-gray-200 bg-white'
+
 export type BankAccountApiItem = {
   id: number | string
   label?: string | null

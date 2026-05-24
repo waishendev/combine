@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
 import type { BankAccountRowData } from './BankAccountRow'
-import { mapBankAccountApiItemToRow, type BankAccountApiItem } from './bankAccountUtils'
+import { bankQrImagePreviewClass, mapBankAccountApiItemToRow, type BankAccountApiItem } from './bankAccountUtils'
 import { useI18n } from '@/lib/i18n'
 import { getWorkspace } from '@/lib/workspace'
 import { IMAGE_ACCEPT } from './mediaAccept'
@@ -420,6 +420,7 @@ export default function BankAccountEditModal({
 
                   <div>
                     <h3 className="text-sm font-medium text-gray-700 mb-1">QR Code Image</h3>
+                    <p className="mb-2 text-xs text-gray-500">Recommended: 834 × 1280 px (portrait PNG/JPG).</p>
                     <div
                       onClick={handleQrImageClick}
                       className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
@@ -441,7 +442,7 @@ export default function BankAccountEditModal({
                           <img
                             src={qrImagePreview}
                             alt="QR Code Preview"
-                            className="w-full h-48 object-contain rounded"
+                            className={bankQrImagePreviewClass}
                           />
                           <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
                             <button

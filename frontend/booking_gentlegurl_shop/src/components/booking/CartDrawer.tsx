@@ -25,6 +25,7 @@ import {
   type PublicBookingPaymentGateway,
   type BillplzPaymentGatewayOption,
 } from "@/lib/apiClient";
+import { bankQrImageCompactClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } from "@/lib/bankQrImage";
 import { BookingCart } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
@@ -1271,14 +1272,16 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                             <p className="mt-1 text-xs text-[var(--text-muted)]">
                               {account.account_name} · {account.account_number}
                             </p>
-                            {account.logo_url ? (
+                            {/* {account.logo_url ? (
                               <img src={account.logo_url} alt={account.bank_name} className="mt-3 h-8 w-auto object-contain" />
-                            ) : null}
+                            ) : null} */}
                             {account.qr_image_url ? (
                               <img
                                 src={account.qr_image_url}
                                 alt={`${account.bank_name} QR`}
-                                className="mt-3 h-28 w-28 rounded-lg border border-[var(--card-border)] object-cover"
+                                width={BANK_QR_IMAGE_WIDTH}
+                                height={BANK_QR_IMAGE_HEIGHT}
+                                className={bankQrImageCompactClass}
                               />
                             ) : null}
                             {account.instructions ? (

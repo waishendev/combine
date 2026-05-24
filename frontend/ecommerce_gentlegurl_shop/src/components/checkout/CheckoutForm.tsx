@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 import LoadingOverlay from "@/components/LoadingOverlay";
+import { bankQrImageCompactClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } from "@/lib/bankQrImage";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 import VoucherList from "@/components/vouchers/VoucherList";
@@ -1550,12 +1551,12 @@ export default function CheckoutForm() {
                                     <div className="text-[var(--foreground)]/70">{bank.account_name}</div>
                                     <div className="text-[var(--foreground)]/70">{bank.account_no}</div>
                                     {bank.qr_image_url && (
-                                      <div className="mt-2 h-20 w-20 overflow-hidden rounded border border-[var(--card-border)] bg-[var(--card)]">
+                                      <div className={`mt-2 ${bankQrImageCompactClass}`}>
                                         <Image
                                           src={bank.qr_image_url}
                                           alt={`${bank.bank_name} QR`}
-                                          width={80}
-                                          height={80}
+                                          width={BANK_QR_IMAGE_WIDTH}
+                                          height={BANK_QR_IMAGE_HEIGHT}
                                           className="h-full w-full object-contain"
                                         />
                                       </div>
