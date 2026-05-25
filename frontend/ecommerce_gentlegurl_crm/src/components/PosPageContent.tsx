@@ -68,6 +68,13 @@ type CartItem = {
   manual_discount_allowed?: boolean
   booking_product_id?: number | null
   booking_product_category?: string | null
+  product_cn_name?: string | null
+  selected_booking_product_options?: Array<{
+    question_id?: number
+    title?: string
+    cn_title?: string | null
+    options?: Array<{ id?: number; label?: string; cn_label?: string | null; extra_price?: number }>
+  }>
 }
 
 type AppliedPromotion = {
@@ -542,7 +549,7 @@ type ServicePackageOption = {
 }
 
 type PosCatalogTab = 'products' | 'booking-products' | 'book-service' | 'service-packages' | 'settlement'
-type BookingProductOption = { id: number; name: string; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean }
+type BookingProductOption = { id: number; name: string; cn_name?: string | null; barcode?: string | null; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean }
 type BookingProductCategoryOption = { id: number; name: string; sort_order?: number; is_active?: boolean }
 
 type ProductOption = {
@@ -2317,6 +2324,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             id: Number(row.id),
             name: String(row.name ?? ''),
             price: Number(row.price ?? 0),
+            cn_name: typeof row.cn_name === 'string' ? row.cn_name : null,
+            barcode: typeof row.barcode === 'string' ? row.barcode : null,
             image_url: row.image_url ?? null,
             category: row.category ?? null,
             is_active: Boolean(row.is_active ?? true),
@@ -5317,7 +5326,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-gray-900">{item.name}</p>
-                          <p className="text-xs text-gray-500">{item.category?.name ?? '-'}</p>
+                          {item.cn_name ? <p className="truncate text-xs text-gray-500">{item.cn_name}</p> : null}
+                          <p className="text-xs text-gray-500">{item.barcode ? `SKU: ${item.barcode}` : (item.category?.name ?? '-')}</p>
                           <p className="mt-1 text-sm font-bold text-blue-700">RM {Number(item.price ?? 0).toFixed(2)}</p>
                         </div>
                       </div>
@@ -5582,6 +5592,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex min-w-0 flex-col gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
+                          {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
                           <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
@@ -7027,13 +7038,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <tr key={item.id} className="bg-white hover:bg-slate-50/90 transition-colors align-top">
                           <td className="px-4 py-3.5 sm:px-5">
                             <p className="font-semibold text-gray-900">{item.product_name}</p>
+                            {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
                             {hasVariant && variantDisplay && (
                               <p className="text-xs text-blue-600 font-medium mt-0.5">Variant: {variantDisplay}</p>
                             )}
                             {!hasVariant && item.product_id && (
                               <p className="text-xs text-gray-400 italic mt-0.5">No variant selected</p>
                             )}
-                            <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
+                                                        <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
+                            {Array.isArray(item.selected_booking_product_options) && item.selected_booking_product_options.length > 0 ? (
+                              <div className="mt-1 space-y-1">
+                                {item.selected_booking_product_options.map((question, qIdx) => (
+                                  <div key={`bp-opt-${item.id}-${question.question_id ?? qIdx}`} className="text-[11px] text-gray-600">
+                                    <p className="font-medium">{question.title}{question.cn_title ? <span className="ml-1 text-gray-500">{question.cn_title}</span> : null}</p>
+                                    {(question.options ?? []).map((opt, optIdx) => (
+                                      <p key={`bp-opt-item-${item.id}-${question.question_id ?? qIdx}-${opt.id ?? optIdx}`} className="pl-2 text-gray-500">- {opt.label}{opt.cn_label ? <span className="ml-1">{opt.cn_label}</span> : null}</p>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                             {item.promotion_applied ? (
                             <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">

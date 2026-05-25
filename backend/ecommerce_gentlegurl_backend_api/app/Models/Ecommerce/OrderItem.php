@@ -149,6 +149,11 @@ class OrderItem extends Model
             return $this->resolveBookingAddonCnName();
         }
 
+        if ((string) ($this->line_type ?? '') === 'booking_product') {
+            $snapshot = trim((string) ($this->variant_name_snapshot ?? ''));
+            return $snapshot !== '' ? $snapshot : null;
+        }
+
         $cnName = trim((string) ($this->bookingService?->cn_name ?? ''));
 
         return $cnName !== '' ? $cnName : null;
