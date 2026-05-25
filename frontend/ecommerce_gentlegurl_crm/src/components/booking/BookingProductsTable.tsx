@@ -443,7 +443,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                       <div className="h-10 w-10 rounded border border-dashed border-gray-300 bg-gray-50" />
                     )}
                   </td>
-                  <td className="px-4 py-2 border border-gray-200">{p.name}</td>
+                  <td className="px-4 py-2 border border-gray-200"><p className="font-medium text-gray-900">{p.name}</p>{p.cn_name ? <p className="mt-0.5 text-xs text-gray-500">{p.cn_name}</p> : null}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {Number(p.price ?? 0).toFixed(2)}</td>
                   <td className="border border-gray-200 px-4 py-2">
                     <BookingProductCategoriesCell

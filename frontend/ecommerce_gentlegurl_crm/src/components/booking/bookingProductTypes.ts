@@ -1,6 +1,7 @@
 export type BookingProductCategory = {
   id: number
   name: string
+  cn_name?: string | null
   sort_order: number
   is_active: boolean
 }
@@ -8,6 +9,7 @@ export type BookingProductCategory = {
 export type BookingProductRowData = {
   id: number
   name: string
+  cn_name?: string | null
   price: number
   barcode?: string | null
   description?: string | null

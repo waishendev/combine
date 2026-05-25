@@ -12,6 +12,7 @@ class BookingProduct extends Model
 
     protected $fillable = [
         'name',
+        'cn_name',
         'price',
         'barcode',
         'description',
@@ -27,6 +28,16 @@ class BookingProduct extends Model
         'price' => 'decimal:2',
         'is_active' => 'boolean',
     ];
+
+    public function questions()
+    {
+        return $this->hasMany(BookingProductQuestion::class, 'booking_product_id')->orderBy('sort_order')->orderBy('id');
+    }
+
+    public function activeQuestions()
+    {
+        return $this->questions()->where('is_active', true)->whereHas('options', fn ($query) => $query->where('is_active', true));
+    }
 
     public function categories()
     {
