@@ -68,6 +68,13 @@ type CartItem = {
   manual_discount_allowed?: boolean
   booking_product_id?: number | null
   booking_product_category?: string | null
+  product_cn_name?: string | null
+  selected_booking_product_options?: Array<{
+    question_id?: number
+    title?: string
+    cn_title?: string | null
+    options?: Array<{ id?: number; label?: string; cn_label?: string | null; extra_price?: number }>
+  }>
 }
 
 type AppliedPromotion = {
@@ -542,7 +549,7 @@ type ServicePackageOption = {
 }
 
 type PosCatalogTab = 'products' | 'booking-products' | 'book-service' | 'service-packages' | 'settlement'
-type BookingProductOption = { id: number; name: string; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean }
+type BookingProductOption = { id: number; name: string; cn_name?: string | null; barcode?: string | null; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean; questions?: BookingServiceQuestion[] }
 type BookingProductCategoryOption = { id: number; name: string; sort_order?: number; is_active?: boolean }
 
 type ProductOption = {
@@ -1024,6 +1031,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
+  const [bookingProductOptionModalOpen, setBookingProductOptionModalOpen] = useState(false)
+  const [bookingProductDraft, setBookingProductDraft] = useState<BookingProductOption | null>(null)
+  const [bookingProductSelectedOptionIds, setBookingProductSelectedOptionIds] = useState<number[]>([])
+  const [bookingProductOptionError, setBookingProductOptionError] = useState<string | null>(null)
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
@@ -2317,6 +2328,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             id: Number(row.id),
             name: String(row.name ?? ''),
             price: Number(row.price ?? 0),
+            cn_name: typeof row.cn_name === 'string' ? row.cn_name : null,
+            barcode: typeof row.barcode === 'string' ? row.barcode : null,
+            questions: Array.isArray(row.questions) ? row.questions : [],
             image_url: row.image_url ?? null,
             category: row.category ?? null,
             is_active: Boolean(row.is_active ?? true),
@@ -2328,11 +2342,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
-  const addBookingProductToCart = useCallback(async (row: BookingProductOption) => {
+  const addBookingProductToCart = useCallback(async (row: BookingProductOption, selectedOptionIds: number[] = []) => {
     const res = await fetch('/api/proxy/pos/cart/add-booking-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT' }),
+      body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT', selected_option_ids: selectedOptionIds }),
     })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
@@ -5312,12 +5326,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
                 <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
                   {filteredBookingProducts.map((item) => (
-                    <button key={item.id} type="button" onClick={() => addBookingProductToCart(item)} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
+                    <button key={item.id} type="button" onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0) { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductSelectedOptionIds([]); setBookingProductOptionError(null); setBookingProductOptionModalOpen(true); } }} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-gray-900">{item.name}</p>
-                          <p className="text-xs text-gray-500">{item.category?.name ?? '-'}</p>
+                          {item.cn_name ? <p className="truncate text-xs text-gray-500">{item.cn_name}</p> : null}
+                          <p className="text-xs text-gray-500">{item.barcode ? `SKU: ${item.barcode}` : (item.category?.name ?? '-')}</p>
                           <p className="mt-1 text-sm font-bold text-blue-700">RM {Number(item.price ?? 0).toFixed(2)}</p>
                         </div>
                       </div>
@@ -5582,6 +5597,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex min-w-0 flex-col gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
+                          {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
                           <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
@@ -7027,13 +7043,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <tr key={item.id} className="bg-white hover:bg-slate-50/90 transition-colors align-top">
                           <td className="px-4 py-3.5 sm:px-5">
                             <p className="font-semibold text-gray-900">{item.product_name}</p>
+                            {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
                             {hasVariant && variantDisplay && (
                               <p className="text-xs text-blue-600 font-medium mt-0.5">Variant: {variantDisplay}</p>
                             )}
                             {!hasVariant && item.product_id && (
                               <p className="text-xs text-gray-400 italic mt-0.5">No variant selected</p>
                             )}
-                            <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
+                                                        <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
+                            {Array.isArray(item.selected_booking_product_options) && item.selected_booking_product_options.length > 0 ? (
+                              <div className="mt-1 space-y-1">
+                                {item.selected_booking_product_options.map((question, qIdx) => (
+                                  <div key={`bp-opt-${item.id}-${question.question_id ?? qIdx}`} className="text-[11px] text-gray-600">
+                                    <p className="font-medium">{question.title}{question.cn_title ? <span className="ml-1 text-gray-500">{question.cn_title}</span> : null}</p>
+                                    {(question.options ?? []).map((opt, optIdx) => (
+                                      <p key={`bp-opt-item-${item.id}-${question.question_id ?? qIdx}-${opt.id ?? optIdx}`} className="pl-2 text-gray-500">- {opt.label}{opt.cn_label ? <span className="ml-1">{opt.cn_label}</span> : null}</p>
+                                    ))}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                             {item.promotion_applied ? (
                             <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
@@ -8765,6 +8794,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </div>
         </div>
       )}
+
+
+      {bookingProductOptionModalOpen && bookingProductDraft ? (
+        <div className="fixed inset-0 z-[180] bg-black/40">
+          <div className="mx-auto mt-16 w-full max-w-2xl rounded-lg bg-white p-4 shadow-xl">
+            <div className="flex items-center justify-between"><h4 className="text-lg font-bold">Booking Product Options</h4><button type="button" onClick={() => setBookingProductOptionModalOpen(false)} className="text-gray-500">×</button></div>
+            <p className="mt-1 text-sm font-semibold">{bookingProductDraft.name}</p>{bookingProductDraft.cn_name ? <p className="text-xs text-gray-500">{bookingProductDraft.cn_name}</p> : null}
+            <div className="mt-3 space-y-3 max-h-[60vh] overflow-y-auto">{(bookingProductDraft.questions ?? []).map((q) => (<div key={`bpq-${q.id}`} className="rounded border p-2"><p className="text-sm font-semibold">{q.title}{q.cn_title ? <span className="ml-1 text-xs text-gray-500">{q.cn_title}</span> : null}{q.is_required ? <span className="ml-2 text-red-500">*</span> : null}</p>{q.cn_description ? <p className="text-xs text-gray-500">{q.cn_description}</p> : null}{q.options.filter((o) => o.is_active !== false).map((opt) => { const checked = bookingProductSelectedOptionIds.includes(opt.id); return <label key={`bpop-${opt.id}`} className="mt-1 flex items-start gap-2 text-sm"><input type={q.question_type === 'multi_choice' ? 'checkbox' : 'radio'} name={`bp-q-${q.id}`} checked={checked} onChange={(e) => { setBookingProductSelectedOptionIds((prev) => { if (q.question_type === 'multi_choice') { return e.target.checked ? [...prev, opt.id] : prev.filter((id) => id !== opt.id) } const withoutQuestion = prev.filter((id) => !q.options.some((o) => o.id === id)); return e.target.checked ? [...withoutQuestion, opt.id] : withoutQuestion }) }} /><span>{opt.label}{opt.cn_label ? <span className="ml-1 text-xs text-gray-500">{opt.cn_label}</span> : null} <span className="text-xs text-blue-700">+RM {Number(opt.extra_price ?? 0).toFixed(2)}</span></span></label>})}</div>))}</div>
+            {bookingProductOptionError ? <p className="mt-2 text-sm text-red-600">{bookingProductOptionError}</p> : null}
+            <div className="mt-3 flex justify-end gap-2"><button type="button" className="rounded border px-3 py-1" onClick={() => setBookingProductOptionModalOpen(false)}>Cancel</button><button type="button" className="rounded bg-blue-600 px-3 py-1 text-white" onClick={async () => { for (const q of (bookingProductDraft.questions ?? [])) { if (!q.is_required) continue; const has = q.options.some((o) => bookingProductSelectedOptionIds.includes(o.id)); if (!has) { setBookingProductOptionError('Please answer all required questions.'); return; } } setBookingProductOptionError(null); await addBookingProductToCart(bookingProductDraft, bookingProductSelectedOptionIds); setBookingProductOptionModalOpen(false); }}>Add to Cart</button></div>
+          </div>
+        </div>
+      ) : null}
 
       {memberOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>

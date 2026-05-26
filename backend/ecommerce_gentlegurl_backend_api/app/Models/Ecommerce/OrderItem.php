@@ -20,6 +20,7 @@ class OrderItem extends Model
         'variant_name_snapshot',
         'variant_sku_snapshot',
         'price_snapshot',
+        'selected_booking_product_options',
         'unit_price_snapshot',
         'variant_price_snapshot',
         'variant_cost_snapshot',
@@ -77,6 +78,7 @@ class OrderItem extends Model
             'is_staff_free_applied' => 'boolean',
             'discount_value' => 'decimal:2',
             'discount_remark' => 'string',
+            'selected_booking_product_options' => 'array',
             'discount_amount' => 'decimal:2',
             'line_total_after_discount' => 'decimal:2',
             'promotion_discount_amount' => 'decimal:2',
@@ -145,6 +147,11 @@ class OrderItem extends Model
     {
         if ((string) ($this->line_type ?? '') === 'booking_addon') {
             return $this->resolveBookingAddonCnName();
+        }
+
+        if ((string) ($this->line_type ?? '') === 'booking_product') {
+            $snapshot = trim((string) ($this->variant_name_snapshot ?? ''));
+            return $snapshot !== '' ? $snapshot : null;
         }
 
         $cnName = trim((string) ($this->bookingService?->cn_name ?? ''));
