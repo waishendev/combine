@@ -1,4 +1,5 @@
 export const dynamic = 'force-dynamic'
+import { Fragment } from 'react'
 
 const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
   'Final Settlement',
@@ -232,19 +233,14 @@ export default async function PublicReceiptPage({ params }: Props) {
                   item.line_total ??
                   gross - discountAmount,
               )
+              const bookingProductAddons = Array.isArray(item.selected_booking_product_options)
+                ? item.selected_booking_product_options.flatMap((q) => q.options ?? [])
+                : []
               return (
-              <tr key={`${item.sku}-${idx}`} className="border-t border-gray-200 text-sm">
+              <Fragment key={`${item.sku}-${idx}`}>
+              <tr className="border-t border-gray-200 text-sm">
                 <td className="px-4 py-3">
                   <ReceiptItemNameStack name={item.name} cnName={item.cn_name} />
-                  {Array.isArray(item.selected_booking_product_options) && item.selected_booking_product_options.length > 0 ? (
-                    <div className="mt-1 space-y-0.5">
-                      {item.selected_booking_product_options.flatMap((q) => q.options ?? []).map((opt, optIdx) => (
-                        <p key={`receipt-bp-opt-${idx}-${optIdx}`} className="text-[11px] text-gray-500">
-                          - {opt.label}{opt.cn_label ? <span className="ml-1">{opt.cn_label}</span> : null} <span className="text-blue-700">+RM {Number(opt.extra_price ?? 0).toFixed(2)}</span>
-                        </p>
-                      ))}
-                    </div>
-                  ) : null}
                   <p className="text-xs text-gray-500">
                     Type: {isCoveredByPackage ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>
@@ -287,6 +283,19 @@ export default async function PublicReceiptPage({ params }: Props) {
                   ) : money(net)}
                 </td>
               </tr>
+              {bookingProductAddons.map((opt, optIdx) => (
+                <tr key={`receipt-addon-row-${idx}-${optIdx}`} className="border-t border-gray-100 bg-gray-50 text-sm">
+                  <td className="px-4 py-2 pl-8">
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p>
+                    <p className="text-gray-800">{opt.label}</p>
+                    {opt.cn_label ? <p className="text-xs text-gray-500">{opt.cn_label}</p> : null}
+                  </td>
+                  <td className="px-4 py-2 text-right">{item.qty}</td>
+                  <td className="px-4 py-2 text-right">{money(Number(opt.extra_price ?? 0))}</td>
+                  <td className="px-4 py-2 text-right">{money(Number(opt.extra_price ?? 0) * Number(item.qty ?? 1))}</td>
+                </tr>
+              ))}
+              </Fragment>
               )
             })}
           </tbody>

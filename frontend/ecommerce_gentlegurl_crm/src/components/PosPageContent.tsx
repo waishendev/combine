@@ -7048,8 +7048,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
                       const hasVariant = Boolean(item.variant_id || item.variant_name || item.variant_sku)
                       const variantDisplay = item.variant_name || item.variant_sku || null
+                      const selectedBookingProductOptions = Array.isArray(item.selected_booking_product_options)
+                        ? item.selected_booking_product_options.flatMap((q) => q.options ?? [])
+                        : []
                       return (
-                        <tr key={item.id} className="bg-white hover:bg-slate-50/90 transition-colors align-top">
+                        <Fragment key={item.id}>
+                        <tr className="bg-white hover:bg-slate-50/90 transition-colors align-top">
                           <td className="px-4 py-3.5 sm:px-5">
                             <p className="font-semibold text-gray-900">{item.product_name}</p>
                             {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
@@ -7187,6 +7191,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             )}
                           </td>
                         </tr>
+                        {selectedBookingProductOptions.map((opt, optIdx) => (
+                          <tr key={`checkout-bp-addon-${item.id}-${opt.id ?? optIdx}`} className="bg-slate-50/80 align-top">
+                            <td className="px-4 py-2.5 pl-8 sm:px-5 sm:pl-10">
+                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p>
+                              <p className="text-sm text-gray-800">{opt.label}</p>
+                              {opt.cn_label ? <p className="text-xs text-gray-500">{opt.cn_label}</p> : null}
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500">Booking Product Option</td>
+                            <td className="px-4 py-2.5 text-left tabular-nums text-sm text-gray-700">RM {Number(opt.extra_price ?? 0).toFixed(2)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-gray-900 sm:px-5">RM {(Number(opt.extra_price ?? 0) * Number(item.qty ?? 1)).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                        </Fragment>
                       )
                     })}
                     {cartServiceItems.map((serviceItem) => {
