@@ -39,6 +39,42 @@ export default function BookingProductUpsertModal({
 
   useEffect(() => {
     if (!show) return
+    const rawQuestions = Array.isArray((product as { questions?: unknown[] } | null)?.questions)
+      ? ((product as { questions?: unknown[] }).questions ?? [])
+      : []
+    const mappedQuestions: BookingProductQuestion[] = rawQuestions
+      .map((question, qIdx) => {
+        if (!question || typeof question !== 'object') return null
+        const q = question as Record<string, unknown>
+        const optionsRaw = Array.isArray(q.options) ? q.options : []
+        return {
+          id: Number(q.id ?? 0) || undefined,
+          title: String(q.title ?? '').trim(),
+          cn_title: typeof q.cn_title === 'string' ? q.cn_title : null,
+          description: typeof q.description === 'string' ? q.description : null,
+          cn_description: typeof q.cn_description === 'string' ? q.cn_description : null,
+          question_type: q.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
+          sort_order: Number(q.sort_order ?? qIdx) || 0,
+          is_required: Boolean(q.is_required ?? false),
+          is_active: Boolean(q.is_active ?? true),
+          options: optionsRaw
+            .map((option, oIdx) => {
+              if (!option || typeof option !== 'object') return null
+              const o = option as Record<string, unknown>
+              return {
+                id: Number(o.id ?? 0) || undefined,
+                label: String(o.label ?? '').trim(),
+                cn_label: typeof o.cn_label === 'string' ? o.cn_label : null,
+                extra_price: Number(o.extra_price ?? 0) || 0,
+                sort_order: Number(o.sort_order ?? oIdx) || 0,
+                is_active: Boolean(o.is_active ?? true),
+              }
+            })
+            .filter((option): option is NonNullable<typeof option> => Boolean(option)),
+        }
+      })
+      .filter((question): question is BookingProductQuestion => Boolean(question))
+
     setName(product?.name ?? '')
     setCnName(product?.cn_name ?? '')
     setPrice(String(product?.price ?? 0))
@@ -46,6 +82,7 @@ export default function BookingProductUpsertModal({
     setDescription(product?.description ?? '')
     setCategoryIds(Array.isArray(product?.categories) ? product.categories.map((c) => Number(c.id)) : [])
     setIsActive(Boolean(product?.is_active ?? true))
+    setQuestions(mappedQuestions)
     setImageFile(null)
     setPreviewUrl(null)
     setError(null)
