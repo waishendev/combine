@@ -155,6 +155,7 @@ class PublicReceiptController extends Controller
                 'type' => (string) ($item->line_type ?: 'product'),
                 'name' => $row['product_name'],
                 'cn_name' => $item->displayCnName(),
+                'selected_booking_product_options' => is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [],
                 'variant_name' => $row['variant_name'],
                 'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot,
                 'qty' => $row['quantity'],

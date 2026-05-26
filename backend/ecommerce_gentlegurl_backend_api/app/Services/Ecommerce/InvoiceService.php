@@ -31,7 +31,8 @@ class InvoiceService
      *     line_total: float,
      *     promotion_summary: mixed,
      *     is_staff_free_applied: bool,
-     *     staff_free_list_line_total: float
+     *     staff_free_list_line_total: float,
+     *     selected_booking_product_options: array<int, array<string, mixed>>
      * }
      */
     public function mapOrderItemToInvoiceRow(OrderItem $item): array
@@ -87,6 +88,7 @@ class InvoiceService
             'promotion_summary' => data_get($item->promotion_snapshot, 'summary'),
             'is_staff_free_applied' => $isStaffFree,
             'staff_free_list_line_total' => $isStaffFree ? (float) ($item->line_total_snapshot ?? 0) : 0.0,
+            'selected_booking_product_options' => is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [],
         ];
     }
 

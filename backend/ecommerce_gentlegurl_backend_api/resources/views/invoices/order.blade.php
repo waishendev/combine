@@ -626,6 +626,20 @@
                 <?php if(!empty($item['promotion_summary'])): ?>
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
                 <?php endif; ?>
+                <?php if(!empty($item['selected_booking_product_options']) && is_array($item['selected_booking_product_options'])): ?>
+                  <div class="sku" style="margin-top:3px;color:#374151;">Options:</div>
+                  <?php foreach($item['selected_booking_product_options'] as $question): ?>
+                    <?php foreach(($question['options'] ?? []) as $option): ?>
+                      <div class="sku" style="padding-left:10px;">
+                        - {{ $option['label'] ?? '-' }}
+                        <?php if(!empty($option['cn_label'])): ?>
+                          <span style="color:#6b7280;">{{ $option['cn_label'] }}</span>
+                        <?php endif; ?>
+                        <span style="color:#1d4ed8;">+{{ $currency }} {{ number_format((float) ($option['extra_price'] ?? 0), 2) }}</span>
+                      </div>
+                    <?php endforeach; ?>
+                  <?php endforeach; ?>
+                <?php endif; ?>
                 <?php if(((float) ($item['discount_amount'] ?? 0)) > 0): ?>
                   <div class="sku" style="color:#92400e;margin-top:2px;">
                     Original: {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}

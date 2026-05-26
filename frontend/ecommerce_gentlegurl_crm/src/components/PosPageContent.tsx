@@ -5598,6 +5598,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <div className="min-w-0">
                           <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
                           {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
+                          {Array.isArray(item.selected_booking_product_options) && item.selected_booking_product_options.length > 0 ? (
+                            <div className="mt-1 space-y-0.5">
+                              {item.selected_booking_product_options.flatMap((q) => q.options ?? []).map((opt, optIdx) => (
+                                <p key={`cart-bp-opt-${item.id}-${optIdx}`} className="text-[11px] text-gray-500">
+                                  - {opt.label}{opt.cn_label ? <span className="ml-1">{opt.cn_label}</span> : null} <span className="text-blue-700">+RM {Number(opt.extra_price ?? 0).toFixed(2)}</span>
+                                </p>
+                              ))}
+                            </div>
+                          ) : null}
                           <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
