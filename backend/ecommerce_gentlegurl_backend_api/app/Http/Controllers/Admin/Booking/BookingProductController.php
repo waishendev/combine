@@ -71,7 +71,7 @@ class BookingProductController extends Controller
         $product->categories()->sync($categoryIds);
         $this->syncQuestions($product, is_array($questions) ? $questions : []);
 
-        return $this->respond($product->load('categories'), 'Created', true, 201);
+        return $this->respond($product->load(['categories', 'questions.options']), 'Created', true, 201);
     }
 
     public function show(int $id)

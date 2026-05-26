@@ -58,6 +58,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
 
   const [upsertOpen, setUpsertOpen] = useState(false)
   const [upsertTarget, setUpsertTarget] = useState<BookingProductRowData | null>(null)
+  const [upsertLoading, setUpsertLoading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<BookingProductRowData | null>(null)
   const [viewingCategoriesProduct, setViewingCategoriesProduct] = useState<BookingProductRowData | null>(null)
 
@@ -234,6 +235,24 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   const handleDelete = async (product: BookingProductRowData) => {
     await fetch(`/api/proxy/admin/booking/products/${product.id}`, { method: 'DELETE' })
     await fetchProducts()
+  }
+
+  const openEditModal = async (product: BookingProductRowData) => {
+    setUpsertLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/admin/booking/products/${product.id}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const fullProduct = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: BookingProductRowData }).data
+        : null
+      setUpsertTarget(fullProduct ?? product)
+      setUpsertOpen(true)
+    } catch {
+      setUpsertTarget(product)
+      setUpsertOpen(true)
+    } finally {
+      setUpsertLoading(false)
+    }
   }
 
   return (
@@ -466,12 +485,10 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                           <button
                             type="button"
                             className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
-                            onClick={() => {
-                              setUpsertTarget(p)
-                              setUpsertOpen(true)
-                            }}
+                            onClick={() => void openEditModal(p)}
                             aria-label="Edit"
                             title="Edit"
+                            disabled={upsertLoading}
                           >
                             <i className="fa-solid fa-pen-to-square" />
                           </button>
