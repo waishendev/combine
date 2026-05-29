@@ -1,5 +1,5 @@
-export const dynamic = "force-dynamic";
 import { Fragment } from "react";
+export const dynamic = "force-dynamic";
 
 const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
   'Final Settlement',
@@ -207,6 +207,9 @@ export default async function PublicReceiptPage({ params }: Props) {
               const bookingProductAddons = Array.isArray(item.selected_booking_product_options)
                 ? item.selected_booking_product_options.flatMap((q) => q.options ?? [])
                 : [];
+              const bookingProductAddonUnitTotal = bookingProductAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0);
+              const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, Number(item.unit_price ?? 0) - bookingProductAddonUnitTotal) : Number(item.unit_price ?? 0);
+              const displayLineTotal = bookingProductAddons.length > 0 ? Math.max(0, net - (bookingProductAddonUnitTotal * Number(item.qty ?? 1))) : net;
 
               return (
                 <Fragment key={`${item.sku ?? item.name}-${index}`}>
@@ -227,20 +230,19 @@ export default async function PublicReceiptPage({ params }: Props) {
                     ) : null}
                   </td>
                   <td className="px-4 py-3 text-right">{item.qty}</td>
-                  <td className="px-4 py-3 text-right">{money(item.unit_price)}</td>
+                  <td className="px-4 py-3 text-right">{money(displayUnitPrice)}</td>
                   <td className="px-4 py-3 text-right">
                     {isCoveredByPackage ? (
                       <div>
                         <p className="text-xs text-[var(--foreground)]/50 line-through">{money(gross)}</p>
-                        <p className="font-semibold text-emerald-700">{money(net)}</p>
+                        <p className="font-semibold text-emerald-700">{money(displayLineTotal)}</p>
                       </div>
-                    ) : money(net)}
+                    ) : money(displayLineTotal)}
                   </td>
                 </tr>
                 {bookingProductAddons.map((opt, optIdx) => (
                   <tr key={`shop-receipt-addon-${index}-${optIdx}`} className="border-t border-[var(--card-border)] bg-[var(--muted)]/25 text-sm">
-                    <td className="px-4 py-2 pl-8">
-                      <p className="text-[10px] font-bold uppercase tracking-wide text-[var(--foreground)]/60">Add-on</p>
+                    <td className="px-4 py-2 pl-5">
                       <p className="text-[var(--foreground)]">{opt.label}</p>
                       {opt.cn_label ? <p className="text-xs text-[var(--foreground)]/60">{opt.cn_label}</p> : null}
                     </td>

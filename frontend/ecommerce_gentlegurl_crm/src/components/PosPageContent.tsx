@@ -5652,19 +5652,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : item.is_staff_free_applied ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">
                                    RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
                                 </p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (item.discount_amount ?? 0) > 0 ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
                               <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
@@ -7051,6 +7051,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const selectedBookingProductOptions = Array.isArray(item.selected_booking_product_options)
                         ? item.selected_booking_product_options.flatMap((q) => q.options ?? [])
                         : []
+                      const bookingProductAddonUnitTotal = selectedBookingProductOptions.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
+                      const bookingProductBaseUnitPrice = Math.max(0, Number(item.unit_price ?? 0) - bookingProductAddonUnitTotal)
+                      const bookingProductBaseLineTotal = Math.max(0, Number(item.line_total ?? 0) - (bookingProductAddonUnitTotal * Number(item.qty ?? 1)))
                       return (
                         <Fragment key={item.id}>
                         <tr className="bg-white hover:bg-slate-50/90 transition-colors align-top">
@@ -7063,19 +7066,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {!hasVariant && item.product_id && (
                               <p className="text-xs text-gray-400 italic mt-0.5">No variant selected</p>
                             )}
-                                                        <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
-                            {Array.isArray(item.selected_booking_product_options) && item.selected_booking_product_options.length > 0 ? (
-                              <div className="mt-1 space-y-1">
-                                {item.selected_booking_product_options.map((question, qIdx) => (
-                                  <div key={`bp-opt-${item.id}-${question.question_id ?? qIdx}`} className="text-[11px] text-gray-600">
-                                    <p className="font-medium">{question.title}{question.cn_title ? <span className="ml-1 text-gray-500">{question.cn_title}</span> : null}</p>
-                                    {(question.options ?? []).map((opt, optIdx) => (
-                                      <p key={`bp-opt-item-${item.id}-${question.question_id ?? qIdx}-${opt.id ?? optIdx}`} className="pl-2 text-gray-500">- {opt.label}{opt.cn_label ? <span className="ml-1">{opt.cn_label}</span> : null}</p>
-                                    ))}
-                                  </div>
-                                ))}
-                              </div>
-                            ) : null}
+                            <p className="text-xs text-gray-500 mt-0.5">Qty: {item.qty}</p>
                             {item.promotion_applied ? (
                             <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-green-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-700">
@@ -7156,45 +7147,44 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {item.promotion_applied && item.unit_price_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot).toFixed(2)}</p>
-                                <p className="text-gray-700 font-semibold text-gray-800">RM {Number(item.unit_price).toFixed(2)}</p>
+                                <p className="text-gray-700 font-semibold text-gray-800">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                               </div>
                             ) : item.is_staff_free_applied ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot ?? 0).toFixed(2)}</p>
-                                <p className="font-semibold text-emerald-800">RM {Number(item.unit_price).toFixed(2)}</p>
+                                <p className="font-semibold text-emerald-800">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                               </div>
                             ) : (
-                              <p className="text-gray-700">RM {Number(item.unit_price).toFixed(2)}</p>
+                              <p className="text-gray-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                             )}
                           </td>
                           <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : item.is_staff_free_applied ? (
                               <div className="space-y-0.5 text-right">
                                 <p className="text-[11px] font-semibold tabular-nums text-emerald-700">
                                   - RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
                                 </p>
-                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (item.discount_amount ?? 0) > 0 ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
                                 <p className="text-xs text-amber-700">- RM {Number(item.discount_amount ?? 0).toFixed(2)}</p>
-                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
-                              <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                             )}
                           </td>
                         </tr>
                         {selectedBookingProductOptions.map((opt, optIdx) => (
                           <tr key={`checkout-bp-addon-${item.id}-${opt.id ?? optIdx}`} className="bg-slate-50/80 align-top">
-                            <td className="px-4 py-2.5 pl-8 sm:px-5 sm:pl-10">
-                              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p>
+                            <td className="px-4 py-2.5 pl-6 sm:px-5 sm:pl-7">
                               <p className="text-sm text-gray-800">{opt.label}</p>
                               {opt.cn_label ? <p className="text-xs text-gray-500">{opt.cn_label}</p> : null}
                             </td>

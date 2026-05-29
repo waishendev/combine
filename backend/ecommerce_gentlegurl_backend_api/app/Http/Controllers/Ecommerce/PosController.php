@@ -5463,14 +5463,32 @@ class PosController extends Controller
 
         $pdf = $this->invoiceService->buildPdf($order);
 
-        $itemsPayload = $order->items->map(function (OrderItem $item) {
+        $itemsPayload = $order->items->flatMap(function (OrderItem $item) {
             $row = $this->invoiceService->mapOrderItemToInvoiceRow($item);
+            $quantity = max(1, (int) ($row['quantity'] ?? 1));
+            $bookingProductOptions = collect($row['selected_booking_product_options'] ?? [])
+                ->flatMap(fn ($question) => is_array($question) ? ($question['options'] ?? []) : [])
+                ->filter(fn ($option) => is_array($option))
+                ->values();
+            $optionLineTotal = (float) $bookingProductOptions->sum(fn (array $option) => (float) ($option['extra_price'] ?? 0) * $quantity);
 
-            return [
+            $lines = [[
                 'name' => $this->invoiceService->formatEmailLineLabelFromInvoiceRow($row),
-                'qty' => (int) $row['quantity'],
-                'line_total' => (float) $row['line_total'],
-            ];
+                'qty' => $quantity,
+                'line_total' => max(0, (float) $row['line_total'] - $optionLineTotal),
+            ]];
+
+            foreach ($bookingProductOptions as $option) {
+                $label = trim((string) ($option['label'] ?? '')) ?: 'Booking Product Option';
+                $cnLabel = trim((string) ($option['cn_label'] ?? ''));
+                $lines[] = [
+                    'name' => $cnLabel !== '' ? $label . ' - ' . $cnLabel : $label,
+                    'qty' => $quantity,
+                    'line_total' => (float) ($option['extra_price'] ?? 0) * $quantity,
+                ];
+            }
+
+            return $lines;
         })->values()->all();
 
         $orderNumber = (string) ($order->order_number ?? $order->id);
