@@ -167,7 +167,73 @@ class MyBookingController extends Controller
             ];
         })->values();
 
-        return $this->respond($payload);
+        $bookingProductRows = OrderItem::query()
+            ->with(['order.payments'])
+            ->where('line_type', 'booking_product')
+            ->whereHas('order', fn ($query) => $query->where('customer_id', $customer->id))
+            ->latest('id')
+            ->get()
+            ->map(function (OrderItem $item) {
+                $order = $item->order;
+                $quantity = max(1, (int) ($item->quantity ?? 1));
+                $lineTotal = (float) ($item->line_total_after_discount ?? $item->effective_line_total ?? $item->line_total ?? 0);
+                $optionTotal = (float) collect($item->selected_booking_product_options ?? [])
+                    ->flatMap(fn ($question) => $question['options'] ?? [])
+                    ->sum(fn ($option) => (float) ($option['extra_price'] ?? 0) * $quantity);
+                $baseTotal = max(0, $lineTotal - $optionTotal);
+                $isPaid = strtolower((string) ($order?->payment_status ?? '')) === 'paid';
+
+                return [
+                    'id' => -1 * (int) $item->id,
+                    'item_type' => 'booking_product',
+                    'booking_code' => (string) ($order?->order_number ?? ('ORDER-' . $item->order_id)),
+                    'status' => (string) ($order?->status ?? 'completed'),
+                    'start_at' => null,
+                    'starts_at' => '',
+                    'end_at' => null,
+                    'ends_at' => null,
+                    'deposit_amount' => 0.0,
+                    'payment_status' => (string) ($order?->payment_status ?? 'unpaid'),
+                    'service_name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Booking Product'),
+                    'service_cn_name' => $item->displayCnName(),
+                    'selected_booking_product_options' => is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [],
+                    'add_ons' => [],
+                    'addon_total_duration_min' => 0,
+                    'addon_total_price' => $optionTotal,
+                    'service_total' => $baseTotal,
+                    'deposit_paid' => 0.0,
+                    'linked_booking_deposit_total' => 0.0,
+                    'deposit_previously_collected_amount' => 0.0,
+                    'settlement_paid' => $isPaid ? $lineTotal : 0.0,
+                    'package_offset' => 0.0,
+                    'balance_due' => $isPaid ? 0.0 : $lineTotal,
+                    'amount_due_now' => $isPaid ? 0.0 : $lineTotal,
+                    'total_paid' => $isPaid ? $lineTotal : 0.0,
+                    'estimated_duration_min' => 0,
+                    'staff_name' => null,
+                    'customer_remarks' => null,
+                    'service' => null,
+                    'latest_payment' => null,
+                    'paid_via_order' => $order ? [
+                        'order_id' => (int) $order->id,
+                        'order_number' => (string) $order->order_number,
+                        'deposit_order_item_id' => (int) $item->id,
+                    ] : null,
+                    'receipts' => $order ? [[
+                        'order_id' => (int) $order->id,
+                        'order_number' => (string) $order->order_number,
+                        'line_type' => 'booking_product',
+                        'stage_label' => 'Booking Product',
+                        'amount' => $lineTotal,
+                        'payment_method' => $order->payment_method,
+                        'paid_at' => $order->paid_at?->toIso8601String(),
+                        'receipt_public_url' => $this->resolveReceiptUrl((int) $order->id),
+                    ]] : [],
+                ];
+            })
+            ->values();
+
+        return $this->respond($payload->concat($bookingProductRows)->values());
     }
 
 

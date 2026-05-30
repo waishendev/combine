@@ -3,7 +3,7 @@
 import { ChangeEvent, useEffect, useRef, useState } from 'react'
 
 import BookingProductCategoriesPicker from './BookingProductCategoriesPicker'
-import type { BookingProductCategory, BookingProductRowData } from './bookingProductTypes'
+import type { BookingProductCategory, BookingProductQuestion, BookingProductRowData } from './bookingProductTypes'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 
 type Props = {
@@ -31,6 +31,7 @@ export default function BookingProductUpsertModal({
   const [isActive, setIsActive] = useState(true)
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [questions, setQuestions] = useState<BookingProductQuestion[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,6 +39,42 @@ export default function BookingProductUpsertModal({
 
   useEffect(() => {
     if (!show) return
+    const rawQuestions = Array.isArray((product as { questions?: unknown[] } | null)?.questions)
+      ? ((product as { questions?: unknown[] }).questions ?? [])
+      : []
+    const mappedQuestions: BookingProductQuestion[] = rawQuestions
+      .map((question, qIdx) => {
+        if (!question || typeof question !== 'object') return null
+        const q = question as Record<string, unknown>
+        const optionsRaw = Array.isArray(q.options) ? q.options : []
+        return {
+          id: Number(q.id ?? 0) || undefined,
+          title: String(q.title ?? '').trim(),
+          cn_title: typeof q.cn_title === 'string' ? q.cn_title : null,
+          description: typeof q.description === 'string' ? q.description : null,
+          cn_description: typeof q.cn_description === 'string' ? q.cn_description : null,
+          question_type: q.question_type === 'multi_choice' ? 'multi_choice' : 'single_choice',
+          sort_order: Number(q.sort_order ?? qIdx) || 0,
+          is_required: Boolean(q.is_required ?? false),
+          is_active: Boolean(q.is_active ?? true),
+          options: optionsRaw
+            .map((option, oIdx) => {
+              if (!option || typeof option !== 'object') return null
+              const o = option as Record<string, unknown>
+              return {
+                id: Number(o.id ?? 0) || undefined,
+                label: String(o.label ?? '').trim(),
+                cn_label: typeof o.cn_label === 'string' ? o.cn_label : null,
+                extra_price: Number(o.extra_price ?? 0) || 0,
+                sort_order: Number(o.sort_order ?? oIdx) || 0,
+                is_active: Boolean(o.is_active ?? true),
+              }
+            })
+            .filter((option): option is NonNullable<typeof option> => Boolean(option)),
+        }
+      })
+      .filter((question): question is BookingProductQuestion => Boolean(question))
+
     setName(product?.name ?? '')
     setCnName(product?.cn_name ?? '')
     setPrice(String(product?.price ?? 0))
@@ -45,6 +82,7 @@ export default function BookingProductUpsertModal({
     setDescription(product?.description ?? '')
     setCategoryIds(Array.isArray(product?.categories) ? product.categories.map((c) => Number(c.id)) : [])
     setIsActive(Boolean(product?.is_active ?? true))
+    setQuestions(mappedQuestions)
     setImageFile(null)
     setPreviewUrl(null)
     setError(null)
@@ -101,6 +139,29 @@ export default function BookingProductUpsertModal({
       fd.append('is_active', isActive ? '1' : '0')
       categoryIds.forEach((id) => fd.append('category_ids[]', String(id)))
       if (imageFile) fd.append('image', imageFile)
+
+      questions.forEach((q, qi) => {
+        if (!q.title?.trim()) return
+        if (q.id) fd.append(`questions[${qi}][id]`, String(q.id))
+        fd.append(`questions[${qi}][title]`, q.title)
+        if (q.cn_title?.trim()) fd.append(`questions[${qi}][cn_title]`, q.cn_title)
+        if (q.description?.trim()) fd.append(`questions[${qi}][description]`, q.description)
+        if (q.cn_description?.trim()) fd.append(`questions[${qi}][cn_description]`, q.cn_description)
+        fd.append(`questions[${qi}][question_type]`, q.question_type)
+        fd.append(`questions[${qi}][sort_order]`, String(q.sort_order ?? 0))
+        fd.append(`questions[${qi}][is_required]`, q.is_required ? '1' : '0')
+        fd.append(`questions[${qi}][is_active]`, q.is_active ? '1' : '0')
+        ;(q.options ?? []).forEach((opt, oi) => {
+          if (!opt.label?.trim()) return
+          if (opt.id) fd.append(`questions[${qi}][options][${oi}][id]`, String(opt.id))
+          fd.append(`questions[${qi}][options][${oi}][label]`, opt.label)
+          if (opt.cn_label?.trim()) fd.append(`questions[${qi}][options][${oi}][cn_label]`, opt.cn_label)
+          fd.append(`questions[${qi}][options][${oi}][extra_price]`, String(opt.extra_price ?? 0))
+          fd.append(`questions[${qi}][options][${oi}][sort_order]`, String(opt.sort_order ?? 0))
+          fd.append(`questions[${qi}][options][${oi}][is_active]`, opt.is_active ? '1' : '0')
+        })
+      })
+
       if (isEditing && product?.id) fd.append('_method', 'PUT')
 
       const url =
@@ -318,6 +379,24 @@ export default function BookingProductUpsertModal({
                   disabled={submitting}
                   label="Categories"
                 />
+              </div>
+
+
+              <div className="rounded-lg border border-gray-200 p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-gray-800">Questions / Add-ons</h3>
+                  <button type="button" className="text-xs rounded bg-blue-50 text-blue-700 px-2 py-1" onClick={() => setQuestions((prev) => [...prev, { title: '', cn_title: '', description: '', cn_description: '', question_type: 'single_choice', sort_order: prev.length + 1, is_required: false, is_active: true, options: [] }])}>+ Add Question</button>
+                </div>
+                {questions.map((q, qi) => (
+                  <div key={`q-${qi}`} className="rounded border border-gray-200 p-2 space-y-2">
+                    <div className="flex justify-between"><p className="text-xs font-medium">Question {qi + 1}</p><button type="button" className="text-xs text-red-600" onClick={() => setQuestions((prev) => prev.filter((_, i) => i !== qi))}>Remove</button></div>
+                    <input className="w-full border rounded px-2 py-1 text-sm" placeholder="Title" value={q.title} onChange={(e) => setQuestions(prev => prev.map((it,i)=> i===qi ? {...it,title:e.target.value}:it))} />
+                    <input className="w-full border rounded px-2 py-1 text-sm" placeholder="中文标题" value={q.cn_title ?? ''} onChange={(e) => setQuestions(prev => prev.map((it,i)=> i===qi ? {...it,cn_title:e.target.value}:it))} />
+                    <div className="grid grid-cols-2 gap-2"><select className="border rounded px-2 py-1 text-sm" value={q.question_type} onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i===qi?{...it,question_type:e.target.value as 'single_choice'|'multi_choice'}:it))}><option value="single_choice">single_choice</option><option value="multi_choice">multi_choice</option></select><button type="button" className="text-xs rounded border px-2" onClick={() => setQuestions(prev => prev.map((it,i)=> i===qi ? {...it,is_required:!it.is_required}:it))}>Required: {q.is_required ? 'Yes' : 'No'}</button></div>
+                    <div className="space-y-1">{(q.options ?? []).map((opt, oi) => <div key={`o-${qi}-${oi}`} className="grid grid-cols-12 gap-1"><input className="col-span-4 border rounded px-1 py-1 text-xs" value={opt.label} placeholder="Label" onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.map((o,j)=>j===oi?{...o,label:e.target.value}:o)}))}/><input className="col-span-3 border rounded px-1 py-1 text-xs" value={opt.cn_label ?? ''} placeholder="中文" onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.map((o,j)=>j===oi?{...o,cn_label:e.target.value}:o)}))}/><input type="number" className="col-span-3 border rounded px-1 py-1 text-xs" value={opt.extra_price} placeholder="Extra" onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.map((o,j)=>j===oi?{...o,extra_price:Number(e.target.value||0)}:o)}))}/><button type="button" className="col-span-2 text-red-600 text-xs" onClick={()=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.filter((_,j)=>j!==oi)}))}>X</button></div>)}</div>
+                    <button type="button" className="text-xs rounded bg-gray-100 px-2 py-1" onClick={() => setQuestions(prev => prev.map((it,i)=>i!==qi?it:{...it,options:[...(it.options ?? []),{label:'',cn_label:'',extra_price:0,sort_order:(it.options?.length ?? 0)+1,is_active:true}]}))}>+ Add Option</button>
+                  </div>
+                ))}
               </div>
 
               <div>

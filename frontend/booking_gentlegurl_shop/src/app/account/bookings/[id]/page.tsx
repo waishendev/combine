@@ -33,7 +33,12 @@ const defaultPolicy: BookingPolicy = {
 
 const BOOKING_ACTION_STATUS = new Set(["CONFIRMED"]);
 const BOOKING_PHOTO_UPLOAD_STATUS = new Set(["CONFIRMED", "HOLD"]);
-const formatCurrency = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+const formatCurrency = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+
+const isBookingProductRecord = (booking: BookingRecord) => String(booking.item_type ?? "").toLowerCase() === "booking_product";
+
+const bookingProductOptions = (booking: BookingRecord) =>
+  (booking.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
 const normalizeStatus = (value?: string | null) => String(value || "—").toUpperCase();
 
 const bookingBadgeClass = (value?: string | null) => {
@@ -175,7 +180,7 @@ export default function BookingDetailPage() {
 
   const getActionState = (booking: BookingRecord) => {
     const now = Date.now();
-    const bookingAt = new Date(booking.starts_at).getTime();
+    const bookingAt = booking.starts_at ? new Date(booking.starts_at).getTime() : 0;
     const isFuture = bookingAt > now;
     const isActionStatus = BOOKING_ACTION_STATUS.has(booking.status);
     const currentCount = Number(booking.reschedule_count ?? 0);
@@ -223,7 +228,7 @@ export default function BookingDetailPage() {
   };
 
   const openRescheduleModal = (booking: BookingRecord) => {
-    const start = new Date(booking.starts_at);
+    const start = new Date(booking.starts_at || new Date().toISOString());
     const yyyy = String(start.getFullYear());
     const mm = String(start.getMonth() + 1).padStart(2, "0");
     const dd = String(start.getDate()).padStart(2, "0");
@@ -447,7 +452,9 @@ export default function BookingDetailPage() {
         {bookings.map((booking) => {
           const state = getActionState(booking);
           const payment = getPaymentSummary(booking);
-          const startsAt = new Date(booking.starts_at);
+          const isBookingProduct = isBookingProductRecord(booking);
+          const productOptions = bookingProductOptions(booking);
+          const startsAt = booking.starts_at ? new Date(booking.starts_at) : null;
           const duration = Number(booking.estimated_duration_min ?? 0) ||
             Number(booking.service?.duration_min ?? 0) + Number(booking.addon_total_duration_min ?? 0);
           const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
@@ -458,7 +465,7 @@ export default function BookingDetailPage() {
               <section>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Service</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{isBookingProduct ? "Booking Product" : "Service"}</p>
                     <div className="mt-1">
                       <ServiceNameStack name={booking.service_name} cnName={booking.service_cn_name ?? booking.service?.cn_name} />
                     </div>
@@ -466,7 +473,19 @@ export default function BookingDetailPage() {
 
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
-                    {(booking.add_ons?.length ?? 0) > 0 ? (
+                    {isBookingProduct ? (
+                      productOptions.length > 0 ? (
+                        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                          {productOptions.map((option, index) => (
+                            <div key={`${option.id ?? option.label ?? index}`} className="rounded-lg bg-[var(--card)] p-3 text-sm">
+                              <p className="font-medium">{option.label}</p>
+                              {option.cn_label ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{option.cn_label}</p> : null}
+                              <p className="mt-1 text-xs text-[var(--text-muted)]">{formatCurrency(option.extra_price)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : <p className="mt-1 text-sm text-[var(--text-muted)]">No add-ons selected.</p>
+                    ) : (booking.add_ons?.length ?? 0) > 0 ? (
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
                         {booking.add_ons?.map((addon, index) => (
                           <div key={`${addon.id ?? addon.name}-${index}`} className="rounded-lg bg-[var(--card)] p-3 text-sm">
@@ -485,19 +504,19 @@ export default function BookingDetailPage() {
 
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Staff</p>
-                    <p className="mt-1 font-medium">{booking.staff_name || "Any staff"}</p>
+                    <p className="mt-1 font-medium">{isBookingProduct ? "-" : (booking.staff_name || "Any staff")}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Date</p>
-                    <p className="mt-1 font-medium">{startsAt.toLocaleDateString("en-MY", { dateStyle: "medium" })}</p>
+                    <p className="mt-1 font-medium">{startsAt && !isBookingProduct ? startsAt.toLocaleDateString("en-MY", { dateStyle: "medium" }) : "-"}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Time</p>
-                    <p className="mt-1 font-medium">{formatBookingTime(booking)}</p>
+                    <p className="mt-1 font-medium">{isBookingProduct ? "-" : formatBookingTime(booking)}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Duration</p>
-                    <p className="mt-1 font-medium">{duration > 0 ? `${duration} mins` : "—"}</p>
+                    <p className="mt-1 font-medium">{isBookingProduct ? "-" : (duration > 0 ? `${duration} mins` : "—")}</p>
                   </div>
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Rescheduled</p>

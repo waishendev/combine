@@ -33,6 +33,34 @@ const resolveServicePhotoUrl = (photo: { image_url?: string | null; image_path?:
   return normalized.startsWith('/storage/') ? normalized : `/storage${normalized}`;
 };
 
+
+const formatOptionPrice = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+
+function BookingProductOptionsList({
+  options,
+}: {
+  options: Array<{ id?: number; label?: string | null; cn_label?: string | null; extra_price?: number | string | null }>;
+}) {
+  if (options.length === 0) return null;
+
+  return (
+    <div className="mt-2 max-w-xl text-xs text-[var(--foreground)]/70">
+      <p className="font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Options:</p>
+      <ul className="mt-1 space-y-1">
+        {options.map((option, index) => (
+          <li key={`${option.id ?? option.label ?? index}`} className="flex items-start justify-between gap-4">
+            <span className="min-w-0 flex-1">
+              <span className="text-[var(--foreground)]">- {option.label || 'Option'}</span>
+              {option.cn_label ? <span className="text-[var(--foreground)]/60"> / {option.cn_label}</span> : null}
+            </span>
+            <span className="shrink-0 font-semibold text-[var(--foreground)]">+{formatOptionPrice(option.extra_price)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 const resolveOrderItemLabel = (item: { line_type?: string | null; name?: string }) => {
   const lineType = String(item.line_type ?? "").toLowerCase();
   if (lineType === "booking_addon") return `Add-on - ${item.name || "Add-on"}`;
@@ -126,45 +154,49 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
         <div className="flex-1 rounded-2xl border border-[var(--card-border)] bg-[var(--myorder-background)] p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">Items</h2>
           <div className="mt-3 space-y-3">
-            {order.items.map((item) => (
-              <div
-                key={item.id}
-                className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex items-center gap-3">
-                  {!item.line_type || item.line_type === "product" ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={getPrimaryProductImage(item)}
-                      alt={item.name ?? "Product image"}
-                      className="h-14 w-14 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--muted)] bg-[var(--background)] text-[10px] font-semibold uppercase text-[var(--foreground)]/60">
-                      {String(item.line_type).replaceAll("_", " ")}
-                    </div>
-                  )}
-                  <div>
-                    <OrderItemNameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
-                    {(item.product_type === "variant" || item.product_variant_id) && (
-                      <p className="text-xs text-[var(--foreground)]/60">
-                        Variant: {item.variant_name ?? "—"}
-                        {item.variant_sku ? ` (${item.variant_sku})` : ""}
-                      </p>
-                    )}
-                    {item.line_type === "service" ? (
-                      <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
-                    ) : null}
-                    <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+            {order.items.map((item) => {
+              const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
 
+              return (
+                <div
+                  key={item.id}
+                  className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-3 sm:flex-row sm:items-start sm:justify-between"
+                >
+                  <div className="flex items-start gap-3">
+                    {!item.line_type || item.line_type === "product" ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={getPrimaryProductImage(item)}
+                        alt={item.name ?? "Product image"}
+                        className="h-14 w-14 rounded-lg object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--muted)] bg-[var(--background)] text-[10px] font-semibold uppercase text-[var(--foreground)]/60">
+                        {String(item.line_type).replaceAll("_", " ")}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <OrderItemNameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
+                      {(item.product_type === "variant" || item.product_variant_id) && (
+                        <p className="text-xs text-[var(--foreground)]/60">
+                          Variant: {item.variant_name ?? "—"}
+                          {item.variant_sku ? ` (${item.variant_sku})` : ""}
+                        </p>
+                      )}
+                      {item.line_type === "service" ? (
+                        <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
+                      ) : null}
+                      <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
+                      <BookingProductOptionsList options={bookingProductOptions} />
+                    </div>
+                  </div>
+                  <div className="w-full shrink-0 text-left text-sm text-[var(--foreground)] sm:w-auto sm:text-right">
+                    <p>Unit: {item.unit_price}</p>
+                    <p className="font-semibold text-[var(--accent-strong)]">Total: {item.line_total}</p>
                   </div>
                 </div>
-                <div className="w-full text-left text-sm text-[var(--foreground)] sm:w-auto sm:text-right">
-                  <p>Unit: {item.unit_price}</p>
-                  <p className="font-semibold text-[var(--accent-strong)]">Total: {item.line_total}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

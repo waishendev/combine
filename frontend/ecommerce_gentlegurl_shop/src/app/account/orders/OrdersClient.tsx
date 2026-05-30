@@ -38,6 +38,34 @@ const formatPaymentMethod = (method?: string | null) => {
   return method || 'N/A';
 };
 
+
+const formatOptionPrice = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+
+function BookingProductOptionsList({
+  options,
+}: {
+  options: Array<{ id?: number; label?: string | null; cn_label?: string | null; extra_price?: number | string | null }>;
+}) {
+  if (options.length === 0) return null;
+
+  return (
+    <div className="mt-2 max-w-xl text-xs text-[var(--foreground)]/70">
+      <p className="font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Options:</p>
+      <ul className="mt-1 space-y-1">
+        {options.map((option, index) => (
+          <li key={`${option.id ?? option.label ?? index}`} className="flex items-start justify-between gap-4">
+            <span className="min-w-0 flex-1">
+              <span className="text-[var(--foreground)]">- {option.label || 'Option'}</span>
+              {option.cn_label ? <span className="text-[var(--foreground)]/60"> / {option.cn_label}</span> : null}
+            </span>
+            <span className="shrink-0 font-semibold text-[var(--foreground)]">{formatOptionPrice(option.extra_price)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 const resolveOrderItemLabel = (item: OrderItemSummary) => {
   const lineType = String(item.line_type ?? "").toLowerCase();
   if (lineType === "booking_addon") return `Booking Add-on Deposit - ${item.name || "Add-on"}`;
@@ -448,6 +476,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       const isProductLine = !item.line_type || item.line_type === "product";
                       const variantName = item.variant_name ?? "—";
                       const variantSkuSuffix = item.variant_sku ? ` (${item.variant_sku})` : "";
+                      const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
                       return (
                         <div
                           key={item.id}
@@ -477,6 +506,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                               {String(item.line_type ?? "").toLowerCase() === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
                               ) : null}
+                              <BookingProductOptionsList options={bookingProductOptions} />
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
                             </div>
                           </div>

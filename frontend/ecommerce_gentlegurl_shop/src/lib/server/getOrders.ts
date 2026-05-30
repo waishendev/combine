@@ -18,6 +18,7 @@ export type OrderItemSummary = {
   line_type?: string | null;
   booking_id?: number | null;
   service_package_id?: number | null;
+  selected_booking_product_options?: Array<{ options?: Array<{ id?: number; label?: string | null; cn_label?: string | null; extra_price?: number | string | null }> }>;
   product_image?: string | null;
   cover_image_url?: string | null;
   review_id?: number | null;

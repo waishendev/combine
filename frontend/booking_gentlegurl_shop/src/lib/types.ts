@@ -163,10 +163,23 @@ export type BookingCartPackageItem = {
   status: string;
 };
 
+export type BookingProductSelectedOptionGroup = {
+  question_id?: number;
+  title?: string | null;
+  cn_title?: string | null;
+  options?: Array<{
+    id?: number;
+    label?: string | null;
+    cn_label?: string | null;
+    extra_price?: number | string | null;
+  }>;
+};
+
 export type BookingRecord = {
   id: number;
   booking_code?: string | null;
   status: string;
+  item_type?: string | null;
   service_name: string;
   service_cn_name?: string | null;
   add_ons?: Array<{
@@ -235,6 +248,7 @@ export type BookingRecord = {
     created_at?: string | null;
   }>;
   customer_remarks?: string | null;
+  selected_booking_product_options?: BookingProductSelectedOptionGroup[];
   service?: {
     id: number;
     name: string;

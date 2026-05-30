@@ -58,6 +58,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
 
   const [upsertOpen, setUpsertOpen] = useState(false)
   const [upsertTarget, setUpsertTarget] = useState<BookingProductRowData | null>(null)
+  const [upsertLoading, setUpsertLoading] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<BookingProductRowData | null>(null)
   const [viewingCategoriesProduct, setViewingCategoriesProduct] = useState<BookingProductRowData | null>(null)
 
@@ -234,6 +235,24 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
   const handleDelete = async (product: BookingProductRowData) => {
     await fetch(`/api/proxy/admin/booking/products/${product.id}`, { method: 'DELETE' })
     await fetchProducts()
+  }
+
+  const openEditModal = async (product: BookingProductRowData) => {
+    setUpsertLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/admin/booking/products/${product.id}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const fullProduct = (json && typeof json === 'object' && 'data' in json)
+        ? (json as { data?: BookingProductRowData }).data
+        : null
+      setUpsertTarget(fullProduct ?? product)
+      setUpsertOpen(true)
+    } catch {
+      setUpsertTarget(product)
+      setUpsertOpen(true)
+    } finally {
+      setUpsertLoading(false)
+    }
   }
 
   return (
@@ -443,7 +462,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                       <div className="h-10 w-10 rounded border border-dashed border-gray-300 bg-gray-50" />
                     )}
                   </td>
-                  <td className="px-4 py-2 border border-gray-200">{p.name}</td>
+                  <td className="px-4 py-2 border border-gray-200"><p className="font-medium text-gray-900">{p.name}</p>{p.cn_name ? <p className="mt-0.5 text-xs text-gray-500">{p.cn_name}</p> : null}</td>
                   <td className="px-4 py-2 border border-gray-200">RM {Number(p.price ?? 0).toFixed(2)}</td>
                   <td className="border border-gray-200 px-4 py-2">
                     <BookingProductCategoriesCell
@@ -466,12 +485,10 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                           <button
                             type="button"
                             className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
-                            onClick={() => {
-                              setUpsertTarget(p)
-                              setUpsertOpen(true)
-                            }}
+                            onClick={() => void openEditModal(p)}
                             aria-label="Edit"
                             title="Edit"
+                            disabled={upsertLoading}
                           >
                             <i className="fa-solid fa-pen-to-square" />
                           </button>

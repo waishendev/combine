@@ -68,6 +68,13 @@ type CartItem = {
   manual_discount_allowed?: boolean
   booking_product_id?: number | null
   booking_product_category?: string | null
+  product_cn_name?: string | null
+  selected_booking_product_options?: Array<{
+    question_id?: number
+    title?: string
+    cn_title?: string | null
+    options?: Array<{ id?: number; label?: string; cn_label?: string | null; extra_price?: number }>
+  }>
 }
 
 type AppliedPromotion = {
@@ -542,7 +549,7 @@ type ServicePackageOption = {
 }
 
 type PosCatalogTab = 'products' | 'booking-products' | 'book-service' | 'service-packages' | 'settlement'
-type BookingProductOption = { id: number; name: string; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean }
+type BookingProductOption = { id: number; name: string; cn_name?: string | null; barcode?: string | null; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean; questions?: BookingServiceQuestion[] }
 type BookingProductCategoryOption = { id: number; name: string; sort_order?: number; is_active?: boolean }
 
 type ProductOption = {
@@ -1024,6 +1031,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
+  const [bookingProductOptionModalOpen, setBookingProductOptionModalOpen] = useState(false)
+  const [bookingProductDraft, setBookingProductDraft] = useState<BookingProductOption | null>(null)
+  const [bookingProductSelectedOptionIds, setBookingProductSelectedOptionIds] = useState<number[]>([])
+  const [bookingProductOptionError, setBookingProductOptionError] = useState<string | null>(null)
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
@@ -2317,6 +2328,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             id: Number(row.id),
             name: String(row.name ?? ''),
             price: Number(row.price ?? 0),
+            cn_name: typeof row.cn_name === 'string' ? row.cn_name : null,
+            barcode: typeof row.barcode === 'string' ? row.barcode : null,
+            questions: Array.isArray(row.questions) ? row.questions : [],
             image_url: row.image_url ?? null,
             category: row.category ?? null,
             is_active: Boolean(row.is_active ?? true),
@@ -2328,11 +2342,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
-  const addBookingProductToCart = useCallback(async (row: BookingProductOption) => {
+  const addBookingProductToCart = useCallback(async (row: BookingProductOption, selectedOptionIds: number[] = []) => {
     const res = await fetch('/api/proxy/pos/cart/add-booking-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT' }),
+      body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT', selected_option_ids: selectedOptionIds }),
     })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
@@ -5312,12 +5326,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
                 <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
                   {filteredBookingProducts.map((item) => (
-                    <button key={item.id} type="button" onClick={() => addBookingProductToCart(item)} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
+                    <button key={item.id} type="button" onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0) { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductSelectedOptionIds([]); setBookingProductOptionError(null); setBookingProductOptionModalOpen(true); } }} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-gray-900">{item.name}</p>
-                          <p className="text-xs text-gray-500">{item.category?.name ?? '-'}</p>
+                          {item.cn_name ? <p className="truncate text-xs text-gray-500">{item.cn_name}</p> : null}
+                          <p className="text-xs text-gray-500">{item.barcode ? `SKU: ${item.barcode}` : (item.category?.name ?? '-')}</p>
                           <p className="mt-1 text-sm font-bold text-blue-700">RM {Number(item.price ?? 0).toFixed(2)}</p>
                         </div>
                       </div>
@@ -5582,6 +5597,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="flex min-w-0 flex-col gap-3">
                         <div className="min-w-0">
                           <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
+                          {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
+                          {Array.isArray(item.selected_booking_product_options) && item.selected_booking_product_options.length > 0 ? (
+                            <div className="mt-1 space-y-0.5">
+                              {item.selected_booking_product_options.flatMap((q) => q.options ?? []).map((opt, optIdx) => (
+                                <p key={`cart-bp-opt-${item.id}-${optIdx}`} className="text-[11px] text-gray-500">
+                                  - {opt.label}{opt.cn_label ? <span className="ml-1">{opt.cn_label}</span> : null} <span className="text-blue-700">+RM {Number(opt.extra_price ?? 0).toFixed(2)}</span>
+                                </p>
+                              ))}
+                            </div>
+                          ) : null}
                           <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
@@ -5627,19 +5652,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : item.is_staff_free_applied ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">
                                    RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
                                 </p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (item.discount_amount ?? 0) > 0 ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
                               <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
@@ -7023,10 +7048,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const assignment = checkoutItemAssignments.find((x) => x.cart_item_id === item.id)
                       const hasVariant = Boolean(item.variant_id || item.variant_name || item.variant_sku)
                       const variantDisplay = item.variant_name || item.variant_sku || null
+                      const selectedBookingProductOptions = Array.isArray(item.selected_booking_product_options)
+                        ? item.selected_booking_product_options.flatMap((q) => q.options ?? [])
+                        : []
+                      const bookingProductAddonUnitTotal = selectedBookingProductOptions.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
+                      const bookingProductBaseUnitPrice = Math.max(0, Number(item.unit_price ?? 0) - bookingProductAddonUnitTotal)
+                      const bookingProductBaseLineTotal = Math.max(0, Number(item.line_total ?? 0) - (bookingProductAddonUnitTotal * Number(item.qty ?? 1)))
                       return (
-                        <tr key={item.id} className="bg-white hover:bg-slate-50/90 transition-colors align-top">
+                        <Fragment key={item.id}>
+                        <tr className="bg-white hover:bg-slate-50/90 transition-colors align-top">
                           <td className="px-4 py-3.5 sm:px-5">
                             <p className="font-semibold text-gray-900">{item.product_name}</p>
+                            {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
                             {hasVariant && variantDisplay && (
                               <p className="text-xs text-blue-600 font-medium mt-0.5">Variant: {variantDisplay}</p>
                             )}
@@ -7114,41 +7147,53 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             {item.promotion_applied && item.unit_price_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot).toFixed(2)}</p>
-                                <p className="text-gray-700 font-semibold text-gray-800">RM {Number(item.unit_price).toFixed(2)}</p>
+                                <p className="text-gray-700 font-semibold text-gray-800">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                               </div>
                             ) : item.is_staff_free_applied ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot ?? 0).toFixed(2)}</p>
-                                <p className="font-semibold text-emerald-800">RM {Number(item.unit_price).toFixed(2)}</p>
+                                <p className="font-semibold text-emerald-800">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                               </div>
                             ) : (
-                              <p className="text-gray-700">RM {Number(item.unit_price).toFixed(2)}</p>
+                              <p className="text-gray-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                             )}
                           </td>
                           <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : item.is_staff_free_applied ? (
                               <div className="space-y-0.5 text-right">
                                 <p className="text-[11px] font-semibold tabular-nums text-emerald-700">
                                   - RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
                                 </p>
-                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (item.discount_amount ?? 0) > 0 ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
                                 <p className="text-xs text-amber-700">- RM {Number(item.discount_amount ?? 0).toFixed(2)}</p>
-                                <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
-                              <p className="font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              <p className="font-bold text-orange-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseLineTotal : item.line_total).toFixed(2)}</p>
                             )}
                           </td>
                         </tr>
+                        {selectedBookingProductOptions.map((opt, optIdx) => (
+                          <tr key={`checkout-bp-addon-${item.id}-${opt.id ?? optIdx}`} className="bg-slate-50/80 align-top">
+                            <td className="px-4 py-2.5 pl-6 sm:px-5 sm:pl-7">
+                              <p className="text-sm text-gray-800">{opt.label}</p>
+                              {opt.cn_label ? <p className="text-xs text-gray-500">{opt.cn_label}</p> : null}
+                            </td>
+                            <td className="px-4 py-2.5 text-xs text-gray-500">Booking Product Option</td>
+                            <td className="px-4 py-2.5 text-left tabular-nums text-sm text-gray-700">RM {Number(opt.extra_price ?? 0).toFixed(2)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-gray-900 sm:px-5">RM {(Number(opt.extra_price ?? 0) * Number(item.qty ?? 1)).toFixed(2)}</td>
+                          </tr>
+                        ))}
+                        </Fragment>
                       )
                     })}
                     {cartServiceItems.map((serviceItem) => {
@@ -8765,6 +8810,69 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           </div>
         </div>
       )}
+
+
+      {bookingProductOptionModalOpen && bookingProductDraft ? (
+        <div className="fixed inset-0 z-[180] bg-black/40">
+          <div className="mx-auto mt-16 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
+              <div>
+                <h4 className="text-lg font-bold text-gray-900">Booking Product Options</h4>
+                <p className="mt-1 text-sm font-semibold text-gray-800">{bookingProductDraft.name}</p>
+                {bookingProductDraft.cn_name ? <p className="text-xs text-gray-500">{bookingProductDraft.cn_name}</p> : null}
+              </div>
+              <button type="button" onClick={() => setBookingProductOptionModalOpen(false)} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100">×</button>
+            </div>
+            <div className="max-h-[60vh] space-y-3 overflow-y-auto px-5 py-4">
+              {(bookingProductDraft.questions ?? []).map((q) => (
+                <div key={`bpq-${q.id}`} className="rounded-xl border border-gray-200 bg-gray-50/60 p-3">
+                  <p className="text-sm font-semibold text-gray-900">
+                    {q.title}
+                    {q.is_required ? <span className="ml-2 rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">Required</span> : null}
+                  </p>
+                  {q.cn_title ? <p className="mt-0.5 text-xs text-gray-500">{q.cn_title}</p> : null}
+                  {q.cn_description ? <p className="mt-1 text-xs text-gray-500">{q.cn_description}</p> : null}
+                  <div className="mt-2 space-y-1.5">
+                    {q.options.filter((o) => o.is_active !== false).map((opt) => {
+                      const checked = bookingProductSelectedOptionIds.includes(opt.id)
+                      return (
+                        <label key={`bpop-${opt.id}`} className={`flex items-start justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${checked ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white'}`}>
+                          <span className="flex items-start gap-2">
+                            <input
+                              type={q.question_type === 'multi_choice' ? 'checkbox' : 'radio'}
+                              name={`bp-q-${q.id}`}
+                              checked={checked}
+                              onChange={(e) => {
+                                setBookingProductSelectedOptionIds((prev) => {
+                                  if (q.question_type === 'multi_choice') {
+                                    return e.target.checked ? [...prev, opt.id] : prev.filter((id) => id !== opt.id)
+                                  }
+                                  const withoutQuestion = prev.filter((id) => !q.options.some((o) => o.id === id))
+                                  return e.target.checked ? [...withoutQuestion, opt.id] : withoutQuestion
+                                })
+                              }}
+                            />
+                            <span>
+                              <span className="block text-sm text-gray-800">{opt.label}</span>
+                              {opt.cn_label ? <span className="block text-xs text-gray-500">{opt.cn_label}</span> : null}
+                            </span>
+                          </span>
+                          <span className="text-xs font-semibold text-blue-700">+RM {Number(opt.extra_price ?? 0).toFixed(2)}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {bookingProductOptionError ? <p className="mt-2 text-sm text-red-600">{bookingProductOptionError}</p> : null}
+            <div className="flex justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
+              <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700" onClick={() => setBookingProductOptionModalOpen(false)}>Cancel</button>
+              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={async () => { for (const q of (bookingProductDraft.questions ?? [])) { if (!q.is_required) continue; const has = q.options.some((o) => bookingProductSelectedOptionIds.includes(o.id)); if (!has) { setBookingProductOptionError('Please answer all required questions.'); return; } } setBookingProductOptionError(null); await addBookingProductToCart(bookingProductDraft, bookingProductSelectedOptionIds); setBookingProductOptionModalOpen(false); }}>Add to Cart</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {memberOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>

@@ -602,6 +602,18 @@
         <tbody>
           <?php foreach($items as $item): ?>
             <?php if(! $shouldShowReceiptItem($item)) { continue; } ?>
+            @php
+              $bookingProductOptionRows = collect($item['selected_booking_product_options'] ?? [])
+                ->flatMap(fn ($question) => $question['options'] ?? [])
+                ->values();
+              $bookingProductOptionUnitTotal = (float) $bookingProductOptionRows->sum(fn ($option) => (float) ($option['extra_price'] ?? 0));
+              $displayUnitPrice = $bookingProductOptionRows->isNotEmpty()
+                ? max(0, (float) ($item['unit_price'] ?? 0) - $bookingProductOptionUnitTotal)
+                : (float) ($item['unit_price'] ?? 0);
+              $displayLineTotal = $bookingProductOptionRows->isNotEmpty()
+                ? max(0, (float) ($item['line_total'] ?? 0) - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1)))
+                : (float) ($item['line_total'] ?? 0);
+            @endphp
             <tr>
               <td>
                 <div class="item-name">{{ $item['product_name'] }}</div>
@@ -660,7 +672,7 @@
               </td>
 
               <td class="numeric">{{ (int) $item['quantity'] }}</td>
-              <td class="numeric">{{ $currency }} {{ number_format((float) $item['unit_price'], 2) }}</td>
+              <td class="numeric">{{ $currency }} {{ number_format((float) $displayUnitPrice, 2) }}</td>
               <td class="numeric">
                 <?php if(!empty($item['covered_by_package'])): ?>
                   <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
@@ -673,10 +685,23 @@
                       {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
                     </div>
                   <?php endif; ?>
-                  <div>{{ $currency }} {{ number_format((float) $item['line_total'], 2) }}</div>
+                  <div>{{ $currency }} {{ number_format((float) $displayLineTotal, 2) }}</div>
                 <?php endif; ?>
               </td>
             </tr>
+            @foreach($bookingProductOptionRows as $option)
+              <tr style="background:#f9fafb;">
+                <td style="padding-left:18px;">
+                  <div class="item-name" style="font-weight:500;">{{ $option['label'] ?? '-' }}</div>
+                  <?php if(!empty($option['cn_label'])): ?>
+                    <div class="sku" style="margin-top:1px;">{{ $option['cn_label'] }}</div>
+                  <?php endif; ?>
+                </td>
+                <td class="numeric">{{ (int) ($item['quantity'] ?? 1) }}</td>
+                <td class="numeric">{{ $currency }} {{ number_format((float) ($option['extra_price'] ?? 0), 2) }}</td>
+                <td class="numeric">{{ $currency }} {{ number_format((float) ($option['extra_price'] ?? 0) * (int) ($item['quantity'] ?? 1), 2) }}</td>
+              </tr>
+            @endforeach
           <?php endforeach; ?>
         </tbody>
       </table>
