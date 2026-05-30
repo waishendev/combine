@@ -29,6 +29,32 @@ function formatPaymentMethod(method?: string | null) {
   return method || 'N/A';
 }
 
+
+function BookingProductOptionsList({
+  options,
+}: {
+  options: Array<{ id?: number; label?: string | null; cn_label?: string | null; extra_price?: number | string | null }>;
+}) {
+  if (options.length === 0) return null;
+
+  return (
+    <div className="mt-2 max-w-xl text-xs text-[var(--foreground)]/70">
+      <p className="font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Options:</p>
+      <ul className="mt-1 space-y-1">
+        {options.map((option, index) => (
+          <li key={`${option.id ?? option.label ?? index}`} className="flex items-start justify-between gap-4">
+            <span className="min-w-0 flex-1">
+              <span className="text-[var(--foreground)]">- {option.label || 'Option'}</span>
+              {option.cn_label ? <span className="text-[var(--foreground)]/60"> / {option.cn_label}</span> : null}
+            </span>
+            <span className="shrink-0 font-semibold text-[var(--foreground)]">{money(Number(option.extra_price ?? 0))}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function resolveLineLabel(item: NonNullable<PublicAccountOrder["items"]>[number]) {
   const lineType = String(item.line_type ?? "").toLowerCase();
   if (lineType === "booking_addon") return `Booking Add-on Deposit - ${item.name || "Add-on"}`;
@@ -221,19 +247,7 @@ export default function BookingAccountOrdersPage() {
                               {item.line_type === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
                               ) : null}
-                              {bookingProductOptions.length > 0 ? (
-                                <div className="mt-2 space-y-1">
-                                  {bookingProductOptions.map((option, index) => (
-                                    <div key={`${option.id ?? option.label ?? index}`} className="flex items-start justify-between gap-3 rounded-md bg-[var(--background)]/40 px-2 py-1">
-                                      <div>
-                                        <p className="text-xs font-medium text-[var(--foreground)]">{option.label}</p>
-                                        {option.cn_label ? <p className="text-[11px] text-[var(--foreground)]/60">{option.cn_label}</p> : null}
-                                      </div>
-                                      <p className="text-xs font-semibold text-[var(--foreground)]">{money(Number(option.extra_price ?? 0))}</p>
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : null}
+                              <BookingProductOptionsList options={bookingProductOptions} />
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
                             </div>
                             <p className="text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>
