@@ -13,6 +13,7 @@ use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\Product;
 use App\Models\Ecommerce\ProductVariant;
 use App\Models\Ecommerce\Cart;
+use App\Mail\PaymentProofUploadedMail;
 use App\Services\BillplzService;
 use App\Services\Ecommerce\CartService;
 use App\Services\Ecommerce\ShippingService;
@@ -27,9 +28,11 @@ use Carbon\Carbon;
 use App\Support\Pricing\ProductPricing;
 use App\Support\WorkspaceType;
 use App\Support\FrontendUrlResolver;
+use App\Services\SettingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -555,6 +558,7 @@ class PublicCheckoutController extends Controller
             $pathsToDelete = [];
 
             $primarySlip = $existingSlips->first();
+            $isReupload = (bool) $primarySlip;
             if ($primarySlip) {
                 if ($primarySlip->file_path) {
                     $pathsToDelete[] = $primarySlip->file_path;
@@ -594,12 +598,15 @@ class PublicCheckoutController extends Controller
                 'upload' => $primarySlip->fresh(),
                 'paths' => $pathsToDelete,
                 'status' => $order->status,
+                'is_reupload' => $isReupload,
             ];
         });
 
         foreach (array_unique($result['paths']) as $path) {
             Storage::disk('public')->delete($path);
         }
+
+        $this->notifyEcommercePaymentProofUploaded($order->fresh(['customer']), (bool) $result['is_reupload']);
 
         $upload = $result['upload'];
 
@@ -1234,5 +1241,51 @@ class PublicCheckoutController extends Controller
         $pricing = ProductPricing::build($product, $variant);
 
         return (float) $pricing['effective_price'];
+    }
+
+    protected function notifyEcommercePaymentProofUploaded(Order $order, bool $isReupload): void
+    {
+        $setting = SettingService::get('ecommerce_payment_proof_notification', ['enabled' => true, 'email' => ''], 'ecommerce');
+
+        if (! ($setting['enabled'] ?? true)) {
+            return;
+        }
+
+        $adminEmail = $setting['email'] ?? '';
+        if (! $adminEmail || ! filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $customerName = $order->shipping_name
+            ?: $order->customer?->name
+            ?: 'Customer';
+        $customerEmail = $order->customer?->email ?? '';
+        $customerPhone = $order->shipping_phone
+            ?: $order->customer?->phone
+            ?: '';
+
+        try {
+            Mail::to($adminEmail)->queue(new PaymentProofUploadedMail(
+                orderType: 'Order',
+                orderNumber: (string) ($order->order_number ?? ''),
+                customerName: $customerName,
+                customerEmail: $customerEmail,
+                customerPhone: $customerPhone,
+                amount: (float) ($order->grand_total ?? 0),
+                uploadedAt: now()->format('l, d M Y h:i A'),
+                isReupload: $isReupload,
+            ));
+
+            Log::info('Payment proof notification email queued (ecommerce).', [
+                'order_id' => $order->id,
+                'admin_email' => $adminEmail,
+                'is_reupload' => $isReupload,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue payment proof notification email (ecommerce).', [
+                'order_id' => $order->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -37,6 +37,7 @@ class ShopSettingController extends Controller
                 'booking_service_deposit_note' => SettingService::get('booking_service_deposit_note', null, $type),
                 'booking_reminder_email' => SettingService::get('booking_reminder_email', ['enabled' => true, 'send_at' => '10:00'], $type),
                 'booking_feedback_email' => SettingService::get('booking_feedback_email', ['enabled' => true, 'send_at' => '10:00'], $type),
+                'booking_payment_proof_notification' => SettingService::get('booking_payment_proof_notification', ['enabled' => true, 'email' => ''], $type),
                 'booking_deposit_tnc_enabled' => (bool) SettingService::get('booking_deposit_tnc_enabled', false, $type),
                 'booking_deposit_tnc_text' => (string) SettingService::get('booking_deposit_tnc_text', '', $type),
                 'booking_deposit_tnc_image' => $this->resolveStorageUrl(SettingService::get('booking_deposit_tnc_image', null, $type)),
@@ -76,6 +77,7 @@ class ShopSettingController extends Controller
             'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7, $type),
             'return_tracking_submit_days' => (int) SettingService::get('ecommerce.return_tracking_submit_days', 7, $type),
             'order_reserve_minutes' => (int) SettingService::get('ecommerce.order_reserve_minutes', 30, $type),
+            'ecommerce_payment_proof_notification' => SettingService::get('ecommerce_payment_proof_notification', ['enabled' => true, 'email' => ''], $type),
         ];
 
         return response()->json([
@@ -131,11 +133,13 @@ class ShopSettingController extends Controller
             'ecommerce.return_window_days' => 7,
             'ecommerce.return_tracking_submit_days' => 7,
             'ecommerce.order_reserve_minutes' => 30,
+            'ecommerce_payment_proof_notification' => ['enabled' => true, 'email' => ''],
             'booking_policy' => $this->defaultBookingPolicySetting(),
             'BOOKING_HOLD_MINUTES' => 10,
             'booking_service_deposit_note' => null,
             'booking_reminder_email' => ['enabled' => true, 'send_at' => '10:00'],
             'booking_feedback_email' => ['enabled' => true, 'send_at' => '10:00'],
+            'booking_payment_proof_notification' => ['enabled' => true, 'email' => ''],
             'booking_deposit_tnc_enabled' => false,
             'booking_deposit_tnc_text' => '',
             'booking_deposit_tnc_image' => null,
@@ -232,6 +236,10 @@ class ShopSettingController extends Controller
                 break;
             case 'booking_feedback_email':
                 $data = $this->validateBookingFeedbackEmail($request);
+                break;
+            case 'booking_payment_proof_notification':
+            case 'ecommerce_payment_proof_notification':
+                $data = $this->validatePaymentProofNotification($request);
                 break;
             case 'booking_deposit_tnc_enabled':
                 $data = $this->validateBookingDepositTncEnabled($request);
@@ -578,6 +586,19 @@ class ShopSettingController extends Controller
         ];
     }
 
+    protected function validatePaymentProofNotification(Request $request): array
+    {
+        $validated = $request->validate([
+            'enabled' => ['required', 'boolean'],
+            'email' => ['nullable', 'email', 'max:255'],
+        ]);
+
+        return [
+            'enabled' => (bool) $validated['enabled'],
+            'email' => $validated['email'] ?? '',
+        ];
+    }
+
     protected function validateBookingDepositTncEnabled(Request $request): bool
     {
         $validated = $request->validate([
@@ -802,6 +823,7 @@ class ShopSettingController extends Controller
                 'booking_service_deposit_note',
                 'booking_reminder_email',
                 'booking_feedback_email',
+                'booking_payment_proof_notification',
                 'booking_deposit_tnc_enabled',
                 'booking_deposit_tnc_text',
                 'booking_deposit_tnc_image',
@@ -821,6 +843,7 @@ class ShopSettingController extends Controller
             'ecommerce.return_window_days',
             'ecommerce.return_tracking_submit_days',
             'ecommerce.order_reserve_minutes',
+            'ecommerce_payment_proof_notification',
         ];
     }
 

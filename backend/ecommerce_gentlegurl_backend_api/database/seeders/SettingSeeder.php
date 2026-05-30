@@ -117,6 +117,22 @@ class SettingSeeder extends Seeder
                 'send_at' => '10:00',
             ]]
         );
+
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'booking_payment_proof_notification'],
+            ['value' => [
+                'enabled' => true,
+                'email' => 'gentlegurls@gmail.com',
+            ]]
+        );
+
+        Setting::updateOrCreate(
+            ['type' => 'ecommerce', 'key' => 'ecommerce_payment_proof_notification'],
+            ['value' => [
+                'enabled' => true,
+                'email' => 'gentlegurls@gmail.com',
+            ]]
+        );
     }
 
     private function seedDefaultBookingDepositTncImage(): ?string

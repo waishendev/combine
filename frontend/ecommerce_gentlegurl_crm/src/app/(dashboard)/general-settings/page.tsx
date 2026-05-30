@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 
 import ShopSettingsPageContent from '@/components/ShopSettingsPageContent'
+import PaymentProofNotificationSettingsCard from '@/components/PaymentProofNotificationSettingsCard'
 import { getCurrentUser } from '@/lib/auth'
 import type { LangCode } from '@/lib/i18n'
 import { getTranslator } from '@/lib/i18n-server'
@@ -47,6 +48,15 @@ export default async function ShopSettingsPage() {
       </div>
 
       <ShopSettingsPageContent canEdit={canUpdate} />
+      <div className="mt-6">
+        <PaymentProofNotificationSettingsCard
+          canEdit={canUpdate}
+          settingKey="ecommerce_payment_proof_notification"
+          settingType="ecommerce"
+          title="Payment Proof Upload Notification"
+          description="Notify an admin via email when a customer uploads or re-uploads a manual transfer payment slip for an order."
+        />
+      </div>
     </div>
   )
 }

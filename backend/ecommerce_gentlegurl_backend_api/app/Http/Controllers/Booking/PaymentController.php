@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Mail\BookingConfirmationMail;
+use App\Mail\PaymentProofUploadedMail;
 use App\Models\BillplzPaymentGatewayOption;
 use App\Models\BankAccount;
 use App\Models\Booking\Booking;
@@ -275,12 +276,15 @@ class PaymentController extends Controller
         $path = $validated['slip']->store('booking-payment-slips', 'public');
 
         $raw = $payment->raw_response ?? [];
+        $isReupload = ! empty($raw['manual_slip_path']);
         $raw['manual_slip_path'] = $path;
         $raw['manual_slip_url'] = Storage::disk('public')->url($path);
         $raw['manual_slip_note'] = $validated['note'] ?? null;
         $raw['payment_status'] = 'slip_uploaded_pending_review';
         $payment->raw_response = $raw;
         $payment->save();
+
+        $this->notifyPaymentProofUploaded($booking->fresh(['customer', 'service']), $isReupload);
 
         return $this->respond([
             'upload' => [
@@ -342,11 +346,14 @@ class PaymentController extends Controller
         $path = $validated['slip']->store('booking-payment-slips', 'public');
 
         $raw = $payment->raw_response ?? [];
+        $isReupload = ! empty($raw['manual_slip_path']);
         $raw['manual_slip_path'] = $path;
         $raw['manual_slip_url'] = Storage::disk('public')->url($path);
         $raw['payment_status'] = 'slip_uploaded_pending_review';
         $payment->raw_response = $raw;
         $payment->save();
+
+        $this->notifyPaymentProofUploaded($booking->fresh(['customer', 'service']), $isReupload);
 
         return $this->respond([
             'payment_id' => $payment->id,
@@ -562,6 +569,57 @@ class PaymentController extends Controller
             ]);
         } catch (\Throwable $e) {
             Log::error('Failed to queue booking confirmation email.', [
+                'booking_id' => $booking->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function notifyPaymentProofUploaded(Booking $booking, bool $isReupload): void
+    {
+        $setting = SettingService::get('booking_payment_proof_notification', ['enabled' => true, 'email' => ''], 'booking');
+
+        if (! ($setting['enabled'] ?? true)) {
+            return;
+        }
+
+        $adminEmail = $setting['email'] ?? '';
+        if (! $adminEmail || ! filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $customerName = $booking->billing_name
+            ?: $booking->guest_name
+            ?: $booking->customer?->name
+            ?: 'Customer';
+        $customerEmail = $booking->billing_email
+            ?: $booking->guest_email
+            ?: $booking->customer?->email
+            ?: '';
+        $customerPhone = $booking->billing_phone
+            ?: $booking->guest_phone
+            ?: $booking->customer?->phone
+            ?: '';
+
+        try {
+            Mail::to($adminEmail)->queue(new PaymentProofUploadedMail(
+                orderType: 'Booking',
+                orderNumber: (string) ($booking->booking_code ?? ''),
+                customerName: $customerName,
+                customerEmail: $customerEmail,
+                customerPhone: $customerPhone,
+                amount: (float) ($booking->deposit_amount ?? 0),
+                uploadedAt: now()->format('l, d M Y h:i A'),
+                isReupload: $isReupload,
+            ));
+
+            Log::info('Payment proof notification email queued (booking).', [
+                'booking_id' => $booking->id,
+                'admin_email' => $adminEmail,
+                'is_reupload' => $isReupload,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Failed to queue payment proof notification email (booking).', [
                 'booking_id' => $booking->id,
                 'error' => $e->getMessage(),
             ]);
