@@ -77,6 +77,7 @@ export default async function NewOrdersPage() {
         permissions={user.permissions}
         initialStatusFilters={initialStatusFilters}
         allowedStatusOptions={allowedStatusOptions}
+        extraQueryParams={{ exclude_paid_booking: '1' }}
       />
     </div>
   )

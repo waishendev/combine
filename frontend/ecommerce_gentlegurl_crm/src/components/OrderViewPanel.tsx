@@ -521,8 +521,8 @@ export default function OrderViewPanel({
     )
   }
 
-  const displayStatus = calculateOrderStatus(order.status, order.payment_status)
   const orderType = detectOrderType(order)
+  const displayStatus = calculateOrderStatus(order.status, order.payment_status, orderType)
   const isBookingOrder = orderType === 'booking'
   const isMixedOrder = orderType === 'mixed'
   const netTotal =

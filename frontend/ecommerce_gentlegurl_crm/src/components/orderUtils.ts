@@ -78,8 +78,8 @@ export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
   const customerEmail = item.customer?.email || '-'
   const orderType = detectOrderType(item)
 
-  // Calculate status based on payment_status and status
-  const status = calculateOrderStatus(item.status, item.payment_status)
+  // Calculate status based on payment_status, status, and order type
+  const status = calculateOrderStatus(item.status, item.payment_status, orderType)
 
   const grandTotal = item.grand_total
     ? typeof item.grand_total === 'string'
@@ -182,10 +182,42 @@ export function convertOrderDetailToApiItem(orderDetail: {
 
 export function calculateOrderStatus(
   orderStatus: string | null | undefined,
-  paymentStatus: string | null | undefined
+  paymentStatus: string | null | undefined,
+  orderType?: OrderType | string | null,
 ): string {
   const status = orderStatus?.toLowerCase() ?? ''
   const payment = paymentStatus?.toLowerCase() ?? ''
+  const normalizedOrderType = orderType?.toLowerCase() ?? ''
+
+  if (normalizedOrderType === 'booking') {
+    if (payment === 'unpaid' && status === 'pending') {
+      return 'Awaiting Payment'
+    }
+
+    if (payment === 'unpaid' && status === 'processing') {
+      return 'Waiting for Verification'
+    }
+
+    if (status === 'reject_payment_proof') {
+      return 'Payment Proof Rejected'
+    }
+
+    if (payment === 'failed') {
+      return 'Payment Failed'
+    }
+
+    if (status === 'cancelled' && payment === 'refunded') {
+      return 'Refunded'
+    }
+
+    if (status === 'cancelled') {
+      return 'Cancelled'
+    }
+
+    if (payment === 'paid') {
+      return 'Completed'
+    }
+  }
 
   // Awaiting Payment
   if (payment === 'unpaid' && status === 'pending') {

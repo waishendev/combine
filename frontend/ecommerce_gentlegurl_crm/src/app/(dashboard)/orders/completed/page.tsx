@@ -71,6 +71,7 @@ export default async function CompletedOrdersPage() {
         permissions={user.permissions}
         initialStatusFilters={initialStatusFilters}
         allowedStatusOptions={allowedStatusOptions}
+        extraQueryParams={{ include_paid_booking_completed: '1' }}
       />
     </div>
   )

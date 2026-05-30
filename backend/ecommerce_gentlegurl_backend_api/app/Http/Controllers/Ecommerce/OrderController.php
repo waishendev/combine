@@ -37,6 +37,9 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
+        $orderType = strtolower(trim((string) $request->query('order_type', '')));
+        $includePaidBookingCompleted = $request->boolean('include_paid_booking_completed');
+        $excludePaidBooking = $request->boolean('exclude_paid_booking');
     
         // Accept both array and single value for status
         $status = null;
@@ -66,24 +69,52 @@ class OrderController extends Controller
             // Only include eCommerce shop orders here.
             // POS orders are created by an admin user and have created_by_user_id set.
             ->whereNull('created_by_user_id')
-            ->when($status, function ($q) use ($status, $paymentStatus) {
-                // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified 
-                // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders
-                // This ensures that when user selects "Cancelled" filter, refunded orders are not shown
-                $onlyCancelled = count($status) === 1 && $status[0] === 'cancelled';
-                if ($onlyCancelled && (!$paymentStatus || !in_array('refunded', $paymentStatus))) {
-                    $q->where('status', 'cancelled')
-                        ->where(function ($notRefundQuery) {
-                            $notRefundQuery->where('payment_status', '!=', 'refunded')
-                                ->orWhereNull('payment_status');
+            ->when($orderType === 'booking', fn($q) => $this->applyBookingOrderScope($q))
+            ->when($orderType === 'ecommerce', fn($q) => $this->applyNonBookingOrderScope($q))
+            ->when($orderType === 'mixed', function ($q) {
+                $this->applyBookingOrderScope($q);
+                $q->whereHas('items', fn($itemQuery) => $itemQuery->where('line_type', 'product'));
+            })
+            ->when($status, function ($q) use ($status, $paymentStatus, $includePaidBookingCompleted, $orderType) {
+                $applyStatusFilter = function ($statusQuery) use ($status, $paymentStatus) {
+                    // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified
+                    // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders.
+                    $onlyCancelled = count($status) === 1 && $status[0] === 'cancelled';
+                    if ($onlyCancelled && (!$paymentStatus || !in_array('refunded', $paymentStatus))) {
+                        $statusQuery->where('status', 'cancelled')
+                            ->where(function ($notRefundQuery) {
+                                $notRefundQuery->where('payment_status', '!=', 'refunded')
+                                    ->orWhereNull('payment_status');
+                            });
+                        return;
+                    }
+
+                    $statusQuery->whereIn('status', $status);
+                };
+
+                if (($includePaidBookingCompleted || $orderType === 'booking') && in_array('completed', $status, true)) {
+                    $q->where(function ($completedQuery) use ($applyStatusFilter) {
+                        $applyStatusFilter($completedQuery);
+                        $completedQuery->orWhere(function ($paidBookingQuery) {
+                            $this->applyBookingOrderScope($paidBookingQuery);
+                            $paidBookingQuery->where('payment_status', 'paid');
                         });
-                } else {
-                    // For multiple statuses or when cancelled is not the only status, use normal whereIn
-                    // This allows Completed Orders page to show completed, cancelled (non-refunded), and refunded
-                    $q->whereIn('status', $status);
+                    });
+                    return;
                 }
+
+                $applyStatusFilter($q);
             })
             ->when($paymentStatus, fn($q) => $q->whereIn('payment_status', $paymentStatus))
+            ->when($excludePaidBooking, function ($q) {
+                $q->where(function ($excludeQuery) {
+                    $excludeQuery->where('payment_status', '!=', 'paid')
+                        ->orWhereNull('payment_status')
+                        ->orWhere(function ($nonBookingQuery) {
+                            $this->applyNonBookingOrderScope($nonBookingQuery);
+                        });
+                });
+            })
     
             ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->integer('customer_id')))
             ->when($request->filled('order_no'), fn($q) => $q->where('order_number', 'like', '%' . $request->string('order_no')->toString() . '%'))
@@ -360,6 +391,42 @@ class OrderController extends Controller
         ]);
     }
 
+
+    protected function applyBookingOrderScope($query): void
+    {
+        $query->where(function ($bookingQuery) {
+            $bookingQuery->whereHas('items', function ($itemQuery) {
+                $itemQuery->whereIn('line_type', [
+                    'booking_deposit',
+                    'booking_addon',
+                    'booking_settlement',
+                    'booking_product',
+                    'service_package',
+                ]);
+            })
+                ->orWhereHas('serviceItems')
+                ->orWhere('notes', 'like', '%Booking cart checkout%');
+        });
+    }
+
+    protected function applyNonBookingOrderScope($query): void
+    {
+        $query->whereDoesntHave('items', function ($itemQuery) {
+            $itemQuery->whereIn('line_type', [
+                'booking_deposit',
+                'booking_addon',
+                'booking_settlement',
+                'booking_product',
+                'service_package',
+            ]);
+        })
+            ->whereDoesntHave('serviceItems')
+            ->where(function ($noteQuery) {
+                $noteQuery->whereNull('notes')
+                    ->orWhere('notes', 'not like', '%Booking cart checkout%');
+            });
+    }
+
     protected function mapBookingDetail(?Booking $booking): ?array
     {
         if (! $booking) {
@@ -624,7 +691,7 @@ class OrderController extends Controller
 
         DB::transaction(function () use ($order, $validated) {
             $order->payment_status = 'paid';
-            $order->status = 'confirmed';
+            $order->status = $this->detectOrderType($order) === 'booking' ? 'completed' : 'confirmed';
             $order->paid_at = !empty($validated['paid_at']) ? Carbon::parse($validated['paid_at']) : Carbon::now();
             if (!empty($validated['admin_note'])) {
                 $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);
