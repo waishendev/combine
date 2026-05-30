@@ -55,6 +55,8 @@ class OrderController extends Controller
     
         $orders = Order::with([
             'customer:id,name,email',
+            'items:id,order_id,line_type',
+            'serviceItems:id,order_id',
             'returns:id,order_id,status,created_at',
             'returns.items:id,return_request_id,quantity',
         ])
@@ -105,14 +107,20 @@ class OrderController extends Controller
                     'latest_return_id' => $latestReturn?->id,
                 ];
 
+                $customerName = $order->customer?->name
+                    ?: $order->shipping_name
+                    ?: $order->billing_name;
+                $customerEmail = $order->customer?->email;
+
                 return [
                     'id' => $order->id,
                     'order_no' => $order->order_number,
-                    'customer' => $order->customer ? [
-                        'id' => $order->customer->id,
-                        'name' => $order->customer->name,
-                        'email' => $order->customer->email,
+                    'customer' => $customerName || $customerEmail ? [
+                        'id' => $order->customer?->id,
+                        'name' => $customerName,
+                        'email' => $customerEmail,
                     ] : null,
+                    'order_type' => $this->detectOrderType($order),
                     'status' => $order->status,
                     'payment_status' => $order->payment_status,
                     'subtotal' => $order->subtotal,
@@ -153,6 +161,7 @@ class OrderController extends Controller
 
         return $this->respond([
             'id' => $order->id,
+            'order_type' => $this->detectOrderType($order),
             'order_no' => $order->order_number,
             'status' => $order->status,
             'payment_status' => $order->payment_status,
@@ -219,6 +228,8 @@ class OrderController extends Controller
                     'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
                     'booking_id' => $item->booking_id,
                     'booking_service_id' => $item->booking_service_id,
+                    'booking_service_name' => $item->bookingService?->name,
+                    'booking_service_cn_name' => $item->bookingService?->cn_name,
                 ];
             }),
             'booking_addon_items' => $orderLineItems->where('line_type', 'booking_addon')
@@ -233,6 +244,8 @@ class OrderController extends Controller
                         'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
                         'booking_id' => $item->booking_id,
                         'booking_service_id' => $item->booking_service_id,
+                        'booking_service_name' => $item->bookingService?->name,
+                        'booking_service_cn_name' => $item->bookingService?->cn_name,
                     ];
                 }),
             'service_items' => $order->serviceItems->values()->map(function ($item) use ($claimsByBooking) {
@@ -333,6 +346,34 @@ class OrderController extends Controller
                     ]),
             ],
         ]);
+    }
+
+    protected function detectOrderType(Order $order): string
+    {
+        $items = $order->relationLoaded('items') ? $order->items : $order->items()->get(['id', 'order_id', 'line_type']);
+        $hasProductItems = $items->contains(fn ($item) => (string) ($item->line_type ?? 'product') === 'product');
+        $hasBookingLineItems = $items->contains(fn ($item) => in_array((string) ($item->line_type ?? ''), [
+            'booking_deposit',
+            'booking_addon',
+            'booking_settlement',
+            'booking_product',
+            'service_package',
+        ], true));
+        $hasServiceItems = $order->relationLoaded('serviceItems')
+            ? $order->serviceItems->isNotEmpty()
+            : $order->serviceItems()->exists();
+        $hasBookingCheckoutNote = stripos((string) ($order->notes ?? ''), 'Booking cart checkout') !== false;
+        $hasBookingItems = $hasBookingLineItems || $hasServiceItems || $hasBookingCheckoutNote;
+
+        if ($hasBookingItems && $hasProductItems) {
+            return 'mixed';
+        }
+
+        if ($hasBookingItems) {
+            return 'booking';
+        }
+
+        return 'ecommerce';
     }
 
     public function invoice(Order $order)

@@ -1,13 +1,14 @@
 'use client'
 
+import type { OrderType } from './orderUtils'
 import StatusBadge from './StatusBadge'
-import { useI18n } from '@/lib/i18n'
 
 export interface OrderRowData {
   id: number
   orderNo: string
   customerName: string
   customerEmail: string
+  orderType: OrderType
   status: string
   paymentStatus: string
   orderStatus: string
@@ -38,8 +39,6 @@ export default function OrderRow({
   canView = false,
   onView,
 }: OrderRowProps) {
-  const { t } = useI18n()
-
   const formatAmount = (amount: number) => {
     return amount.toLocaleString(undefined, {
       minimumFractionDigits: 2,
@@ -63,6 +62,14 @@ export default function OrderRow({
       .join(' ')
   }
 
+  const typeLabel = order.orderType === 'mixed' ? 'Mixed' : order.orderType === 'booking' ? 'Booking' : 'Ecommerce'
+  const typeBadgeClass =
+    order.orderType === 'booking'
+      ? 'bg-indigo-100 text-indigo-700'
+      : order.orderType === 'mixed'
+        ? 'bg-amber-100 text-amber-700'
+        : 'bg-slate-100 text-slate-700'
+
   const hasRefund = order.paymentStatus?.toLowerCase() === 'refunded'
   const refundTotal = order.refundTotal ?? 0
   const returnSummary = order.returnSummary
@@ -71,7 +78,14 @@ export default function OrderRow({
 
   return (
     <tr className="text-sm">
-      <td className="px-4 py-2 border border-gray-200 font-medium">{order.orderNo}</td>
+      <td className="px-4 py-2 border border-gray-200 font-medium">
+        <div className="flex flex-col gap-1">
+          <span>{order.orderNo}</span>
+          <span className={`inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[11px] font-semibold ${typeBadgeClass}`}>
+            {typeLabel}
+          </span>
+        </div>
+      </td>
       <td className="px-4 py-2 border border-gray-200">
         <div className="flex flex-col">
           <span className="font-medium">{order.customerName}</span>

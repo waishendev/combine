@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import StatusBadge from './StatusBadge'
-import { useI18n } from '@/lib/i18n'
-import { calculateOrderStatus } from './orderUtils'
+import { calculateOrderStatus, detectOrderType } from './orderUtils'
 import OrderConfirmPaymentModal from './OrderConfirmPaymentModal'
 import OrderRejectPaymentModal from './OrderRejectPaymentModal'
 import OrderCancelModal from './OrderCancelModal'
@@ -22,6 +21,7 @@ type OrderDetailData = {
   id: number
   order_no: string
   order_number?: string
+  order_type?: string | null
   status: string
   payment_status: string
   subtotal: string
@@ -44,6 +44,16 @@ type OrderDetailData = {
     shipping_state?: string
     shipping_postcode?: string
     shipping_country?: string
+  }
+  billing_address?: {
+    name?: string | null
+    phone?: string | null
+    line1?: string | null
+    line2?: string | null
+    city?: string | null
+    state?: string | null
+    postcode?: string | null
+    country?: string | null
   }
   customer?: {
     id: number
@@ -93,6 +103,20 @@ type OrderDetailData = {
     unit_price?: string | number | null
     line_total: string | number
     booking_id?: number | null
+    booking_service_id?: number | null
+    booking_service_name?: string | null
+    booking_service_cn_name?: string | null
+  }>
+  booking_addon_items?: Array<{
+    item_type?: 'booking_addon' | string
+    display_name: string
+    quantity: number
+    unit_price?: string | number | null
+    line_total: string | number
+    booking_id?: number | null
+    booking_service_id?: number | null
+    booking_service_name?: string | null
+    booking_service_cn_name?: string | null
   }>
   vouchers?: Array<{
     code: string
@@ -141,7 +165,6 @@ export default function OrderViewPanel({
   onOrderUpdated,
   zIndexClassName = 'z-50',
 }: OrderViewPanelProps) {
-  const { t } = useI18n()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [order, setOrder] = useState<OrderDetailData | null>(null)
@@ -410,23 +433,31 @@ export default function OrderViewPanel({
   }
 
   const displayStatus = calculateOrderStatus(order.status, order.payment_status)
+  const orderType = detectOrderType(order)
+  const isBookingOrder = orderType === 'booking'
+  const isMixedOrder = orderType === 'mixed'
   const netTotal =
     toNumber(order.net_total) || toNumber(order.grand_total) - toNumber(order.refund_total)
   const canConfirmPayment = displayStatus === 'Waiting for Verification'
   const canRejectPayment = displayStatus === 'Waiting for Verification'
-  const canCancel = displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup'
-  const canShip = displayStatus === 'Payment Confirmed' && order.shipping_method === 'shipping'
-  const canMarkReadyForPickup = displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
+  const canCancel = !isBookingOrder && (displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup')
+  const canShip = !isBookingOrder && displayStatus === 'Payment Confirmed' && order.shipping_method === 'shipping'
+  const canMarkReadyForPickup = !isBookingOrder && displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
   // const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
   const canDownloadInvoice = order.status === 'completed'
   const canComplete =
-    (order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped'
+    !isBookingOrder && ((order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped')
   const invoiceUrl = `/api/proxy/ecommerce/orders/${order.id}/invoice`
 
   const hasProductItems = (order.items?.length ?? 0) > 0
   const hasServiceItems = (order.service_items?.length ?? 0) > 0
   const hasPackageItems = (order.package_items?.length ?? 0) > 0
   const hasBookingDepositItems = (order.booking_deposit_items?.length ?? 0) > 0
+  const hasBookingAddonItems = (order.booking_addon_items?.length ?? 0) > 0
+  const bookingIds = Array.from(new Set([
+    ...(order.booking_deposit_items ?? []).map((item) => item.booking_id),
+    ...(order.booking_addon_items ?? []).map((item) => item.booking_id),
+  ].filter((id): id is number => typeof id === 'number')))
 
   return (
     <>
@@ -438,7 +469,18 @@ export default function OrderViewPanel({
         >
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-semibold text-slate-900">{isBookingOrder ? 'Booking Order Details' : 'Order Details'}</h3>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  isBookingOrder
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : isMixedOrder
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-700'
+                }`}>
+                  {isBookingOrder ? 'Booking' : isMixedOrder ? 'Mixed' : 'Ecommerce'}
+                </span>
+              </div>
               <p className="text-sm text-slate-500">{order.order_no || order.order_number}</p>
             </div>
             <button
@@ -455,13 +497,13 @@ export default function OrderViewPanel({
             <div className="space-y-5">
 
               {/* Order Items */}
-              {(hasProductItems || hasServiceItems || hasPackageItems || hasBookingDepositItems) && (
+              {(hasProductItems || hasServiceItems || hasPackageItems || hasBookingDepositItems || hasBookingAddonItems) && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Order Details</p>
+                    <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Booking Order Details' : 'Order Details'}</p>
                   </div>
                   <div className="space-y-4 px-4 py-3 text-sm">
-                    {hasProductItems && (
+                    {hasProductItems && !isBookingOrder && (
                       <div>
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Products</p>
                         <div className="overflow-x-auto">
@@ -599,6 +641,44 @@ export default function OrderViewPanel({
                                   <td className="px-2 py-2 text-slate-900">{item.display_name || 'Booking Deposit'}</td>
                                   <td className="px-2 py-2 text-slate-700">
                                     {item.booking_id ? `Booking #${item.booking_id}` : '-'}
+                                    {item.booking_service_name ? <p className="text-xs text-slate-500">{item.booking_service_name}</p> : null}
+                                    {item.booking_service_cn_name ? <p className="text-xs text-slate-500">Chinese: {item.booking_service_cn_name}</p> : null}
+                                  </td>
+                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
+                                  <td className="px-2 py-2 text-right text-slate-700">
+                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
+                                  </td>
+                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+
+                    {hasBookingAddonItems && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Booking Add-ons</p>
+                        <div className="overflow-x-auto">
+                          <table className="w-full min-w-[640px] text-sm">
+                            <thead>
+                              <tr className="border-b border-slate-200 text-slate-600">
+                                <th className="px-2 py-2 text-left font-medium">Add-on</th>
+                                <th className="px-2 py-2 text-left font-medium">Booking</th>
+                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
+                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
+                                <th className="px-2 py-2 text-right font-medium">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.booking_addon_items?.map((item, idx) => (
+                                <tr key={`booking-addon-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
+                                  <td className="px-2 py-2 text-slate-900">{item.display_name || 'Booking Add-on'}</td>
+                                  <td className="px-2 py-2 text-slate-700">
+                                    {item.booking_id ? `Booking #${item.booking_id}` : '-'}
+                                    {item.booking_service_name ? <p className="text-xs text-slate-500">{item.booking_service_name}</p> : null}
+                                    {item.booking_service_cn_name ? <p className="text-xs text-slate-500">Chinese: {item.booking_service_cn_name}</p> : null}
                                   </td>
                                   <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
                                   <td className="px-2 py-2 text-right text-slate-700">
@@ -619,7 +699,7 @@ export default function OrderViewPanel({
               {/* Order Summary */}
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Order Summary</p>
+                  <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Payment Summary' : 'Order Summary'}</p>
                 </div>
                 <div className="space-y-2 px-4 py-3 text-sm">
                   <div className="flex justify-between">
@@ -630,10 +710,12 @@ export default function OrderViewPanel({
                     <span className="text-slate-500">Discount</span>
                     <span className="font-medium text-slate-900">RM {formatAmount(order.discount_total)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Shipping Fee</span>
-                    <span className="font-medium text-slate-900">RM {formatAmount(order.shipping_fee)}</span>
-                  </div>
+                  {!isBookingOrder && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Shipping Fee</span>
+                      <span className="font-medium text-slate-900">RM {formatAmount(order.shipping_fee)}</span>
+                    </div>
+                  )}
                   <div className="border-t border-slate-200 pt-2 space-y-2">
                     <div className="flex justify-between">
                       <span className="text-slate-900">Paid Total</span>
@@ -706,12 +788,12 @@ export default function OrderViewPanel({
               {/* Order Information */}
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Order Information</p>
+                  <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Booking Information' : 'Order Information'}</p>
                 </div>
                 <div className="space-y-3 px-4 py-3 text-sm">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <p className="text-xs text-slate-500">Order Number</p>
+                      <p className="text-xs text-slate-500">{isBookingOrder ? 'Booking Order Number' : 'Order Number'}</p>
                       <p className="font-medium text-slate-900">{order.order_no || order.order_number}</p>
                     </div>
                     <div>
@@ -724,21 +806,37 @@ export default function OrderViewPanel({
                       <p className="text-xs text-slate-500">Payment Method</p>
                       <p className="font-medium text-slate-900">{formatPaymentMethod(order.payment_info?.payment_method)}</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Shipping Method</p>
-                      <p className="font-medium text-slate-900">
-                        {order.shipping_method === 'in_store'
-                          ? 'In-store'
-                          : order.shipping_method === 'pickup'
-                            ? 'Pickup'
-                            : order.shipping_method === 'shipping'
-                              ? 'Shipping'
-                              : order.shipping_method
-                                ? order.shipping_method.replace(/_/g, ' ')
-                                : '-'}
-                      </p>
-                    </div>
+                    {!isBookingOrder && (
+                      <div>
+                        <p className="text-xs text-slate-500">Shipping Method</p>
+                        <p className="font-medium text-slate-900">
+                          {order.shipping_method === 'in_store'
+                            ? 'In-store'
+                            : order.shipping_method === 'pickup'
+                              ? 'Pickup'
+                              : order.shipping_method === 'shipping'
+                                ? 'Shipping'
+                                : order.shipping_method
+                                  ? order.shipping_method.replace(/_/g, ' ')
+                                  : '-'}
+                        </p>
+                      </div>
+                    )}
                   </div>
+                  {isBookingOrder && bookingIds.length > 0 && (
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs text-slate-500">Booking No</p>
+                        <div className="space-y-1 font-medium text-slate-900">
+                          {bookingIds.map((bookingId) => (
+                            <a key={bookingId} href={`/booking/appointments/${bookingId}`} className="block text-blue-600 hover:underline">
+                              Booking #{bookingId}
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
                       <p className="text-xs text-slate-500">Invoice</p>
@@ -793,7 +891,7 @@ export default function OrderViewPanel({
               )}
 
               {/* Shipping Address */}
-              {order.address && (
+              {order.address && !isBookingOrder && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   {/* Header */}
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -892,6 +990,7 @@ export default function OrderViewPanel({
                 </section>
               )}
 
+              {!isBookingOrder && (
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-sm font-semibold text-slate-900">Returns</p>
@@ -980,6 +1079,7 @@ export default function OrderViewPanel({
                   )}
                 </div>
               </section>
+              )}
 
               {/* Vouchers */}
               {order.vouchers && order.vouchers.length > 0 && (
@@ -1023,6 +1123,14 @@ export default function OrderViewPanel({
                 >
                   Reject Payment Proof
                 </button>
+              )}
+              {isBookingOrder && bookingIds.length > 0 && (
+                <a
+                  href={`/booking/appointments/${bookingIds[0]}`}
+                  className="px-4 py-2 text-sm bg-indigo-600 text-white rounded hover:bg-indigo-700"
+                >
+                  View Booking
+                </a>
               )}
               {canCancel && (
                 <button
