@@ -50,7 +50,7 @@ class PublicOrderHistoryController extends Controller
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
             $ordersQuery->whereHas('items', function ($query) {
-                $query->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package'])
+                $query->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package', 'booking_product'])
                     ->orWhereNotNull('booking_id')
                     ->orWhereNotNull('service_package_id')
                     ->orWhereNotNull('customer_service_package_id');
@@ -60,7 +60,8 @@ class PublicOrderHistoryController extends Controller
                 $query->where(function ($lineTypeQuery) {
                     $lineTypeQuery->whereNull('line_type')
                         ->orWhere('line_type', '')
-                        ->orWhere('line_type', 'product');
+                        ->orWhere('line_type', 'product')
+                        ->orWhere('line_type', 'booking_product');
                 });
             });
         }
@@ -118,6 +119,7 @@ class PublicOrderHistoryController extends Controller
                         'line_type' => $item->line_type,
                         'booking_id' => $item->booking_id,
                         'service_package_id' => $item->service_package_id,
+                        'selected_booking_product_options' => is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [],
                         'product_image' => $thumbnail,
                         'cover_image_url' => $thumbnail,
                         'review_id' => $review?->id,
@@ -241,6 +243,7 @@ class PublicOrderHistoryController extends Controller
                 'line_type' => $item->line_type,
                 'booking_id' => $item->booking_id,
                 'service_package_id' => $item->service_package_id,
+                'selected_booking_product_options' => is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [],
                 'product_image' => $thumbnail,
                 'cover_image_url' => $thumbnail,
                 'review_id' => $review?->id,

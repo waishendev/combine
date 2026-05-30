@@ -209,7 +209,9 @@ export default function BookingAccountOrdersPage() {
                     <div className="sm:col-span-3">
                       <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Items</p>
                       <div className="max-h-56 space-y-2 overflow-y-auto overscroll-contain pr-1">
-                        {order.items.map((item) => (
+                        {order.items.map((item) => {
+                          const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
+                          return (
                           <div
                             key={item.id}
                             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
@@ -219,11 +221,25 @@ export default function BookingAccountOrdersPage() {
                               {item.line_type === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
                               ) : null}
+                              {bookingProductOptions.length > 0 ? (
+                                <div className="mt-2 space-y-1">
+                                  {bookingProductOptions.map((option, index) => (
+                                    <div key={`${option.id ?? option.label ?? index}`} className="flex items-start justify-between gap-3 rounded-md bg-[var(--background)]/40 px-2 py-1">
+                                      <div>
+                                        <p className="text-xs font-medium text-[var(--foreground)]">{option.label}</p>
+                                        {option.cn_label ? <p className="text-[11px] text-[var(--foreground)]/60">{option.cn_label}</p> : null}
+                                      </div>
+                                      <p className="text-xs font-semibold text-[var(--foreground)]">{money(Number(option.extra_price ?? 0))}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : null}
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
                             </div>
                             <p className="text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ) : null}

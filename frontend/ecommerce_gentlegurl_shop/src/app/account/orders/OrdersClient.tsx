@@ -448,6 +448,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       const isProductLine = !item.line_type || item.line_type === "product";
                       const variantName = item.variant_name ?? "—";
                       const variantSkuSuffix = item.variant_sku ? ` (${item.variant_sku})` : "";
+                      const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
                       return (
                         <div
                           key={item.id}
@@ -476,6 +477,19 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                               )}
                               {String(item.line_type ?? "").toLowerCase() === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
+                              ) : null}
+                              {bookingProductOptions.length > 0 ? (
+                                <div className="mt-2 space-y-1">
+                                  {bookingProductOptions.map((option, index) => (
+                                    <div key={`${option.id ?? option.label ?? index}`} className="flex items-start justify-between gap-3 rounded-md bg-[var(--background)]/40 px-2 py-1">
+                                      <div>
+                                        <p className="text-xs font-medium text-[var(--foreground)]">{option.label}</p>
+                                        {option.cn_label ? <p className="text-[11px] text-[var(--foreground)]/60">{option.cn_label}</p> : null}
+                                      </div>
+                                      <p className="text-xs font-semibold text-[var(--foreground)]">RM {Number(option.extra_price ?? 0).toFixed(2)}</p>
+                                    </div>
+                                  ))}
+                                </div>
                               ) : null}
                               <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity}</p>
                             </div>

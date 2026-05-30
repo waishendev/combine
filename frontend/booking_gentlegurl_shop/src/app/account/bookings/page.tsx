@@ -28,7 +28,12 @@ const addonSummary = (booking: BookingRecord) => {
   return `${names}${remaining}`;
 };
 
-const formatCurrency = (value?: number | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+const formatCurrency = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
+
+const isBookingProductRecord = (booking: BookingRecord) => String(booking.item_type ?? "").toLowerCase() === "booking_product";
+
+const bookingProductOptions = (booking: BookingRecord) =>
+  (booking.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
 
 const pickPaymentNumber = (...values: Array<number | null | undefined>) => {
   for (const value of values) {
@@ -164,6 +169,8 @@ export default function MyBookingsPage() {
           <div className="grid gap-3">
             {bookings.map((booking) => {
               const addOns = addonSummary(booking);
+              const isBookingProduct = isBookingProductRecord(booking);
+              const productOptions = bookingProductOptions(booking);
               const serviceCnName = booking.service_cn_name ?? booking.service?.cn_name;
               const payment = getCustomerPaymentSummary(booking);
               const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
@@ -194,16 +201,16 @@ export default function MyBookingsPage() {
 
                     <div className="grid min-w-0 gap-2 rounded-xl bg-[var(--background)]/20 p-3 text-sm text-[var(--text-muted)] sm:grid-cols-2 sm:gap-x-6">
                       <p className="min-w-0 truncate">
-                        Date: <span className="text-[var(--foreground)]">{formatDate(booking.starts_at)}</span>
+                        Date: <span className="text-[var(--foreground)]">{isBookingProduct || !booking.starts_at ? "-" : formatDate(booking.starts_at)}</span>
                       </p>
                       <p className="min-w-0 truncate">
-                        Time: <span className="text-[var(--foreground)]">{formatBookingTime(booking)}</span>
+                        Time: <span className="text-[var(--foreground)]">{isBookingProduct ? "-" : formatBookingTime(booking)}</span>
                       </p>
                       <p className="min-w-0 truncate">
-                        Staff: <span className="text-[var(--foreground)]">{booking.staff_name || "Any staff"}</span>
+                        Staff: <span className="text-[var(--foreground)]">{isBookingProduct ? "-" : (booking.staff_name || "Any staff")}</span>
                       </p>
                       <p className="min-w-0 truncate">
-                        Add-ons: <span className="text-[var(--foreground)]">{addOns || "None"}</span>
+                        Add-ons: <span className="text-[var(--foreground)]">{isBookingProduct ? (productOptions.length ? `${productOptions.length} selected` : "None") : (addOns || "None")}</span>
                       </p>
                       <p className="min-w-0 truncate">
                         Deposit Paid: <span className="text-emerald-700">{formatCurrency(payment.depositPaid)}</span>
@@ -212,6 +219,24 @@ export default function MyBookingsPage() {
                         Balance Due: <span className="text-[var(--accent-strong)]">{formatCurrency(payment.balanceDue)}</span>
                       </p>
                     </div>
+
+
+                    {isBookingProduct && productOptions.length > 0 ? (
+                      <div className="rounded-xl bg-[var(--background)]/20 p-3 text-sm text-[var(--text-muted)]">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide">Selected options</p>
+                        <div className="space-y-2">
+                          {productOptions.map((option, index) => (
+                            <div key={`${option.id ?? option.label ?? index}`} className="flex items-start justify-between gap-3 rounded-lg bg-[var(--card)] p-2">
+                              <div>
+                                <p className="font-medium text-[var(--foreground)]">{option.label}</p>
+                                {option.cn_label ? <p className="text-xs text-[var(--text-muted)]">{option.cn_label}</p> : null}
+                              </div>
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{formatCurrency(option.extra_price)}</p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
 
                     <div className="flex flex-wrap justify-end gap-2 border-t border-[var(--card-border)] pt-4">
                       {canPayNow ? (
