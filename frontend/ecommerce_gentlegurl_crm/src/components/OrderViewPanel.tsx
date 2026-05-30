@@ -77,6 +77,17 @@ type BookingOrderLine = {
   booking_details?: BookingDetailData | null
 }
 
+type BookingOrderGroup = {
+  key: string
+  bookingId?: number | null
+  serviceName?: string | null
+  serviceCnName?: string | null
+  bookingDetail?: BookingDetailData | null
+  deposits: BookingOrderLine[]
+  addOns: BookingOrderLine[]
+  subtotal: number
+}
+
 type OrderDetailData = {
   id: number
   order_no: string
@@ -330,33 +341,34 @@ export default function OrderViewPanel({
     return `RM ${formatAmount(amount)}`
   }
 
-  const renderBookingServiceName = (line: BookingOrderLine) => {
-    const serviceName = line.booking_details?.service?.name || line.booking_service_name
-    const serviceCnName = line.booking_details?.service?.cn_name || line.booking_service_cn_name
+  const getLineAddonCnName = (line: BookingOrderLine, group: BookingOrderGroup) => {
+    const lineName = line.display_name.toLowerCase()
+    const normalizedLineNames = [
+      lineName,
+      lineName.replace(/^booking deposit -\s*/i, ''),
+      lineName.replace(/^final settlement -\s*/i, ''),
+    ].map((value) => value.trim())
 
-    if (!serviceName && !serviceCnName) return null
+    const addOn = group.bookingDetail?.add_ons?.find((item) => {
+      const addOnName = item.name.toLowerCase().trim()
+      return normalizedLineNames.some((candidate) => candidate === addOnName || candidate.endsWith(addOnName))
+    })
 
-    return (
-      <div className="mt-1 text-xs text-slate-500">
-        {serviceName ? <p>{serviceName}</p> : null}
-        {serviceCnName ? <p>Chinese: {serviceCnName}</p> : null}
-      </div>
-    )
+    return addOn?.cn_name ?? null
   }
 
-  const openBookingDetail = (line: BookingOrderLine) => {
-    if (line.booking_details) {
-      setViewingBookingDetail(line.booking_details)
+  const openBookingGroupDetail = (group: BookingOrderGroup) => {
+    if (group.bookingDetail) {
+      setViewingBookingDetail(group.bookingDetail)
       return
     }
 
-    if (line.booking_id) {
+    if (group.bookingId) {
       setViewingBookingDetail({
-        id: line.booking_id,
+        id: group.bookingId,
         service: {
-          id: line.booking_service_id ?? undefined,
-          name: line.booking_service_name ?? null,
-          cn_name: line.booking_service_cn_name ?? null,
+          name: group.serviceName ?? null,
+          cn_name: group.serviceCnName ?? null,
         },
       })
     }
@@ -531,6 +543,48 @@ export default function OrderViewPanel({
   const hasPackageItems = (order.package_items?.length ?? 0) > 0
   const hasBookingDepositItems = (order.booking_deposit_items?.length ?? 0) > 0
   const hasBookingAddonItems = (order.booking_addon_items?.length ?? 0) > 0
+  const bookingOrderGroups = (() => {
+    const groups = new Map<string, BookingOrderGroup>()
+
+    const ensureGroup = (line: BookingOrderLine, fallbackKey: string) => {
+      const key = line.booking_id ? `booking-${line.booking_id}` : fallbackKey
+      const existing = groups.get(key)
+
+      if (existing) {
+        existing.serviceName ||= line.booking_details?.service?.name || line.booking_service_name
+        existing.serviceCnName ||= line.booking_details?.service?.cn_name || line.booking_service_cn_name
+        existing.bookingDetail ||= line.booking_details
+        return existing
+      }
+
+      const group: BookingOrderGroup = {
+        key,
+        bookingId: line.booking_id,
+        serviceName: line.booking_details?.service?.name || line.booking_service_name,
+        serviceCnName: line.booking_details?.service?.cn_name || line.booking_service_cn_name,
+        bookingDetail: line.booking_details,
+        deposits: [],
+        addOns: [],
+        subtotal: 0,
+      }
+      groups.set(key, group)
+      return group
+    }
+
+    order.booking_deposit_items?.forEach((line, index) => {
+      const group = ensureGroup(line, `deposit-${index}`)
+      group.deposits.push(line)
+      group.subtotal += toNumber(line.line_total)
+    })
+
+    order.booking_addon_items?.forEach((line, index) => {
+      const group = ensureGroup(line, `addon-${index}`)
+      group.addOns.push(line)
+      group.subtotal += toNumber(line.line_total)
+    })
+
+    return Array.from(groups.values())
+  })()
   return (
     <>
       <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`} role="dialog" aria-modal="true" onClick={onClose}>
@@ -693,102 +747,77 @@ export default function OrderViewPanel({
                       </div>
                     )}
 
-                    {hasBookingDepositItems && (
+                    {bookingOrderGroups.length > 0 && (
                       <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Booking Deposits</p>
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[640px] text-sm">
-                            <thead>
-                              <tr className="border-b border-slate-200 text-slate-600">
-                                <th className="px-2 py-2 text-left font-medium">Deposit Line</th>
-                                <th className="px-2 py-2 text-left font-medium">Booking</th>
-                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
-                                <th className="px-2 py-2 text-right font-medium">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {order.booking_deposit_items?.map((item, idx) => (
-                                <tr key={`booking-deposit-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
-                                  <td className="px-2 py-2 text-slate-900">{item.display_name || 'Booking Deposit'}</td>
-                                  <td className="px-2 py-2 text-slate-700">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div>
-                                        <p>{item.booking_id ? `Booking #${item.booking_id}` : '-'}</p>
-                                        {renderBookingServiceName(item)}
-                                      </div>
-                                      {item.booking_id && (
-                                        <button
-                                          type="button"
-                                          onClick={() => openBookingDetail(item)}
-                                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded bg-indigo-600 text-white hover:bg-indigo-700"
-                                          aria-label={`View booking ${item.booking_id}`}
-                                          title="View Booking"
-                                        >
-                                          <i className="fa-solid fa-eye" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
-                                  <td className="px-2 py-2 text-right text-slate-700">
-                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
-                        </div>
-                      </div>
-                    )}
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Bookings</p>
+                        <div className="space-y-4">
+                          {bookingOrderGroups.map((group) => (
+                            <div key={group.key} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">
+                                    {group.bookingId ? `Booking #${group.bookingId}` : 'Booking'}
+                                  </p>
+                                  <p className="mt-1 text-sm font-medium text-slate-900">{group.serviceName || '-'}</p>
+                                  {group.serviceCnName ? (
+                                    <p className="text-xs text-slate-500">{group.serviceCnName}</p>
+                                  ) : null}
+                                </div>
+                                {group.bookingId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openBookingGroupDetail(group)}
+                                    className="inline-flex items-center gap-2 rounded bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                                    aria-label={`View booking ${group.bookingId}`}
+                                    title="View Booking"
+                                  >
+                                    <i className="fa-solid fa-eye" />
+                                    View
+                                  </button>
+                                )}
+                              </div>
 
-                    {hasBookingAddonItems && (
-                      <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Booking Add-ons</p>
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[640px] text-sm">
-                            <thead>
-                              <tr className="border-b border-slate-200 text-slate-600">
-                                <th className="px-2 py-2 text-left font-medium">Add-on</th>
-                                <th className="px-2 py-2 text-left font-medium">Booking</th>
-                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
-                                <th className="px-2 py-2 text-right font-medium">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {order.booking_addon_items?.map((item, idx) => (
-                                <tr key={`booking-addon-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
-                                  <td className="px-2 py-2 text-slate-900">{item.display_name || 'Booking Add-on'}</td>
-                                  <td className="px-2 py-2 text-slate-700">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div>
-                                        <p>{item.booking_id ? `Booking #${item.booking_id}` : '-'}</p>
-                                        {renderBookingServiceName(item)}
+                              {group.deposits.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Deposit</p>
+                                  <div className="space-y-2">
+                                    {group.deposits.map((item, idx) => (
+                                      <div key={`deposit-${group.key}-${idx}`} className="flex justify-between gap-4 text-sm">
+                                        <span className="text-slate-700">{item.display_name || 'Booking Deposit'}</span>
+                                        <span className="shrink-0 font-medium text-slate-900">RM {formatAmount(item.line_total)}</span>
                                       </div>
-                                      {item.booking_id && (
-                                        <button
-                                          type="button"
-                                          onClick={() => openBookingDetail(item)}
-                                          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded bg-indigo-600 text-white hover:bg-indigo-700"
-                                          aria-label={`View booking ${item.booking_id}`}
-                                          title="View Booking"
-                                        >
-                                          <i className="fa-solid fa-eye" />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
-                                  <td className="px-2 py-2 text-right text-slate-700">
-                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {group.addOns.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
+                                  <div className="space-y-2">
+                                    {group.addOns.map((item, idx) => {
+                                      const addonCnName = getLineAddonCnName(item, group)
+
+                                      return (
+                                        <div key={`addon-${group.key}-${idx}`} className="flex justify-between gap-4 text-sm">
+                                          <span className="text-slate-700">
+                                            {item.display_name || 'Booking Add-on'}
+                                            {addonCnName ? <span className="text-slate-500"> / {addonCnName}</span> : null}
+                                          </span>
+                                          <span className="shrink-0 font-medium text-slate-900">RM {formatAmount(item.line_total)}</span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-sm font-semibold">
+                                <span className="text-slate-900">Subtotal</span>
+                                <span className="text-slate-900">RM {formatAmount(group.subtotal)}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
