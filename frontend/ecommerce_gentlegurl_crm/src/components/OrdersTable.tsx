@@ -28,6 +28,7 @@ interface OrdersTableProps {
     status?: string[]
     payment_status?: string[]
   }
+  extraQueryParams?: Record<string, string>
   allowedStatusOptions?: string[]
 }
 
@@ -58,6 +59,7 @@ export default function OrdersTable({
   permissions,
   initialStatusFilters,
   allowedStatusOptions,
+  extraQueryParams,
 }: OrdersTableProps) {
   const { t } = useI18n()
   const searchParams = useSearchParams()
@@ -178,6 +180,12 @@ export default function OrdersTable({
         if (filters.orderNo) qs.set('order_no', filters.orderNo)
         if (filters.customerName) qs.set('customer_name', filters.customerName)
         if (filters.customerEmail) qs.set('customer_email', filters.customerEmail)
+        if (filters.orderType) qs.set('order_type', filters.orderType)
+        if (extraQueryParams) {
+          Object.entries(extraQueryParams).forEach(([key, value]) => {
+            if (value) qs.set(key, value)
+          })
+        }
         
         // Apply filters: user filters take precedence over initial filters
         if (filters.status) {
@@ -287,7 +295,7 @@ export default function OrdersTable({
 
     fetchOrders()
     return () => controller.abort()
-  }, [filters, currentPage, pageSize, queryFilters, refreshTrigger])
+  }, [filters, currentPage, pageSize, queryFilters, refreshTrigger, extraQueryParams, initialStatusFilters])
 
   const handleSort = (column: keyof OrderRowData) => {
     if (sortColumn === column) {
@@ -424,11 +432,15 @@ export default function OrdersTable({
     customerName: 'Customer Name',
     customerEmail: 'Customer Email',
     status: 'Status',
+    orderType: 'Type',
     dateFrom: 'Date From',
     dateTo: 'Date To',
   }
 
   const renderFilterValue = (key: keyof OrderFilterValues, value: string) => {
+    if (key === 'orderType') {
+      return value === 'booking' ? 'Booking' : value === 'ecommerce' ? 'Ecommerce' : value
+    }
     return value
   }
 

@@ -2,8 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import StatusBadge from './StatusBadge'
-import { useI18n } from '@/lib/i18n'
-import { calculateOrderStatus } from './orderUtils'
+import { calculateOrderStatus, detectOrderType } from './orderUtils'
 import OrderConfirmPaymentModal from './OrderConfirmPaymentModal'
 import OrderRejectPaymentModal from './OrderRejectPaymentModal'
 import OrderCancelModal from './OrderCancelModal'
@@ -18,10 +17,82 @@ interface OrderViewPanelProps {
   zIndexClassName?: string
 }
 
+type BookingDetailData = {
+  id: number
+  booking_code?: string | null
+  customer?: {
+    id?: number
+    name?: string | null
+    phone?: string | null
+    email?: string | null
+  } | null
+  guest_name?: string | null
+  guest_phone?: string | null
+  guest_email?: string | null
+  service?: {
+    id?: number
+    name?: string | null
+    cn_name?: string | null
+    duration_min?: number | null
+  } | null
+  add_ons?: Array<{
+    name: string
+    cn_name?: string | null
+    extra_duration_min?: number | null
+    extra_price?: number | string | null
+  }>
+  staff?: {
+    id?: number
+    name?: string | null
+  } | null
+  start_at?: string | null
+  end_at?: string | null
+  status?: string | null
+  payment_status?: string | null
+  deposit_paid?: string | number | null
+  settlement_paid?: string | number | null
+  balance_due?: string | number | null
+  package_offset?: string | number | null
+  uploaded_item_photos?: Array<{
+    id: number
+    file_url: string
+    original_name?: string | null
+  }>
+  service_photos?: Array<{
+    id: number
+    file_url: string
+    caption?: string | null
+  }>
+}
+
+type BookingOrderLine = {
+  display_name: string
+  quantity: number
+  unit_price?: string | number | null
+  line_total: string | number
+  booking_id?: number | null
+  booking_service_id?: number | null
+  booking_service_name?: string | null
+  booking_service_cn_name?: string | null
+  booking_details?: BookingDetailData | null
+}
+
+type BookingOrderGroup = {
+  key: string
+  bookingId?: number | null
+  serviceName?: string | null
+  serviceCnName?: string | null
+  bookingDetail?: BookingDetailData | null
+  deposits: BookingOrderLine[]
+  addOns: BookingOrderLine[]
+  subtotal: number
+}
+
 type OrderDetailData = {
   id: number
   order_no: string
   order_number?: string
+  order_type?: string | null
   status: string
   payment_status: string
   subtotal: string
@@ -44,6 +115,16 @@ type OrderDetailData = {
     shipping_state?: string
     shipping_postcode?: string
     shipping_country?: string
+  }
+  billing_address?: {
+    name?: string | null
+    phone?: string | null
+    line1?: string | null
+    line2?: string | null
+    city?: string | null
+    state?: string | null
+    postcode?: string | null
+    country?: string | null
   }
   customer?: {
     id: number
@@ -86,14 +167,8 @@ type OrderDetailData = {
     unit_price?: string | number | null
     line_total: string | number
   }>
-  booking_deposit_items?: Array<{
-    item_type?: 'booking_deposit' | string
-    display_name: string
-    quantity: number
-    unit_price?: string | number | null
-    line_total: string | number
-    booking_id?: number | null
-  }>
+  booking_deposit_items?: BookingOrderLine[]
+  booking_addon_items?: BookingOrderLine[]
   vouchers?: Array<{
     code: string
     discount_amount: string
@@ -141,7 +216,6 @@ export default function OrderViewPanel({
   onOrderUpdated,
   zIndexClassName = 'z-50',
 }: OrderViewPanelProps) {
-  const { t } = useI18n()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [order, setOrder] = useState<OrderDetailData | null>(null)
@@ -152,6 +226,7 @@ export default function OrderViewPanel({
   const [showRefund, setShowRefund] = useState(false)
   const [showComplete, setShowComplete] = useState(false)
   const [completeSuccess, setCompleteSuccess] = useState<string | null>(null)
+  const [viewingBookingDetail, setViewingBookingDetail] = useState<BookingDetailData | null>(null)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -260,6 +335,43 @@ export default function OrderViewPanel({
   const toNumber = (value: string | number | null | undefined) => {
     if (value === null || value === undefined) return 0
     return typeof value === 'string' ? Number.parseFloat(value) : Number(value)
+  }
+
+  const formatBookingMoney = (amount: string | number | null | undefined) => {
+    return `RM ${formatAmount(amount)}`
+  }
+
+  const getLineAddonCnName = (line: BookingOrderLine, group: BookingOrderGroup) => {
+    const lineName = line.display_name.toLowerCase()
+    const normalizedLineNames = [
+      lineName,
+      lineName.replace(/^booking deposit -\s*/i, ''),
+      lineName.replace(/^final settlement -\s*/i, ''),
+    ].map((value) => value.trim())
+
+    const addOn = group.bookingDetail?.add_ons?.find((item) => {
+      const addOnName = item.name.toLowerCase().trim()
+      return normalizedLineNames.some((candidate) => candidate === addOnName || candidate.endsWith(addOnName))
+    })
+
+    return addOn?.cn_name ?? null
+  }
+
+  const openBookingGroupDetail = (group: BookingOrderGroup) => {
+    if (group.bookingDetail) {
+      setViewingBookingDetail(group.bookingDetail)
+      return
+    }
+
+    if (group.bookingId) {
+      setViewingBookingDetail({
+        id: group.bookingId,
+        service: {
+          name: group.serviceName ?? null,
+          cn_name: group.serviceCnName ?? null,
+        },
+      })
+    }
   }
 
   const formatPaymentMethod = (method: string | null | undefined) => {
@@ -409,25 +521,70 @@ export default function OrderViewPanel({
     )
   }
 
-  const displayStatus = calculateOrderStatus(order.status, order.payment_status)
+  const orderType = detectOrderType(order)
+  const displayStatus = calculateOrderStatus(order.status, order.payment_status, orderType)
+  const isBookingOrder = orderType === 'booking'
+  const isMixedOrder = orderType === 'mixed'
   const netTotal =
     toNumber(order.net_total) || toNumber(order.grand_total) - toNumber(order.refund_total)
   const canConfirmPayment = displayStatus === 'Waiting for Verification'
   const canRejectPayment = displayStatus === 'Waiting for Verification'
-  const canCancel = displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup'
-  const canShip = displayStatus === 'Payment Confirmed' && order.shipping_method === 'shipping'
-  const canMarkReadyForPickup = displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
+  const canCancel = !isBookingOrder && (displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup')
+  const canShip = !isBookingOrder && displayStatus === 'Payment Confirmed' && order.shipping_method === 'shipping'
+  const canMarkReadyForPickup = !isBookingOrder && displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
   // const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
   const canDownloadInvoice = order.status === 'completed'
   const canComplete =
-    (order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped'
+    !isBookingOrder && ((order.status === 'ready_for_pickup' && order.payment_status === 'paid') || order.status === 'shipped')
   const invoiceUrl = `/api/proxy/ecommerce/orders/${order.id}/invoice`
 
   const hasProductItems = (order.items?.length ?? 0) > 0
   const hasServiceItems = (order.service_items?.length ?? 0) > 0
   const hasPackageItems = (order.package_items?.length ?? 0) > 0
   const hasBookingDepositItems = (order.booking_deposit_items?.length ?? 0) > 0
+  const hasBookingAddonItems = (order.booking_addon_items?.length ?? 0) > 0
+  const bookingOrderGroups = (() => {
+    const groups = new Map<string, BookingOrderGroup>()
 
+    const ensureGroup = (line: BookingOrderLine, fallbackKey: string) => {
+      const key = line.booking_id ? `booking-${line.booking_id}` : fallbackKey
+      const existing = groups.get(key)
+
+      if (existing) {
+        existing.serviceName ||= line.booking_details?.service?.name || line.booking_service_name
+        existing.serviceCnName ||= line.booking_details?.service?.cn_name || line.booking_service_cn_name
+        existing.bookingDetail ||= line.booking_details
+        return existing
+      }
+
+      const group: BookingOrderGroup = {
+        key,
+        bookingId: line.booking_id,
+        serviceName: line.booking_details?.service?.name || line.booking_service_name,
+        serviceCnName: line.booking_details?.service?.cn_name || line.booking_service_cn_name,
+        bookingDetail: line.booking_details,
+        deposits: [],
+        addOns: [],
+        subtotal: 0,
+      }
+      groups.set(key, group)
+      return group
+    }
+
+    order.booking_deposit_items?.forEach((line, index) => {
+      const group = ensureGroup(line, `deposit-${index}`)
+      group.deposits.push(line)
+      group.subtotal += toNumber(line.line_total)
+    })
+
+    order.booking_addon_items?.forEach((line, index) => {
+      const group = ensureGroup(line, `addon-${index}`)
+      group.addOns.push(line)
+      group.subtotal += toNumber(line.line_total)
+    })
+
+    return Array.from(groups.values())
+  })()
   return (
     <>
       <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`} role="dialog" aria-modal="true" onClick={onClose}>
@@ -438,7 +595,18 @@ export default function OrderViewPanel({
         >
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
             <div>
-              <h3 className="text-lg font-semibold text-slate-900">Order Details</h3>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-lg font-semibold text-slate-900">{isBookingOrder ? 'Booking Order Details' : 'Order Details'}</h3>
+                <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
+                  isBookingOrder
+                    ? 'bg-indigo-100 text-indigo-700'
+                    : isMixedOrder
+                      ? 'bg-amber-100 text-amber-700'
+                      : 'bg-slate-100 text-slate-700'
+                }`}>
+                  {isBookingOrder ? 'Booking' : isMixedOrder ? 'Mixed' : 'Ecommerce'}
+                </span>
+              </div>
               <p className="text-sm text-slate-500">{order.order_no || order.order_number}</p>
             </div>
             <button
@@ -455,13 +623,13 @@ export default function OrderViewPanel({
             <div className="space-y-5">
 
               {/* Order Items */}
-              {(hasProductItems || hasServiceItems || hasPackageItems || hasBookingDepositItems) && (
+              {(hasProductItems || hasServiceItems || hasPackageItems || hasBookingDepositItems || hasBookingAddonItems) && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                    <p className="text-sm font-semibold text-slate-900">Order Details</p>
+                    <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Booking Order Details' : 'Order Details'}</p>
                   </div>
                   <div className="space-y-4 px-4 py-3 text-sm">
-                    {hasProductItems && (
+                    {hasProductItems && !isBookingOrder && (
                       <div>
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Products</p>
                         <div className="overflow-x-auto">
@@ -579,36 +747,77 @@ export default function OrderViewPanel({
                       </div>
                     )}
 
-                    {hasBookingDepositItems && (
+                    {bookingOrderGroups.length > 0 && (
                       <div>
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Booking Deposits</p>
-                        <div className="overflow-x-auto">
-                          <table className="w-full min-w-[640px] text-sm">
-                            <thead>
-                              <tr className="border-b border-slate-200 text-slate-600">
-                                <th className="px-2 py-2 text-left font-medium">Deposit Line</th>
-                                <th className="px-2 py-2 text-left font-medium">Booking</th>
-                                <th className="px-2 py-2 text-right font-medium">Quantity</th>
-                                <th className="px-2 py-2 text-right font-medium">Unit Price</th>
-                                <th className="px-2 py-2 text-right font-medium">Total</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {order.booking_deposit_items?.map((item, idx) => (
-                                <tr key={`booking-deposit-${idx}`} className="border-b border-slate-100 hover:bg-slate-50">
-                                  <td className="px-2 py-2 text-slate-900">{item.display_name || 'Booking Deposit'}</td>
-                                  <td className="px-2 py-2 text-slate-700">
-                                    {item.booking_id ? `Booking #${item.booking_id}` : '-'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right text-slate-700">{item.quantity}</td>
-                                  <td className="px-2 py-2 text-right text-slate-700">
-                                    {item.unit_price !== null && item.unit_price !== undefined ? `RM ${formatAmount(item.unit_price)}` : '-'}
-                                  </td>
-                                  <td className="px-2 py-2 text-right font-medium text-slate-900">RM {formatAmount(item.line_total)}</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500">Bookings</p>
+                        <div className="space-y-4">
+                          {bookingOrderGroups.map((group) => (
+                            <div key={group.key} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                              <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 pb-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-slate-900">
+                                    {group.bookingId ? `Booking #${group.bookingId}` : 'Booking'}
+                                  </p>
+                                  <p className="mt-1 text-sm font-medium text-slate-900">{group.serviceName || '-'}</p>
+                                  {group.serviceCnName ? (
+                                    <p className="text-xs text-slate-500">{group.serviceCnName}</p>
+                                  ) : null}
+                                </div>
+                                {group.bookingId && (
+                                  <button
+                                    type="button"
+                                    onClick={() => openBookingGroupDetail(group)}
+                                    className="inline-flex items-center gap-2 rounded bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+                                    aria-label={`View booking ${group.bookingId}`}
+                                    title="View Booking"
+                                  >
+                                    <i className="fa-solid fa-eye" />
+                                    View
+                                  </button>
+                                )}
+                              </div>
+
+                              {group.deposits.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Deposit</p>
+                                  <div className="space-y-2">
+                                    {group.deposits.map((item, idx) => (
+                                      <div key={`deposit-${group.key}-${idx}`} className="flex justify-between gap-4 text-sm">
+                                        <span className="text-slate-700">{item.display_name || 'Booking Deposit'}</span>
+                                        <span className="shrink-0 font-medium text-slate-900">RM {formatAmount(item.line_total)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+
+                              {group.addOns.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
+                                  <div className="space-y-2">
+                                    {group.addOns.map((item, idx) => {
+                                      const addonCnName = getLineAddonCnName(item, group)
+
+                                      return (
+                                        <div key={`addon-${group.key}-${idx}`} className="flex justify-between gap-4 text-sm">
+                                          <span className="text-slate-700">
+                                            {item.display_name || 'Booking Add-on'}
+                                            {addonCnName ? <span className="text-slate-500"> / {addonCnName}</span> : null}
+                                          </span>
+                                          <span className="shrink-0 font-medium text-slate-900">RM {formatAmount(item.line_total)}</span>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-sm font-semibold">
+                                <span className="text-slate-900">Subtotal</span>
+                                <span className="text-slate-900">RM {formatAmount(group.subtotal)}</span>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -619,7 +828,7 @@ export default function OrderViewPanel({
               {/* Order Summary */}
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Order Summary</p>
+                  <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Payment Summary' : 'Order Summary'}</p>
                 </div>
                 <div className="space-y-2 px-4 py-3 text-sm">
                   <div className="flex justify-between">
@@ -630,10 +839,12 @@ export default function OrderViewPanel({
                     <span className="text-slate-500">Discount</span>
                     <span className="font-medium text-slate-900">RM {formatAmount(order.discount_total)}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Shipping Fee</span>
-                    <span className="font-medium text-slate-900">RM {formatAmount(order.shipping_fee)}</span>
-                  </div>
+                  {!isBookingOrder && (
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Shipping Fee</span>
+                      <span className="font-medium text-slate-900">RM {formatAmount(order.shipping_fee)}</span>
+                    </div>
+                  )}
                   <div className="border-t border-slate-200 pt-2 space-y-2">
                     <div className="flex justify-between">
                       <span className="text-slate-900">Paid Total</span>
@@ -706,12 +917,12 @@ export default function OrderViewPanel({
               {/* Order Information */}
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-slate-900">Order Information</p>
+                  <p className="text-sm font-semibold text-slate-900">{isBookingOrder ? 'Booking Information' : 'Order Information'}</p>
                 </div>
                 <div className="space-y-3 px-4 py-3 text-sm">
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
-                      <p className="text-xs text-slate-500">Order Number</p>
+                      <p className="text-xs text-slate-500">{isBookingOrder ? 'Booking Order Number' : 'Order Number'}</p>
                       <p className="font-medium text-slate-900">{order.order_no || order.order_number}</p>
                     </div>
                     <div>
@@ -724,20 +935,22 @@ export default function OrderViewPanel({
                       <p className="text-xs text-slate-500">Payment Method</p>
                       <p className="font-medium text-slate-900">{formatPaymentMethod(order.payment_info?.payment_method)}</p>
                     </div>
-                    <div>
-                      <p className="text-xs text-slate-500">Shipping Method</p>
-                      <p className="font-medium text-slate-900">
-                        {order.shipping_method === 'in_store'
-                          ? 'In-store'
-                          : order.shipping_method === 'pickup'
-                            ? 'Pickup'
-                            : order.shipping_method === 'shipping'
-                              ? 'Shipping'
-                              : order.shipping_method
-                                ? order.shipping_method.replace(/_/g, ' ')
-                                : '-'}
-                      </p>
-                    </div>
+                    {!isBookingOrder && (
+                      <div>
+                        <p className="text-xs text-slate-500">Shipping Method</p>
+                        <p className="font-medium text-slate-900">
+                          {order.shipping_method === 'in_store'
+                            ? 'In-store'
+                            : order.shipping_method === 'pickup'
+                              ? 'Pickup'
+                              : order.shipping_method === 'shipping'
+                                ? 'Shipping'
+                                : order.shipping_method
+                                  ? order.shipping_method.replace(/_/g, ' ')
+                                  : '-'}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div>
@@ -793,7 +1006,7 @@ export default function OrderViewPanel({
               )}
 
               {/* Shipping Address */}
-              {order.address && (
+              {order.address && !isBookingOrder && (
                 <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                   {/* Header */}
                   <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
@@ -892,6 +1105,7 @@ export default function OrderViewPanel({
                 </section>
               )}
 
+              {!isBookingOrder && (
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="text-sm font-semibold text-slate-900">Returns</p>
@@ -980,6 +1194,7 @@ export default function OrderViewPanel({
                   )}
                 </div>
               </section>
+              )}
 
               {/* Vouchers */}
               {order.vouchers && order.vouchers.length > 0 && (
@@ -1084,6 +1299,179 @@ export default function OrderViewPanel({
           </div>
         </aside>
       </div>
+
+      {viewingBookingDetail && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true" onClick={() => setViewingBookingDetail(null)}>
+          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Booking Details</h3>
+                <p className="text-sm text-slate-500">{viewingBookingDetail.booking_code || `Booking #${viewingBookingDetail.id}`}</p>
+              </div>
+              <button
+                type="button"
+                className="text-slate-500 hover:text-slate-700"
+                onClick={() => setViewingBookingDetail(null)}
+                aria-label="Close booking details"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="space-y-5 bg-slate-50 p-5 text-sm">
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="font-semibold text-slate-900">Overview</p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 px-4 py-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Booking Code / ID</p>
+                    <p className="font-medium text-slate-900">{viewingBookingDetail.booking_code || `Booking #${viewingBookingDetail.id}`}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Status</p>
+                    <StatusBadge status={(viewingBookingDetail.status || '').toLowerCase()} label={viewingBookingDetail.status || '-'} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Payment Status</p>
+                    <StatusBadge status={(viewingBookingDetail.payment_status || '').toLowerCase()} label={viewingBookingDetail.payment_status || '-'} />
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Staff</p>
+                    <p className="font-medium text-slate-900">{viewingBookingDetail.staff?.name || '-'}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="font-semibold text-slate-900">Customer & Appointment</p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 px-4 py-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Customer / Guest</p>
+                    <p className="font-medium text-slate-900">{viewingBookingDetail.customer?.name || viewingBookingDetail.guest_name || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Phone</p>
+                    <p className="font-medium text-slate-900">{viewingBookingDetail.customer?.phone || viewingBookingDetail.guest_phone || '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Service</p>
+                    <p className="font-medium text-slate-900">{viewingBookingDetail.service?.name || '-'}</p>
+                    {viewingBookingDetail.service?.cn_name ? <p className="text-xs text-slate-500">{viewingBookingDetail.service.cn_name}</p> : null}
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Duration</p>
+                    <p className="font-medium text-slate-900">{viewingBookingDetail.service?.duration_min ? `${viewingBookingDetail.service.duration_min} mins` : '-'}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Start</p>
+                    <p className="font-medium text-slate-900">{formatDate(viewingBookingDetail.start_at)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">End</p>
+                    <p className="font-medium text-slate-900">{formatDate(viewingBookingDetail.end_at)}</p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="font-semibold text-slate-900">Add-ons</p>
+                </div>
+                <div className="px-4 py-3">
+                  {(viewingBookingDetail.add_ons?.length ?? 0) > 0 ? (
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="text-slate-600">
+                          <tr className="border-b border-slate-200">
+                            <th className="px-2 py-2 text-left font-medium">Name</th>
+                            <th className="px-2 py-2 text-right font-medium">Duration</th>
+                            <th className="px-2 py-2 text-right font-medium">Price</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {viewingBookingDetail.add_ons?.map((addon, idx) => (
+                            <tr key={`${addon.name}-${idx}`} className="border-b border-slate-100">
+                              <td className="px-2 py-2 text-slate-900">
+                                <p>{addon.name}</p>
+                                {addon.cn_name ? <p className="text-xs text-slate-500">{addon.cn_name}</p> : null}
+                              </td>
+                              <td className="px-2 py-2 text-right text-slate-700">+{Number(addon.extra_duration_min ?? 0)} mins</td>
+                              <td className="px-2 py-2 text-right text-slate-700">{formatBookingMoney(addon.extra_price)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p className="text-slate-500">No add-ons selected.</p>
+                  )}
+                </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="font-semibold text-slate-900">Payment Summary</p>
+                </div>
+                <div className="grid grid-cols-1 gap-4 px-4 py-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs text-slate-500">Deposit Paid</p>
+                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.deposit_paid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Settlement Paid</p>
+                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.settlement_paid)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Package Offset</p>
+                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.package_offset)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500">Balance Due</p>
+                    <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.balance_due)}</p>
+                  </div>
+                </div>
+              </section>
+
+              {((viewingBookingDetail.uploaded_item_photos?.length ?? 0) > 0 || (viewingBookingDetail.service_photos?.length ?? 0) > 0) && (
+                <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                    <p className="font-semibold text-slate-900">Photos</p>
+                  </div>
+                  <div className="space-y-4 px-4 py-3">
+                    {(viewingBookingDetail.uploaded_item_photos?.length ?? 0) > 0 && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Customer Photos</p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {viewingBookingDetail.uploaded_item_photos?.map((photo) => (
+                            <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded border border-slate-200">
+                              <img src={photo.file_url} alt={photo.original_name || 'Customer photo'} className="h-24 w-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {(viewingBookingDetail.service_photos?.length ?? 0) > 0 && (
+                      <div>
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Salon Photos</p>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                          {viewingBookingDetail.service_photos?.map((photo) => (
+                            <a key={photo.id} href={photo.file_url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded border border-slate-200">
+                              <img src={photo.file_url} alt={photo.caption || 'Salon photo'} className="h-24 w-full object-cover" />
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </section>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showConfirmPayment && (
         <OrderConfirmPaymentModal

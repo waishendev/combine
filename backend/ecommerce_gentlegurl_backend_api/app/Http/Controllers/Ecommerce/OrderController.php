@@ -6,7 +6,10 @@ use App\Http\Controllers\Controller;
 use App\Mail\BookingConfirmationMail;
 use App\Mail\OrderShippedMail;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItemPhoto;
 use App\Models\Booking\BookingLog;
+use App\Models\Booking\BookingPayment;
+use App\Models\Booking\BookingServicePhoto;
 use App\Models\Ecommerce\Order;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
@@ -34,6 +37,9 @@ class OrderController extends Controller
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 15);
+        $orderType = strtolower(trim((string) $request->query('order_type', '')));
+        $includePaidBookingCompleted = $request->boolean('include_paid_booking_completed');
+        $excludePaidBooking = $request->boolean('exclude_paid_booking');
     
         // Accept both array and single value for status
         $status = null;
@@ -55,30 +61,60 @@ class OrderController extends Controller
     
         $orders = Order::with([
             'customer:id,name,email',
+            'items:id,order_id,line_type',
+            'serviceItems:id,order_id',
             'returns:id,order_id,status,created_at',
             'returns.items:id,return_request_id,quantity',
         ])
             // Only include eCommerce shop orders here.
             // POS orders are created by an admin user and have created_by_user_id set.
             ->whereNull('created_by_user_id')
-            ->when($status, function ($q) use ($status, $paymentStatus) {
-                // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified 
-                // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders
-                // This ensures that when user selects "Cancelled" filter, refunded orders are not shown
-                $onlyCancelled = count($status) === 1 && $status[0] === 'cancelled';
-                if ($onlyCancelled && (!$paymentStatus || !in_array('refunded', $paymentStatus))) {
-                    $q->where('status', 'cancelled')
-                        ->where(function ($notRefundQuery) {
-                            $notRefundQuery->where('payment_status', '!=', 'refunded')
-                                ->orWhereNull('payment_status');
+            ->when($orderType === 'booking', fn($q) => $this->applyBookingOrderScope($q))
+            ->when($orderType === 'ecommerce', fn($q) => $this->applyNonBookingOrderScope($q))
+            ->when($orderType === 'mixed', function ($q) {
+                $this->applyBookingOrderScope($q);
+                $q->whereHas('items', fn($itemQuery) => $itemQuery->where('line_type', 'product'));
+            })
+            ->when($status, function ($q) use ($status, $paymentStatus, $includePaidBookingCompleted, $orderType) {
+                $applyStatusFilter = function ($statusQuery) use ($status, $paymentStatus) {
+                    // If filtering ONLY by cancelled status (no other statuses) and payment_status is not specified
+                    // (or doesn't include 'refunded'), exclude refunded orders to show only cancelled (non-refunded) orders.
+                    $onlyCancelled = count($status) === 1 && $status[0] === 'cancelled';
+                    if ($onlyCancelled && (!$paymentStatus || !in_array('refunded', $paymentStatus))) {
+                        $statusQuery->where('status', 'cancelled')
+                            ->where(function ($notRefundQuery) {
+                                $notRefundQuery->where('payment_status', '!=', 'refunded')
+                                    ->orWhereNull('payment_status');
+                            });
+                        return;
+                    }
+
+                    $statusQuery->whereIn('status', $status);
+                };
+
+                if (($includePaidBookingCompleted || $orderType === 'booking') && in_array('completed', $status, true)) {
+                    $q->where(function ($completedQuery) use ($applyStatusFilter) {
+                        $applyStatusFilter($completedQuery);
+                        $completedQuery->orWhere(function ($paidBookingQuery) {
+                            $this->applyBookingOrderScope($paidBookingQuery);
+                            $paidBookingQuery->where('payment_status', 'paid');
                         });
-                } else {
-                    // For multiple statuses or when cancelled is not the only status, use normal whereIn
-                    // This allows Completed Orders page to show completed, cancelled (non-refunded), and refunded
-                    $q->whereIn('status', $status);
+                    });
+                    return;
                 }
+
+                $applyStatusFilter($q);
             })
             ->when($paymentStatus, fn($q) => $q->whereIn('payment_status', $paymentStatus))
+            ->when($excludePaidBooking, function ($q) {
+                $q->where(function ($excludeQuery) {
+                    $excludeQuery->where('payment_status', '!=', 'paid')
+                        ->orWhereNull('payment_status')
+                        ->orWhere(function ($nonBookingQuery) {
+                            $this->applyNonBookingOrderScope($nonBookingQuery);
+                        });
+                });
+            })
     
             ->when($request->filled('customer_id'), fn($q) => $q->where('customer_id', $request->integer('customer_id')))
             ->when($request->filled('order_no'), fn($q) => $q->where('order_number', 'like', '%' . $request->string('order_no')->toString() . '%'))
@@ -105,14 +141,20 @@ class OrderController extends Controller
                     'latest_return_id' => $latestReturn?->id,
                 ];
 
+                $customerName = $order->customer?->name
+                    ?: $order->shipping_name
+                    ?: $order->billing_name;
+                $customerEmail = $order->customer?->email;
+
                 return [
                     'id' => $order->id,
                     'order_no' => $order->order_number,
-                    'customer' => $order->customer ? [
-                        'id' => $order->customer->id,
-                        'name' => $order->customer->name,
-                        'email' => $order->customer->email,
+                    'customer' => $customerName || $customerEmail ? [
+                        'id' => $order->customer?->id,
+                        'name' => $customerName,
+                        'email' => $customerEmail,
                     ] : null,
+                    'order_type' => $this->detectOrderType($order),
                     'status' => $order->status,
                     'payment_status' => $order->payment_status,
                     'subtotal' => $order->subtotal,
@@ -135,6 +177,13 @@ class OrderController extends Controller
     {
         $order->load([
             'items.product.images',
+            'items.booking:id,booking_code,customer_id,guest_name,guest_phone,guest_email,staff_id,service_id,start_at,end_at,status,payment_status,deposit_amount,addon_items_json,settled_service_amount',
+            'items.booking.customer:id,name,phone,email',
+            'items.booking.service:id,name,cn_name,duration_min,service_price,price',
+            'items.booking.staff:id,name',
+            'items.booking.itemPhotos:id,booking_id,file_path,original_name,mime_type,size,sort_order,created_at',
+            'items.booking.servicePhotos:id,booking_id,image_path,caption,sort_order,created_at,updated_at',
+            'items.booking.payments:id,booking_id,provider,amount,status,raw_response,created_at,updated_at',
             'items.bookingService:id,name,cn_name',
             'serviceItems.assignedStaff',
             'customer',
@@ -153,6 +202,7 @@ class OrderController extends Controller
 
         return $this->respond([
             'id' => $order->id,
+            'order_type' => $this->detectOrderType($order),
             'order_no' => $order->order_number,
             'status' => $order->status,
             'payment_status' => $order->payment_status,
@@ -219,6 +269,9 @@ class OrderController extends Controller
                     'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
                     'booking_id' => $item->booking_id,
                     'booking_service_id' => $item->booking_service_id,
+                    'booking_service_name' => $item->bookingService?->name,
+                    'booking_service_cn_name' => $item->bookingService?->cn_name,
+                    'booking_details' => $this->mapBookingDetail($item->booking),
                 ];
             }),
             'booking_addon_items' => $orderLineItems->where('line_type', 'booking_addon')
@@ -233,6 +286,9 @@ class OrderController extends Controller
                         'line_total' => (float) ($item->effective_line_total ?? $item->line_total_snapshot ?? $item->line_total),
                         'booking_id' => $item->booking_id,
                         'booking_service_id' => $item->booking_service_id,
+                        'booking_service_name' => $item->bookingService?->name,
+                        'booking_service_cn_name' => $item->bookingService?->cn_name,
+                        'booking_details' => $this->mapBookingDetail($item->booking),
                     ];
                 }),
             'service_items' => $order->serviceItems->values()->map(function ($item) use ($claimsByBooking) {
@@ -333,6 +389,188 @@ class OrderController extends Controller
                     ]),
             ],
         ]);
+    }
+
+
+    protected function applyBookingOrderScope($query): void
+    {
+        $query->where(function ($bookingQuery) {
+            $bookingQuery->whereHas('items', function ($itemQuery) {
+                $itemQuery->whereIn('line_type', [
+                    'booking_deposit',
+                    'booking_addon',
+                    'booking_settlement',
+                    'booking_product',
+                    'service_package',
+                ]);
+            })
+                ->orWhereHas('serviceItems')
+                ->orWhere('notes', 'like', '%Booking cart checkout%');
+        });
+    }
+
+    protected function applyNonBookingOrderScope($query): void
+    {
+        $query->whereDoesntHave('items', function ($itemQuery) {
+            $itemQuery->whereIn('line_type', [
+                'booking_deposit',
+                'booking_addon',
+                'booking_settlement',
+                'booking_product',
+                'service_package',
+            ]);
+        })
+            ->whereDoesntHave('serviceItems')
+            ->where(function ($noteQuery) {
+                $noteQuery->whereNull('notes')
+                    ->orWhere('notes', 'not like', '%Booking cart checkout%');
+            });
+    }
+
+    protected function mapBookingDetail(?Booking $booking): ?array
+    {
+        if (! $booking) {
+            return null;
+        }
+
+        $addonItems = $this->mapBookingAddonItems($booking->addon_items_json);
+        $addonTotal = collect($addonItems)->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0));
+        $serviceTotal = $booking->settled_service_amount !== null
+            ? (float) $booking->settled_service_amount
+            : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+        $totalAmount = round(max(0, $serviceTotal + $addonTotal), 2);
+
+        $orderItems = $booking->relationLoaded('orderItems')
+            ? $booking->orderItems
+            : $booking->orderItems()
+                ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->get(['id', 'booking_id', 'line_type', 'line_total']);
+        $orderDepositPaid = (float) $orderItems
+            ->where('line_type', 'booking_deposit')
+            ->sum(fn ($item) => (float) ($item->line_total ?? 0));
+        $settlementPaid = (float) $orderItems
+            ->filter(fn ($item) => in_array((string) $item->line_type, ['booking_settlement', 'booking_addon'], true))
+            ->sum(fn ($item) => (float) ($item->line_total ?? 0));
+        $bookingPaymentPaid = $booking->relationLoaded('payments')
+            ? (float) $booking->payments->where('status', 'PAID')->sum(fn (BookingPayment $payment) => (float) ($payment->amount ?? 0))
+            : (float) $booking->payments()->where('status', 'PAID')->sum('amount');
+        $depositPaid = max($orderDepositPaid, $bookingPaymentPaid, (float) ($booking->payment_status === 'PAID' ? $booking->deposit_amount : 0));
+
+        $packageUsage = CustomerServicePackageUsage::query()
+            ->where(function ($query) use ($booking) {
+                $query->where('booking_id', (int) $booking->id)
+                    ->orWhere(function ($posQuery) use ($booking) {
+                        $posQuery->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id);
+                    });
+            })
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->first();
+        $packageOffset = $packageUsage ? max(0.0, $serviceTotal) : 0.0;
+        $balanceDue = round(max(0, $totalAmount - $depositPaid - $settlementPaid - $packageOffset), 2);
+
+        $itemPhotos = $booking->relationLoaded('itemPhotos')
+            ? $booking->itemPhotos
+            : $booking->itemPhotos()->get();
+        $servicePhotos = $booking->relationLoaded('servicePhotos')
+            ? $booking->servicePhotos
+            : $booking->servicePhotos()->get();
+
+        return [
+            'id' => (int) $booking->id,
+            'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+            'customer' => $booking->customer ? [
+                'id' => (int) $booking->customer->id,
+                'name' => (string) $booking->customer->name,
+                'phone' => $booking->customer->phone,
+                'email' => $booking->customer->email,
+            ] : null,
+            'guest_name' => $booking->guest_name,
+            'guest_phone' => $booking->guest_phone,
+            'guest_email' => $booking->guest_email,
+            'service' => $booking->service ? [
+                'id' => (int) $booking->service->id,
+                'name' => (string) $booking->service->name,
+                'cn_name' => $booking->service->cn_name,
+                'duration_min' => (int) ($booking->service->duration_min ?? 0),
+            ] : null,
+            'add_ons' => $addonItems,
+            'staff' => $booking->staff ? [
+                'id' => (int) $booking->staff->id,
+                'name' => (string) $booking->staff->name,
+            ] : null,
+            'start_at' => optional($booking->start_at)?->toIso8601String(),
+            'end_at' => optional($booking->end_at)?->toIso8601String(),
+            'status' => (string) $booking->status,
+            'payment_status' => (string) $booking->payment_status,
+            'deposit_paid' => round($depositPaid, 2),
+            'settlement_paid' => round($settlementPaid, 2),
+            'balance_due' => $balanceDue,
+            'package_offset' => round($packageOffset, 2),
+            'uploaded_item_photos' => $itemPhotos->map(fn (BookingItemPhoto $photo) => [
+                'id' => (int) $photo->id,
+                'file_url' => $photo->file_url,
+                'original_name' => (string) $photo->original_name,
+            ])->values(),
+            'service_photos' => $servicePhotos->map(fn (BookingServicePhoto $photo) => [
+                'id' => (int) $photo->id,
+                'file_url' => $photo->image_url,
+                'caption' => $photo->caption,
+            ])->values(),
+        ];
+    }
+
+    protected function mapBookingAddonItems($rawItems): array
+    {
+        return collect(is_array($rawItems) ? $rawItems : [])
+            ->map(function ($item) {
+                if (! is_array($item)) {
+                    return null;
+                }
+
+                $name = $item['name'] ?? $item['label'] ?? $item['service_name'] ?? null;
+                if (! $name) {
+                    return null;
+                }
+
+                return [
+                    'name' => (string) $name,
+                    'cn_name' => $item['cn_name'] ?? $item['cn_label'] ?? $item['linked_cn_name'] ?? null,
+                    'extra_duration_min' => (int) ($item['extra_duration_min'] ?? $item['duration_min'] ?? 0),
+                    'extra_price' => (float) ($item['extra_price'] ?? $item['price'] ?? 0),
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    protected function detectOrderType(Order $order): string
+    {
+        $items = $order->relationLoaded('items') ? $order->items : $order->items()->get(['id', 'order_id', 'line_type']);
+        $hasProductItems = $items->contains(fn ($item) => (string) ($item->line_type ?? 'product') === 'product');
+        $hasBookingLineItems = $items->contains(fn ($item) => in_array((string) ($item->line_type ?? ''), [
+            'booking_deposit',
+            'booking_addon',
+            'booking_settlement',
+            'booking_product',
+            'service_package',
+        ], true));
+        $hasServiceItems = $order->relationLoaded('serviceItems')
+            ? $order->serviceItems->isNotEmpty()
+            : $order->serviceItems()->exists();
+        $hasBookingCheckoutNote = stripos((string) ($order->notes ?? ''), 'Booking cart checkout') !== false;
+        $hasBookingItems = $hasBookingLineItems || $hasServiceItems || $hasBookingCheckoutNote;
+
+        if ($hasBookingItems && $hasProductItems) {
+            return 'mixed';
+        }
+
+        if ($hasBookingItems) {
+            return 'booking';
+        }
+
+        return 'ecommerce';
     }
 
     public function invoice(Order $order)
@@ -453,7 +691,7 @@ class OrderController extends Controller
 
         DB::transaction(function () use ($order, $validated) {
             $order->payment_status = 'paid';
-            $order->status = 'confirmed';
+            $order->status = $this->detectOrderType($order) === 'booking' ? 'completed' : 'confirmed';
             $order->paid_at = !empty($validated['paid_at']) ? Carbon::parse($validated['paid_at']) : Carbon::now();
             if (!empty($validated['admin_note'])) {
                 $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);

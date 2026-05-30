@@ -1,14 +1,23 @@
 import type { OrderRowData } from './OrderRow'
 
+export type OrderType = 'ecommerce' | 'booking' | 'mixed'
+
 export type OrderApiItem = {
   id: number | string
   order_no?: string | null
   order_number?: string | null
   customer?: {
-    id?: number | string
+    id?: number | string | null
     name?: string | null
     email?: string | null
   } | null
+  order_type?: OrderType | string | null
+  notes?: string | null
+  items?: unknown[] | null
+  booking_deposit_items?: unknown[] | null
+  booking_addon_items?: unknown[] | null
+  service_items?: unknown[] | null
+  package_items?: unknown[] | null
   status?: string | null
   payment_status?: string | null
   refund_total?: string | number | null
@@ -29,6 +38,34 @@ export type OrderApiItem = {
   updated_at?: string | null
 }
 
+
+export function detectOrderType(order: {
+  order_type?: OrderType | string | null
+  notes?: string | null
+  items?: unknown[] | null
+  booking_deposit_items?: unknown[] | null
+  booking_addon_items?: unknown[] | null
+  service_items?: unknown[] | null
+  package_items?: unknown[] | null
+}): OrderType {
+  if (order.order_type === 'booking' || order.order_type === 'mixed') {
+    return order.order_type
+  }
+
+  const hasBookingItems =
+    (order.booking_deposit_items?.length ?? 0) > 0 ||
+    (order.booking_addon_items?.length ?? 0) > 0 ||
+    (order.service_items?.length ?? 0) > 0 ||
+    (order.package_items?.length ?? 0) > 0 ||
+    (order.notes?.toLowerCase().includes('booking cart checkout') ?? false)
+
+  if (hasBookingItems && (order.items?.length ?? 0) > 0) {
+    return 'mixed'
+  }
+
+  return hasBookingItems ? 'booking' : 'ecommerce'
+}
+
 export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
   const idValue =
     typeof item.id === 'number'
@@ -37,11 +74,12 @@ export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
   const normalizedId = Number.isFinite(idValue) ? Number(idValue) : 0
 
   const orderNo = item.order_no ?? item.order_number ?? '-'
-  const customerName = item.customer?.name ?? '-'
-  const customerEmail = item.customer?.email ?? '-'
+  const customerName = item.customer?.name || '-'
+  const customerEmail = item.customer?.email || '-'
+  const orderType = detectOrderType(item)
 
-  // Calculate status based on payment_status and status
-  const status = calculateOrderStatus(item.status, item.payment_status)
+  // Calculate status based on payment_status, status, and order type
+  const status = calculateOrderStatus(item.status, item.payment_status, orderType)
 
   const grandTotal = item.grand_total
     ? typeof item.grand_total === 'string'
@@ -74,6 +112,7 @@ export const mapOrderApiItemToRow = (item: OrderApiItem): OrderRowData => {
     orderNo: String(orderNo),
     customerName,
     customerEmail,
+    orderType,
     status,
     paymentStatus: item.payment_status ?? '',
     orderStatus: item.status ?? '',
@@ -104,6 +143,13 @@ export function convertOrderDetailToApiItem(orderDetail: {
     name?: string
     email?: string
   }
+  order_type?: OrderType | string | null
+  notes?: string | null
+  items?: unknown[] | null
+  booking_deposit_items?: unknown[] | null
+  booking_addon_items?: unknown[] | null
+  service_items?: unknown[] | null
+  package_items?: unknown[] | null
 }): OrderApiItem {
   return {
     id: orderDetail.id,
@@ -117,6 +163,13 @@ export function convertOrderDetailToApiItem(orderDetail: {
     updated_at: orderDetail.updated_at ?? null,
     refund_total: orderDetail.refund_total ?? null,
     net_total: orderDetail.net_total ?? null,
+    order_type: detectOrderType(orderDetail),
+    notes: orderDetail.notes ?? null,
+    items: orderDetail.items ?? null,
+    booking_deposit_items: orderDetail.booking_deposit_items ?? null,
+    booking_addon_items: orderDetail.booking_addon_items ?? null,
+    service_items: orderDetail.service_items ?? null,
+    package_items: orderDetail.package_items ?? null,
     customer: orderDetail.customer
       ? {
           id: orderDetail.customer.id ?? undefined,
@@ -129,10 +182,42 @@ export function convertOrderDetailToApiItem(orderDetail: {
 
 export function calculateOrderStatus(
   orderStatus: string | null | undefined,
-  paymentStatus: string | null | undefined
+  paymentStatus: string | null | undefined,
+  orderType?: OrderType | string | null,
 ): string {
   const status = orderStatus?.toLowerCase() ?? ''
   const payment = paymentStatus?.toLowerCase() ?? ''
+  const normalizedOrderType = orderType?.toLowerCase() ?? ''
+
+  if (normalizedOrderType === 'booking') {
+    if (payment === 'unpaid' && status === 'pending') {
+      return 'Awaiting Payment'
+    }
+
+    if (payment === 'unpaid' && status === 'processing') {
+      return 'Waiting for Verification'
+    }
+
+    if (status === 'reject_payment_proof') {
+      return 'Payment Proof Rejected'
+    }
+
+    if (payment === 'failed') {
+      return 'Payment Failed'
+    }
+
+    if (status === 'cancelled' && payment === 'refunded') {
+      return 'Refunded'
+    }
+
+    if (status === 'cancelled') {
+      return 'Cancelled'
+    }
+
+    if (payment === 'paid') {
+      return 'Completed'
+    }
+  }
 
   // Awaiting Payment
   if (payment === 'unpaid' && status === 'pending') {
