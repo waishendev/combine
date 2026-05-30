@@ -529,7 +529,7 @@ export default function OrderViewPanel({
     toNumber(order.net_total) || toNumber(order.grand_total) - toNumber(order.refund_total)
   const canConfirmPayment = displayStatus === 'Waiting for Verification'
   const canRejectPayment = displayStatus === 'Waiting for Verification'
-  const canCancel = !isBookingOrder && (displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup')
+  const canCancel = (!isBookingOrder && (displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification' || displayStatus === 'Ready for Pickup')) || (isBookingOrder && order.payment_status !== 'paid' && (displayStatus === 'Awaiting Payment' || displayStatus === 'Waiting for Verification'))
   const canShip = !isBookingOrder && displayStatus === 'Payment Confirmed' && order.shipping_method === 'shipping'
   const canMarkReadyForPickup = !isBookingOrder && displayStatus === 'Payment Confirmed' && order.shipping_method === 'pickup'
   // const canRefund = ['Payment Confirmed', 'Preparing', 'Ready for Pickup', 'Completed'].includes(displayStatus)
@@ -1494,6 +1494,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowCancel(false)}
           onSuccess={handleOrderUpdated}
+          isBookingOrder={isBookingOrder}
         />
       )}
 
