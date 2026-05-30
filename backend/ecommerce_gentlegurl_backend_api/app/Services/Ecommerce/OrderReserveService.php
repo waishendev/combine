@@ -13,7 +13,7 @@ class OrderReserveService
 {
     public function getReserveMinutes(): int
     {
-        $value = SettingService::get('ecommerce.order_reserve_minutes', 30);
+        $value = SettingService::get('ecommerce.order_reserve_minutes', 30, 'ecommerce');
 
         if (is_array($value)) {
             $value = data_get($value, 'minutes', data_get($value, 'value', 30));
@@ -24,13 +24,52 @@ class OrderReserveService
         return $minutes > 0 ? $minutes : 30;
     }
 
+    public function getBookingHoldMinutes(): int
+    {
+        $value = SettingService::get('BOOKING_HOLD_MINUTES', 10, 'booking');
+
+        if (is_array($value)) {
+            $value = data_get($value, 'minutes', data_get($value, 'value', 10));
+        }
+
+        $minutes = (int) $value;
+
+        return $minutes > 0 ? $minutes : 10;
+    }
+
+    public function isBookingRelatedOrder(Order $order): bool
+    {
+        $order->loadMissing('items');
+
+        foreach ($order->items as $item) {
+            $lineType = strtolower((string) ($item->line_type ?? ''));
+
+            if (in_array($lineType, ['booking_deposit', 'booking_settlement', 'booking_addon', 'service_package', 'booking_product'], true)) {
+                return true;
+            }
+
+            if ($item->booking_id || $item->service_package_id || $item->customer_service_package_id) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function getReserveMinutesForOrder(Order $order): int
+    {
+        return $this->isBookingRelatedOrder($order)
+            ? $this->getBookingHoldMinutes()
+            : $this->getReserveMinutes();
+    }
+
     public function getReserveExpiresAt(Order $order): Carbon
     {
         $base = $order->placed_at?->copy()
             ?? $order->created_at?->copy()
             ?? Carbon::now();
 
-        return $base->addMinutes($this->getReserveMinutes());
+        return $base->addMinutes($this->getReserveMinutesForOrder($order));
     }
 
     public function isExpired(Order $order): bool

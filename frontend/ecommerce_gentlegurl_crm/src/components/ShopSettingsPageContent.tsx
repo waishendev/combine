@@ -102,6 +102,7 @@ type ShopSettingsResponse = {
     }
     return_window_days?: number
     return_tracking_submit_days?: number
+    order_reserve_minutes?: number
     booking_hold_minutes?: number
   }
 }
@@ -227,6 +228,10 @@ const defaultReturnSettings = {
   return_tracking_submit_days: 7,
 }
 
+const defaultOrderReserveSettings = {
+  order_reserve_minutes: 30,
+}
+
 const defaultBookingHoldSettings = {
   booking_hold_minutes: 10,
 }
@@ -248,6 +253,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [pageReviewsSettings, setPageReviewsSettings] = useState(defaultPageReviewsSettings)
   const [productReviewsSettings, setProductReviewsSettings] = useState(defaultProductReviewsSettings)
   const [returnSettings, setReturnSettings] = useState(defaultReturnSettings)
+  const [orderReserveSettings, setOrderReserveSettings] = useState(defaultOrderReserveSettings)
   const [bookingHoldSettings, setBookingHoldSettings] = useState(defaultBookingHoldSettings)
 
   const [contactSaveState, setContactSaveState] = useState<SaveState>('idle')
@@ -258,6 +264,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [pageReviewsSaveState, setPageReviewsSaveState] = useState<SaveState>('idle')
   const [productReviewsSaveState, setProductReviewsSaveState] = useState<SaveState>('idle')
   const [returnSaveState, setReturnSaveState] = useState<SaveState>('idle')
+  const [orderReserveSaveState, setOrderReserveSaveState] = useState<SaveState>('idle')
   const [bookingHoldSaveState, setBookingHoldSaveState] = useState<SaveState>('idle')
   const [contactFeedback, setContactFeedback] = useState<FeedbackState | null>(null)
   const [homepageFeedback, setHomepageFeedback] = useState<FeedbackState | null>(null)
@@ -267,6 +274,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
   const [pageReviewsFeedback, setPageReviewsFeedback] = useState<FeedbackState | null>(null)
   const [productReviewsFeedback, setProductReviewsFeedback] = useState<FeedbackState | null>(null)
   const [returnFeedback, setReturnFeedback] = useState<FeedbackState | null>(null)
+  const [orderReserveFeedback, setOrderReserveFeedback] = useState<FeedbackState | null>(null)
   const [bookingHoldFeedback, setBookingHoldFeedback] = useState<FeedbackState | null>(null)
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [workspaceType, setWorkspaceType] = useState<Workspace>(forcedWorkspace ?? 'ecommerce')
@@ -442,6 +450,11 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
         setReturnSettings({
           return_window_days: returnWindowDays,
           return_tracking_submit_days: trackingSubmitDays,
+        })
+
+        setOrderReserveSettings({
+          order_reserve_minutes:
+            payload.data?.order_reserve_minutes ?? defaultOrderReserveSettings.order_reserve_minutes,
         })
 
         setBookingHoldSettings({
@@ -889,6 +902,44 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
       })
     } finally {
       setTimeout(() => setReturnSaveState('idle'), 2000)
+    }
+  }
+
+  const handleOrderReserveSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    if (!canEdit) return
+    setOrderReserveSaveState('saving')
+    setError(null)
+    setOrderReserveFeedback(null)
+
+    try {
+      const response = await fetch(withType('/api/ecommerce/shop-settings/ecommerce.order_reserve_minutes'), {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: workspaceType,
+          value:
+            Number(orderReserveSettings.order_reserve_minutes) ||
+            defaultOrderReserveSettings.order_reserve_minutes,
+        }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to save order reserve minutes')
+      }
+
+      setOrderReserveSaveState('saved')
+      setOrderReserveFeedback({ type: 'success', message: 'Order payment reserve minutes saved.' })
+    } catch (err) {
+      console.error(err)
+      setOrderReserveSaveState('error')
+      setError('Unable to save order payment reserve minutes.')
+      setOrderReserveFeedback({
+        type: 'error',
+        message: 'Unable to save order payment reserve minutes.',
+      })
+    } finally {
+      setTimeout(() => setOrderReserveSaveState('idle'), 2000)
     }
   }
 
@@ -1507,7 +1558,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
             <div>
               <h3 className="text-2xl font-semibold text-slate-900 mt-1">Booking Hold Settings</h3>
               <p className="text-sm text-slate-500 mt-2 max-w-2xl">
-                Configure how long a booking stays in HOLD status before it automatically expires. Customers must complete payment within this window.
+                Configure how long a booking slot stays in HOLD before it expires, and how long customers have to pay for unpaid booking-related orders before those orders are auto-cancelled.
               </p>
             </div>
           </div>
@@ -1549,7 +1600,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
                 <p className="text-xs text-slate-500">
-                  Bookings in HOLD status will be marked as EXPIRED after this many minutes. The scheduler checks every minute.
+                  Applies to booking slot holds and unpaid booking orders on the booking storefront (My Orders countdown and auto-cancel).
                 </p>
               </label>
             </div>
@@ -1796,6 +1847,72 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
           </div>
         </form>
       </section>
+
+      {!isBookingWorkspace && (
+        <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">
+            <div>
+              <h3 className="text-2xl font-semibold text-slate-900 mt-1">Order Payment Reserve</h3>
+              <p className="text-sm text-slate-500 mt-2 max-w-2xl">
+                How long customers have to complete payment for unpaid ecommerce product orders before the order is auto-cancelled and reserved stock is released.
+              </p>
+            </div>
+          </div>
+
+          <form className="mt-6 space-y-5" onSubmit={handleOrderReserveSubmit}>
+            {orderReserveFeedback && (
+              <div
+                className={`rounded-lg border px-4 py-3 text-sm ${
+                  orderReserveFeedback.type === 'success'
+                    ? 'border-green-200 bg-green-50 text-green-800'
+                    : 'border-rose-200 bg-rose-50 text-rose-800'
+                }`}
+              >
+                <div className="flex items-start">
+                  <i
+                    className={`fa-solid ${
+                      orderReserveFeedback.type === 'success' ? 'fa-circle-check' : 'fa-circle-exclamation'
+                    } mr-2 mt-[2px]`}
+                  />
+                  <p>{orderReserveFeedback.message}</p>
+                </div>
+              </div>
+            )}
+            <div className="grid gap-4 md:grid-cols-2">
+              <label className="space-y-2">
+                <span className="block text-sm font-medium text-slate-800">Payment Window (Minutes)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={orderReserveSettings.order_reserve_minutes}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setOrderReserveSettings((prev) => ({
+                      ...prev,
+                      order_reserve_minutes: Number(event.target.value),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="text-xs text-slate-500">
+                  Shown on My Orders as a countdown; pending unpaid orders are cancelled after this time.
+                </p>
+              </label>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={!canEdit || orderReserveSaveState === 'saving'}
+                className="inline-flex items-center rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-blue-300"
+              >
+                {renderSaveLabel(orderReserveSaveState)}
+              </button>
+            </div>
+          </form>
+        </section>
+      )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-5">

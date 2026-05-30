@@ -4,7 +4,6 @@ namespace App\Console\Commands;
 
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\OrderReserveService;
-use Carbon\Carbon;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 
@@ -21,16 +20,12 @@ class ExpirePendingOrders extends Command
 
     public function handle(): int
     {
-        $reserveMinutes = $this->orderReserveService->getReserveMinutes();
-        $cutoff = Carbon::now()->subMinutes($reserveMinutes);
-
         Order::where('status', 'pending')
             ->where('payment_status', 'unpaid')
-            ->whereRaw('COALESCE(placed_at, created_at) < ?', [$cutoff])
             ->orderBy('id')
-            ->chunkById(50, function ($orders) use ($cutoff) {
+            ->chunkById(50, function ($orders) {
                 foreach ($orders as $order) {
-                    DB::transaction(function () use ($order, $cutoff) {
+                    DB::transaction(function () use ($order) {
                         $lockedOrder = Order::where('id', $order->id)->lockForUpdate()->first();
 
                         if (!$lockedOrder) {
@@ -41,9 +36,7 @@ class ExpirePendingOrders extends Command
                             return;
                         }
 
-                        $placedOrCreatedAt = $lockedOrder->placed_at ?? $lockedOrder->created_at;
-
-                        if ($placedOrCreatedAt && $placedOrCreatedAt->greaterThanOrEqualTo($cutoff)) {
+                        if (! $this->orderReserveService->isExpired($lockedOrder)) {
                             return;
                         }
 

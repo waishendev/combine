@@ -1,0 +1,196 @@
+"use client";
+
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
+import { uploadPublicOrderSlip } from "@/lib/apiClient";
+
+type UploadReceiptModalProps = {
+  isOpen: boolean;
+  orderId: number;
+  onClose: () => void;
+  onSuccess?: () => void;
+};
+
+export default function UploadReceiptModal({ isOpen, orderId, onClose, onSuccess }: UploadReceiptModalProps) {
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const isImage = useMemo(() => {
+    if (!selectedFile) return false;
+    return selectedFile.type.startsWith("image/");
+  }, [selectedFile]);
+
+  useEffect(() => {
+    if (!selectedFile || !isImage) {
+      setPreviewUrl(null);
+      return;
+    }
+
+    const url = URL.createObjectURL(selectedFile);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [selectedFile, isImage]);
+
+  const handleFileChange = (file: File | null) => {
+    setUploadError(null);
+    setSelectedFile(file);
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) {
+      setUploadError("Please select a file to upload.");
+      return;
+    }
+
+    setIsUploading(true);
+    setUploadError(null);
+    try {
+      await uploadPublicOrderSlip(orderId, selectedFile, note.trim() || undefined);
+      setSelectedFile(null);
+      setNote("");
+      onSuccess?.();
+      onClose();
+    } catch (error: unknown) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === "object" && error && "data" in (error as { data?: { message?: string } })
+            ? (error as { data?: { message?: string } }).data?.message || "Failed to upload slip."
+            : "Failed to upload slip.";
+      setUploadError(message);
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4 py-6">
+      <div className="w-full max-w-2xl rounded-lg bg-[var(--card)] shadow-xl">
+        <div className="flex items-center justify-between border-b border-[var(--muted)] px-6 py-4">
+          <div>
+            <h3 className="text-lg font-semibold text-[var(--accent-strong)]">Upload Payment Slip</h3>
+            <p className="text-xs text-[color:var(--text-muted)]">Order #{orderId}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-1 text-[var(--accent-strong)] transition hover:bg-[var(--background-soft)]"
+            aria-label="Close"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth="2"
+              stroke="currentColor"
+              className="h-5 w-5"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="px-6 py-4">
+          <div className="flex flex-col gap-6 md:flex-row">
+            <div className="w-full md:w-1/2">
+              <div className="space-y-3">
+                <p className="text-left text-xs text-[color:var(--status-error)]">* Required</p>
+                <div className="flex h-48 w-full items-center justify-center overflow-hidden rounded-lg border border-[var(--muted)] bg-[var(--background-soft)]">
+                  {previewUrl ? (
+                    <Image
+                      src={previewUrl}
+                      alt="Slip preview"
+                      width={192}
+                      height={192}
+                      className="h-full w-full object-contain"
+                      unoptimized
+                    />
+                  ) : selectedFile && !previewUrl ? (
+                    <div className="p-4 text-center">
+                      <p className="break-words break-all text-sm font-medium text-[var(--accent-strong)]">{selectedFile.name}</p>
+                      <p className="mt-1 text-xs text-[var(--accent-strong)]">PDF file selected</p>
+                    </div>
+                  ) : (
+                    <div className="p-4 text-center">
+                      <svg className="mx-auto h-12 w-12 text-[var(--muted)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
+                        />
+                      </svg>
+                      <p className="mt-2 text-sm text-[var(--accent-strong)]">No file chosen</p>
+                    </div>
+                  )}
+                </div>
+
+                <label className="block cursor-pointer">
+                  <input
+                    type="file"
+                    accept="image/*,application/pdf"
+                    onChange={(e) => handleFileChange(e.target.files?.[0] ?? null)}
+                    className="hidden"
+                  />
+                  <div className="w-full rounded-lg border border-[var(--muted)] bg-[var(--background-soft)] px-4 py-2 text-center text-sm font-semibold text-[var(--accent-strong)] transition hover:bg-[var(--muted)]">
+                    {selectedFile ? "Choose Different File" : "Choose File"}
+                  </div>
+                </label>
+                {selectedFile ? (
+                  <p className="break-words break-all px-2 text-center text-xs text-[color:var(--text-muted)]">{selectedFile.name}</p>
+                ) : null}
+                <p className="text-center text-xs text-[color:var(--status-error)] opacity-70">
+                  * Accepted: jpg, jpeg, png, webp, pdf (max 5MB)
+                </p>
+              </div>
+            </div>
+
+            <div className="w-full space-y-4 md:w-1/2">
+              <div>
+                <label className="block text-left text-sm">
+                  <span className="mb-2 block font-medium text-[var(--accent-stronger)]">Note (Optional)</span>
+                  <textarea
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    placeholder="Add any additional notes about your payment..."
+                    className="mt-1 h-32 w-full resize-none rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm leading-relaxed focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                  />
+                </label>
+              </div>
+
+              {uploadError ? (
+                <div className="rounded-lg border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-3 py-2">
+                  <p className="text-xs text-[color:var(--status-error)]">{uploadError}</p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-3 border-t border-[var(--muted)] px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-md px-4 py-2 text-sm font-semibold text-[color:var(--text-muted)] transition hover:bg-[var(--muted)]/50"
+            disabled={isUploading}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleUpload}
+            disabled={!selectedFile || isUploading}
+            className="rounded-md bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-stronger)] disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            {isUploading ? "Uploading..." : "Confirm Upload"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

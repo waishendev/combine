@@ -363,7 +363,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
             payment_method: selectedPaymentMethod,
             billplz_gateway_option_id: selectedPaymentMethod === "billplz_online_banking" ? (selectedBillplzGatewayOptionId ?? undefined) : undefined,
           });
-          const redirectUrl = payResponse?.data?.redirect_url;
+          const redirectUrl = payResponse?.redirect_url;
           if (redirectUrl) {
             window.location.href = redirectUrl;
             return;

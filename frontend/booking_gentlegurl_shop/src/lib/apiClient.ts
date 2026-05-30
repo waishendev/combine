@@ -295,10 +295,33 @@ export async function checkoutCart(payload?: {
 }
 
 export async function payPublicOrder(orderId: number, payload?: { payment_method?: "billplz_online_banking" | "billplz_credit_card"; billplz_gateway_option_id?: number }) {
-  return request<{ data?: { redirect_url?: string } }>(`/public/shop/orders/${orderId}/pay`, {
+  const response = await request<{ data?: { redirect_url?: string }; redirect_url?: string }>(`/public/shop/orders/${orderId}/pay`, {
     method: "POST",
     body: JSON.stringify(payload ?? {}),
   });
+  const unwrapped = unwrapData<{ redirect_url?: string }>(response);
+  const redirectUrl = unwrapped?.redirect_url ?? response.redirect_url;
+  if (!redirectUrl) {
+    throw new ApiError("Unable to initiate payment.", 422);
+  }
+  return { redirect_url: redirectUrl };
+}
+
+export type CancelOrderResponse = {
+  order: {
+    id: number;
+    status: string;
+    payment_status: string;
+    reserve_expires_at?: string | null;
+  };
+};
+
+export async function cancelOrder(orderId: number): Promise<CancelOrderResponse> {
+  const response = await request<{ data?: CancelOrderResponse } | CancelOrderResponse>(`/public/shop/orders/${orderId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({}),
+  });
+  return unwrapData<CancelOrderResponse>(response);
 }
 
 export type PublicAccountOrder = {
@@ -310,6 +333,7 @@ export type PublicAccountOrder = {
   payments?: Array<{ method: string; amount: number }>;
   grand_total: number;
   created_at?: string | null;
+  reserve_expires_at?: string | null;
   receipt_public_url?: string | null;
   items?: Array<{
     id: number;

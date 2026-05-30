@@ -75,6 +75,7 @@ class ShopSettingController extends Controller
             ], $type),
             'return_window_days' => (int) SettingService::get('ecommerce.return_window_days', 7, $type),
             'return_tracking_submit_days' => (int) SettingService::get('ecommerce.return_tracking_submit_days', 7, $type),
+            'order_reserve_minutes' => (int) SettingService::get('ecommerce.order_reserve_minutes', 30, $type),
         ];
 
         return response()->json([
@@ -129,6 +130,7 @@ class ShopSettingController extends Controller
             ],
             'ecommerce.return_window_days' => 7,
             'ecommerce.return_tracking_submit_days' => 7,
+            'ecommerce.order_reserve_minutes' => 30,
             'booking_policy' => $this->defaultBookingPolicySetting(),
             'BOOKING_HOLD_MINUTES' => 10,
             'booking_service_deposit_note' => null,
@@ -210,6 +212,9 @@ class ShopSettingController extends Controller
                 break;
             case 'ecommerce.return_tracking_submit_days':
                 $data = $this->validateReturnTrackingSubmitDays($request);
+                break;
+            case 'ecommerce.order_reserve_minutes':
+                $data = $this->validateOrderReserveMinutes($request);
                 break;
             case 'booking_policy':
                 $data = $this->validateBookingPolicy($request);
@@ -522,6 +527,15 @@ class ShopSettingController extends Controller
         return (int) $validated['value'];
     }
 
+    protected function validateOrderReserveMinutes(Request $request): int
+    {
+        $validated = $request->validate([
+            'value' => ['required', 'integer', 'min:1', 'max:1440'],
+        ]);
+
+        return (int) $validated['value'];
+    }
+
     protected function validateBookingServiceDepositNote(Request $request): ?string
     {
         $validated = $request->validate([
@@ -806,6 +820,7 @@ class ShopSettingController extends Controller
             'product_reviews',
             'ecommerce.return_window_days',
             'ecommerce.return_tracking_submit_days',
+            'ecommerce.order_reserve_minutes',
         ];
     }
 

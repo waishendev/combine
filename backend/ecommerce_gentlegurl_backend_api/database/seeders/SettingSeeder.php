@@ -39,6 +39,11 @@ class SettingSeeder extends Seeder
         }
 
         Setting::updateOrCreate(
+            ['type' => 'ecommerce', 'key' => 'ecommerce.order_reserve_minutes'],
+            ['value' => 30]
+        );
+
+        Setting::updateOrCreate(
             ['type' => 'booking', 'key' => 'booking_policy'],
             ['value' => [
                 'reschedule' => [
