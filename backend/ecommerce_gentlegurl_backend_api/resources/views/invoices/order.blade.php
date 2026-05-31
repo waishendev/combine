@@ -700,7 +700,7 @@
             @foreach($bookingProductOptionRows as $option)
               <tr style="background:#f9fafb;">
                 <td>
-                  <div class="item-name" style="font-weight:500;">{{ $option['label'] ?? '-' }}</div>
+                  <div class="item-name">{{ $option['label'] ?? '-' }}</div>
                   <?php if(!empty($option['cn_label'])): ?>
                     <div class="sku" style="margin-top:1px;">{{ $option['cn_label'] }}</div>
                   <?php endif; ?>

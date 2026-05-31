@@ -244,8 +244,7 @@ export default async function PublicReceiptPage({ params }: Props) {
                 {bookingProductAddons.map((opt, optIdx) => (
                   <tr key={`shop-receipt-addon-${index}-${optIdx}`} className="border-t border-[var(--card-border)] bg-[var(--muted)]/25 text-sm">
                     <td className="px-4 py-2">
-                      <p className="text-[var(--foreground)]">{opt.label}</p>
-                      {opt.cn_label ? <p className="text-xs text-[var(--foreground)]/60">{opt.cn_label}</p> : null}
+                      <ItemNameStack name={opt.label ?? '-'} cnName={opt.cn_label} />
                     </td>
                     <td className="px-4 py-2 text-right">{item.qty}</td>
                     <td className="px-4 py-2 text-right">{money(Number(opt.extra_price ?? 0))}</td>
