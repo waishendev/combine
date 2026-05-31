@@ -495,6 +495,7 @@ $protectedRoutes = function () {
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
         Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
+        Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/discount', [PosController::class, 'updateBookingProductOptionDiscount']);
         Route::patch('/cart/package-items/{itemId}/discount', [PosController::class, 'updatePackageCartItemDiscount']);
         Route::patch('/cart/appointment-settlements/{itemId}/discount', [PosController::class, 'updateAppointmentSettlementCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
@@ -1240,6 +1241,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.create|booking.services.update');
     Route::put('/services/bulk', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'bulkUpdate'])
         ->middleware('permission:booking.services.update');
+    Route::delete('/services/bulk', [\App\Http\Controllers\Admin\Booking\ServiceController::class, 'bulkDelete'])
+        ->middleware('permission:booking.services.delete');
     Route::apiResource('/services', \App\Http\Controllers\Admin\Booking\ServiceController::class);
 
     Route::get('/products/export', [\App\Http\Controllers\Admin\Booking\BookingProductController::class, 'exportCsv'])
@@ -1248,6 +1251,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.create|booking.services.update');
     Route::put('/products/bulk', [\App\Http\Controllers\Admin\Booking\BookingProductController::class, 'bulkUpdate'])
         ->middleware('permission:booking.services.update');
+    Route::delete('/products/bulk', [\App\Http\Controllers\Admin\Booking\BookingProductController::class, 'bulkDelete'])
+        ->middleware('permission:booking.services.delete');
     Route::apiResource('/products', \App\Http\Controllers\Admin\Booking\BookingProductController::class);
     Route::get('/product-categories/export', [\App\Http\Controllers\Admin\Booking\BookingProductCategoryController::class, 'exportCsv'])
         ->middleware('permission:booking.services.view');
@@ -1258,6 +1263,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.services.view');
     Route::post('/categories/import', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'importCsv'])
         ->middleware('permission:booking.services.create|booking.services.update');
+    Route::put('/categories/bulk', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'bulkUpdate'])
+        ->middleware('permission:booking.services.update');
     Route::apiResource('/categories', \App\Http\Controllers\Admin\Booking\CategoryController::class);
     Route::post('/categories/{id}/move-up', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveUp']);
     Route::post('/categories/{id}/move-down', [\App\Http\Controllers\Admin\Booking\CategoryController::class, 'moveDown']);

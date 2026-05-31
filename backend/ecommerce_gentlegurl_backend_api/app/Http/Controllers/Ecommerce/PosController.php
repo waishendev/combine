@@ -1591,18 +1591,37 @@ class PosController extends Controller
                 ])->values()->all(),
             ];
         })->filter()->values();
+        $selectedSnapshotRows = $selectedSnapshots->all();
         $extraPrice = (float) $selectedSnapshots->flatMap(fn ($q) => $q['options'])->sum('extra_price');
+        $unitPriceSnapshot = round((float) $bookingProduct->price + $extraPrice, 2);
+        $targetSignature = $this->bookingProductOptionConfigurationSignature($selectedSnapshotRows);
         $cart = $this->resolveCart((int) $request->user()->id);
-        $item = PosCartItem::query()->firstOrNew([
-            'pos_cart_id' => $cart->id,
-            'item_type' => 'booking_product',
-            'booking_product_id' => (int) $bookingProduct->id,
-            'variant_id' => null,
-            'product_id' => null,
-        ]);
+        $item = PosCartItem::query()
+            ->where('pos_cart_id', $cart->id)
+            ->where('item_type', 'booking_product')
+            ->where('booking_product_id', (int) $bookingProduct->id)
+            ->whereNull('variant_id')
+            ->whereNull('product_id')
+            ->where('price_snapshot', $unitPriceSnapshot)
+            ->get()
+            ->first(function (PosCartItem $candidate) use ($targetSignature) {
+                return ! $this->bookingProductCartItemHasDiscountState($candidate)
+                    && $this->bookingProductOptionConfigurationSignature($candidate->selected_booking_product_options ?? []) === $targetSignature;
+            });
+
+        if (! $item) {
+            $item = new PosCartItem([
+                'pos_cart_id' => $cart->id,
+                'item_type' => 'booking_product',
+                'booking_product_id' => (int) $bookingProduct->id,
+                'variant_id' => null,
+                'product_id' => null,
+            ]);
+        }
+
         $item->qty = (int) ($item->exists ? $item->qty : 0) + $qty;
-        $item->price_snapshot = (float) $bookingProduct->price + $extraPrice;
-        $item->selected_booking_product_options = $selectedSnapshots->all();
+        $item->price_snapshot = $unitPriceSnapshot;
+        $item->selected_booking_product_options = $selectedSnapshotRows;
         $item->item_type = 'booking_product';
         $item->booking_product_id = (int) $bookingProduct->id;
         $item->variant_id = null;
@@ -1612,6 +1631,68 @@ class PosController extends Controller
         return $this->respond([
             'cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name'])),
         ]);
+    }
+
+    protected function bookingProductOptionConfigurationSignature(array $selectedOptionsSnapshot): string
+    {
+        $rows = collect($selectedOptionsSnapshot)
+            ->map(function ($question) {
+                if (! is_array($question)) {
+                    return null;
+                }
+
+                $questionId = (int) ($question['question_id'] ?? 0);
+
+                $options = collect($question['options'] ?? [])
+                    ->filter(fn ($option) => is_array($option) && (int) ($option['id'] ?? 0) > 0)
+                    ->map(fn ($option) => [
+                        'id' => (int) ($option['id'] ?? 0),
+                        'extra_price' => round((float) ($option['extra_price'] ?? 0), 2),
+                    ])
+                    ->sortBy(fn (array $option) => sprintf('%010d:%012.2f', $option['id'], $option['extra_price']))
+                    ->values()
+                    ->all();
+
+                if (empty($options)) {
+                    return null;
+                }
+
+                return [
+                    'question_id' => $questionId,
+                    'options' => $options,
+                ];
+            })
+            ->filter()
+            ->sortBy('question_id')
+            ->values()
+            ->all();
+
+        return json_encode($rows, JSON_UNESCAPED_UNICODE | JSON_PRESERVE_ZERO_FRACTION) ?: '[]';
+    }
+
+    protected function bookingProductCartItemHasDiscountState(PosCartItem $item): bool
+    {
+        if (! empty($item->discount_type) || (float) ($item->discount_value ?? 0) > 0 || (float) ($item->discount_amount ?? 0) > 0) {
+            return true;
+        }
+
+        foreach (($item->selected_booking_product_options ?? []) as $question) {
+            foreach ((array) ($question['options'] ?? []) as $option) {
+                if (! is_array($option)) {
+                    continue;
+                }
+
+                if (
+                    ! empty($option['discount_type'])
+                    || (float) ($option['discount_value'] ?? 0) > 0
+                    || (float) ($option['discount_amount'] ?? 0) > 0
+                ) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
 
@@ -3856,7 +3937,7 @@ class PosController extends Controller
 
         $isStaffUser = !empty($request->user()?->staff_id);
         $basePricing = $this->resolvePosCartItemPricing($item, $isStaffUser);
-        $baseLineTotal = (float) ($basePricing['line_total_after_promotion'] ?? $basePricing['effective_line_total']);
+        $baseLineTotal = (float) ($basePricing['booking_product_base_line_total'] ?? $basePricing['line_total_after_promotion'] ?? $basePricing['effective_line_total']);
 
         if ($discountType === 'percentage' && ($discountValue < 0 || $discountValue > 100)) {
             return $this->respondError(__('Percentage discount must be between 0 and 100.'), 422);
@@ -3871,6 +3952,76 @@ class PosController extends Controller
         $item->discount_value = $discountValue;
         $item->discount_remark = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
         $this->applyCartLineDiscountSnapshots($item, $discountAmount, max(0.0, $baseLineTotal - $discountAmount));
+        $item->save();
+
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
+    }
+
+    public function updateBookingProductOptionDiscount(Request $request, int $itemId, int $optionId)
+    {
+        $validated = $request->validate([
+            'discount_type' => ['nullable', 'in:percentage,fixed'],
+            'discount_value' => ['nullable', 'numeric', 'min:0'],
+            'discount_remark' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->items()->with(['bookingProduct.categories'])->findOrFail($itemId);
+
+        if (strtolower((string) ($item->item_type ?? 'product')) !== 'booking_product') {
+            return $this->respondError(__('Only booking product option discounts can be updated here.'), 422);
+        }
+
+        $snapshots = is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [];
+        $found = false;
+        $lineTotal = 0.0;
+        foreach ($snapshots as $questionIndex => $question) {
+            if (! is_array($question)) {
+                continue;
+            }
+            $options = is_array($question['options'] ?? null) ? $question['options'] : [];
+            foreach ($options as $optionIndex => $option) {
+                if ((int) ($option['id'] ?? 0) !== $optionId) {
+                    continue;
+                }
+                $found = true;
+                $lineTotal = round(max(0.0, (float) ($option['extra_price'] ?? 0)) * max(1, (int) $item->qty), 2);
+                $discountType = $validated['discount_type'] ?? null;
+                $discountValue = (float) ($validated['discount_value'] ?? 0);
+
+                if (! $discountType || $discountValue <= 0) {
+                    unset(
+                        $option['discount_type'],
+                        $option['discount_value'],
+                        $option['discount_amount'],
+                        $option['line_total_after_discount'],
+                        $option['discount_remark']
+                    );
+                } else {
+                    if ($discountType === 'percentage' && $discountValue > 100) {
+                        return $this->respondError(__('Percentage discount must be between 0 and 100.'), 422);
+                    }
+                    if ($discountType === 'fixed' && $discountValue > $lineTotal) {
+                        return $this->respondError(__('Fixed discount must not exceed option line total.'), 422);
+                    }
+                    $discountAmount = $this->resolveManualDiscountAmount((string) $discountType, $discountValue, $lineTotal);
+                    $option['discount_type'] = $discountType;
+                    $option['discount_value'] = $discountValue;
+                    $option['discount_amount'] = $discountAmount;
+                    $option['line_total_after_discount'] = max(0.0, $lineTotal - $discountAmount);
+                    $option['discount_remark'] = isset($validated['discount_remark']) ? trim((string) $validated['discount_remark']) : null;
+                }
+
+                $snapshots[$questionIndex]['options'][$optionIndex] = $option;
+                break 2;
+            }
+        }
+
+        if (! $found) {
+            return $this->respondError(__('Booking product option was not found in this cart item.'), 404);
+        }
+
+        $item->selected_booking_product_options = $snapshots;
         $item->save();
 
         return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name']))]);
@@ -4572,7 +4723,7 @@ class PosController extends Controller
                         'discount_type' => $item->discount_type,
                         'discount_value' => (float) ($item->discount_value ?? 0),
                         'discount_remark' => $item->discount_remark,
-                        'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
+                        'discount_amount' => (float) ($pricing['total_manual_discount_amount'] ?? $pricing['manual_discount_amount'] ?? 0),
                         'line_total_after_discount' => (float) $lineNetTotal,
                         'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                         'locked' => true,
@@ -6263,9 +6414,46 @@ class PosController extends Controller
         $product = $variant?->product ?? $item->product;
 
         $unitPriceSnapshot = (float) $item->price_snapshot;
-        $lineTotalSnapshot = $unitPriceSnapshot * (int) $item->qty;
+        $qty = max(1, (int) $item->qty);
+        $lineTotalSnapshot = $unitPriceSnapshot * $qty;
 
         $isStaffFreeApplied = $isStaffUser && (bool) ($product?->is_staff_free ?? false);
+
+        if (strtolower((string) ($item->item_type ?? 'product')) === 'booking_product') {
+            $optionUnitTotal = (float) collect($item->selected_booking_product_options ?? [])
+                ->flatMap(fn ($question) => is_array($question['options'] ?? null) ? $question['options'] : [])
+                ->sum(fn ($option) => max(0.0, (float) ($option['extra_price'] ?? 0)));
+            $baseUnitPrice = max(0.0, $unitPriceSnapshot - $optionUnitTotal);
+            $baseLineTotal = round($baseUnitPrice * $qty, 2);
+            $baseDiscountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $baseLineTotal);
+            $optionDiscountAmount = 0.0;
+            $optionNetTotal = 0.0;
+
+            foreach (($item->selected_booking_product_options ?? []) as $question) {
+                foreach ((array) ($question['options'] ?? []) as $option) {
+                    $optionGross = round(max(0.0, (float) ($option['extra_price'] ?? 0)) * $qty, 2);
+                    $optionDiscount = $this->resolveManualDiscountAmount((string) ($option['discount_type'] ?? ''), (float) ($option['discount_value'] ?? 0), $optionGross);
+                    $optionDiscountAmount += $optionDiscount;
+                    $optionNetTotal += max(0.0, $optionGross - $optionDiscount);
+                }
+            }
+
+            $effectiveLineTotal = max(0.0, $baseLineTotal - $baseDiscountAmount) + $optionNetTotal;
+
+            return [
+                'unit_price_snapshot' => $unitPriceSnapshot,
+                'line_total_snapshot' => $lineTotalSnapshot,
+                'booking_product_base_line_total' => $baseLineTotal,
+                'booking_product_option_discount_amount' => round($optionDiscountAmount, 2),
+                'manual_discount_amount' => round($baseDiscountAmount, 2),
+                'total_manual_discount_amount' => round($baseDiscountAmount + $optionDiscountAmount, 2),
+                'line_total_after_discount' => round($effectiveLineTotal, 2),
+                'effective_unit_price' => $qty > 0 ? round($effectiveLineTotal / $qty, 2) : 0.0,
+                'effective_line_total' => round($effectiveLineTotal, 2),
+                'is_staff_free_applied' => false,
+            ];
+        }
+
         $effectiveUnitPrice = $isStaffFreeApplied ? 0.0 : $unitPriceSnapshot;
         $effectiveLineTotal = $isStaffFreeApplied ? 0.0 : $lineTotalSnapshot;
 
@@ -6414,6 +6602,15 @@ class PosController extends Controller
         $subtotal = 0.0;
         foreach ($cart->items as $item) {
             $id = (int) $item->id;
+            if (strtolower((string) ($item->item_type ?? 'product')) === 'booking_product') {
+                $line = (float) ($base[$id]['effective_line_total'] ?? 0);
+                $base[$id]['line_total_after_discount'] = $line;
+                $base[$id]['effective_line_total'] = $line;
+                $base[$id]['effective_unit_price'] = (int) $item->qty > 0 ? ($line / (int) $item->qty) : 0;
+                $subtotal += $line;
+                continue;
+            }
+
             $line = (float) ($base[$id]['line_total_after_promotion'] ?? $base[$id]['effective_line_total']);
             $manual = 0.0;
             if (empty($base[$id]['promotion_applied']) && ! empty($item->discount_type) && (float) $item->discount_value > 0) {

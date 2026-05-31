@@ -261,6 +261,46 @@ class ServiceController extends Controller
         return $this->respond(null);
     }
 
+    public function bulkDelete(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:booking_services,id'],
+        ]);
+
+        $services = BookingService::query()->whereIn('id', $validated['ids'])->get();
+        $blockedServiceIds = Booking::query()
+            ->whereIn('service_id', $validated['ids'])
+            ->distinct()
+            ->pluck('service_id');
+
+        if ($blockedServiceIds->isNotEmpty()) {
+            $names = $services
+                ->whereIn('id', $blockedServiceIds->all())
+                ->pluck('name')
+                ->filter()
+                ->values()
+                ->all();
+
+            return $this->respondError(
+                __('Cannot delete: :names. These services are used in existing bookings. Set them inactive instead.', [
+                    'names' => implode(', ', $names),
+                ]),
+                422
+            );
+        }
+
+        $deletedCount = 0;
+        foreach ($services as $service) {
+            $service->delete();
+            $deletedCount++;
+        }
+
+        return $this->respond([
+            'deleted_count' => $deletedCount,
+        ], __('Booking services deleted successfully.'));
+    }
+
     public function bulkUpdate(Request $request)
     {
         $validated = $request->validate([

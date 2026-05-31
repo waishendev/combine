@@ -3,8 +3,12 @@
 import { ChangeEvent, useEffect, useRef, useState } from 'react'
 
 import BookingProductCategoriesPicker from './BookingProductCategoriesPicker'
+import BookingProductQuestionsBuilder from './BookingProductQuestionsBuilder'
 import type { BookingProductCategory, BookingProductQuestion, BookingProductRowData } from './bookingProductTypes'
 import { IMAGE_ACCEPT } from '../mediaAccept'
+
+const fieldClass =
+  'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-50 disabled:text-gray-500'
 
 type Props = {
   show: boolean
@@ -209,11 +213,14 @@ export default function BookingProductUpsertModal({
           if (!submitting) close()
         }}
       />
-      <div className="relative flex max-h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-2xl bg-white shadow-lg sm:max-h-[90vh] sm:rounded-lg">
-        <div className="flex shrink-0 items-center justify-between border-b border-gray-300 px-4 py-4 sm:px-5 sticky top-0 bg-white z-10">
-          <h2 className="text-lg font-semibold">
-            {isEditing ? 'Edit Booking Product' : 'Create Booking Product'}
-          </h2>
+      <div className="relative flex max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl bg-slate-50 shadow-xl sm:max-h-[92vh] sm:rounded-2xl">
+        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">
+              {isEditing ? 'Edit Booking Product' : 'Create Booking Product'}
+            </h2>
+            <p className="mt-0.5 text-sm text-gray-500">Product details, pricing, and optional add-on questions.</p>
+          </div>
           <button
             onClick={() => {
               if (!submitting) close()
@@ -226,21 +233,25 @@ export default function BookingProductUpsertModal({
           </button>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-6 sm:p-5 space-y-6">
-          {error && (
-            <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 pb-6 sm:p-6">
+          {error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
             </div>
-          )}
+          ) : null}
 
-          <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
-            <div className="space-y-4 w-full lg:w-1/2">
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Basic information</h3>
+
+            <div className="grid gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-1">Image</h3>
+                <p className="mb-2 text-sm font-medium text-gray-700">Image</p>
                 <div
                   onClick={handleImageClick}
-                  className={`relative border-2 border-dashed rounded-lg p-4 cursor-pointer transition-colors ${
-                    displayImageUrl ? 'border-gray-300' : 'border-gray-300 hover:border-blue-400'
+                  className={`relative cursor-pointer rounded-xl border-2 border-dashed p-3 transition-colors ${
+                    displayImageUrl
+                      ? 'border-gray-200 bg-gray-50'
+                      : 'border-gray-300 bg-gray-50/50 hover:border-blue-400 hover:bg-blue-50/30'
                   }`}
                 >
                   <input
@@ -252,20 +263,20 @@ export default function BookingProductUpsertModal({
                     disabled={submitting}
                   />
                   {displayImageUrl ? (
-                    <div className="relative group">
+                    <div className="group relative">
                       <img
                         src={displayImageUrl}
                         alt="Product"
-                        className="w-full h-48 object-contain rounded"
+                        className="h-44 w-full rounded-lg object-contain"
                       />
-                      <div className="absolute top-2 right-2 flex items-center gap-2 opacity-100 transition-opacity duration-200 sm:opacity-0 sm:group-hover:opacity-100">
+                      <div className="absolute right-2 top-2 flex items-center gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100">
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation()
                             handleImageClick()
                           }}
-                          className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600"
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-blue-400/30 bg-blue-500/95 text-white shadow-lg backdrop-blur-md hover:bg-blue-600"
                           aria-label="Replace image"
                           disabled={submitting}
                         >
@@ -277,7 +288,7 @@ export default function BookingProductUpsertModal({
                             e.stopPropagation()
                             handleRemoveImage()
                           }}
-                          className="w-8 h-8 bg-red-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-red-400/30 hover:bg-red-600"
+                          className="flex h-8 w-8 items-center justify-center rounded-full border border-red-400/30 bg-red-500/95 text-white shadow-lg backdrop-blur-md hover:bg-red-600"
                           aria-label="Remove new upload"
                           disabled={submitting}
                         >
@@ -286,92 +297,60 @@ export default function BookingProductUpsertModal({
                       </div>
                     </div>
                   ) : (
-                    <div className="flex flex-col items-center justify-center py-8">
-                      <i className="fa-solid fa-cloud-arrow-up text-4xl text-gray-400 mb-2" />
-                      <p className="text-sm text-gray-600">Click to upload</p>
+                    <div className="flex flex-col items-center justify-center py-10">
+                      <i className="fa-solid fa-cloud-arrow-up mb-2 text-3xl text-gray-400" />
+                      <p className="text-sm font-medium text-gray-600">Upload image</p>
+                      <p className="mt-1 text-xs text-gray-400">Click to browse</p>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className="space-y-4 w-full lg:w-1/2">
-              <div>
-                <label htmlFor="booking-product-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="booking-product-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Product name"
-                  disabled={submitting}
-                />
-              </div>
+              <div className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label htmlFor="booking-product-name" className="mb-1.5 block text-sm font-medium text-gray-700">
+                      Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="booking-product-name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className={fieldClass}
+                      placeholder="Product name"
+                      disabled={submitting}
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="booking-product-cn-name" className="mb-1.5 block text-sm font-medium text-gray-700">
+                      Chinese name
+                    </label>
+                    <input
+                      id="booking-product-cn-name"
+                      value={cnName}
+                      onChange={(e) => setCnName(e.target.value)}
+                      className={fieldClass}
+                      placeholder="中文名（可选）"
+                      disabled={submitting}
+                    />
+                  </div>
+                </div>
 
-              <div>
-                <label htmlFor="booking-product-cn-name" className="block text-sm font-medium text-gray-700 mb-1">
-                  Chinese Name
-                </label>
-                <input
-                  id="booking-product-cn-name"
-                  value={cnName}
-                  onChange={(e) => setCnName(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="中文名（可选）"
-                  disabled={submitting}
-                />
-              </div>
-
-              <div>
-                <label htmlFor="booking-product-description" className="block text-sm font-medium text-gray-700 mb-1">
-                  Description
-                </label>
-                <textarea
-                  id="booking-product-description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Product description"
-                  rows={3}
-                  disabled={submitting}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="booking-product-price" className="block text-sm font-medium text-gray-700 mb-1">
-                    Price <span className="text-red-500">*</span>
+                  <label htmlFor="booking-product-description" className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Description
                   </label>
-                  <input
-                    id="booking-product-price"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  <textarea
+                    id="booking-product-description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className={fieldClass}
+                    placeholder="Product description"
+                    rows={3}
                     disabled={submitting}
                   />
                 </div>
 
-                <div>
-                  <label htmlFor="booking-product-barcode" className="block text-sm font-medium text-gray-700 mb-1">
-                    Barcode
-                  </label>
-                  <input
-                    id="booking-product-barcode"
-                    value={barcode}
-                    onChange={(e) => setBarcode(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Optional"
-                    disabled={submitting}
-                  />
-                </div>
-              </div>
-
-              <div>
                 <BookingProductCategoriesPicker
                   categories={categories}
                   value={categoryIds}
@@ -380,34 +359,54 @@ export default function BookingProductUpsertModal({
                   label="Categories"
                 />
               </div>
+            </div>
+          </section>
 
-
-              <div className="rounded-lg border border-gray-200 p-3 space-y-3">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-800">Questions / Add-ons</h3>
-                  <button type="button" className="text-xs rounded bg-blue-50 text-blue-700 px-2 py-1" onClick={() => setQuestions((prev) => [...prev, { title: '', cn_title: '', description: '', cn_description: '', question_type: 'single_choice', sort_order: prev.length + 1, is_required: false, is_active: true, options: [] }])}>+ Add Question</button>
-                </div>
-                {questions.map((q, qi) => (
-                  <div key={`q-${qi}`} className="rounded border border-gray-200 p-2 space-y-2">
-                    <div className="flex justify-between"><p className="text-xs font-medium">Question {qi + 1}</p><button type="button" className="text-xs text-red-600" onClick={() => setQuestions((prev) => prev.filter((_, i) => i !== qi))}>Remove</button></div>
-                    <input className="w-full border rounded px-2 py-1 text-sm" placeholder="Title" value={q.title} onChange={(e) => setQuestions(prev => prev.map((it,i)=> i===qi ? {...it,title:e.target.value}:it))} />
-                    <input className="w-full border rounded px-2 py-1 text-sm" placeholder="中文标题" value={q.cn_title ?? ''} onChange={(e) => setQuestions(prev => prev.map((it,i)=> i===qi ? {...it,cn_title:e.target.value}:it))} />
-                    <div className="grid grid-cols-2 gap-2"><select className="border rounded px-2 py-1 text-sm" value={q.question_type} onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i===qi?{...it,question_type:e.target.value as 'single_choice'|'multi_choice'}:it))}><option value="single_choice">single_choice</option><option value="multi_choice">multi_choice</option></select><button type="button" className="text-xs rounded border px-2" onClick={() => setQuestions(prev => prev.map((it,i)=> i===qi ? {...it,is_required:!it.is_required}:it))}>Required: {q.is_required ? 'Yes' : 'No'}</button></div>
-                    <div className="space-y-1">{(q.options ?? []).map((opt, oi) => <div key={`o-${qi}-${oi}`} className="grid grid-cols-12 gap-1"><input className="col-span-4 border rounded px-1 py-1 text-xs" value={opt.label} placeholder="Label" onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.map((o,j)=>j===oi?{...o,label:e.target.value}:o)}))}/><input className="col-span-3 border rounded px-1 py-1 text-xs" value={opt.cn_label ?? ''} placeholder="中文" onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.map((o,j)=>j===oi?{...o,cn_label:e.target.value}:o)}))}/><input type="number" className="col-span-3 border rounded px-1 py-1 text-xs" value={opt.extra_price} placeholder="Extra" onChange={(e)=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.map((o,j)=>j===oi?{...o,extra_price:Number(e.target.value||0)}:o)}))}/><button type="button" className="col-span-2 text-red-600 text-xs" onClick={()=>setQuestions(prev=>prev.map((it,i)=>i!==qi?it:{...it,options:it.options.filter((_,j)=>j!==oi)}))}>X</button></div>)}</div>
-                    <button type="button" className="text-xs rounded bg-gray-100 px-2 py-1" onClick={() => setQuestions(prev => prev.map((it,i)=>i!==qi?it:{...it,options:[...(it.options ?? []),{label:'',cn_label:'',extra_price:0,sort_order:(it.options?.length ?? 0)+1,is_active:true}]}))}>+ Add Option</button>
-                  </div>
-                ))}
-              </div>
-
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+            <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Pricing & inventory</h3>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <div>
-                <label htmlFor="booking-product-status" className="block text-sm font-medium text-gray-700 mb-1">
+                <label htmlFor="booking-product-price" className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Price <span className="text-red-500">*</span>
+                </label>
+                <div className="relative">
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
+                    RM
+                  </span>
+                  <input
+                    id="booking-product-price"
+                    type="number"
+                    min={0}
+                    step="0.01"
+                    value={price}
+                    onChange={(e) => setPrice(e.target.value)}
+                    className={`${fieldClass} pl-10`}
+                    disabled={submitting}
+                  />
+                </div>
+              </div>
+              <div>
+                <label htmlFor="booking-product-barcode" className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Barcode
+                </label>
+                <input
+                  id="booking-product-barcode"
+                  value={barcode}
+                  onChange={(e) => setBarcode(e.target.value)}
+                  className={fieldClass}
+                  placeholder="Optional SKU / barcode"
+                  disabled={submitting}
+                />
+              </div>
+              <div className="sm:col-span-2 lg:col-span-1">
+                <label htmlFor="booking-product-status" className="mb-1.5 block text-sm font-medium text-gray-700">
                   Status
                 </label>
                 <select
                   id="booking-product-status"
                   value={isActive ? 'active' : 'inactive'}
                   onChange={(e) => setIsActive(e.target.value === 'active')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className={fieldClass}
                   disabled={submitting}
                 >
                   <option value="active">Active</option>
@@ -415,16 +414,24 @@ export default function BookingProductUpsertModal({
                 </select>
               </div>
             </div>
-          </div>
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
+            <BookingProductQuestionsBuilder
+              value={questions}
+              onChange={setQuestions}
+              disabled={submitting}
+            />
+          </section>
         </div>
 
-        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-gray-300 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-4 sm:pb-4 sticky bottom-0">
+        <div className="sticky bottom-0 flex shrink-0 items-center justify-end gap-2 border-t border-gray-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4 sm:pb-4">
           <button
             type="button"
             onClick={() => {
               if (!submitting) close()
             }}
-            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
             disabled={submitting}
           >
             Cancel
@@ -432,10 +439,10 @@ export default function BookingProductUpsertModal({
           <button
             type="button"
             onClick={handleSubmit}
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
             disabled={submitting}
           >
-            {submitting ? 'Saving…' : isEditing ? 'Update' : 'Create'}
+            {submitting ? 'Saving…' : isEditing ? 'Update product' : 'Create product'}
           </button>
         </div>
       </div>

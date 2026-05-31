@@ -190,6 +190,20 @@ class BookingProductController extends Controller
         return $this->respond(null);
     }
 
+    public function bulkDelete(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:booking_products,id'],
+        ]);
+
+        $deletedCount = BookingProduct::query()->whereIn('id', $validated['ids'])->delete();
+
+        return $this->respond([
+            'deleted_count' => $deletedCount,
+        ], __('Booking products deleted successfully.'));
+    }
+
     public function bulkUpdate(Request $request)
     {
         $validated = $request->validate([

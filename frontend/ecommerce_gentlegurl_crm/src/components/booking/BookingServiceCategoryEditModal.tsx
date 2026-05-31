@@ -349,15 +349,21 @@ export default function BookingServiceCategoryEditModal({
                     disabled={disableForm}
                   />
                 </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
+                <div>
+                  <label htmlFor="edit-category-status" className="mb-1 block text-sm font-medium text-gray-700">
+                    {t('common.status')}
+                  </label>
+                  <select
+                    id="edit-category-status"
+                    value={isActive ? 'active' : 'inactive'}
+                    onChange={(e) => setIsActive(e.target.value === 'active')}
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     disabled={disableForm}
-                  />
-                  Active
-                </label>
+                  >
+                    <option value="active">{t('common.active')}</option>
+                    <option value="inactive">{t('common.inactive')}</option>
+                  </select>
+                </div>
                 <BookingCategoryServicesSection
                   services={services}
                   serviceIds={serviceIds}
