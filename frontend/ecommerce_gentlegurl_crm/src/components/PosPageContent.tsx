@@ -5661,10 +5661,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <>
                               <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">TYPE: BOOKING PRODUCT</p>
                               <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="text-[11px] font-bold uppercase tracking-wide text-blue-800">Item</p>
-                                  <p className="text-[11px] font-semibold text-blue-800">Qty: {item.qty}</p>
-                                </div>
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-800">Item</p>
                                 <div className="mt-2 space-y-3 text-xs">
                                   <div className="flex items-start justify-between gap-3">
                                     <ServiceNameStack
@@ -5749,28 +5746,30 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             className="h-7 w-7 rounded-md border-2 border-gray-300 bg-white font-bold text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all active:scale-95 disabled:opacity-40 disabled:cursor-not-allowed disabled:bg-gray-100 disabled:border-gray-200 disabled:text-gray-400 disabled:hover:bg-gray-100 disabled:hover:border-gray-200"
                           >+</button>
                         </div>
-                          <div className="min-w-0 flex-1 text-right tabular-nums sm:max-w-[11rem] sm:flex-none sm:text-right">
-                            {item.promotion_applied && item.line_total_snapshot ? (
-                              <div className="space-y-0.5">
-                                <p className="text-[11px] text-gray-500 line-through">RM {Number(isBookingProduct ? bookingProductTotalGrossLineTotal : item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
-                              </div>
-                            ) : item.is_staff_free_applied ? (
-                              <div className="space-y-0.5">
-                                <p className="text-[11px] text-gray-500 line-through">
-                                   RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
-                                </p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
-                              </div>
-                            ) : ((isBookingProduct && bookingProductTotalGrossLineTotal > bookingProductTotalNetLineTotal + 0.0001) || (item.discount_amount ?? 0) > 0) ? (
-                              <div className="space-y-0.5">
-                                <p className="text-[11px] text-gray-500 line-through">RM {Number(isBookingProduct ? bookingProductTotalGrossLineTotal : (item.line_total_snapshot ?? item.line_total)).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
-                              </div>
-                            ) : (
-                              <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
-                            )}
-                          </div>
+                          {!isBookingProduct ? (
+                            <div className="min-w-0 flex-1 text-right tabular-nums sm:max-w-[11rem] sm:flex-none sm:text-right">
+                              {item.promotion_applied && item.line_total_snapshot ? (
+                                <div className="space-y-0.5">
+                                  <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
+                                  <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                </div>
+                              ) : item.is_staff_free_applied ? (
+                                <div className="space-y-0.5">
+                                  <p className="text-[11px] text-gray-500 line-through">
+                                     RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
+                                  </p>
+                                  <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                </div>
+                              ) : (item.discount_amount ?? 0) > 0 ? (
+                                <div className="space-y-0.5">
+                                  <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
+                                  <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                                </div>
+                              ) : (
+                                <p className="text-sm font-bold text-orange-700">RM {Number(item.line_total).toFixed(2)}</p>
+                              )}
+                            </div>
+                          ) : null}
                           <button 
                             type="button"
                             onClick={() => void removeItem(item.id)} 
@@ -7293,6 +7292,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">ADD-ON</p>
                               <p className="mt-1 text-sm text-gray-800">+ {opt.label}</p>
                               {opt.cn_label ? <p className="text-xs text-gray-500">{opt.cn_label}</p> : null}
+                              <p className="mt-1 text-xs font-semibold text-gray-600">Qty: {item.qty}</p>
                             </td>
                             <td className="px-4 py-2.5 text-xs text-gray-500">
                               <button
