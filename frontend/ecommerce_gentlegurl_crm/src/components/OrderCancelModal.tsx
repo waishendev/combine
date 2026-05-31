@@ -7,12 +7,14 @@ interface OrderCancelModalProps {
   orderId: number
   onClose: () => void
   onSuccess: () => void
+  isBookingOrder?: boolean
 }
 
 export default function OrderCancelModal({
   orderId,
   onClose,
   onSuccess,
+  isBookingOrder = false,
 }: OrderCancelModalProps) {
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
@@ -70,7 +72,7 @@ export default function OrderCancelModal({
             }
           }
         }
-        setError('Failed to cancel order')
+        setError(isBookingOrder ? 'Failed to cancel booking order' : 'Failed to cancel order')
         return
       }
 
@@ -78,7 +80,7 @@ export default function OrderCancelModal({
       onClose()
     } catch (err) {
       console.error(err)
-      setError('Failed to cancel order')
+      setError(isBookingOrder ? 'Failed to cancel booking order' : 'Failed to cancel order')
     } finally {
       setSubmitting(false)
     }
@@ -94,7 +96,7 @@ export default function OrderCancelModal({
       />
       <div className="relative w-full max-w-md mx-auto max-h-[calc(100vh-2rem)] overflow-y-auto bg-white rounded-lg shadow-lg">
         <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">Cancel Order</h2>
+          <h2 className="text-lg font-semibold">{isBookingOrder ? 'Cancel Booking Order' : 'Cancel Order'}</h2>
           <button
             onClick={() => {
               if (!submitting) onClose()
@@ -145,7 +147,7 @@ export default function OrderCancelModal({
               className="px-4 py-2 text-sm text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
               disabled={submitting}
             >
-              {submitting ? 'Cancelling...' : 'Cancel Order'}
+              {submitting ? 'Cancelling...' : (isBookingOrder ? 'Cancel Booking Order' : 'Cancel Order')}
             </button>
           </div>
         </form>

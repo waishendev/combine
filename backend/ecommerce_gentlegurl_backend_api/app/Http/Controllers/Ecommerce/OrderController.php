@@ -14,6 +14,7 @@ use App\Models\Ecommerce\Order;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Ecommerce\OrderUpload;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Booking\BookingCancellationService;
 // use App\Services\Ecommerce\OrderReserveService;
 use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
@@ -30,6 +31,7 @@ class OrderController extends Controller
         protected OrderPaymentService $paymentService,
         // protected OrderReserveService $orderReserveService,
         protected InvoiceService $invoiceService,
+        protected BookingCancellationService $bookingCancellationService,
     )
     {
     }
@@ -739,15 +741,39 @@ class OrderController extends Controller
             'admin_note' => ['required', 'string'],
         ]);
 
-        DB::transaction(function () use ($order, $validated) {
-            $order->status = 'cancelled';
-            if (!empty($validated['admin_note'])) {
-                $order->admin_note = trim(($order->admin_note ?? '') . "\n" . $validated['admin_note']);
-            }
-            $order->save();
+        $isBookingOrder = $this->detectOrderType($order) === 'booking';
 
-            // $this->orderReserveService->releaseStockForOrder($order);
-        });
+        if ($isBookingOrder && ! in_array((string) $order->status, ['pending', 'processing'], true)) {
+            return $this->respond($order, __('Only awaiting payment or waiting verification booking orders can be cancelled here.'), false, 422);
+        }
+
+        try {
+            DB::transaction(function () use ($request, $order, $validated, $isBookingOrder) {
+                $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
+
+                if ($lockedOrder->payment_status === 'paid') {
+                    throw new \RuntimeException('Order already paid.');
+                }
+
+                if ($isBookingOrder && ! in_array((string) $lockedOrder->status, ['pending', 'processing'], true)) {
+                    throw new \RuntimeException('Only awaiting payment or waiting verification booking orders can be cancelled here.');
+                }
+
+                $lockedOrder->status = 'cancelled';
+                if (!empty($validated['admin_note'])) {
+                    $lockedOrder->admin_note = trim(($lockedOrder->admin_note ?? '') . "\n" . $validated['admin_note']);
+                }
+                $lockedOrder->save();
+
+                if ($isBookingOrder) {
+                    $this->cancelLinkedOrderBookings($lockedOrder, $request, $validated['admin_note']);
+                }
+
+                // $this->orderReserveService->releaseStockForOrder($lockedOrder);
+            });
+        } catch (\RuntimeException $exception) {
+            return $this->respond($order, __($exception->getMessage()), false, 422);
+        }
 
         return $this->respond($order->fresh(['items', 'customer']), __('Order cancelled.'));
     }
@@ -846,6 +872,67 @@ class OrderController extends Controller
 
         return $this->respond($order, __('Order marked as completed.'));
     }
+
+    protected function linkedBookingIdsForOrder(Order $order)
+    {
+        $itemBookingIds = $order->items()
+            ->whereNotNull('booking_id')
+            ->pluck('booking_id');
+
+        $serviceBookingIds = $order->serviceItems()
+            ->whereNotNull('booking_id')
+            ->pluck('booking_id');
+
+        return $itemBookingIds
+            ->merge($serviceBookingIds)
+            ->unique()
+            ->filter()
+            ->values();
+    }
+
+    protected function cancelLinkedOrderBookings(Order $order, Request $request, string $reason): void
+    {
+        $bookingIds = $this->linkedBookingIdsForOrder($order);
+
+        if ($bookingIds->isEmpty()) {
+            return;
+        }
+
+        $bookings = Booking::query()
+            ->whereIn('id', $bookingIds)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($bookings as $booking) {
+            if ((string) $booking->status === 'CANCELLED') {
+                continue;
+            }
+
+            if ((string) $booking->payment_status === 'PAID') {
+                throw new \RuntimeException('Linked paid booking cannot be cancelled from this flow.');
+            }
+
+            $this->bookingCancellationService->cancel(
+                $booking,
+                optional($request->user())->id,
+                $reason,
+                'ADMIN',
+                ['HOLD', 'CONFIRMED', 'PENDING'],
+                [
+                    'order_id' => $order->id,
+                    'order_no' => $order->order_number,
+                    'source' => 'booking_order_cancel',
+                ]
+            );
+        }
+
+        Log::info('Booking order cancelled with linked bookings', [
+            'order_id' => $order->id,
+            'order_no' => $order->order_number,
+            'booking_ids' => $bookingIds->all(),
+        ]);
+    }
+
 
     protected function confirmOrderBookings(Order $order): void
     {
