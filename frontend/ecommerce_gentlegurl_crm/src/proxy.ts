@@ -10,12 +10,8 @@ function isLoginPath(pathname: string) {
 
 export function proxy(req: NextRequest) {
   const pathname = req.nextUrl.pathname;
-  const isProtectedPage =
-    pathname.startsWith('/admins') ||
-    pathname.startsWith('/staffs') ||
-    pathname.startsWith('/dashboard') ||
-    pathname.startsWith('/reports');
   const isLoginPage = isLoginPath(pathname);
+  const isProtectedPage = !isLoginPage;
   const hasSessionCookie =
     req.cookies.get('connect.sid') ||
     req.cookies.get('laravel-session') ||
@@ -47,10 +43,7 @@ export function proxy(req: NextRequest) {
 
 export const config = {
   matcher: [
-    '/admins/:path*',
-    '/staffs/:path*',
-    '/dashboard/:path*',
-    '/reports/:path*',
+    '/((?!_next/static|_next/image|favicon.ico|images|api|manifest|login|admin/login|staff/login).*)',
     '/login',
     '/admin/login',
     '/staff/login',

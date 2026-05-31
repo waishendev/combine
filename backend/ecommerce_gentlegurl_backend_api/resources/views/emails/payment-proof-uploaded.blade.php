@@ -8,7 +8,7 @@
 <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 700px; margin: 0 auto; padding: 20px;">
     <div style="background-color: #f9f9f9; padding: 30px; border-radius: 8px;">
         <div style="text-align: center; margin-bottom: 24px;">
-            @if ($isReupload)
+        @if ($isReupload)
             <div style="display: inline-block; background-color: #fef3c7; border-radius: 50%; width: 56px; height: 56px; line-height: 56px; text-align: center;">
                 <span style="font-size: 26px; color: #d97706;">&#9888;</span>
             </div>
@@ -29,11 +29,7 @@
         <div style="padding: 20px; border: 1px solid #e0e0e0; border-radius: 8px; margin: 20px 0; background-color: #ffffff;">
             <table style="width: 100%; border-collapse: collapse;">
                 <tr>
-                    <td style="padding: 8px 4px; color: #666; width: 120px; vertical-align: top;">Type:</td>
-                    <td style="padding: 8px 4px; font-weight: 600;">{{ $orderType }}</td>
-                </tr>
-                <tr>
-                    <td style="padding: 8px 4px; color: #666; vertical-align: top;">Order / Booking:</td>
+                    <td style="padding: 8px 4px; color: #666; vertical-align: top;">Order No:</td>
                     <td style="padding: 8px 4px; font-weight: 600;">{{ $orderNumber }}</td>
                 </tr>
                 <tr>

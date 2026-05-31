@@ -2,10 +2,7 @@ import { proxy } from './src/proxy'
 
 export const config = {
   matcher: [
-    '/admins/:path*',
-    '/staffs/:path*',
-    '/dashboard/:path*',
-    '/reports/:path*',
+    '/((?!_next/static|_next/image|favicon.ico|images|api|manifest|login|admin/login|staff/login).*)',
     '/login',
     '/admin/login',
     '/staff/login',
