@@ -236,6 +236,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               const bookingProductAddons = Array.isArray(item.selected_booking_product_options)
                 ? item.selected_booking_product_options.flatMap((q) => q.options ?? [])
                 : []
+              const isBookingProductLine = String(item.type ?? '').toLowerCase() === 'booking_product' || bookingProductAddons.length > 0
               const bookingProductAddonUnitTotal = bookingProductAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
               const displayUnitPrice = bookingProductAddons.length > 0 ? Math.max(0, Number(item.unit_price ?? 0) - bookingProductAddonUnitTotal) : Number(item.unit_price ?? 0)
               const displayLineTotal = bookingProductAddons.length > 0 ? Math.max(0, net - (bookingProductAddonUnitTotal * Number(item.qty ?? 1))) : net
@@ -248,7 +249,7 @@ export default async function PublicReceiptPage({ params }: Props) {
                     Type: {isCoveredByPackage ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>
                   {!isCoveredByPackage && item.sku ? <p className="text-xs text-gray-500">SKU: {item.sku}</p> : null}
-                  {!isCoveredByPackage && shouldShowReceiptVariant(item.variant_name) ? (
+                  {!isCoveredByPackage && !isBookingProductLine && shouldShowReceiptVariant(item.variant_name) ? (
                     <p className="text-xs text-gray-500">Variant: {item.variant_name}</p>
                   ) : null}
                   {isCoveredByPackage ? (
@@ -288,7 +289,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               </tr>
               {bookingProductAddons.map((opt, optIdx) => (
                 <tr key={`receipt-addon-row-${idx}-${optIdx}`} className="border-t border-gray-100 bg-gray-50 text-sm">
-                  <td className="px-4 py-2 pl-5">
+                  <td className="px-4 py-2">
                     <p className="text-gray-800">{opt.label}</p>
                     {opt.cn_label ? <p className="text-xs text-gray-500">{opt.cn_label}</p> : null}
                   </td>

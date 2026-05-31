@@ -606,6 +606,7 @@
               $bookingProductOptionRows = collect($item['selected_booking_product_options'] ?? [])
                 ->flatMap(fn ($question) => $question['options'] ?? [])
                 ->values();
+              $isBookingProductLine = strtolower((string) ($item['line_type'] ?? '')) === 'booking_product' || $bookingProductOptionRows->isNotEmpty();
               $bookingProductOptionUnitTotal = (float) $bookingProductOptionRows->sum(fn ($option) => (float) ($option['extra_price'] ?? 0));
               $bookingProductOptionDiscountTotal = (float) $bookingProductOptionRows->sum(fn ($option) => (float) ($option['discount_amount'] ?? 0));
               $mainLineDiscountAmount = max(0, (float) ($item['discount_amount'] ?? 0) - $bookingProductOptionDiscountTotal);
@@ -634,7 +635,7 @@
                 <?php if($sku): ?>
                   <div class="sku">SKU: {{ $sku }}</div>
                 <?php endif; ?>
-                <?php if($item['variant_name'] && !in_array($item['variant_name'], $hiddenReceiptVariantLabels, true)): ?>
+                <?php if(! $isBookingProductLine && $item['variant_name'] && !in_array($item['variant_name'], $hiddenReceiptVariantLabels, true)): ?>
                   <div class="sku">
                     Variant: {{ $item['variant_name'] }}
                     <?php if($item['variant_sku']): ?>
@@ -698,7 +699,7 @@
             </tr>
             @foreach($bookingProductOptionRows as $option)
               <tr style="background:#f9fafb;">
-                <td style="padding-left:18px;">
+                <td>
                   <div class="item-name" style="font-weight:500;">{{ $option['label'] ?? '-' }}</div>
                   <?php if(!empty($option['cn_label'])): ?>
                     <div class="sku" style="margin-top:1px;">{{ $option['cn_label'] }}</div>
