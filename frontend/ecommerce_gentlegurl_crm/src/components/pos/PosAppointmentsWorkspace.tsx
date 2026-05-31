@@ -301,8 +301,6 @@ export default function PosAppointmentsWorkspace({
   const [appointmentQrCodeFullscreen, setAppointmentQrCodeFullscreen] = useState(false)
   const [appointmentReceiptQrLoaded, setAppointmentReceiptQrLoaded] = useState(false)
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
-  const [holdCancelConfirmOpen, setHoldCancelConfirmOpen] = useState(false)
-  const [holdCancelReason, setHoldCancelReason] = useState('')
   const [sendingConfirmationEmail, setSendingConfirmationEmail] = useState(false)
   const [confirmationEmailCooldownUntil, setConfirmationEmailCooldownUntil] = useState(0)
 
@@ -1629,23 +1627,21 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentDetail, showMsg])
 
   const updateAppointmentStatus = useCallback(
-    async (status: 'CANCELLED' | 'LATE_CANCELLATION' | 'NO_SHOW', reason?: string) => {
+    async (status: 'CANCELLED' | 'LATE_CANCELLATION' | 'NO_SHOW') => {
       if (!appointmentDetail?.id) return
       setAppointmentActionLoading(true)
       try {
         const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status, ...(reason?.trim() ? { reason: reason.trim() } : {}) }),
+          body: JSON.stringify({ status }),
         })
         const json = await res.json().catch(() => null)
         if (!res.ok) {
           showMsg(json?.message ?? 'Unable to update status.', 'error')
           return
         }
-        showMsg(status === 'CANCELLED' ? 'Appointment cancelled.' : 'Appointment status updated.', 'success')
-        setHoldCancelConfirmOpen(false)
-        setHoldCancelReason('')
+        showMsg('Appointment status updated.', 'success')
         await fetchAppointments()
         await refreshOpenedAppointmentDetail()
       } finally {
@@ -2057,10 +2053,6 @@ export default function PosAppointmentsWorkspace({
   const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
   /** Cancelled / no-show / late cancel — no checkout or “complete visit” CTAs. */
   const appointmentIsTerminalCancelled = ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION'].includes(appointmentStatusUpper)
-  const appointmentCanCancelHold =
-    appointmentStatusUpper === 'HOLD' &&
-    appointmentPaymentStatusUpper !== 'PAID' &&
-    !appointmentCheckoutCompleted
 
   const appointmentShowPaymentBadge =
     !appointmentIsTerminalCancelled && ['CONFIRMED', 'COMPLETED'].includes(appointmentStatusUpper)
@@ -2712,25 +2704,6 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     ) : null}
                   </section>
-                  ) : null}
-
-                  {appointmentCanCancelHold ? (
-                    <section className="rounded-xl border border-rose-200 bg-rose-50/70 p-4 shadow-sm">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-rose-700">Hold appointment actions</p>
-                      <p className="mt-1 text-xs text-rose-700/80">Cancel this unpaid HOLD appointment directly from the settlement panel.</p>
-                      <button
-                        type="button"
-                        disabled={cashShiftActionDisabled || appointmentActionLoading}
-                        title={cashShiftActionTitle}
-                        onClick={() => {
-                          setHoldCancelReason('')
-                          setHoldCancelConfirmOpen(true)
-                        }}
-                        className="mt-3 flex min-h-[44px] w-full items-center justify-center rounded-xl bg-rose-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-rose-700 disabled:pointer-events-none disabled:opacity-50"
-                      >
-                        Cancel HOLD appointment
-                      </button>
-                    </section>
                   ) : null}
 
                   {/* Booking actions — hidden after checkout (settlement recorded); Mark Completed lives under Collect payment / Complete visit */}
@@ -3475,75 +3448,6 @@ export default function PosAppointmentsWorkspace({
                   <p className="mt-1 text-xs text-gray-500">Try adjusting your search terms</p>
                 </div>
               ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {holdCancelConfirmOpen && appointmentDetail ? (
-        <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div
-            className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="pos-hold-cancel-title"
-          >
-            <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
-              <div>
-                <h3 id="pos-hold-cancel-title" className="text-lg font-bold text-gray-900">Cancel HOLD appointment</h3>
-                <p className="mt-1 text-xs text-gray-500">This will cancel booking {appointmentDetail.booking_code} and refresh the schedule.</p>
-              </div>
-              <button
-                type="button"
-                disabled={appointmentActionLoading}
-                onClick={() => {
-                  setHoldCancelConfirmOpen(false)
-                  setHoldCancelReason('')
-                }}
-                className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 disabled:opacity-50"
-                aria-label="Close"
-              >
-                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            </div>
-            <div className="space-y-4 px-5 py-4">
-              <div className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-                Only unpaid HOLD appointments can be cancelled here. Completed or paid appointments are not eligible for this flow.
-              </div>
-              <label className="block text-sm font-semibold text-gray-800">
-                Admin note / reason <span className="font-normal text-gray-500">(optional)</span>
-                <textarea
-                  value={holdCancelReason}
-                  onChange={(e) => setHoldCancelReason(e.target.value)}
-                  rows={4}
-                  className="mt-2 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-100"
-                  placeholder="Reason for cancellation…"
-                />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
-              <button
-                type="button"
-                disabled={appointmentActionLoading}
-                onClick={() => {
-                  setHoldCancelConfirmOpen(false)
-                  setHoldCancelReason('')
-                }}
-                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
-              >
-                Keep appointment
-              </button>
-              <button
-                type="button"
-                disabled={cashShiftActionDisabled || appointmentActionLoading}
-                title={cashShiftActionTitle}
-                onClick={() => void updateAppointmentStatus('CANCELLED', holdCancelReason)}
-                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {appointmentActionLoading ? 'Cancelling…' : 'Cancel appointment'}
-              </button>
             </div>
           </div>
         </div>

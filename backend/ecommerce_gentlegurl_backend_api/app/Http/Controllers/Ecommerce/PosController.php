@@ -39,7 +39,6 @@ use App\Models\Ecommerce\PosCartServiceItem;
 use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
-use App\Services\Booking\BookingCancellationService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
@@ -73,7 +72,6 @@ class PosController extends Controller
         protected CustomerServicePackageService $customerServicePackageService,
         protected BookingAvailabilityService $availabilityService,
         protected StaffCommissionService $staffCommissionService,
-        protected BookingCancellationService $bookingCancellationService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -1282,48 +1280,11 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'status' => ['required', 'in:COMPLETED,CANCELLED,LATE_CANCELLATION,NO_SHOW,NOTIFIED_CANCELLATION'],
-            'reason' => ['nullable', 'string'],
         ]);
 
         $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
         $targetStatus = (string) $validated['status'];
-        $currentStatus = (string) $booking->status;
-
-        if ($currentStatus === 'HOLD') {
-            if ($targetStatus !== 'CANCELLED') {
-                return $this->respondError(__('Only HOLD appointment cancellation is allowed from POS settlement.'), 422);
-            }
-
-            if ((string) $booking->payment_status === 'PAID') {
-                return $this->respondError(__('Paid appointment cannot be cancelled from this flow.'), 422);
-            }
-
-            try {
-                DB::transaction(function () use ($request, $booking, $validated) {
-                    $lockedBooking = Booking::query()->with(['customer', 'service', 'staff'])->lockForUpdate()->findOrFail($booking->id);
-                    if ((string) $lockedBooking->payment_status === 'PAID') {
-                        throw new \RuntimeException('Paid appointment cannot be cancelled from this flow.');
-                    }
-
-                    $this->bookingCancellationService->cancel(
-                        $lockedBooking,
-                        optional($request->user())->id,
-                        $validated['reason'] ?? null,
-                        'ADMIN',
-                        ['HOLD'],
-                        ['source' => 'pos_appointment_hold_cancel']
-                    );
-                });
-            } catch (\RuntimeException $exception) {
-                return $this->respondError(__($exception->getMessage()), 422);
-            }
-
-            return $this->respond([
-                'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
-            ], __('Appointment cancelled.'));
-        }
-
-        if ($currentStatus !== 'CONFIRMED') {
+        if ((string) $booking->status !== 'CONFIRMED') {
             return $this->respondError(__('Only CONFIRMED appointment can be updated from POS settlement.'), 422);
         }
 
@@ -1331,14 +1292,11 @@ class PosController extends Controller
             return $this->markAppointmentCompleted($id);
         }
 
-        DB::transaction(function () use ($booking, $targetStatus, $validated) {
+        DB::transaction(function () use ($booking, $targetStatus) {
             $booking->status = $targetStatus;
             if (in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true)) {
                 $booking->cancelled_at = now();
                 $booking->cancellation_type = in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION'], true) ? $targetStatus : 'CANCELLED';
-            }
-            if ($targetStatus === 'CANCELLED' && !empty($validated['reason'])) {
-                $booking->notes = trim(($booking->notes ? $booking->notes . "\n" : '') . 'Cancellation reason: ' . trim($validated['reason']));
             }
             $booking->save();
 
