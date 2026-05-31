@@ -522,6 +522,30 @@ function getBookingProductOptionNetLineTotal(item: CartItem, option: BookingProd
   return Math.max(0, Number(option.line_total_after_discount ?? gross))
 }
 
+function PosCartDiscountAmount({
+  gross,
+  net,
+  className = 'shrink-0 text-right tabular-nums text-gray-900',
+}: {
+  gross: number
+  net: number
+  className?: string
+}) {
+  const original = Math.max(0, Number(gross ?? 0))
+  const final = Math.max(0, Number(net ?? 0))
+
+  if (original > final + 0.0001) {
+    return (
+      <span className={`${className} space-y-0.5`}>
+        <span className="block text-[11px] font-normal text-gray-500 line-through">RM {original.toFixed(2)}</span>
+        <span className="block font-bold text-orange-700">RM {final.toFixed(2)}</span>
+      </span>
+    )
+  }
+
+  return <span className={className}>RM {final.toFixed(2)}</span>
+}
+
 type BookingServiceOption = {
   id: number
   name: string
@@ -5624,45 +5648,63 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const isBookingProduct = item.item_type === 'BOOKING_PRODUCT'
                   const selectedBookingProductOptions = getBookingProductSelectedOptions(item)
                   const bookingProductBaseLineTotal = getBookingProductBaseLineTotal(item, selectedBookingProductOptions)
-                  const bookingProductBaseNetLineTotal = Number(item.line_total)
+                  const bookingProductBaseDiscountTotal = Math.max(0, Number(item.discount_amount ?? 0))
+                  const bookingProductBaseNetLineTotal = Math.max(0, bookingProductBaseLineTotal - bookingProductBaseDiscountTotal)
+                  const bookingProductTotalGrossLineTotal = Number(item.line_total_snapshot ?? item.line_total)
+                  const bookingProductTotalNetLineTotal = Number(item.line_total)
                   
                   return (
                     <div key={item.id} className="rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-3 shadow-sm hover:shadow-md transition-shadow sm:p-4">
                       <div className="flex min-w-0 flex-col gap-3">
                         <div className="min-w-0">
-                          <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
-                          {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
-                          {isBookingProduct && selectedBookingProductOptions.length > 0 ? (
-                            <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
-                              <p className="text-[11px] font-bold uppercase tracking-wide text-blue-800">Items / Options</p>
-                              <div className="mt-2 space-y-2 text-xs">
-                                <div className="flex items-start justify-between gap-3">
-                                  <ServiceNameStack
-                                    name={`1. ${item.product_name ?? 'Booking Product'}`}
-                                    cnName={item.product_cn_name ?? null}
-                                    primaryClassName="font-semibold text-gray-900"
-                                    secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                                  />
-                                  <span className="shrink-0 font-semibold tabular-nums text-gray-900">RM {bookingProductBaseLineTotal.toFixed(2)}</span>
-                                </div>
-                                {selectedBookingProductOptions.map((opt, optIdx) => (
-                                  <div key={`cart-bp-opt-${item.id}-${opt.id ?? optIdx}`} className="flex items-start justify-between gap-3 pl-4">
+                          {isBookingProduct ? (
+                            <>
+                              <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">TYPE: BOOKING PRODUCT</p>
+                              <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-800">Item</p>
+                                <div className="mt-2 space-y-3 text-xs">
+                                  <div className="flex items-start justify-between gap-3">
                                     <ServiceNameStack
-                                      name={`+ ${opt.label ?? 'Option'}`}
-                                      cnName={opt.cn_label ?? null}
-                                      primaryClassName="font-medium text-gray-800"
+                                      name={`1. ${item.product_name ?? 'Booking Product'}`}
+                                      cnName={item.product_cn_name ?? null}
+                                      primaryClassName="font-semibold text-gray-900"
                                       secondaryClassName="mt-0.5 text-[11px] text-gray-500"
                                     />
-                                    <span className="shrink-0 font-semibold tabular-nums text-gray-900">RM {getBookingProductOptionNetLineTotal(item, opt).toFixed(2)}</span>
+                                    <PosCartDiscountAmount gross={bookingProductBaseLineTotal} net={bookingProductBaseNetLineTotal} />
                                   </div>
-                                ))}
+                                  {selectedBookingProductOptions.map((opt, optIdx) => {
+                                    const optionGross = getBookingProductOptionGrossLineTotal(item, opt)
+                                    const optionNet = getBookingProductOptionNetLineTotal(item, opt)
+
+                                    return (
+                                      <div key={`cart-bp-opt-${item.id}-${opt.id ?? optIdx}`} className="flex items-start justify-between gap-3 pl-4">
+                                        <ServiceNameStack
+                                          name={`+ ${opt.label ?? 'Option'}`}
+                                          cnName={opt.cn_label ?? null}
+                                          primaryClassName="font-medium text-gray-800"
+                                          secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                        />
+                                        <PosCartDiscountAmount gross={optionGross} net={optionNet} />
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                                <div className="mt-3 flex items-start justify-between gap-3 border-t border-blue-100 pt-2 text-xs font-bold text-blue-900">
+                                  <span>Total booking product</span>
+                                  <PosCartDiscountAmount
+                                    gross={bookingProductTotalGrossLineTotal}
+                                    net={bookingProductTotalNetLineTotal}
+                                    className="shrink-0 text-right tabular-nums text-blue-900"
+                                  />
+                                </div>
                               </div>
-                              <div className="mt-2 flex justify-between border-t border-blue-100 pt-2 text-xs font-bold text-blue-900">
-                                <span>Total booking product</span>
-                                <span className="tabular-nums">RM {Number(isBookingProduct ? bookingProductBaseNetLineTotal : item.line_total).toFixed(2)}</span>
-                              </div>
-                            </div>
-                          ) : null}
+                            </>
+                          ) : (
+                            <>
+                              <p className="text-sm font-bold break-words text-gray-900" title={item.product_name || undefined}>{item.product_name}</p>
+                              {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
+                            </>
+                          )}
                           <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
@@ -5707,23 +5749,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <div className="min-w-0 flex-1 text-right tabular-nums sm:max-w-[11rem] sm:flex-none sm:text-right">
                             {item.promotion_applied && item.line_total_snapshot ? (
                               <div className="space-y-0.5">
-                                <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductBaseNetLineTotal : item.line_total).toFixed(2)}</p>
+                                <p className="text-[11px] text-gray-500 line-through">RM {Number(isBookingProduct ? bookingProductTotalGrossLineTotal : item.line_total_snapshot).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : item.is_staff_free_applied ? (
                               <div className="space-y-0.5">
                                 <p className="text-[11px] text-gray-500 line-through">
                                    RM {Number(item.line_total_snapshot ?? 0).toFixed(2)}
                                 </p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductBaseNetLineTotal : item.line_total).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
-                            ) : (item.discount_amount ?? 0) > 0 ? (
+                            ) : ((isBookingProduct && bookingProductTotalGrossLineTotal > bookingProductTotalNetLineTotal + 0.0001) || (item.discount_amount ?? 0) > 0) ? (
                               <div className="space-y-0.5">
-                                <p className="text-[11px] text-gray-500 line-through">RM {Number(item.line_total_snapshot ?? item.line_total).toFixed(2)}</p>
-                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductBaseNetLineTotal : item.line_total).toFixed(2)}</p>
+                                <p className="text-[11px] text-gray-500 line-through">RM {Number(isBookingProduct ? bookingProductTotalGrossLineTotal : (item.line_total_snapshot ?? item.line_total)).toFixed(2)}</p>
+                                <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
-                              <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductBaseNetLineTotal : item.line_total).toFixed(2)}</p>
+                              <p className="text-sm font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductTotalNetLineTotal : item.line_total).toFixed(2)}</p>
                             )}
                           </div>
                           <button 
