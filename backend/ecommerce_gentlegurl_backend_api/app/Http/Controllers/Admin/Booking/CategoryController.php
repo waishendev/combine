@@ -128,6 +128,52 @@ class CategoryController extends Controller
         return $this->respond($this->formatCategory($category->fresh('services:id,name,cn_name')));
     }
 
+    public function bulkUpdate(Request $request)
+    {
+        $validated = $request->validate([
+            'ids' => ['required', 'array', 'min:1'],
+            'ids.*' => ['integer', 'exists:booking_service_categories,id'],
+            'name' => ['nullable', 'string', 'max:150'],
+            'cn_name' => ['nullable', 'string', 'max:150'],
+            'description' => ['nullable', 'string'],
+            'is_active' => ['nullable', 'boolean'],
+            'service_ids' => ['nullable', 'array'],
+            'service_ids.*' => ['integer', 'exists:booking_services,id'],
+        ]);
+
+        $categories = BookingServiceCategory::query()->whereIn('id', $validated['ids'])->get();
+        $payload = collect($validated)->except('ids')->toArray();
+        $serviceIds = null;
+        if (array_key_exists('service_ids', $payload)) {
+            $serviceIds = array_values(array_unique(array_map('intval', $payload['service_ids'] ?? [])));
+            unset($payload['service_ids']);
+        }
+
+        if (array_key_exists('cn_name', $payload)) {
+            $cnName = trim((string) ($payload['cn_name'] ?? ''));
+            $payload['cn_name'] = $cnName !== '' ? $cnName : null;
+        }
+
+        foreach ($categories as $category) {
+            if (! empty($payload)) {
+                $category->update($payload);
+            }
+            if ($serviceIds !== null) {
+                $category->services()->sync(
+                    BookingService::query()->whereIn('id', $serviceIds)->pluck('id')->all()
+                );
+            }
+        }
+
+        $fresh = BookingServiceCategory::query()
+            ->with('services:id,name,cn_name')
+            ->whereIn('id', $validated['ids'])
+            ->get()
+            ->map(fn (BookingServiceCategory $category) => $this->formatCategory($category));
+
+        return $this->respond($fresh, __('Booking categories updated successfully.'));
+    }
+
     public function destroy(int $id)
     {
         $category = BookingServiceCategory::query()->findOrFail($id);

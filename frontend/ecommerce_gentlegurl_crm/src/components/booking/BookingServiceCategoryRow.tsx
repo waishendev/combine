@@ -10,10 +10,13 @@ export type { BookingServiceCategoryRowData }
 interface BookingServiceCategoryRowProps {
   category: BookingServiceCategoryRowData
   showActions?: boolean
+  showSelection?: boolean
+  selected?: boolean
   canUpdate?: boolean
   canDelete?: boolean
   isFirst?: boolean
   isLast?: boolean
+  onSelectChange?: (category: BookingServiceCategoryRowData, checked: boolean) => void
   onEdit?: (category: BookingServiceCategoryRowData) => void
   onDelete?: (category: BookingServiceCategoryRowData) => void
   onMoveUp?: (category: BookingServiceCategoryRowData) => void
@@ -23,10 +26,13 @@ interface BookingServiceCategoryRowProps {
 export default function BookingServiceCategoryRow({
   category,
   showActions = false,
+  showSelection = false,
+  selected = false,
   canUpdate = false,
   canDelete = false,
   isFirst = false,
   isLast = false,
+  onSelectChange,
   onEdit,
   onDelete,
   onMoveUp,
@@ -35,6 +41,17 @@ export default function BookingServiceCategoryRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
+      {showSelection && (
+        <td className="border border-gray-200 px-4 py-2">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-blue-600"
+            checked={selected}
+            onChange={(e) => onSelectChange?.(category, e.target.checked)}
+            aria-label={`Select ${category.name}`}
+          />
+        </td>
+      )}
       <td className="px-4 py-2 border border-gray-200">
         {category.imageUrl ? (
           <img

@@ -11,6 +11,7 @@ import BookingServiceCategoryRow, {
 import BookingServiceCategoryCreateModal from './BookingServiceCategoryCreateModal'
 import BookingServiceCategoryEditModal from './BookingServiceCategoryEditModal'
 import BookingServiceCategoryDeleteModal from './BookingServiceCategoryDeleteModal'
+import BookingServiceCategoryBulkUpdateModal from './BookingServiceCategoryBulkUpdateModal'
 import {
   mapBookingServiceCategoryApiItemToRow,
   type BookingServiceCategoryApiItem,
@@ -77,6 +78,10 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
   const canUpdate = permissions.includes('booking.services.update')
   const canDelete = permissions.includes('booking.services.delete')
   const showActions = canUpdate || canDelete
+  const showSelection = canUpdate
+
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set())
+  const [isBulkUpdateOpen, setIsBulkUpdateOpen] = useState(false)
 
   const [meta, setMeta] = useState<Meta>({
     current_page: 1,
@@ -193,6 +198,16 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
     return () => controller.abort()
   }, [refreshList])
 
+  useEffect(() => {
+    setSelectedIds((prev) => {
+      const next = new Set<number>()
+      rows.forEach((row) => {
+        if (prev.has(row.id)) next.add(row.id)
+      })
+      return next
+    })
+  }, [rows])
+
   const handleSort = (column: keyof BookingServiceCategoryRowData) => {
     if (sortColumn === column) {
       if (sortDirection === 'asc') {
@@ -238,6 +253,34 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
     return sortDirection === 'asc' ? sorted : sorted.reverse()
   }, [rows, sortColumn, sortDirection])
 
+  const visibleRowIds = useMemo(() => sortedRows.map((r) => r.id), [sortedRows])
+  const allVisibleSelected =
+    visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedIds.has(id))
+  const hasSelection = selectedIds.size > 0
+
+  const selectedCategories = useMemo(() => {
+    const selected = new Set(selectedIds)
+    return rows.filter((r) => selected.has(r.id))
+  }, [rows, selectedIds])
+
+  const handleToggleSelectAll = (checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) visibleRowIds.forEach((id) => next.add(id))
+      else visibleRowIds.forEach((id) => next.delete(id))
+      return next
+    })
+  }
+
+  const handleToggleSelect = (id: number, checked: boolean) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (checked) next.add(id)
+      else next.delete(id)
+      return next
+    })
+  }
+
   const handlePageChange = (page: number) => {
     if (page < 1 || page > (meta.last_page || 1)) return
     setCurrentPage(page)
@@ -248,7 +291,7 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
     setCurrentPage(1)
   }
 
-  const colCount = showActions ? 6 : 5
+  const colCount = 5 + (showActions ? 1 : 0) + (showSelection ? 1 : 0)
   const totalPages = meta.last_page || 1
 
   const handleCategoryCreated = (category: BookingServiceCategoryRowData) => {
@@ -419,6 +462,18 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
 
   return (
     <div>
+      {isBulkUpdateOpen && (
+        <BookingServiceCategoryBulkUpdateModal
+          show={isBulkUpdateOpen}
+          selectedCategories={selectedCategories}
+          onClose={() => setIsBulkUpdateOpen(false)}
+          onSuccess={async () => {
+            await refreshList()
+            setSelectedIds(new Set())
+          }}
+        />
+      )}
+
       {isCreateModalOpen && (
         <BookingServiceCategoryCreateModal
           onClose={() => setIsCreateModalOpen(false)}
@@ -439,6 +494,18 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
             >
               <i className="fa-solid fa-plus" />
               {t('common.create')}
+            </button>
+          )}
+
+          {showSelection && (
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded bg-emerald-500 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
+              onClick={() => setIsBulkUpdateOpen(true)}
+              disabled={!hasSelection || loading}
+            >
+              <i className="fa-solid fa-pen-to-square" />
+              Bulk Update
             </button>
           )}
         </div>
@@ -517,6 +584,17 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
         <table className="min-w-full divide-y divide-gray-200 text-sm">
           <thead className="bg-slate-300/70">
             <tr>
+              {showSelection && (
+                <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded border-gray-300 text-blue-600"
+                    checked={allVisibleSelected}
+                    onChange={(e) => handleToggleSelectAll(e.target.checked)}
+                    aria-label="Select all categories on this page"
+                  />
+                </th>
+              )}
               <th className="px-4 py-2 font-semibold text-left text-gray-600 uppercase tracking-wider">
                 Image
               </th>
@@ -574,10 +652,13 @@ export default function BookingServiceCategoriesTable({ permissions }: BookingSe
                       key={category.id}
                       category={category}
                       showActions={showActions}
+                      showSelection={showSelection}
+                      selected={selectedIds.has(category.id)}
                       canUpdate={canUpdate}
                       canDelete={canDelete}
                       isFirst={isFirst}
                       isLast={isLast}
+                      onSelectChange={(_, checked) => handleToggleSelect(category.id, checked)}
                       onEdit={() => {
                         if (canUpdate) setEditingCategoryId(category.id)
                       }}
