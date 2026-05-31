@@ -1,0 +1,25 @@
+@2025_12_20_000106_create_settings_table.php (13-18) @2026_03_03_000002_add_type_to_settings_table.php (11-20) 
+我们的TYPE 一个叫  ecommerce一个叫  booking
+
+这里我们需要 ADD 1个 SEEDER 看你放什么名字  
+加 SEEDER的时候 最好是可以开多1个FILE 出来然后跟我说如何单独跑他 因为我们这个已经LIVE了 不能Migrate:fresh --seed
+UI 的话是这里 C:\Users\WS\Desktop\combine\frontend\ecommerce_gentlegurl_crm\src\app\(dashboard)\booking\general-settings\page.tsx
+
+里面就是可以给他们可以填 EMAIL 然后EANBLED 还是DISABLED 之类的 
+
+
+然后过后CUSTOMER 他们在PAYMENT的时候 选MANUAL TRANSFER 后上传照片了就会发给这个人说 
+
+谁谁谁 BOOK 了选了MANUAL TRANSFER 上传照片了大概是这样的东西 这样的话管理员才能进来得 APPROVED 之类  不然有时候可能他们不知道 还是你看这么色做才是好的 
+
+
+EMAIL 如何发那些的话可以看一下
+C:\Users\WS\Desktop\combine\frontend\booking_gentlegurl_shop\src\app\register\page.tsx 的时候就是怎么做的吧~  REUSE 他的方法就好
+或者可以看 
+C:\Users\WS\Desktop\combine\backend\ecommerce_gentlegurl_backend_api\routes\console.php
+的@console.php (49-53)  之类 之前我们一起弄的
+
+他们上传通常是在
+C:\Users\WS\Desktop\combine\frontend\booking_gentlegurl_shop\src\app\payment-result\page.tsx
+C:\Users\WS\Desktop\combine\frontend\ecommerce_gentlegurl_shop\src\app\payment-result\page.tsx
+

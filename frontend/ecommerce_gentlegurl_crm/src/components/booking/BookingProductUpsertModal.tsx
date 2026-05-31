@@ -46,13 +46,14 @@ export default function BookingProductUpsertModal({
     const rawQuestions = Array.isArray((product as { questions?: unknown[] } | null)?.questions)
       ? ((product as { questions?: unknown[] }).questions ?? [])
       : []
-    const mappedQuestions: BookingProductQuestion[] = rawQuestions
+    const mappedQuestions = rawQuestions
       .map((question, qIdx) => {
         if (!question || typeof question !== 'object') return null
         const q = question as Record<string, unknown>
         const optionsRaw = Array.isArray(q.options) ? q.options : []
-        return {
-          id: Number(q.id ?? 0) || undefined,
+        const questionId = Number(q.id ?? 0)
+        const mapped: BookingProductQuestion = {
+          ...(questionId > 0 ? { id: questionId } : {}),
           title: String(q.title ?? '').trim(),
           cn_title: typeof q.cn_title === 'string' ? q.cn_title : null,
           description: typeof q.description === 'string' ? q.description : null,
@@ -65,8 +66,9 @@ export default function BookingProductUpsertModal({
             .map((option, oIdx) => {
               if (!option || typeof option !== 'object') return null
               const o = option as Record<string, unknown>
+              const optionId = Number(o.id ?? 0)
               return {
-                id: Number(o.id ?? 0) || undefined,
+                ...(optionId > 0 ? { id: optionId } : {}),
                 label: String(o.label ?? '').trim(),
                 cn_label: typeof o.cn_label === 'string' ? o.cn_label : null,
                 extra_price: Number(o.extra_price ?? 0) || 0,
@@ -76,8 +78,9 @@ export default function BookingProductUpsertModal({
             })
             .filter((option): option is NonNullable<typeof option> => Boolean(option)),
         }
+        return mapped
       })
-      .filter((question): question is BookingProductQuestion => Boolean(question))
+      .filter((question): question is BookingProductQuestion => question !== null)
 
     setName(product?.name ?? '')
     setCnName(product?.cn_name ?? '')

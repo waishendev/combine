@@ -1,0 +1,11 @@
+* * * * * cd /usr/share/nginx/combine/backend/ecommerce_gentlegurl_backend_api && docker compose -f docker-compose-prod.yml exec -T laravel-app php artisan schedule:run >> /var/log/laravel-schedule.log 2>&1
+
+
+我有这个但他没有发 我需要跑
+php artisan booking:send-reminder-emails --force
+
+ERMM 为什么？
+
+cd backend/ecommerce_gentlegurl_backend_api
+php artisan db:seed --class=OrderReserveMinutesSettingSeeder
+php artisan db:seed --class=PaymentProofNotificationSettingSeeder
