@@ -5661,7 +5661,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <>
                               <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">TYPE: BOOKING PRODUCT</p>
                               <div className="mt-3 rounded-lg border border-blue-100 bg-blue-50/40 p-3">
-                                <p className="text-[11px] font-bold uppercase tracking-wide text-blue-800">Item</p>
+                                <div className="flex items-center justify-between gap-3">
+                                  <p className="text-[11px] font-bold uppercase tracking-wide text-blue-800">Item</p>
+                                  <p className="text-[11px] font-semibold text-blue-800">Qty: {item.qty}</p>
+                                </div>
                                 <div className="mt-2 space-y-3 text-xs">
                                   <div className="flex items-start justify-between gap-3">
                                     <ServiceNameStack
