@@ -607,11 +607,18 @@
                 ->flatMap(fn ($question) => $question['options'] ?? [])
                 ->values();
               $bookingProductOptionUnitTotal = (float) $bookingProductOptionRows->sum(fn ($option) => (float) ($option['extra_price'] ?? 0));
+              $bookingProductOptionDiscountTotal = (float) $bookingProductOptionRows->sum(fn ($option) => (float) ($option['discount_amount'] ?? 0));
+              $mainLineDiscountAmount = max(0, (float) ($item['discount_amount'] ?? 0) - $bookingProductOptionDiscountTotal);
               $displayUnitPrice = $bookingProductOptionRows->isNotEmpty()
                 ? max(0, (float) ($item['unit_price'] ?? 0) - $bookingProductOptionUnitTotal)
                 : (float) ($item['unit_price'] ?? 0);
               $displayLineTotal = $bookingProductOptionRows->isNotEmpty()
-                ? max(0, (float) ($item['line_total'] ?? 0) - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1)))
+                ? max(0, (float) ($item['line_total'] ?? 0) - $bookingProductOptionRows->sum(function ($option) use ($item) {
+                    $gross = (float) ($option['extra_price'] ?? 0) * (int) ($item['quantity'] ?? 1);
+                    return array_key_exists('line_total_after_discount', $option)
+                      ? (float) $option['line_total_after_discount']
+                      : max(0, $gross - (float) ($option['discount_amount'] ?? 0));
+                  }))
                 : (float) ($item['line_total'] ?? 0);
             @endphp
             <tr>
@@ -638,9 +645,9 @@
                 <?php if(!empty($item['promotion_summary'])): ?>
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>
                 <?php endif; ?>
-                <?php if(((float) ($item['discount_amount'] ?? 0)) > 0): ?>
+                <?php if($mainLineDiscountAmount > 0): ?>
                   <div class="sku" style="color:#92400e;margin-top:2px;">
-                    Original: {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
+                    Original: {{ $currency }} {{ number_format(max(0, (float) ($item['line_total_snapshot'] ?? 0) - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1))), 2) }}
                   </div>
                   <div class="sku" style="color:#92400e;">
                     Discount
@@ -649,7 +656,7 @@
                     <?php elseif(($item['discount_type'] ?? '') === 'fixed'): ?>
                       ({{ $currency }} {{ number_format((float) ($item['discount_value'] ?? 0), 2) }})
                     <?php endif; ?>
-                    : - {{ $currency }} {{ number_format((float) ($item['discount_amount'] ?? 0), 2) }}
+                    : - {{ $currency }} {{ number_format($mainLineDiscountAmount, 2) }}
                   </div>
                 <?php endif; ?>
                 <?php if(!empty($item['is_staff_free_applied'])): ?>
@@ -680,9 +687,9 @@
                   </div>
                   <div style="color:#047857;font-weight:700;">{{ $currency }} 0.00</div>
                 <?php else: ?>
-                  <?php if(((float) ($item['discount_amount'] ?? 0)) > 0): ?>
+                  <?php if($mainLineDiscountAmount > 0): ?>
                     <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">
-                      {{ $currency }} {{ number_format((float) ($item['line_total_snapshot'] ?? 0), 2) }}
+                      {{ $currency }} {{ number_format(max(0, (float) ($item['line_total_snapshot'] ?? 0) - ($bookingProductOptionUnitTotal * (int) ($item['quantity'] ?? 1))), 2) }}
                     </div>
                   <?php endif; ?>
                   <div>{{ $currency }} {{ number_format((float) $displayLineTotal, 2) }}</div>
@@ -698,8 +705,21 @@
                   <?php endif; ?>
                 </td>
                 <td class="numeric">{{ (int) ($item['quantity'] ?? 1) }}</td>
+                @php
+                  $optionGross = (float) ($option['extra_price'] ?? 0) * (int) ($item['quantity'] ?? 1);
+                  $optionDiscount = (float) ($option['discount_amount'] ?? 0);
+                  $optionNet = array_key_exists('line_total_after_discount', $option)
+                    ? (float) $option['line_total_after_discount']
+                    : max(0, $optionGross - $optionDiscount);
+                @endphp
                 <td class="numeric">{{ $currency }} {{ number_format((float) ($option['extra_price'] ?? 0), 2) }}</td>
-                <td class="numeric">{{ $currency }} {{ number_format((float) ($option['extra_price'] ?? 0) * (int) ($item['quantity'] ?? 1), 2) }}</td>
+                <td class="numeric">
+                  <?php if($optionDiscount > 0): ?>
+                    <div style="font-size:11px;color:#9ca3af;text-decoration:line-through;">{{ $currency }} {{ number_format($optionGross, 2) }}</div>
+                    <div style="font-size:11px;color:#92400e;">- {{ $currency }} {{ number_format($optionDiscount, 2) }}</div>
+                  <?php endif; ?>
+                  <div>{{ $currency }} {{ number_format($optionNet, 2) }}</div>
+                </td>
               </tr>
             @endforeach
           <?php endforeach; ?>

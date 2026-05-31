@@ -495,6 +495,7 @@ $protectedRoutes = function () {
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
         Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
+        Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/discount', [PosController::class, 'updateBookingProductOptionDiscount']);
         Route::patch('/cart/package-items/{itemId}/discount', [PosController::class, 'updatePackageCartItemDiscount']);
         Route::patch('/cart/appointment-settlements/{itemId}/discount', [PosController::class, 'updateAppointmentSettlementCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
