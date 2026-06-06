@@ -544,6 +544,7 @@ export default function ProductForm({
   const [bundleDiscountPercentInputs, setBundleDiscountPercentInputs] = useState<string[]>(() =>
     Array.from({ length: bundles.length }, () => ''),
   )
+  const isSingleCostAndStockLocked = mode === 'edit' && (form.type === 'variant' || variants.length > 0)
   const [collapsedBundles, setCollapsedBundles] = useState<boolean[]>(
     () => Array.from({ length: bundles.length }, () => false),
   )
@@ -3635,11 +3636,11 @@ export default function ProductForm({
                     step="0.01"
                     value={form.costPrice}
                     onChange={handleChange}
-                    disabled={mode === 'edit'}
+                    disabled={isSingleCostAndStockLocked}
                     className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                     placeholder="0.00"
                   />
-                  {mode === 'edit' && (
+                  {isSingleCostAndStockLocked && (
                     <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
                   )}
                 </div>
@@ -3654,11 +3655,11 @@ export default function ProductForm({
                   type="number"
                   value={form.stock}
                   onChange={handleChange}
-                  disabled={mode === 'edit'}
+                  disabled={isSingleCostAndStockLocked}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
                   placeholder="0"
                 />
-                {mode === 'edit' && (
+                {isSingleCostAndStockLocked && (
                   <p className="text-xs text-gray-500">Use Stock Adjustment to update stock and cost.</p>
                 )}
               </div>
