@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 
 import type { CustomerRowData } from './CustomerRow'
 import { mapCustomerApiItemToRow, type CustomerApiItem } from './customerUtils'
+import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import { useI18n } from '@/lib/i18n'
 
 interface CustomerCreateModalProps {
@@ -228,15 +229,12 @@ export default function CustomerCreateModal({
             >
               Phone <span className="text-red-500">*</span>
             </label>
-            <input
-              id="phone"
-              name="phone"
-              type="text"
+            <InternationalPhoneInput
               value={form.phone}
-              onChange={handleChange}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              onChange={(phone) => setForm((prev) => ({ ...prev, phone }))}
               placeholder="Enter phone"
               disabled={submitting}
+              required
             />
           </div>
 

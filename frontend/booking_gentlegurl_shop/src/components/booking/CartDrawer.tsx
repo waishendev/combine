@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
 import {
   checkoutCart,
   getBookingBankAccounts,
@@ -1133,14 +1134,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     {fieldErrors.guest_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_name}</p> : null}
                   </div>
                   <div>
-                    <input
+                    <InternationalPhoneInput
                       value={guestPhone}
-                      onChange={(e) => {
-                        setGuestPhone(e.target.value);
+                      onChange={(phone) => {
+                        setGuestPhone(phone);
                         setFieldErrors((prev) => ({ ...prev, guest_phone: "" }));
                       }}
-                      className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                       placeholder="Phone *"
+                      required
+                      error={Boolean(fieldErrors.guest_phone)}
                     />
                     {fieldErrors.guest_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_phone}</p> : null}
                   </div>
@@ -1189,14 +1191,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {fieldErrors.billing_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_name}</p> : null}
                     </div>
                     <div>
-                      <input
+                      <InternationalPhoneInput
                         value={billingPhone}
-                        onChange={(e) => {
-                          setBillingPhone(e.target.value);
+                        onChange={(phone) => {
+                          setBillingPhone(phone);
                           setFieldErrors((prev) => ({ ...prev, billing_phone: "" }));
                         }}
-                        className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                         placeholder="Billing Phone *"
+                        required
+                        error={Boolean(fieldErrors.billing_phone)}
                       />
                       {fieldErrors.billing_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_phone}</p> : null}
                     </div>

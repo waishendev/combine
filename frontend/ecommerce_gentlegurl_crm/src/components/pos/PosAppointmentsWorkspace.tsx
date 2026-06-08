@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
+import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import {
   getSettlementRangeBounds,
   parseSettlementAmountInput,
@@ -3183,11 +3184,10 @@ export default function PosAppointmentsWorkspace({
                         placeholder="Guest name"
                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                       />
-                      <input
+                      <InternationalPhoneInput
                         value={createAppointmentGuestPhone}
-                        onChange={(e) => setCreateAppointmentGuestPhone(e.target.value)}
+                        onChange={setCreateAppointmentGuestPhone}
                         placeholder="Guest phone"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                       />
                       <input
                         value={createAppointmentGuestEmail}

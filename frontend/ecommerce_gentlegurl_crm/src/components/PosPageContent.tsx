@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type Chang
 import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
+import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   getSettlementRangeBounds,
@@ -1028,10 +1029,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [bookingIdentityMode, setBookingIdentityMode] = useState<'member' | 'guest'>('member')
   const bookingGuestNameRef = useRef<HTMLInputElement>(null)
-  const bookingGuestPhoneRef = useRef<HTMLInputElement>(null)
   const bookingGuestEmailRef = useRef<HTMLInputElement>(null)
   /** Last guest contact used for Book Services — reused for the next service add & checkout guest mode */
   const [guestContactCache, setGuestContactCache] = useState({ name: '', phone: '', email: '' })
+  const [bookingGuestPhoneValue, setBookingGuestPhoneValue] = useState('')
   /** Checkout confirmation: member vs guest when book services exist without packages */
   const [checkoutIdentityMode, setCheckoutIdentityMode] = useState<'member' | 'guest'>('member')
   const [serviceAvailabilityMap, setServiceAvailabilityMap] = useState<Record<number, number>>({})
@@ -1327,12 +1328,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           phone: prev.phone.trim() ? prev.phone : (guestRow.guest_phone ?? ''),
           email: prev.email.trim() ? prev.email : (guestRow.guest_email ?? ''),
         }))
-        // Booking modal uses uncontrolled inputs; keep them in sync when possible.
+        // Booking modal guest fields are kept in sync when possible.
         if (bookingGuestNameRef.current && !bookingGuestNameRef.current.value.trim() && guestRow.guest_name) {
           bookingGuestNameRef.current.value = guestRow.guest_name
         }
-        if (bookingGuestPhoneRef.current && !bookingGuestPhoneRef.current.value.trim() && guestRow.guest_phone) {
-          bookingGuestPhoneRef.current.value = guestRow.guest_phone
+        if (!bookingGuestPhoneValue.trim() && guestRow.guest_phone) {
+          setBookingGuestPhoneValue(guestRow.guest_phone)
         }
         if (bookingGuestEmailRef.current && !bookingGuestEmailRef.current.value.trim() && guestRow.guest_email) {
           bookingGuestEmailRef.current.value = guestRow.guest_email
@@ -1349,6 +1350,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setSelectedMember({ id: settlementLockedCustomerId, name, phone: null, email: null })
     }
   }, [
+    bookingGuestPhoneValue,
     cartAppointmentSettlementItems,
     hasCartGuestSettlement,
     hasCartAppointmentSettlements,
@@ -2549,6 +2551,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingSelectedOptionIds([])
     setBookingExtraServiceBlocks([])
     setBookingModalError(null)
+    setBookingGuestPhoneValue(guestContactCache.phone)
     if (selectedMember?.id) {
       setBookingIdentityMode('member')
     } else if (guestContactCache.name.trim() && guestContactCache.email.trim()) {
@@ -2704,7 +2707,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     } else {
       const guestName = bookingGuestNameRef.current?.value ?? ''
-      const guestPhone = bookingGuestPhoneRef.current?.value ?? ''
+      const guestPhone = bookingGuestPhoneValue
       const guestEmail = bookingGuestEmailRef.current?.value ?? ''
       if (guestPhone.trim() && !phonePattern.test(guestPhone.trim())) {
         setBookingModalError('Please enter a valid phone number (8-15 digits, optional + prefix).')
@@ -2778,7 +2781,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       payload.customer_id = selectedMember.id
     } else {
       const guestName = (bookingGuestNameRef.current?.value ?? '').trim()
-      const guestPhone = (bookingGuestPhoneRef.current?.value ?? '').trim()
+      const guestPhone = bookingGuestPhoneValue.trim()
       const guestEmail = (bookingGuestEmailRef.current?.value ?? '').trim()
       payload.customer_id = null
       payload.guest_name = guestName || 'UNKNOWN'
@@ -2802,7 +2805,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (bookingIdentityMode === 'guest') {
       setGuestContactCache({
         name: (bookingGuestNameRef.current?.value ?? '').trim(),
-        phone: (bookingGuestPhoneRef.current?.value ?? '').trim(),
+        phone: bookingGuestPhoneValue.trim(),
         email: (bookingGuestEmailRef.current?.value ?? '').trim(),
       })
     }
@@ -2813,6 +2816,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [
     bookingAssignedStaffId,
     bookingDate,
+    bookingGuestPhoneValue,
     bookingIdentityMode,
     bookingQuestions,
     bookingExtraServiceBlocks,
@@ -7910,15 +7914,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       </div>
                       <div>
                         <label className="text-[11px] font-semibold text-gray-600">Phone{checkoutGuestIsUnknown ? '' : ' *'}</label>
-                        <input
+                        <InternationalPhoneInput
                           value={guestContactCache.phone}
-                          onChange={(e) => {
-                            setGuestContactCache((prev) => ({ ...prev, phone: e.target.value }))
+                          onChange={(phone) => {
+                            setGuestContactCache((prev) => ({ ...prev, phone }))
                             setCheckoutError(null)
                           }}
-                          className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                           placeholder={checkoutGuestIsUnknown ? 'Phone (optional)' : 'Phone *'}
-                          autoComplete="tel"
+                          required={!checkoutGuestIsUnknown}
                         />
                       </div>
                       {checkoutGuestIsUnknown ? (
@@ -8869,12 +8872,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                     <div>
                       <label className="text-[11px] font-semibold text-gray-600">Phone *</label>
-                      <input
-                        ref={bookingGuestPhoneRef}
-                        defaultValue={guestContactCache.phone}
-                        className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                      <InternationalPhoneInput
+                        value={bookingGuestPhoneValue}
+                        onChange={setBookingGuestPhoneValue}
                         placeholder="Phone *"
-                        autoComplete="tel"
+                        required
                       />
                     </div>
                     <div>
