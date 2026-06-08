@@ -113,6 +113,25 @@ type Cart = {
   promotions?: AppliedPromotion[]
 }
 
+type GuestContactSource = {
+  customer_id?: number | null
+  guest_phone?: string | null
+  guest_email?: string | null
+}
+
+const getGuestContactLines = (source: GuestContactSource): string[] => {
+  if (source.customer_id) return []
+
+  const phone = source.guest_phone?.trim()
+  const email = source.guest_email?.trim()
+  const lines: string[] = []
+
+  if (phone) lines.push(`Phone: ${phone}`)
+  if (email) lines.push(`Email: ${email}`)
+
+  return lines
+}
+
 type AppointmentSettlementCartItem = {
   id: number
   booking_id: number
@@ -962,7 +981,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     Array<{
       id: number
       booking_code: string
+      customer_id?: number | null
       customer_name: string
+      guest_name?: string | null
+      guest_phone?: string | null
+      guest_email?: string | null
       staff_name?: string | null
       status: string
       appointment_start_at?: string | null
@@ -5538,11 +5561,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         ? appt.service_cn_names.join(', ')
                         : ''
                       const addonList = Array.isArray(appt.add_ons) ? appt.add_ons : []
-                      const apptCustomerId = Number((appt as any)?.customer_id ?? 0)
+                      const apptCustomerId = Number(appt.customer_id ?? 0)
                       const lockedId = settlementLockedCustomerId ?? null
                       const isLockedMismatchById = Boolean(lockedId && apptCustomerId && lockedId !== apptCustomerId)
                       const lockedName = (cartAppointmentSettlementItems[0]?.customer_name ?? '').trim()
-                      const apptName = String((appt as any)?.customer_name ?? '').trim()
+                      const apptName = String(appt.customer_name ?? '').trim()
                       const isLockedMismatchByName = Boolean(lockedId && lockedName && apptName && lockedName !== apptName)
                       const isLockedMismatch = isLockedMismatchById || isLockedMismatchByName
                       const cartHasGuestContext = cartServiceItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim() || row.guest_name?.trim()))
@@ -5552,6 +5575,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         : cartHasGuestContext
                           ? 'Guest checkout in cart. Settlement requires member; remove guest items or clear guest details first.'
                           : ''
+                      const guestContactLines = getGuestContactLines(appt)
 
                       return (
                         <div key={appt.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
@@ -5566,6 +5590,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               {appt.staff_name ? <span className="text-gray-300"> · </span> : null}
                               {appt.staff_name ? <span>{String(appt.staff_name)}</span> : null}
                             </p>
+                            {guestContactLines.length > 0 ? (
+                              <p className="mt-0.5 truncate text-xs text-gray-500">{guestContactLines.join(' · ')}</p>
+                            ) : null}
                             {appt.appointment_start_at ? (
                               <p className="mt-1 text-[11px] text-gray-500">
                                 Time: {formatDateTimeRange(appt.appointment_start_at, appt.appointment_end_at)}
@@ -6040,6 +6067,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       <div className="mt-2 space-y-1 text-xs text-gray-600">
                         <p>Name: {settlement.customer_name || '—'}</p>
+                        {getGuestContactLines(settlement).map((line) => (
+                          <p key={`cart-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
+                        ))}
                         <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                         {settlement.appointment_start_at ? (
                           <>
@@ -7474,6 +7504,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                               <div className="mt-2 space-y-0.5 text-xs text-gray-600">
                                 <p>Name: {settlement.customer_name || '—'}</p>
+                                {getGuestContactLines(settlement).map((line) => (
+                                  <p key={`checkout-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
+                                ))}
                                 <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                                 {settlement.appointment_start_at ? (
                                   <p>
