@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
 import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
+import { normalizeInternationalPhone } from "@/lib/phone";
 import LoadingOverlay from "@/components/LoadingOverlay";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
@@ -638,8 +639,11 @@ export default function CheckoutForm() {
       return;
     }
 
+    const normalizedShippingPhone = normalizeInternationalPhone(form.shipping_phone);
+    const normalizedBillingPhone = normalizeInternationalPhone(billingForm.billing_phone);
+
     if (shippingMethod === "self_pickup") {
-      if (!form.shipping_name || !form.shipping_phone) {
+      if (!form.shipping_name || !normalizedShippingPhone) {
         setError("Please provide your name and phone number for pickup.");
         return;
       }
@@ -661,7 +665,7 @@ export default function CheckoutForm() {
     if (!isLoggedIn && shippingMethod === "shipping") {
       const required = [
         form.shipping_name,
-        form.shipping_phone,
+        normalizedShippingPhone,
         form.shipping_address_line1,
         form.shipping_city,
         form.shipping_country,
@@ -681,7 +685,7 @@ export default function CheckoutForm() {
     if (!billingSameAsShipping) {
       const required = [
         billingForm.billing_name,
-        billingForm.billing_phone,
+        normalizedBillingPhone,
         billingForm.billing_address_line1,
         billingForm.billing_city,
         billingForm.billing_country,
@@ -716,6 +720,7 @@ export default function CheckoutForm() {
         payment_method: paymentMethod,
         shipping_method: shippingMethod,
         ...form,
+        shipping_phone: normalizedShippingPhone,
         billing_same_as_shipping: billingSameAsShipping,
         voucher_code: voucherCodeForSubmit,
         customer_voucher_id: selectedVoucherId ?? undefined,
@@ -726,7 +731,7 @@ export default function CheckoutForm() {
       };
       if (!billingSameAsShipping) {
         payload.billing_name = billingForm.billing_name;
-        payload.billing_phone = billingForm.billing_phone;
+        payload.billing_phone = normalizedBillingPhone;
         payload.billing_address_line1 = billingForm.billing_address_line1;
         payload.billing_address_line2 = billingForm.billing_address_line2 || null;
         payload.billing_city = billingForm.billing_city;
@@ -795,8 +800,10 @@ export default function CheckoutForm() {
   };
 
   const handleSaveAddress = async () => {
+    const normalizedAddressPhone = normalizeInternationalPhone(addressForm.phone);
     const payload: AddressPayload = {
       ...addressForm,
+      phone: normalizedAddressPhone,
       line2: addressForm.line2 || null,
       postcode: addressForm.postcode || null,
     };

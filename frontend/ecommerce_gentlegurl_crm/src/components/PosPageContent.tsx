@@ -13,6 +13,7 @@ import {
   validateSettlementAmountInput,
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
+import { normalizeInternationalPhone } from '@/lib/phone'
 import OrderViewPanel from './OrderViewPanel'
 import {
   printReceipt,
@@ -1362,14 +1363,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const checkoutGuestIsUnknown = useMemo(() => {
     if (checkoutIdentityMode !== 'guest') return false
     const name = guestContactCache.name.trim().toUpperCase()
-    const phone = guestContactCache.phone.trim()
+    const phone = normalizeInternationalPhone(guestContactCache.phone)
     const email = guestContactCache.email.trim()
     return name === 'UNKNOWN' && phone === '' && email === ''
   }, [checkoutIdentityMode, guestContactCache.email, guestContactCache.name, guestContactCache.phone])
 
   const guestContactIsComplete = useMemo(() => {
     const name = guestContactCache.name.trim()
-    const phone = guestContactCache.phone.trim()
+    const phone = normalizeInternationalPhone(guestContactCache.phone)
     const email = guestContactCache.email.trim()
     const phoneOk = /^\+?[0-9]{8,15}$/.test(phone)
     const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
@@ -2707,7 +2708,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
     } else {
       const guestName = bookingGuestNameRef.current?.value ?? ''
-      const guestPhone = bookingGuestPhoneValue
+      const guestPhone = normalizeInternationalPhone(bookingGuestPhoneValue)
       const guestEmail = bookingGuestEmailRef.current?.value ?? ''
       if (guestPhone.trim() && !phonePattern.test(guestPhone.trim())) {
         setBookingModalError('Please enter a valid phone number (8-15 digits, optional + prefix).')
@@ -2781,7 +2782,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       payload.customer_id = selectedMember.id
     } else {
       const guestName = (bookingGuestNameRef.current?.value ?? '').trim()
-      const guestPhone = bookingGuestPhoneValue.trim()
+      const guestPhone = normalizeInternationalPhone(bookingGuestPhoneValue)
       const guestEmail = (bookingGuestEmailRef.current?.value ?? '').trim()
       payload.customer_id = null
       payload.guest_name = guestName || 'UNKNOWN'
@@ -2805,7 +2806,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (bookingIdentityMode === 'guest') {
       setGuestContactCache({
         name: (bookingGuestNameRef.current?.value ?? '').trim(),
-        phone: bookingGuestPhoneValue.trim(),
+        phone: normalizeInternationalPhone(bookingGuestPhoneValue),
         email: (bookingGuestEmailRef.current?.value ?? '').trim(),
       })
     }
@@ -4262,7 +4263,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       !selectedMember?.id && checkoutIdentityMode === 'guest' && (guestContactIsComplete || checkoutGuestIsUnknown)
         ? {
             guest_name: checkoutGuestIsUnknown ? 'UNKNOWN' : guestContactCache.name.trim(),
-            guest_phone: checkoutGuestIsUnknown ? null : guestContactCache.phone.trim(),
+            guest_phone: checkoutGuestIsUnknown ? null : normalizeInternationalPhone(guestContactCache.phone),
             guest_email: checkoutGuestIsUnknown ? null : guestContactCache.email.trim(),
           }
         : {}
@@ -4521,7 +4522,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             : {
                 mode: 'guest',
                 guest_name: checkoutGuestIsUnknown ? 'UNKNOWN' : guestContactCache.name.trim(),
-                guest_phone: checkoutGuestIsUnknown ? null : guestContactCache.phone.trim(),
+                guest_phone: checkoutGuestIsUnknown ? null : normalizeInternationalPhone(guestContactCache.phone),
                 guest_email: checkoutGuestIsUnknown ? null : guestContactCache.email.trim(),
               }
         const res = await fetch('/api/proxy/pos/cart/sync-customer-context', {

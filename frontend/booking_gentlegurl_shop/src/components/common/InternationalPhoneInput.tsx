@@ -1,6 +1,7 @@
 'use client'
 
 import { PhoneInput } from 'react-international-phone'
+import { normalizeInternationalPhone } from '@/lib/phone'
 
 type InternationalPhoneInputProps = {
   value: string
@@ -13,16 +14,6 @@ type InternationalPhoneInputProps = {
 }
 
 const preferredCountries = ['my', 'sg', 'id', 'th', 'bn'] as const
-
-const normalizePhoneValue = (phone: string): string => {
-  const trimmed = phone.trim()
-  if (!trimmed) return ''
-
-  const digits = trimmed.replace(/\D/g, '')
-  if (!digits) return ''
-
-  return trimmed.startsWith('+') ? `+${digits}` : digits
-}
 
 export default function InternationalPhoneInput({
   value,
@@ -40,7 +31,7 @@ export default function InternationalPhoneInput({
   return (
     <PhoneInput
       value={value ?? ''}
-      onChange={(phone) => onChange(normalizePhoneValue(phone))}
+      onChange={(phone) => onChange(normalizeInternationalPhone(phone))}
       defaultCountry="my"
       preferredCountries={[...preferredCountries]}
       forceDialCode

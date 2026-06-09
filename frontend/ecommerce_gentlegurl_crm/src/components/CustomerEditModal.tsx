@@ -6,6 +6,7 @@ import type { CustomerRowData } from './CustomerRow'
 import { mapCustomerApiItemToRow, type CustomerApiItem } from './customerUtils'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import { useI18n } from '@/lib/i18n'
+import { normalizeInternationalPhone } from '@/lib/phone'
 
 interface CustomerEditModalProps {
   customerId: number
@@ -159,7 +160,7 @@ export default function CustomerEditModal({
 
     const trimmedName = form.name.trim()
     const trimmedEmail = form.email.trim()
-    const trimmedPhone = form.phone.trim()
+    const trimmedPhone = normalizeInternationalPhone(form.phone)
     const trimmedPassword = form.password.trim()
 
     if (!trimmedName || !trimmedEmail || !trimmedPhone || !form.customerTypeId) {

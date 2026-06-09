@@ -13,6 +13,7 @@ import {
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
+import { normalizeInternationalPhone } from '@/lib/phone'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
@@ -789,7 +790,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
     } else {
-      if (createAppointmentGuestPhone.trim() && !phonePattern.test(createAppointmentGuestPhone.trim())) {
+      if (normalizeInternationalPhone(createAppointmentGuestPhone) && !phonePattern.test(normalizeInternationalPhone(createAppointmentGuestPhone))) {
         setCreateAppointmentError('Please enter a valid guest phone (8-15 digits, optional +).')
         return
       }
@@ -866,7 +867,7 @@ export default function PosAppointmentsWorkspace({
         payload.customer_id = createAppointmentCustomerId
       } else {
         const guestName = createAppointmentGuestName.trim()
-        const guestPhone = createAppointmentGuestPhone.trim()
+        const guestPhone = normalizeInternationalPhone(createAppointmentGuestPhone)
         const guestEmail = createAppointmentGuestEmail.trim()
         payload.customer_id = null
         payload.guest_name = guestName || 'UNKNOWN'

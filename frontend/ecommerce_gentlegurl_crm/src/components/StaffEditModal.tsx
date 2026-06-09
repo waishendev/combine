@@ -6,6 +6,7 @@ import type { StaffRowData } from './staffUtils'
 import { mapStaffApiItemToRow, type StaffApiItem } from './staffUtils'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import { useI18n } from '@/lib/i18n'
+import { normalizeInternationalPhone } from '@/lib/phone'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface StaffEditModalProps {
@@ -55,6 +56,7 @@ export default function StaffEditModal({
   const [loadedStaff, setLoadedStaff] = useState<StaffRowData | null>(null)
 
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [phoneTouched, setPhoneTouched] = useState(false)
   const avatarInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -103,6 +105,7 @@ export default function StaffEditModal({
         setLoadedStaff(mappedStaff)
         setAvatarPreview(mappedStaff.avatarUrl || null)
 
+        setPhoneTouched(false)
         setForm({
           code: mappedStaff.code === '-' ? '' : mappedStaff.code,
           name: mappedStaff.name === '-' ? '' : mappedStaff.name,
@@ -181,11 +184,14 @@ export default function StaffEditModal({
     try {
       const commissionRate = Number(form.commissionPercent || 0) / 100
       const serviceCommissionRate = Number(form.serviceCommissionPercent || 0) / 100
+      const normalizedPhone = normalizeInternationalPhone(form.phone)
       const fd = new FormData()
       fd.append('_method', 'PUT')
       fd.append('code', form.code.trim())
       fd.append('name', form.name.trim())
-      fd.append('phone', form.phone.trim())
+      if (normalizedPhone || phoneTouched) {
+        fd.append('phone', normalizedPhone)
+      }
       fd.append('email', form.email.trim())
       fd.append('position', form.position.trim())
       fd.append('description', form.description.trim())
@@ -262,7 +268,7 @@ export default function StaffEditModal({
             id: loadedStaff?.id ?? staffId,
             code: form.code.trim() || '-',
             name: form.name.trim(),
-            phone: form.phone.trim() || '-',
+            phone: normalizedPhone || loadedStaff?.phone || '-',
             email: form.email.trim(),
             position: form.position.trim(),
             description: form.description.trim(),
@@ -451,7 +457,10 @@ export default function StaffEditModal({
                     </label>
                     <InternationalPhoneInput
                       value={form.phone}
-                      onChange={(phone) => setForm((prev) => ({ ...prev, phone }))}
+                      onChange={(phone) => {
+                        setPhoneTouched(true)
+                        setForm((prev) => ({ ...prev, phone }))
+                      }}
                       placeholder="Phone"
                       disabled={disableForm}
                     />

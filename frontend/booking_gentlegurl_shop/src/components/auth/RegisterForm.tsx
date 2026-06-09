@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
+import { normalizeInternationalPhone } from "@/lib/phone";
 import { extractApiError } from "@/lib/auth/redirect";
 
 function Field({
@@ -105,7 +106,7 @@ export function RegisterForm({
     if (submitting) return false;
     if (!formState.name.trim()) return false;
     if (!formState.email.trim()) return false;
-    if (!formState.phone.trim()) return false;
+    if (!normalizeInternationalPhone(formState.phone)) return false;
     if (!formState.password.trim()) return false;
     if (!formState.password_confirmation.trim()) return false;
     if (pwMismatch) return false;
@@ -117,8 +118,15 @@ export function RegisterForm({
     setSubmitting(true);
     setError(null);
 
+    const normalizedPhone = normalizeInternationalPhone(formState.phone);
+    if (!normalizedPhone) {
+      setError("Phone number is required.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      await register({ ...formState, type: registrationType });
+      await register({ ...formState, phone: normalizedPhone, type: registrationType });
       onSuccess?.(formState.email);
     } catch (err: unknown) {
       setError(extractApiError(err));

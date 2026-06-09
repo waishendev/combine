@@ -6,6 +6,7 @@ import type { StaffRowData } from './staffUtils'
 import { mapStaffApiItemToRow, type StaffApiItem } from './staffUtils'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import { useI18n } from '@/lib/i18n'
+import { normalizeInternationalPhone } from '@/lib/phone'
 import { IMAGE_ACCEPT } from './mediaAccept'
 
 interface StaffCreateModalProps {
@@ -103,10 +104,11 @@ export default function StaffCreateModal({
     try {
       const commissionRate = Number(form.commissionPercent || 0) / 100
       const serviceCommissionRate = Number(form.serviceCommissionPercent || 0) / 100
+      const normalizedPhone = normalizeInternationalPhone(form.phone)
       const basePayload = {
         code: form.code.trim() || null,
         name: form.name.trim(),
-        phone: form.phone.trim() || null,
+        phone: normalizedPhone || null,
         email: form.email.trim(),
         password: form.password.trim(),
         position: form.position.trim() || null,
@@ -179,7 +181,7 @@ export default function StaffCreateModal({
             id: 0,
             code: form.code.trim() || '-',
             name: form.name.trim(),
-            phone: form.phone.trim() || '-',
+            phone: normalizedPhone || '-',
             email: form.email.trim(),
             position: form.position.trim(),
             description: form.description.trim(),
