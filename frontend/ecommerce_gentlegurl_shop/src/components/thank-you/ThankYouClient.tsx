@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { lookupOrder, uploadPaymentSlip, OrderLookupResponse } from "@/lib/apiClient";
+import { bankQrImageStandardClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } from "@/lib/bankQrImage";
 import { useCart } from "@/contexts/CartContext";
 
 type Props = {
@@ -263,12 +264,12 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
                     </p>
                   )} */}
                   {order.bank_account.qr_image_url && (
-                    <div className="mt-3 h-32 w-32 overflow-hidden rounded border border-[var(--card-border)] bg-[var(--card)]">
+                    <div className={`mt-3 ${bankQrImageStandardClass}`}>
                       <Image
                         src={order.bank_account.qr_image_url}
                         alt="Bank QR"
-                        width={128}
-                        height={128}
+                        width={BANK_QR_IMAGE_WIDTH}
+                        height={BANK_QR_IMAGE_HEIGHT}
                         className="h-full w-full object-contain"
                       />
                     </div>
