@@ -20,6 +20,7 @@ import {
   extractPaged,
   posAppointmentBlocksActiveSchedule,
   formatAppointmentCustomerDisplayName,
+  formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
   formatBookingAddonSummary,
   formatDateTimeRange,
@@ -2364,9 +2365,16 @@ export default function PosAppointmentsWorkspace({
                         ) : null}
                       </div>
                     </div>
-                    <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">
-                      {formatAppointmentCustomerDisplayName(appointmentDetail)}
-                    </p>
+                    <div className="mt-3 space-y-1">
+                      <p className="text-lg font-semibold leading-snug text-slate-900">
+                        {formatAppointmentCustomerDisplayName(appointmentDetail)}
+                      </p>
+                      {formatAppointmentCustomerContactLines(appointmentDetail).map((line) => (
+                        <p key={`appointment-contact-${line.label}`} className="text-xs font-medium text-slate-600">
+                          <span className="text-slate-500">{line.label}:</span> {line.value}
+                        </p>
+                      ))}
+                    </div>
 
                     {/* <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-900">Services</p>
