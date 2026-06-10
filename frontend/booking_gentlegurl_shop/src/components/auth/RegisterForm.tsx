@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
+import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
+import { normalizeInternationalPhone } from "@/lib/phone";
 import { extractApiError } from "@/lib/auth/redirect";
 
 function Field({
@@ -104,7 +106,7 @@ export function RegisterForm({
     if (submitting) return false;
     if (!formState.name.trim()) return false;
     if (!formState.email.trim()) return false;
-    if (!formState.phone.trim()) return false;
+    if (!normalizeInternationalPhone(formState.phone)) return false;
     if (!formState.password.trim()) return false;
     if (!formState.password_confirmation.trim()) return false;
     if (pwMismatch) return false;
@@ -116,8 +118,15 @@ export function RegisterForm({
     setSubmitting(true);
     setError(null);
 
+    const normalizedPhone = normalizeInternationalPhone(formState.phone);
+    if (!normalizedPhone) {
+      setError("Phone number is required.");
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      await register({ ...formState, type: registrationType });
+      await register({ ...formState, phone: normalizedPhone, type: registrationType });
       onSuccess?.(formState.email);
     } catch (err: unknown) {
       setError(extractApiError(err));
@@ -166,21 +175,17 @@ export function RegisterForm({
         }
       />
 
-      <Field
-        label="Phone"
-        id="phone"
-        type="tel"
-        value={formState.phone}
-        onChange={(v) => handleChange("phone", v)}
-        placeholder="e.g. 012-345 6789"
-        autoComplete="tel"
-        icon={
-          <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="1.6">
-            <path d="M7 2h10v20H7z" />
-            <path d="M10 19h4" />
-          </svg>
-        }
-      />
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="phone">
+          Phone
+        </label>
+        <InternationalPhoneInput
+          value={formState.phone}
+          onChange={(v) => handleChange("phone", v)}
+          placeholder="Phone"
+          required
+        />
+      </div>
 
       <Field
         label="Password"

@@ -13,7 +13,13 @@ export type PosAppointmentCurrentUser = {
 export type PosAppointmentListItem = {
   id: number
   booking_code: string
+  customer_id?: number | null
   customer_name: string
+  customer_phone?: string | null
+  customer_email?: string | null
+  guest_name?: string | null
+  guest_phone?: string | null
+  guest_email?: string | null
   service_names: string[]
   appointment_start_at?: string | null
   appointment_end_at?: string | null
@@ -48,6 +54,9 @@ export type PosAppointmentListItem = {
 export type PosAppointmentDetail = {
   id: number
   booking_code: string
+  customer_name?: string | null
+  customer_phone?: string | null
+  customer_email?: string | null
   status: string
   payment_status?: string | null
   appointment_start_at?: string | null

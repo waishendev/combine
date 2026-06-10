@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
+import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import {
   getSettlementRangeBounds,
   parseSettlementAmountInput,
@@ -12,12 +13,14 @@ import {
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
+import { normalizeInternationalPhone } from '@/lib/phone'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
   posAppointmentBlocksActiveSchedule,
   formatAppointmentCustomerDisplayName,
+  formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
   formatBookingAddonSummary,
   formatDateTimeRange,
@@ -788,7 +791,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
     } else {
-      if (createAppointmentGuestPhone.trim() && !phonePattern.test(createAppointmentGuestPhone.trim())) {
+      if (normalizeInternationalPhone(createAppointmentGuestPhone) && !phonePattern.test(normalizeInternationalPhone(createAppointmentGuestPhone))) {
         setCreateAppointmentError('Please enter a valid guest phone (8-15 digits, optional +).')
         return
       }
@@ -865,7 +868,7 @@ export default function PosAppointmentsWorkspace({
         payload.customer_id = createAppointmentCustomerId
       } else {
         const guestName = createAppointmentGuestName.trim()
-        const guestPhone = createAppointmentGuestPhone.trim()
+        const guestPhone = normalizeInternationalPhone(createAppointmentGuestPhone)
         const guestEmail = createAppointmentGuestEmail.trim()
         payload.customer_id = null
         payload.guest_name = guestName || 'UNKNOWN'
@@ -2362,9 +2365,16 @@ export default function PosAppointmentsWorkspace({
                         ) : null}
                       </div>
                     </div>
-                    <p className="mt-3 text-lg font-semibold leading-snug text-slate-900">
-                      {formatAppointmentCustomerDisplayName(appointmentDetail)}
-                    </p>
+                    <div className="mt-3 space-y-1">
+                      <p className="text-lg font-semibold leading-snug text-slate-900">
+                        {formatAppointmentCustomerDisplayName(appointmentDetail)}
+                      </p>
+                      {formatAppointmentCustomerContactLines(appointmentDetail).map((line) => (
+                        <p key={`appointment-contact-${line.label}`} className="text-xs font-medium text-slate-600">
+                          <span className="text-slate-500">{line.label}:</span> {line.value}
+                        </p>
+                      ))}
+                    </div>
 
                     {/* <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-900">Services</p>
@@ -3183,11 +3193,10 @@ export default function PosAppointmentsWorkspace({
                         placeholder="Guest name"
                         className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                       />
-                      <input
+                      <InternationalPhoneInput
                         value={createAppointmentGuestPhone}
-                        onChange={(e) => setCreateAppointmentGuestPhone(e.target.value)}
+                        onChange={setCreateAppointmentGuestPhone}
                         placeholder="Guest phone"
-                        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                       />
                       <input
                         value={createAppointmentGuestEmail}

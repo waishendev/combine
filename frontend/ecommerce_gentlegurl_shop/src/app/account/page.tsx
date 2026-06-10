@@ -3,6 +3,8 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
+import { normalizeInternationalPhone } from "@/lib/phone";
 import type {
   AddressPayload,
   CustomerAddress,
@@ -195,7 +197,10 @@ export default function AccountPage() {
     const updatePayload: UpdateCustomerProfilePayload = {};
 
     if (profileForm.name.trim()) updatePayload.name = profileForm.name.trim();
-    updatePayload.phone = profileForm.phone.trim() ? profileForm.phone.trim() : null;
+    const normalizedPhone = normalizeInternationalPhone(profileForm.phone);
+    if (normalizedPhone || profileForm.phone !== (profile.phone ?? "")) {
+      updatePayload.phone = normalizedPhone || null;
+    }
     if (profileForm.photo) updatePayload.photo = profileForm.photo;
 
     try {
@@ -280,8 +285,10 @@ export default function AccountPage() {
     setError(null);
     setFeedback(null);
 
+    const normalizedAddressPhone = normalizeInternationalPhone(addressForm.phone);
     const payload: AddressPayload = {
       ...addressForm,
+      phone: normalizedAddressPhone,
       label: addressForm.label?.trim() || null,
       line2: addressForm.line2?.trim() || null,
       state: addressForm.state?.trim() || null,
@@ -649,11 +656,9 @@ export default function AccountPage() {
             </label>
             <label className="block space-y-1 text-sm">
               <span className="text-[var(--accent-stronger)]">Phone</span>
-              <input
-                type="text"
+              <InternationalPhoneInput
                 value={profileForm.phone}
-                onChange={(e) => setProfileForm({ ...profileForm, phone: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(phone) => setProfileForm({ ...profileForm, phone })}
               />
             </label>
           </div>
@@ -872,11 +877,9 @@ export default function AccountPage() {
             </label>
             <label className="space-y-1 text-sm">
               <span className="text-[var(--accent-stronger)]">Phone</span>
-              <input
-                type="text"
+              <InternationalPhoneInput
                 value={addressForm.phone}
-                onChange={(e) => setAddressForm({ ...addressForm, phone: e.target.value })}
-                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+                onChange={(phone) => setAddressForm({ ...addressForm, phone })}
               />
             </label>
           </div>

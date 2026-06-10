@@ -1,5 +1,54 @@
 @import "tailwindcss";
 
+@import "react-international-phone/style.css";
+
+.gg-international-phone {
+  width: 100%;
+  --react-international-phone-height: 42px;
+  --react-international-phone-border-radius: 0.5rem;
+  --react-international-phone-border-color: var(--input-border, #d1d5db);
+  --react-international-phone-background-color: var(--input-bg, #ffffff);
+  --react-international-phone-text-color: var(--foreground, #111827);
+  --react-international-phone-font-size: 0.875rem;
+}
+
+.gg-international-phone--error {
+  --react-international-phone-border-color: var(--status-error, #ef4444);
+}
+
+.gg-international-phone .react-international-phone-country-selector-button,
+.gg-international-phone .react-international-phone-input {
+  height: var(--react-international-phone-height);
+  border-color: var(--react-international-phone-border-color);
+  background-color: var(--react-international-phone-background-color);
+  color: var(--react-international-phone-text-color);
+  font-size: var(--react-international-phone-font-size);
+}
+
+.gg-international-phone .react-international-phone-country-selector-button {
+  border-top-left-radius: var(--react-international-phone-border-radius);
+  border-bottom-left-radius: var(--react-international-phone-border-radius);
+}
+
+.gg-international-phone .react-international-phone-input {
+  width: 100%;
+  border-top-right-radius: var(--react-international-phone-border-radius);
+  border-bottom-right-radius: var(--react-international-phone-border-radius);
+}
+
+.gg-international-phone:focus-within .react-international-phone-country-selector-button,
+.gg-international-phone:focus-within .react-international-phone-input {
+  border-color: var(--accent-strong, var(--ring, #3b82f6));
+  box-shadow: 0 0 0 2px rgb(var(--accent-rgb, 59 130 246) / 0.15);
+}
+
+.gg-international-phone .react-international-phone-input:disabled,
+.gg-international-phone .react-international-phone-country-selector-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+
 :root[data-theme="soft"] {
   --background: #fff8f5;
   --background-soft: #ffeef3;

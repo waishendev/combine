@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
+import { normalizeInternationalPhone } from "@/lib/phone";
 import {
   checkoutCart,
   getBookingBankAccounts,
@@ -243,8 +245,8 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       setMessage(null);
 
       const nextErrors: Record<string, string> = {};
-      const normalizedGuestPhone = guestPhone.trim();
-      const normalizedBillingPhone = billingPhone.trim();
+      const normalizedGuestPhone = normalizeInternationalPhone(guestPhone);
+      const normalizedBillingPhone = normalizeInternationalPhone(billingPhone);
       const phonePattern = /^\+?[0-9]{8,15}$/;
 
       if (!guestName.trim()) {
@@ -302,11 +304,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       const checkoutResponse = await checkoutCart(
         {
           guest_name: guestName.trim(),
-          guest_phone: guestPhone.trim(),
+          guest_phone: normalizedGuestPhone,
           guest_email: guestEmail.trim(),
           billing_same_as_contact: billingSameAsContact,
           billing_name: billingSameAsContact ? guestName.trim() : billingName.trim(),
-          billing_phone: billingSameAsContact ? guestPhone.trim() : billingPhone.trim(),
+          billing_phone: billingSameAsContact ? normalizedGuestPhone : normalizedBillingPhone,
           billing_email: billingSameAsContact ? guestEmail.trim() : billingEmail.trim(),
           payment_method: isZeroPayableCheckout ? undefined : selectedPaymentMethod,
           bank_account_id: !isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" ? (selectedBankAccountId ?? undefined) : undefined,
@@ -1133,14 +1135,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     {fieldErrors.guest_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_name}</p> : null}
                   </div>
                   <div>
-                    <input
+                    <InternationalPhoneInput
                       value={guestPhone}
-                      onChange={(e) => {
-                        setGuestPhone(e.target.value);
+                      onChange={(phone) => {
+                        setGuestPhone(phone);
                         setFieldErrors((prev) => ({ ...prev, guest_phone: "" }));
                       }}
-                      className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                       placeholder="Phone *"
+                      required
+                      error={Boolean(fieldErrors.guest_phone)}
                     />
                     {fieldErrors.guest_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_phone}</p> : null}
                   </div>
@@ -1189,14 +1192,15 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       {fieldErrors.billing_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_name}</p> : null}
                     </div>
                     <div>
-                      <input
+                      <InternationalPhoneInput
                         value={billingPhone}
-                        onChange={(e) => {
-                          setBillingPhone(e.target.value);
+                        onChange={(phone) => {
+                          setBillingPhone(phone);
                           setFieldErrors((prev) => ({ ...prev, billing_phone: "" }));
                         }}
-                        className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                         placeholder="Billing Phone *"
+                        required
+                        error={Boolean(fieldErrors.billing_phone)}
                       />
                       {fieldErrors.billing_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_phone}</p> : null}
                     </div>

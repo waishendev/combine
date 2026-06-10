@@ -216,11 +216,24 @@ export function formatDurationFromRange(startAt?: string | null, endAt?: string 
 export function formatAppointmentCustomerDisplayName(detail: PosAppointmentDetail | null | undefined): string {
   const memberName = detail?.customer?.name?.trim()
   if (memberName && memberName !== '-') return memberName
+  const displayName = detail?.customer_name?.trim()
+  if (displayName && displayName !== '-') return displayName
   const guest = detail?.guest_name?.trim()
   if (guest) return `${guest} (GUEST)`
   return '—'
 }
 
+export function formatAppointmentCustomerContactLines(detail: PosAppointmentDetail | null | undefined): Array<{ label: string; value: string }> {
+  const phone = detail?.customer?.phone?.trim() || detail?.customer_phone?.trim() || detail?.guest_phone?.trim() || ''
+  const email = detail?.customer?.email?.trim() || detail?.customer_email?.trim() || detail?.guest_email?.trim() || ''
+  const lines: Array<{ label: string; value: string }> = []
+
+  if (phone) lines.push({ label: 'Phone', value: phone })
+  if (email) lines.push({ label: 'Email', value: email })
+
+  return lines
+}
+
 export function formatAppointmentReceiptDefaultEmail(detail: PosAppointmentDetail | null | undefined): string {
-  return detail?.customer?.email?.trim() || detail?.guest_email?.trim() || ''
+  return detail?.customer?.email?.trim() || detail?.customer_email?.trim() || detail?.guest_email?.trim() || ''
 }
