@@ -160,7 +160,7 @@ class CompressExistingImages extends Command
             return;
         }
 
-        $imageInfo = @getimagesize($filePath);
+        $imageInfo = @\getimagesize($filePath);
         if ($imageInfo === false) {
             $this->skipped++;
             return;
@@ -201,17 +201,17 @@ class CompressExistingImages extends Command
         }
 
         if ($needsResize) {
-            $resized = imagecreatetruecolor($newWidth, $newHeight);
+            $resized = \imagecreatetruecolor($newWidth, $newHeight);
 
             if ($hasTransparency) {
-                imagealphablending($resized, false);
-                imagesavealpha($resized, true);
-                $transparent = imagecolorallocatealpha($resized, 0, 0, 0, 127);
-                imagefill($resized, 0, 0, $transparent);
+                \imagealphablending($resized, false);
+                \imagesavealpha($resized, true);
+                $transparent = \imagecolorallocatealpha($resized, 0, 0, 0, 127);
+                \imagefill($resized, 0, 0, $transparent);
             }
 
-            imagecopyresampled($resized, $source, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
-            imagedestroy($source);
+            \imagecopyresampled($resized, $source, 0, 0, 0, 0, $newWidth, $newHeight, $origWidth, $origHeight);
+            \imagedestroy($source);
             $source = $resized;
         }
 
@@ -221,7 +221,7 @@ class CompressExistingImages extends Command
             ? $this->saveAsPng($source, $tempPath)
             : $this->saveAsJpeg($source, $tempPath, $quality);
 
-        imagedestroy($source);
+        \imagedestroy($source);
 
         if (! $saved) {
             @unlink($tempPath);
@@ -252,22 +252,22 @@ class CompressExistingImages extends Command
     private function loadImage(string $path, string $mimeType): ?\GdImage
     {
         return match ($mimeType) {
-            'image/jpeg' => @imagecreatefromjpeg($path) ?: null,
-            'image/png' => @imagecreatefrompng($path) ?: null,
-            'image/webp' => @imagecreatefromwebp($path) ?: null,
+            'image/jpeg' => @\imagecreatefromjpeg($path) ?: null,
+            'image/png' => @\imagecreatefrompng($path) ?: null,
+            'image/webp' => @\imagecreatefromwebp($path) ?: null,
             default => null,
         };
     }
 
     private function saveAsJpeg(\GdImage $image, string $path, int $quality): bool
     {
-        return @imagejpeg($image, $path, $quality);
+        return @\imagejpeg($image, $path, $quality);
     }
 
     private function saveAsPng(\GdImage $image, string $path): bool
     {
-        imagesavealpha($image, true);
-        return @imagepng($image, $path, 6);
+        \imagesavealpha($image, true);
+        return @\imagepng($image, $path, 6);
     }
 
     private function imageHasTransparency(string $filePath, string $mimeType): bool
@@ -277,18 +277,18 @@ class CompressExistingImages extends Command
         }
 
         if ($mimeType === 'image/png') {
-            $info = @getimagesize($filePath);
+            $info = @\getimagesize($filePath);
             if ($info && isset($info['channels']) && $info['channels'] === 3) {
                 return false;
             }
 
-            $image = @imagecreatefrompng($filePath);
+            $image = @\imagecreatefrompng($filePath);
             if (! $image) {
                 return false;
             }
 
             $hasAlpha = $this->checkAlphaChannel($image);
-            imagedestroy($image);
+            \imagedestroy($image);
             return $hasAlpha;
         }
 
@@ -301,8 +301,8 @@ class CompressExistingImages extends Command
 
     private function checkAlphaChannel(\GdImage $image): bool
     {
-        $width = imagesx($image);
-        $height = imagesy($image);
+        $width = \imagesx($image);
+        $height = \imagesy($image);
 
         $step = max(1, (int) ($width * $height / 1000));
         $pixelCount = $width * $height;
@@ -310,7 +310,7 @@ class CompressExistingImages extends Command
         for ($i = 0; $i < $pixelCount; $i += $step) {
             $x = $i % $width;
             $y = (int) ($i / $width);
-            $rgba = imagecolorat($image, $x, $y);
+            $rgba = \imagecolorat($image, $x, $y);
             $alpha = ($rgba >> 24) & 0x7F;
             if ($alpha > 0) {
                 return true;
