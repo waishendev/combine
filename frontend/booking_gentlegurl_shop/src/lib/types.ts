@@ -417,7 +417,10 @@ export type LandingVisitStudio = {
   address: string;
   google_maps_url: string;
   waze_url: string;
-  whatsapp_url: string;
+  whatsapp_phone: string;
+  whatsapp_message: string;
+  /** Legacy field — auto-migrated from whatsapp_url when present. */
+  whatsapp_url?: string;
   google_maps_label: string;
   waze_label: string;
   whatsapp_label: string;

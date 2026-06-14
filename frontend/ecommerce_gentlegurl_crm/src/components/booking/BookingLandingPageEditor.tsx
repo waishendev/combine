@@ -50,7 +50,8 @@ type Sections = {
     address: string
     google_maps_url: string
     waze_url: string
-    whatsapp_url: string
+    whatsapp_phone: string
+    whatsapp_message: string
     google_maps_label: string
     waze_label: string
     whatsapp_label: string
@@ -122,7 +123,8 @@ const defaultSections: Sections = {
     address: '',
     google_maps_url: '',
     waze_url: '',
-    whatsapp_url: '',
+    whatsapp_phone: '',
+    whatsapp_message: 'Hi! I would like to get in touch about your salon services.',
     google_maps_label: 'GOOGLE MAPS',
     waze_label: 'OPEN WAZE',
     whatsapp_label: 'MESSAGE US ON WHATSAPP',
@@ -131,6 +133,24 @@ const defaultSections: Sections = {
     bottom_label: '',
     column_order: 'contact_left',
   },
+}
+
+function asText(value: unknown, fallback = ''): string {
+  if (value == null) return fallback
+  return String(value)
+}
+
+function createEmptyNailAcademyItem(): NailAcademyItem {
+  return {
+    src: '',
+    duration_badge: '',
+    title: '',
+    target_audience: '',
+    curriculum: [],
+    details_link: '',
+    details_label: 'CLICK FOR MORE DETAILS →',
+    text_align: 'left',
+  }
 }
 
 function parseCurriculumFromUnknown(raw: unknown): string[] {
@@ -147,16 +167,41 @@ function parseCurriculumFromUnknown(raw: unknown): string[] {
 }
 
 function normalizeNailAcademyItem(raw: Record<string, unknown>): NailAcademyItem {
+  const base = createEmptyNailAcademyItem()
   const align = raw.text_align === 'center' || raw.text_align === 'right' ? raw.text_align : 'left'
   return {
-    src: String(raw.src ?? ''),
-    duration_badge: String(raw.duration_badge ?? ''),
-    title: String(raw.title ?? ''),
-    target_audience: String(raw.target_audience ?? ''),
+    ...base,
+    src: asText(raw.src),
+    duration_badge: asText(raw.duration_badge),
+    title: asText(raw.title),
+    target_audience: asText(raw.target_audience),
     curriculum: parseCurriculumFromUnknown(raw.curriculum),
-    details_link: String(raw.details_link ?? ''),
-    details_label: String(raw.details_label ?? 'CLICK FOR MORE DETAILS →'),
+    details_link: asText(raw.details_link),
+    details_label: asText(raw.details_label, base.details_label),
     text_align: align,
+  }
+}
+
+function normalizeNailAcademySection(raw: unknown): Sections['nail_academy'] {
+  const base = defaultSections.nail_academy
+  if (!raw || typeof raw !== 'object') return base
+  const o = raw as Record<string, unknown>
+  const heading =
+    o.heading && typeof o.heading === 'object'
+      ? { ...base.heading, ...(o.heading as HeadingConfig) }
+      : base.heading
+  const items = Array.isArray(o.items)
+    ? o.items.map((it) =>
+        normalizeNailAcademyItem((it && typeof it === 'object' ? it : {}) as Record<string, unknown>),
+      )
+    : base.items
+  return {
+    ...base,
+    heading,
+    target_label: asText(o.target_label, base.target_label),
+    curriculum_label: asText(o.curriculum_label, base.curriculum_label),
+    items,
+    is_active: Boolean(o.is_active ?? base.is_active),
   }
 }
 
@@ -180,6 +225,31 @@ function composeBottomLabelFromLegacyFields(o: Record<string, unknown>): string 
   return lines.join('\n')
 }
 
+function extractPhoneFromWhatsAppUrl(url: string): string {
+  const trimmed = url.trim()
+  if (!trimmed) return ''
+  const waMe = trimmed.match(/wa\.me\/(\d+)/i)
+  if (waMe?.[1]) return waMe[1]
+  const apiPhone = trimmed.match(/[?&]phone=(\d+)/i)
+  if (apiPhone?.[1]) return apiPhone[1]
+  if (/^[\d+\s\-()]+$/.test(trimmed)) {
+    return trimmed.replace(/[^\d+]/g, '')
+  }
+  return ''
+}
+
+function extractMessageFromWhatsAppUrl(url: string): string {
+  const trimmed = url.trim()
+  if (!trimmed) return ''
+  try {
+    const parsed = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`)
+    const text = parsed.searchParams.get('text')
+    return text ? decodeURIComponent(text.replace(/\+/g, ' ')) : ''
+  } catch {
+    return ''
+  }
+}
+
 function normalizeVisitStudioFromApi(raw: unknown): Sections['visit_studio'] {
   const base = defaultSections.visit_studio
   if (!raw || typeof raw !== 'object') return base
@@ -199,6 +269,16 @@ function normalizeVisitStudioFromApi(raw: unknown): Sections['visit_studio'] {
   if (!bottom_label) {
     bottom_label = composeBottomLabelFromLegacyFields(o)
   }
+  const legacyUrl = String(o.whatsapp_url ?? '').trim()
+  let whatsapp_phone = String(o.whatsapp_phone ?? '').trim()
+  let whatsapp_message = String(o.whatsapp_message ?? '').trim()
+  if (!whatsapp_phone && legacyUrl) {
+    whatsapp_phone = extractPhoneFromWhatsAppUrl(legacyUrl)
+  }
+  if (!whatsapp_message) {
+    const fromUrl = legacyUrl ? extractMessageFromWhatsAppUrl(legacyUrl) : ''
+    whatsapp_message = fromUrl || base.whatsapp_message
+  }
   return {
     ...base,
     heading,
@@ -208,7 +288,8 @@ function normalizeVisitStudioFromApi(raw: unknown): Sections['visit_studio'] {
     address: String(o.address ?? ''),
     google_maps_url: String(o.google_maps_url ?? ''),
     waze_url: String(o.waze_url ?? ''),
-    whatsapp_url: String(o.whatsapp_url ?? ''),
+    whatsapp_phone,
+    whatsapp_message,
     google_maps_label: String(o.google_maps_label ?? base.google_maps_label),
     waze_label: String(o.waze_label ?? base.waze_label),
     whatsapp_label: String(o.whatsapp_label ?? base.whatsapp_label),
@@ -231,13 +312,9 @@ function mergeSectionsFromApi(raw: Partial<Sections> & Record<string, unknown>):
         typeof hero.decorations_enabled === 'boolean' ? hero.decorations_enabled : defaultSections.hero.decorations_enabled,
     }
   }
-  const na = raw.nail_academy as Sections['nail_academy'] | undefined
-  if (na?.items && Array.isArray(na.items)) {
-    merged.nail_academy = {
-      ...defaultSections.nail_academy,
-      ...na,
-      items: na.items.map((it) => normalizeNailAcademyItem(it as Record<string, unknown>)),
-    }
+  const na = raw.nail_academy
+  if (na !== undefined) {
+    merged.nail_academy = normalizeNailAcademySection(na)
   }
   if (raw.visit_studio !== undefined) {
     merged.visit_studio = normalizeVisitStudioFromApi(raw.visit_studio)
@@ -252,6 +329,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   const [saving, setSaving] = useState(false)
   const [message, setMessage] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [saveToast, setSaveToast] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [galleryPreviews, setGalleryPreviews] = useState<(string | null)[]>([])
   const [serviceMenuPreviews, setServiceMenuPreviews] = useState<(string | null)[]>([])
@@ -292,15 +370,27 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     void fetchData()
   }, [fetchData])
 
+  useEffect(() => {
+    if (!saveToast) return
+    const timer = window.setTimeout(() => setSaveToast(null), saveToast.tone === 'success' ? 4000 : 6000)
+    return () => window.clearTimeout(timer)
+  }, [saveToast])
+
   const handleSave = async () => {
     setSaving(true)
     setMessage(null)
     setError(null)
+    setSaveToast(null)
+    const payload = {
+      ...sections,
+      nail_academy: normalizeNailAcademySection(sections.nail_academy),
+      visit_studio: normalizeVisitStudioFromApi(sections.visit_studio),
+    }
     try {
       const res = await fetch('/api/proxy/admin/booking/landing-page', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sections }),
+        body: JSON.stringify({ sections: payload }),
       })
       const json = await res.json()
       if (!res.ok) throw new Error(json?.message || 'Save failed')
@@ -318,9 +408,11 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
         setNailAcademyPreviews(Array(nailCount).fill(null))
       }
       setMessage('Landing page saved successfully!')
-      setTimeout(() => setMessage(null), 3000)
+      setSaveToast({ tone: 'success', text: 'Landing page saved successfully!' })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save')
+      const saveError = err instanceof Error ? err.message : 'Failed to save'
+      setError(saveError)
+      setSaveToast({ tone: 'error', text: saveError })
     } finally {
       setSaving(false)
     }
@@ -355,19 +447,17 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     file: File,
   ) => {
     const previewUrl = URL.createObjectURL(file)
-    if (sectionKey === 'gallery') {
-      setGalleryPreviews((prev) => {
-        const next = ensureArrayLength(prev, index + 1)
-        next[index] = previewUrl
-        return next
-      })
-    } else {
-      setServiceMenuPreviews((prev) => {
-        const next = ensureArrayLength(prev, index + 1)
-        next[index] = previewUrl
-        return next
-      })
-    }
+    const setPreviews =
+      sectionKey === 'gallery'
+        ? setGalleryPreviews
+        : sectionKey === 'our_artists'
+          ? setArtistsPreviews
+          : setServiceMenuPreviews
+    setPreviews((prev) => {
+      const next = ensureArrayLength(prev, index + 1)
+      next[index] = previewUrl
+      return next
+    })
 
     const url = await uploadImage(file, sectionKey)
     if (!url) return
@@ -441,11 +531,10 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     })
     if (sectionKey === 'gallery') {
       setGalleryPreviews((prev) => [...prev, null])
+    } else if (sectionKey === 'our_artists') {
+      setArtistsPreviews((prev) => [...prev, null])
     } else {
       setServiceMenuPreviews((prev) => [...prev, null])
-    }
-    if (sectionKey === 'our_artists') {
-      setArtistsPreviews((prev) => [...prev, null])
     }
   }
 
@@ -459,11 +548,10 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     }))
     if (sectionKey === 'gallery') {
       setGalleryPreviews((prev) => prev.filter((_, i) => i !== index))
+    } else if (sectionKey === 'our_artists') {
+      setArtistsPreviews((prev) => prev.filter((_, i) => i !== index))
     } else {
       setServiceMenuPreviews((prev) => prev.filter((_, i) => i !== index))
-    }
-    if (sectionKey === 'our_artists') {
-      setArtistsPreviews((prev) => prev.filter((_, i) => i !== index))
     }
   }
 
@@ -489,15 +577,14 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
         if (targetIndex < 0 || targetIndex >= prev.length) return prev
         return reorder(prev, index, targetIndex)
       })
-    } else {
-      setServiceMenuPreviews((prev) => {
+    } else if (sectionKey === 'our_artists') {
+      setArtistsPreviews((prev) => {
         const targetIndex = index + direction
         if (targetIndex < 0 || targetIndex >= prev.length) return prev
         return reorder(prev, index, targetIndex)
       })
-    }
-    if (sectionKey === 'our_artists') {
-      setArtistsPreviews((prev) => {
+    } else {
+      setServiceMenuPreviews((prev) => {
         const targetIndex = index + direction
         if (targetIndex < 0 || targetIndex >= prev.length) return prev
         return reorder(prev, index, targetIndex)
@@ -516,7 +603,11 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     if (!url) return
     setSections((prev) => {
       const items = [...prev.nail_academy.items]
-      items[index] = { ...items[index], src: url }
+      while (items.length <= index) {
+        items.push(createEmptyNailAcademyItem())
+      }
+      const existing = items[index] ?? createEmptyNailAcademyItem()
+      items[index] = { ...createEmptyNailAcademyItem(), ...existing, src: url }
       return { ...prev, nail_academy: { ...prev.nail_academy, items } }
     })
   }
@@ -524,7 +615,8 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   const updateNailAcademyItem = (index: number, partial: Partial<NailAcademyItem>) => {
     setSections((prev) => {
       const items = [...prev.nail_academy.items]
-      items[index] = { ...items[index], ...partial }
+      const existing = items[index] ?? createEmptyNailAcademyItem()
+      items[index] = { ...createEmptyNailAcademyItem(), ...existing, ...partial }
       return { ...prev, nail_academy: { ...prev.nail_academy, items } }
     })
   }
@@ -552,19 +644,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       ...prev,
       nail_academy: {
         ...prev.nail_academy,
-        items: [
-          ...prev.nail_academy.items,
-          {
-            src: '',
-            duration_badge: '',
-            title: '',
-            target_audience: '',
-            curriculum: [],
-            details_link: '',
-            details_label: 'CLICK FOR MORE DETAILS →',
-            text_align: 'left',
-          },
-        ],
+        items: [...prev.nail_academy.items, createEmptyNailAcademyItem()],
       },
     }))
     setNailAcademyPreviews((prev) => [...prev, null])
@@ -837,13 +917,6 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
                     </div>
 
                     <div className="grid gap-2">
-                      <input
-                        value={item.src}
-                        onChange={(e) => updateGalleryItem(sectionKey, index, 'src', e.target.value)}
-                        placeholder="/images/example.webp"
-                        className={inputCls}
-                        disabled={!canEdit}
-                      />
                       <input value={item.caption} onChange={(e) => updateGalleryItem(sectionKey, index, 'caption', e.target.value)} placeholder="Alt text / Caption" className={inputCls} disabled={!canEdit} />
                       {sectionKey === 'our_artists' && (
                         <>
@@ -989,7 +1062,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
             <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
               <span className="font-medium">Target audience label</span>
               <input
-                value={sections.nail_academy.target_label}
+                value={sections.nail_academy.target_label ?? ''}
                 onChange={(e) =>
                   setSections((prev) => ({
                     ...prev,
@@ -1003,7 +1076,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
             <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
               <span className="font-medium">Curriculum label</span>
               <input
-                value={sections.nail_academy.curriculum_label}
+                value={sections.nail_academy.curriculum_label ?? ''}
                 onChange={(e) =>
                   setSections((prev) => ({
                     ...prev,
@@ -1100,30 +1173,23 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
                     </div>
 
                     <input
-                      value={item.src}
-                      onChange={(e) => updateNailAcademyItem(index, { src: e.target.value })}
-                      placeholder="/images/example.webp"
-                      className={inputCls}
-                      disabled={!canEdit}
-                    />
-                    <input
-                      value={item.duration_badge}
+                      value={item.duration_badge ?? ''}
                       onChange={(e) => updateNailAcademyItem(index, { duration_badge: e.target.value })}
                       placeholder="Duration badge (e.g. 5 - 8 周)"
                       className={inputCls}
                       disabled={!canEdit}
                     />
                     <input
-                      value={item.title}
+                      value={item.title ?? ''}
                       onChange={(e) => updateNailAcademyItem(index, { title: e.target.value })}
                       placeholder="Course title"
                       className={inputCls}
                       disabled={!canEdit}
                     />
                     <textarea
-                      value={item.target_audience}
+                      value={item.target_audience ?? ''}
                       onChange={(e) => updateNailAcademyItem(index, { target_audience: e.target.value })}
-                      placeholder="Target audience / 面向对象 copy"
+                      placeholder="Target audience"
                       className={textareaCls}
                       rows={2}
                       disabled={!canEdit}
@@ -1131,7 +1197,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
                     <label className="block space-y-1 text-xs uppercase tracking-wide text-gray-500">
                       <span className="font-medium">Teaching points (one line each)</span>
                       <textarea
-                        value={item.curriculum.join('\n')}
+                        value={(item.curriculum ?? []).join('\n')}
                         onChange={(e) => {
                           const lines = e.target.value.split('\n').map((s) => s.trim())
                           updateNailAcademyItem(index, { curriculum: lines })
@@ -1143,14 +1209,14 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
                       />
                     </label>
                     <input
-                      value={item.details_label}
+                      value={item.details_label ?? ''}
                       onChange={(e) => updateNailAcademyItem(index, { details_label: e.target.value })}
                       placeholder="Link label (e.g. CLICK FOR MORE DETAILS →)"
                       className={inputCls}
                       disabled={!canEdit}
                     />
                     <input
-                      value={item.details_link}
+                      value={item.details_link ?? ''}
                       onChange={(e) => updateNailAcademyItem(index, { details_link: e.target.value })}
                       placeholder="Details URL (optional)"
                       className={inputCls}
@@ -1286,7 +1352,7 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       <SectionCard
         sectionKey="visit_studio"
         title="Visit Our Studio"
-        description="Location, maps links, WhatsApp, opening hours, and legal footer. Column order controls which block appears on the left (desktop) / first (mobile)."
+        description="Location, maps links, WhatsApp phone + default message, opening hours, and legal footer. Column order controls which block appears on the left (desktop) / first (mobile)."
         active={sections.visit_studio.is_active}
         onToggle={(value) => updateVisitStudio({ is_active: value })}
         canUpdate={canEdit}
@@ -1340,13 +1406,24 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
               />
             </label>
             <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
-              <span className="font-medium">WhatsApp link</span>
+              <span className="font-medium">WhatsApp phone number</span>
               <input
-                value={sections.visit_studio.whatsapp_url}
-                onChange={(e) => updateVisitStudio({ whatsapp_url: e.target.value })}
+                value={sections.visit_studio.whatsapp_phone}
+                onChange={(e) => updateVisitStudio({ whatsapp_phone: e.target.value })}
                 className={inputCls}
                 disabled={!canEdit}
-                placeholder="https://wa.me/60123456789"
+                placeholder="+60123456789 or 012-345 6789"
+              />
+            </label>
+            <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
+              <span className="font-medium">WhatsApp default message</span>
+              <textarea
+                value={sections.visit_studio.whatsapp_message}
+                onChange={(e) => updateVisitStudio({ whatsapp_message: e.target.value })}
+                className={textareaCls}
+                rows={3}
+                disabled={!canEdit}
+                placeholder="Hi! I would like to get in touch about your salon services."
               />
             </label>
             <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500">
@@ -1525,6 +1602,33 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
           </button>
         </div>
       )}
+      {saveToast ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed bottom-6 right-6 z-[100] flex max-w-sm items-start gap-3 rounded-xl border px-4 py-3 text-sm shadow-lg ${
+            saveToast.tone === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : 'border-red-200 bg-red-50 text-red-800'
+          }`}
+        >
+          <i
+            className={`mt-0.5 text-base ${
+              saveToast.tone === 'success' ? 'fa-solid fa-circle-check text-emerald-600' : 'fa-solid fa-circle-xmark text-red-600'
+            }`}
+            aria-hidden
+          />
+          <div className="flex-1 font-medium leading-snug">{saveToast.text}</div>
+          <button
+            type="button"
+            onClick={() => setSaveToast(null)}
+            className="rounded p-1 opacity-70 transition hover:opacity-100"
+            aria-label="Dismiss notification"
+          >
+            <i className="fa-solid fa-xmark text-xs" />
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

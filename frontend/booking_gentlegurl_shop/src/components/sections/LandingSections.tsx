@@ -16,6 +16,18 @@ import Slider, { justBreathe } from "@/components/home/Slider";
 import type { BookingHomepageSlider } from "@/lib/getBookingHomepageSliders";
 import { HERO_DECOR_LAYERS } from "@/components/sections/heroDecorLayers";
 import { HeroViewportRichText } from "@/components/sections/heroRichText";
+import {
+  buildWhatsAppUrl,
+  resolveVisitStudioWhatsAppMessage,
+  resolveVisitStudioWhatsAppPhone,
+} from "@/lib/whatsapp";
+
+function asDisplayText(value: unknown): string {
+  if (value == null) return "";
+  const text = String(value).trim();
+  if (text.toLowerCase() === "null") return "";
+  return text;
+}
 
 type HeroProps = {
   hero: LandingSections["hero"];
@@ -212,7 +224,9 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
               priority={idx < 4}
             />
           </div>
-          <p className="text-sm text-[var(--foreground)]/70 text-center">{image.caption}</p>
+          {asDisplayText(image.caption) ? (
+            <p className="text-sm text-[var(--foreground)]/70 text-center">{asDisplayText(image.caption)}</p>
+          ) : null}
         </button>
       ))}
     </div>
@@ -241,17 +255,17 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
       visitHoursRows.length > 0 ||
       visitStudio.google_maps_url?.trim() ||
       visitStudio.waze_url?.trim() ||
-      visitStudio.whatsapp_url?.trim() ||
+      resolveVisitStudioWhatsAppPhone(visitStudio).trim() ||
       visitFooterLines.length > 0);
   const nailAcademy = sections.nail_academy;
   const nailItems: LandingNailAcademyItem[] = (nailAcademy?.items ?? []).map((raw) => ({
-    src: raw.src ?? "",
-    duration_badge: raw.duration_badge ?? "",
-    title: raw.title ?? "",
-    target_audience: raw.target_audience ?? "",
+    src: asDisplayText(raw.src),
+    duration_badge: asDisplayText(raw.duration_badge),
+    title: asDisplayText(raw.title),
+    target_audience: asDisplayText(raw.target_audience),
     curriculum: normalizeCurriculumLines(raw.curriculum),
-    details_link: raw.details_link ?? "",
-    details_label: raw.details_label ?? "CLICK FOR MORE DETAILS →",
+    details_link: asDisplayText(raw.details_link),
+    details_label: asDisplayText(raw.details_label) || "CLICK FOR MORE DETAILS →",
     text_align: raw.text_align === "center" || raw.text_align === "right" ? raw.text_align : "left",
   }));
 
@@ -303,14 +317,20 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                 <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
                   <Image src={artist.src || "/images/dummy.webp"} alt={artist.caption || `Artist ${idx + 1}`} fill className="object-cover" sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw" />
                 </div>
-                <p className={`text-xs text-[var(--foreground)]/60 ${getTextAlignClass(artist.text_align)}`}>{artist.caption}</p>
-                {artist.link_url ? (
-                  <Link href={artist.link_url} className={`text-sm font-medium text-[var(--accent-strong)] hover:underline ${getTextAlignClass(artist.text_align)}`}>
-                    {artist.text || ""}
-                  </Link>
-                ) : (
-                  <p className={`text-sm text-[var(--foreground)]/80 ${getTextAlignClass(artist.text_align)}`}>{artist.text || ""}</p>
-                )}
+                {asDisplayText(artist.caption) ? (
+                  <p className={`text-xs text-[var(--foreground)]/60 ${getTextAlignClass(artist.text_align)}`}>
+                    {asDisplayText(artist.caption)}
+                  </p>
+                ) : null}
+                {asDisplayText(artist.text) ? (
+                  artist.link_url ? (
+                    <Link href={artist.link_url} className={`text-sm font-medium text-[var(--accent-strong)] hover:underline ${getTextAlignClass(artist.text_align)}`}>
+                      {asDisplayText(artist.text)}
+                    </Link>
+                  ) : (
+                    <p className={`text-sm text-[var(--foreground)]/80 ${getTextAlignClass(artist.text_align)}`}>{asDisplayText(artist.text)}</p>
+                  )
+                ) : null}
               </div>
             ))}
           </div>
@@ -350,43 +370,45 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                 </div>
 
                 <div className={`flex flex-1 flex-col gap-4 p-5 pt-6 ${getTextAlignClass(course.text_align)}`}>
-                  <h3 className="font-serif text-xl font-semibold leading-snug text-[var(--foreground)]">{course.title}</h3>
+                  {course.title ? (
+                    <h3 className="font-serif text-xl font-semibold leading-snug text-[var(--foreground)]">{course.title}</h3>
+                  ) : null}
 
-                  <div className="space-y-1">
-                    <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                      {nailAcademy.target_label ?? "面向对象"}
-                    </p>
-                    <p className="text-sm leading-relaxed text-[var(--foreground)]/85">{course.target_audience}</p>
-                  </div>
+                  {course.target_audience ? (
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                        {asDisplayText(nailAcademy.target_label) || "面向对象"}
+                      </p>
+                      <p className="text-sm leading-relaxed text-[var(--foreground)]/85">{course.target_audience}</p>
+                    </div>
+                  ) : null}
 
-                  <div className="space-y-2">
-                    <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
-                      {nailAcademy.curriculum_label ?? "教学核心"}
-                    </p>
-                    <ul className="space-y-2 text-sm leading-relaxed text-[var(--foreground)]/80">
-                      {course.curriculum.map((line, lineIdx) => (
-                        <li key={lineIdx} className="flex gap-2">
-                          <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]" />
-                          <span>{line}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+                  {course.curriculum.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--text-muted)]">
+                        {asDisplayText(nailAcademy.curriculum_label) || "教学核心"}
+                      </p>
+                      <ul className="space-y-2 text-sm leading-relaxed text-[var(--foreground)]/80">
+                        {course.curriculum.map((line, lineIdx) => (
+                          <li key={lineIdx} className="flex gap-2">
+                            <span className="mt-2 h-1 w-1 shrink-0 rounded-full bg-[var(--text-muted)]" />
+                            <span>{line}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
 
-                  <div className="mt-auto border-t border-[var(--card-border)] pt-4">
-                    {course.details_link ? (
+                  {course.details_link ? (
+                    <div className="mt-auto border-t border-[var(--card-border)] pt-4">
                       <Link
                         href={course.details_link}
                         className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)] underline-offset-4 hover:underline"
                       >
-                        {course.details_label || "CLICK FOR MORE DETAILS →"}
+                        {course.details_label}
                       </Link>
-                    ) : (
-                      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-[var(--foreground)]/50">
-                        {course.details_label || "CLICK FOR MORE DETAILS →"}
-                      </span>
-                    )}
-                  </div>
+                    </div>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -572,6 +594,9 @@ function VisitStudioSection({
 
   const headingTitle = studio.heading?.title?.trim() || "Visit Our Studio";
   const openingTitle = studio.opening_hours_heading?.trim() || "Opening Hours";
+  const whatsappPhone = resolveVisitStudioWhatsAppPhone(studio);
+  const whatsappMessage = resolveVisitStudioWhatsAppMessage(studio);
+  const whatsappUrl = buildWhatsAppUrl(whatsappPhone, whatsappMessage);
 
   return (
     <section className="space-y-8 pt-4">
@@ -628,9 +653,9 @@ function VisitStudioSection({
             ) : null}
           </div>
 
-          {studio.whatsapp_url?.trim() ? (
+          {whatsappUrl ? (
             <Link
-              href={studio.whatsapp_url.trim()}
+              href={whatsappUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex w-full items-center justify-center rounded-xl bg-[var(--foreground)] px-4 py-3.5 text-center text-[11px] font-semibold uppercase tracking-[0.2em] text-white transition hover:opacity-90"
@@ -716,12 +741,12 @@ function normalizeVisitStudioHours(raw: unknown): LandingVisitStudioHoursRow[] {
 
 function normalizeCurriculumLines(raw: unknown): string[] {
   if (Array.isArray(raw)) {
-    return raw.map((x) => String(x).trim()).filter((x) => x.length > 0);
+    return raw.map((x) => asDisplayText(x)).filter((x) => x.length > 0);
   }
   if (typeof raw === "string") {
     return raw
       .split("\n")
-      .map((s) => s.trim())
+      .map((s) => asDisplayText(s))
       .filter((s) => s.length > 0);
   }
   return [];

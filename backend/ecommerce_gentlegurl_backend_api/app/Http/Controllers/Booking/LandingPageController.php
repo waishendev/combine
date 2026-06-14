@@ -154,7 +154,8 @@ class LandingPageController extends Controller
                     'address' => '',
                     'google_maps_url' => '',
                     'waze_url' => '',
-                    'whatsapp_url' => '',
+                    'whatsapp_phone' => '',
+                    'whatsapp_message' => 'Hi! I would like to get in touch about your salon services.',
                     'google_maps_label' => 'GOOGLE MAPS',
                     'waze_label' => 'OPEN WAZE',
                     'whatsapp_label' => 'MESSAGE US ON WHATSAPP',
@@ -186,10 +187,10 @@ class LandingPageController extends Controller
         return $sections;
     }
 
-    private function extractPath(?string $urlOrPath): ?string
+    private function extractPath(?string $urlOrPath): string
     {
         if (! $urlOrPath) {
-            return null;
+            return '';
         }
 
         if (filter_var($urlOrPath, FILTER_VALIDATE_URL)) {
