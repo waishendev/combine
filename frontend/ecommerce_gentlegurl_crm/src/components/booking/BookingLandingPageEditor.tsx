@@ -3,6 +3,9 @@
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
+import { normalizeInternationalPhone } from '@/lib/phone'
+
 type HeadingConfig = { label: string; title: string; align: 'left' | 'center' | 'right' }
 type GalleryItem = { src: string; caption: string }
 type ArtistItem = { src: string; caption: string; text: string; text_align: 'left' | 'center' | 'right'; link_url: string }
@@ -270,10 +273,10 @@ function normalizeVisitStudioFromApi(raw: unknown): Sections['visit_studio'] {
     bottom_label = composeBottomLabelFromLegacyFields(o)
   }
   const legacyUrl = String(o.whatsapp_url ?? '').trim()
-  let whatsapp_phone = String(o.whatsapp_phone ?? '').trim()
+  let whatsapp_phone = normalizeInternationalPhone(String(o.whatsapp_phone ?? ''))
   let whatsapp_message = String(o.whatsapp_message ?? '').trim()
   if (!whatsapp_phone && legacyUrl) {
-    whatsapp_phone = extractPhoneFromWhatsAppUrl(legacyUrl)
+    whatsapp_phone = normalizeInternationalPhone(extractPhoneFromWhatsAppUrl(legacyUrl))
   }
   if (!whatsapp_message) {
     const fromUrl = legacyUrl ? extractMessageFromWhatsAppUrl(legacyUrl) : ''
@@ -1407,12 +1410,12 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
             </label>
             <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">
               <span className="font-medium">WhatsApp phone number</span>
-              <input
+              <InternationalPhoneInput
                 value={sections.visit_studio.whatsapp_phone}
-                onChange={(e) => updateVisitStudio({ whatsapp_phone: e.target.value })}
-                className={inputCls}
+                onChange={(value) => updateVisitStudio({ whatsapp_phone: value })}
+                className="mt-1"
                 disabled={!canEdit}
-                placeholder="+60123456789 or 012-345 6789"
+                placeholder="WhatsApp phone number"
               />
             </label>
             <label className="space-y-1 text-xs uppercase tracking-wide text-gray-500 md:col-span-2">

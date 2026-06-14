@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 
+import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
+import { normalizeInternationalPhone } from '@/lib/phone'
 import { getWorkspace, type Workspace } from '@/lib/workspace'
 
 type ShopSettingsResponse = {
@@ -494,7 +496,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
           type: workspaceType,
           whatsapp: {
             enabled: contactSettings.enabled,
-            phone: contactSettings.phone,
+            phone: normalizeInternationalPhone(contactSettings.phone),
             default_message: contactSettings.default_message,
           },
         }),
@@ -1064,15 +1066,13 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
           <div className="grid gap-4 md:grid-cols-2">
             <label className="space-y-2">
               <span className="block text-sm font-medium text-slate-800">Phone Number</span>
-              <input
-                type="text"
+              <InternationalPhoneInput
                 value={contactSettings.phone}
                 disabled={!canEdit}
-                onChange={(event) =>
-                  setContactSettings((prev) => ({ ...prev, phone: event.target.value }))
+                onChange={(value) =>
+                  setContactSettings((prev) => ({ ...prev, phone: value }))
                 }
-                placeholder="e.g. +60123456789"
-                className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="Phone Number"
               />
             </label>
 
