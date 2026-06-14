@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Service } from "@/lib/types";
 import { SectionTitle } from "./SectionTitle";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import type {
   LandingSections,
   LandingGalleryItem,
@@ -153,16 +154,42 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const [lightboxImages, setLightboxImages] = useState<LandingGalleryItem[] | null>(null);
+  const [loadedLightboxSrcs, setLoadedLightboxSrcs] = useState<Set<string>>(() => new Set());
+  const [lightboxImageError, setLightboxImageError] = useState(false);
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
+  const [isLightboxMounted, setIsLightboxMounted] = useState(false);
+
+  const activeLightboxSrc =
+    lightboxIndex !== null ? lightboxImages?.[lightboxIndex]?.src || "/images/dummy.webp" : null;
+  const isLightboxImageLoading = Boolean(
+    activeLightboxSrc && !loadedLightboxSrcs.has(activeLightboxSrc) && !lightboxImageError,
+  );
 
   const openLightbox = (idx: number, images: LandingGalleryItem[]) => {
     setLightboxImages(images);
     setLightboxIndex(idx);
+    setLightboxImageError(false);
   };
 
   const closeLightbox = () => {
     setLightboxIndex(null);
     setLightboxImages(null);
+    setLightboxImageError(false);
+  };
+
+  const goToLightboxIndex = (nextIndex: number) => {
+    setLightboxIndex(nextIndex);
+    setLightboxImageError(false);
+  };
+
+  const markLightboxImageLoaded = (src: string) => {
+    setLoadedLightboxSrcs((prev) => {
+      if (prev.has(src)) return prev;
+      const next = new Set(prev);
+      next.add(src);
+      return next;
+    });
+    setLightboxImageError(false);
   };
 
   const getTextAlignClass = (align: "left" | "center" | "right" | undefined) => {
@@ -235,14 +262,23 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
   );
 
   useEffect(() => {
+    setIsLightboxMounted(true);
+  }, []);
+
+  useEffect(() => {
     if (lightboxIndex === null) return;
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
         closeLightbox();
       }
     };
     window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
   }, [lightboxIndex]);
 
   const faqItems = sections.faqs?.items ?? [];
@@ -270,6 +306,124 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
     details_label: asDisplayText(raw.details_label) || "CLICK FOR MORE DETAILS →",
     text_align: raw.text_align === "center" || raw.text_align === "right" ? raw.text_align : "left",
   }));
+  const nailLightboxItems: LandingGalleryItem[] = nailItems.map((course) => ({
+    src: course.src,
+    caption: course.title,
+  }));
+
+  const isLightboxOpen = lightboxIndex !== null && (lightboxImages?.length ?? 0) > 0;
+  const lightboxPortal =
+    isLightboxMounted && isLightboxOpen
+      ? createPortal(
+          <div
+            className="fixed inset-0 z-[100] flex min-h-[100dvh] w-full items-center justify-center bg-black/75 p-4 backdrop-blur-sm"
+            onClick={closeLightbox}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Image preview"
+          >
+            <div
+              className="relative z-[105] w-full max-w-5xl"
+              onClick={(event) => event.stopPropagation()}
+            >
+              {(lightboxImages?.length ?? 0) > 1 ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToLightboxIndex(
+                        lightboxIndex === null || !lightboxImages
+                          ? 0
+                          : (lightboxIndex - 1 + lightboxImages.length) % lightboxImages.length,
+                      )
+                    }
+                    className="absolute left-2 top-1/2 z-30 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80 sm:left-3"
+                    aria-label="Previous image"
+                  >
+                    <i className="fa-solid fa-chevron-left" aria-hidden />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      goToLightboxIndex(
+                        lightboxIndex === null || !lightboxImages
+                          ? 0
+                          : (lightboxIndex + 1) % lightboxImages.length,
+                      )
+                    }
+                    className="absolute right-2 top-1/2 z-30 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80 sm:right-3"
+                    aria-label="Next image"
+                  >
+                    <i className="fa-solid fa-chevron-right" aria-hidden />
+                  </button>
+                </>
+              ) : null}
+
+              <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    closeLightbox();
+                  }}
+                  className="absolute right-3 top-3 z-30 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
+                  aria-label="Close image preview"
+                >
+                  <span aria-hidden>✕</span>
+                </button>
+                {isLightboxImageLoading ? (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3">
+                    <div
+                      className="h-10 w-10 animate-spin rounded-full border-[3px] border-white/25 border-t-white"
+                      aria-hidden
+                    />
+                    <p className="text-sm font-medium text-white/85">Loading image...</p>
+                  </div>
+                ) : null}
+                {lightboxImageError ? (
+                  <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 px-6 text-center">
+                    <p className="text-sm font-medium text-white/90">Unable to load image</p>
+                    <p className="text-xs text-white/60">Please try again in a moment.</p>
+                  </div>
+                ) : null}
+                {(lightboxImages ?? []).map((image, index) => {
+                  const imageSrc = image.src || "/images/dummy.webp";
+                  const isActive = index === lightboxIndex;
+                  const isVisible = isActive && (loadedLightboxSrcs.has(imageSrc) || lightboxImageError);
+
+                  return (
+                    <div
+                      key={`lightbox-${index}`}
+                      className={`absolute inset-0 transition-all duration-500 ease-out will-change-transform ${
+                        isActive ? "translate-x-0 opacity-100" : "pointer-events-none translate-x-6 opacity-0"
+                      }`}
+                      aria-hidden={!isActive}
+                    >
+                      <Image
+                        src={imageSrc}
+                        alt={image.caption || `Image ${index + 1}`}
+                        fill
+                        className={`object-contain transition-opacity duration-300 ${isVisible ? "opacity-100" : "opacity-0"}`}
+                        sizes="100vw"
+                        priority={isActive}
+                        onLoad={() => {
+                          markLightboxImageLoaded(imageSrc);
+                        }}
+                        onError={() => {
+                          if (isActive) {
+                            setLightboxImageError(true);
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div className="space-y-12 py-10 pb-16">
@@ -370,20 +524,25 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                 key={`nail-academy-${idx}`}
                 className="flex flex-col overflow-hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] shadow-[0_16px_40px_-32px_rgba(17,24,39,0.45)]"
               >
-                <div className="relative aspect-square w-full overflow-hidden bg-[var(--background-soft)]">
+                <button
+                  type="button"
+                  onClick={() => openLightbox(idx, nailLightboxItems)}
+                  className="group relative aspect-square w-full cursor-zoom-in overflow-hidden bg-[var(--background-soft)] text-left transition hover:opacity-95"
+                  aria-label={`Zoom ${course.title || `Course ${idx + 1}`}`}
+                >
                   <Image
                     src={course.src || "/images/dummy.webp"}
                     alt={course.title || `Course ${idx + 1}`}
                     fill
-                    className="object-cover"
+                    className="object-cover transition duration-300 group-hover:scale-[1.02]"
                     sizes="(min-width: 1024px) 33vw, 100vw"
                   />
                   {course.duration_badge ? (
-                    <span className="absolute left-3 top-3 rounded-full bg-black/80 px-3 py-1 text-[11px] font-medium tracking-wide text-white">
+                    <span className="pointer-events-none absolute left-3 top-3 rounded-full bg-black/80 px-3 py-1 text-[11px] font-medium tracking-wide text-white">
                       {course.duration_badge}
                     </span>
                   ) : null}
-                </div>
+                </button>
 
                 <div className={`flex flex-1 flex-col gap-4 p-5 pt-6 ${getTextAlignClass(course.text_align)}`}>
                   {course.title ? (
@@ -430,73 +589,6 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
             ))}
           </div>
         </section>
-      )}
-
-      {/* Lightbox */}
-      {lightboxIndex !== null && (lightboxImages?.length ?? 0) > 0 && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="relative w-full max-w-5xl">
-            <button
-              type="button"
-              onClick={closeLightbox}
-              className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
-              aria-label="Close image preview"
-            >
-              <span aria-hidden>✕</span>
-            </button>
-            {(lightboxImages?.length ?? 0) > 1 && (
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLightboxIndex((prev) =>
-                      prev === null || !lightboxImages ? prev : (prev - 1 + lightboxImages.length) % lightboxImages.length,
-                    )
-                  }
-                  className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
-                  aria-label="Previous image"
-                >
-                  <i className="fa-solid fa-chevron-left" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    setLightboxIndex((prev) =>
-                      prev === null || !lightboxImages ? prev : (prev + 1) % lightboxImages.length,
-                    )
-                  }
-                  className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
-                  aria-label="Next image"
-                >
-                  <i className="fa-solid fa-chevron-right" aria-hidden />
-                </button>
-              </>
-            )}
-
-            <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-2xl">
-              {(lightboxImages ?? []).map((image, index) => (
-                <div
-                  key={`lightbox-${index}`}
-                  className={`absolute inset-0 transition-all duration-500 ease-out will-change-transform ${
-                    index === lightboxIndex
-                      ? "translate-x-0 opacity-100"
-                      : "pointer-events-none translate-x-6 opacity-0"
-                  }`}
-                  aria-hidden={index !== lightboxIndex}
-                >
-                  <Image
-                    src={image.src || "/images/dummy.webp"}
-                    alt={image.caption || `Image ${index + 1}`}
-                    fill
-                    className="object-contain"
-                    sizes="100vw"
-                    priority={index === lightboxIndex}
-                  />
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
       )}
 
       {/* FAQ Section */}
@@ -587,6 +679,8 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
       {visitStudio?.is_active && visitStudioHasContent && (
         <VisitStudioSection studio={visitStudio} hoursRows={visitHoursRows} footerLines={visitFooterLines} />
       )}
+
+      {lightboxPortal}
     </div>
   );
 }
