@@ -7,6 +7,108 @@ import InternationalPhoneInput from '@/components/common/InternationalPhoneInput
 import { normalizeInternationalPhone } from '@/lib/phone'
 
 type HeadingConfig = { label: string; title: string; align: 'left' | 'center' | 'right' }
+type GallerySectionBlock = { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
+type ArtistSectionBlock = { is_active: boolean; heading: HeadingConfig; items: ArtistItem[] }
+type MediaGroupKey = 'gallery' | 'service_menus' | 'our_artists_sections'
+
+const defaultServiceMenuBlock = (index = 0): GallerySectionBlock => ({
+  is_active: true,
+  heading: {
+    label: index === 0 ? 'Service Menu' : `Service Menu ${index + 1}`,
+    title: index === 0 ? 'Click to view services and pricing' : 'Additional services and pricing',
+    align: 'center',
+  },
+  items: [],
+})
+
+const defaultArtistSectionBlock = (index = 0): ArtistSectionBlock => ({
+  is_active: true,
+  heading: {
+    label: index === 0 ? 'Our Artists' : `Our Artists ${index + 1}`,
+    title: index === 0 ? 'Meet our creative professionals' : 'More of our creative team',
+    align: 'center',
+  },
+  items: [],
+})
+
+function normalizeHeading(raw: unknown, fallback: HeadingConfig): HeadingConfig {
+  if (!raw || typeof raw !== 'object') return fallback
+  const o = raw as Partial<HeadingConfig>
+  const align = o.align === 'left' || o.align === 'center' || o.align === 'right' ? o.align : fallback.align
+  return {
+    label: asText(o.label, fallback.label),
+    title: asText(o.title, fallback.title),
+    align,
+  }
+}
+
+function normalizeGalleryItem(raw: unknown): GalleryItem {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  return { src: asText(o.src), caption: asText(o.caption) }
+}
+
+function normalizeGallerySectionBlock(raw: unknown, fallback: GallerySectionBlock): GallerySectionBlock {
+  if (!raw || typeof raw !== 'object') return { ...fallback, items: [] }
+  const o = raw as Record<string, unknown>
+  return {
+    is_active: Boolean(o.is_active ?? fallback.is_active),
+    heading: normalizeHeading(o.heading, fallback.heading),
+    items: Array.isArray(o.items) ? o.items.map(normalizeGalleryItem) : [],
+  }
+}
+
+function normalizeArtistItem(raw: unknown): ArtistItem {
+  const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const align = o.text_align === 'center' || o.text_align === 'right' ? o.text_align : 'center'
+  return {
+    src: asText(o.src),
+    caption: asText(o.caption),
+    text: asText(o.text),
+    text_align: align,
+    link_url: asText(o.link_url),
+  }
+}
+
+function normalizeArtistSectionBlock(raw: unknown, fallback: ArtistSectionBlock): ArtistSectionBlock {
+  if (!raw || typeof raw !== 'object') return { ...fallback, items: [] }
+  const o = raw as Record<string, unknown>
+  return {
+    is_active: Boolean(o.is_active ?? fallback.is_active),
+    heading: normalizeHeading(o.heading, fallback.heading),
+    items: Array.isArray(o.items) ? o.items.map(normalizeArtistItem) : [],
+  }
+}
+
+function normalizeServiceMenus(raw: Partial<Sections> & Record<string, unknown>): GallerySectionBlock[] {
+  const fallback = defaultServiceMenuBlock(0)
+  if (Array.isArray(raw.service_menus)) {
+    return raw.service_menus.map((block, index) => normalizeGallerySectionBlock(block, defaultServiceMenuBlock(index)))
+  }
+  if (raw.service_menu && typeof raw.service_menu === 'object') {
+    return [normalizeGallerySectionBlock(raw.service_menu, fallback)]
+  }
+  return [defaultServiceMenuBlock(0)]
+}
+
+function normalizeOurArtistsSections(raw: Partial<Sections> & Record<string, unknown>): ArtistSectionBlock[] {
+  const fallback = defaultArtistSectionBlock(0)
+  if (Array.isArray(raw.our_artists_sections)) {
+    return raw.our_artists_sections.map((block, index) => normalizeArtistSectionBlock(block, defaultArtistSectionBlock(index)))
+  }
+  if (raw.our_artists && typeof raw.our_artists === 'object') {
+    return [normalizeArtistSectionBlock(raw.our_artists, fallback)]
+  }
+  return [defaultArtistSectionBlock(0)]
+}
+
+function buildBlockPreviews(blocks: { items: unknown[] }[]): (string | null)[][] {
+  return blocks.map((block) => Array(Array.isArray(block.items) ? block.items.length : 0).fill(null))
+}
+
+function previewKey(blockIndex: number, itemIndex: number) {
+  return `${blockIndex}-${itemIndex}`
+}
+
 type GalleryItem = { src: string; caption: string }
 type ArtistItem = { src: string; caption: string; text: string; text_align: 'left' | 'center' | 'right'; link_url: string }
 type NailAcademyItem = {
@@ -35,8 +137,8 @@ type Sections = {
     decorations_enabled: boolean
   }
   gallery: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
-  service_menu: { is_active: boolean; heading: HeadingConfig; items: GalleryItem[] }
-  our_artists: { is_active: boolean; heading: HeadingConfig; items: ArtistItem[] }
+  service_menus: GallerySectionBlock[]
+  our_artists_sections: ArtistSectionBlock[]
   nail_academy: {
     is_active: boolean
     heading: HeadingConfig
@@ -88,16 +190,8 @@ const defaultSections: Sections = {
     heading: { label: 'GALLERY', title: 'Click to view services and pricing', align: 'center' },
     items: [],
   },
-  service_menu: {
-    is_active: true,
-    heading: { label: 'Service Menu', title: 'Click to view services and pricing', align: 'center' },
-    items: [],
-  },
-  our_artists: {
-    is_active: true,
-    heading: { label: 'Our Artists', title: 'Meet our creative professionals', align: 'center' },
-    items: [],
-  },
+  service_menus: [defaultServiceMenuBlock(0)],
+  our_artists_sections: [defaultArtistSectionBlock(0)],
   nail_academy: {
     is_active: true,
     heading: {
@@ -322,6 +416,8 @@ function mergeSectionsFromApi(raw: Partial<Sections> & Record<string, unknown>):
   if (raw.visit_studio !== undefined) {
     merged.visit_studio = normalizeVisitStudioFromApi(raw.visit_studio)
   }
+  merged.service_menus = normalizeServiceMenus(raw)
+  merged.our_artists_sections = normalizeOurArtistsSections(raw)
   return merged
 }
 
@@ -335,12 +431,12 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   const [saveToast, setSaveToast] = useState<{ tone: 'success' | 'error'; text: string } | null>(null)
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({})
   const [galleryPreviews, setGalleryPreviews] = useState<(string | null)[]>([])
-  const [serviceMenuPreviews, setServiceMenuPreviews] = useState<(string | null)[]>([])
-  const [artistsPreviews, setArtistsPreviews] = useState<(string | null)[]>([])
+  const [serviceMenuPreviews, setServiceMenuPreviews] = useState<(string | null)[][]>([])
+  const [artistsPreviews, setArtistsPreviews] = useState<(string | null)[][]>([])
   const [nailAcademyPreviews, setNailAcademyPreviews] = useState<(string | null)[]>([])
   const galleryImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
-  const serviceMenuImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
-  const artistsImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
+  const serviceMenuImageInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
+  const artistsImageInputRefs = useRef<Map<string, HTMLInputElement>>(new Map())
   const nailAcademyImageInputRefs = useRef<Map<number, HTMLInputElement>>(new Map())
 
   const fetchData = useCallback(async () => {
@@ -352,15 +448,12 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       const pageData = json?.data ?? json
       setData(pageData)
       if (pageData?.sections) {
-        setSections(mergeSectionsFromApi(pageData.sections))
-        const galleryCount = Array.isArray(pageData.sections?.gallery?.items) ? pageData.sections.gallery.items.length : 0
-        const serviceMenuCount = Array.isArray(pageData.sections?.service_menu?.items) ? pageData.sections.service_menu.items.length : 0
-        const artistsCount = Array.isArray(pageData.sections?.our_artists?.items) ? pageData.sections.our_artists.items.length : 0
-        const nailCount = Array.isArray(pageData.sections?.nail_academy?.items) ? pageData.sections.nail_academy.items.length : 0
-        setGalleryPreviews(Array(galleryCount).fill(null))
-        setServiceMenuPreviews(Array(serviceMenuCount).fill(null))
-        setArtistsPreviews(Array(artistsCount).fill(null))
-        setNailAcademyPreviews(Array(nailCount).fill(null))
+        const merged = mergeSectionsFromApi(pageData.sections)
+        setSections(merged)
+        setGalleryPreviews(Array(merged.gallery.items.length).fill(null))
+        setServiceMenuPreviews(buildBlockPreviews(merged.service_menus))
+        setArtistsPreviews(buildBlockPreviews(merged.our_artists_sections))
+        setNailAcademyPreviews(Array(merged.nail_academy.items.length).fill(null))
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load landing page data')
@@ -388,6 +481,8 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       ...sections,
       nail_academy: normalizeNailAcademySection(sections.nail_academy),
       visit_studio: normalizeVisitStudioFromApi(sections.visit_studio),
+      service_menus: sections.service_menus,
+      our_artists_sections: sections.our_artists_sections,
     }
     try {
       const res = await fetch('/api/proxy/admin/booking/landing-page', {
@@ -400,15 +495,12 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       const pageData = json?.data ?? json
       setData(pageData)
       if (pageData?.sections) {
-        setSections(mergeSectionsFromApi(pageData.sections))
-        const galleryCount = Array.isArray(pageData.sections?.gallery?.items) ? pageData.sections.gallery.items.length : 0
-        const serviceMenuCount = Array.isArray(pageData.sections?.service_menu?.items) ? pageData.sections.service_menu.items.length : 0
-        const artistsCount = Array.isArray(pageData.sections?.our_artists?.items) ? pageData.sections.our_artists.items.length : 0
-        const nailCount = Array.isArray(pageData.sections?.nail_academy?.items) ? pageData.sections.nail_academy.items.length : 0
-        setGalleryPreviews(Array(galleryCount).fill(null))
-        setServiceMenuPreviews(Array(serviceMenuCount).fill(null))
-        setArtistsPreviews(Array(artistsCount).fill(null))
-        setNailAcademyPreviews(Array(nailCount).fill(null))
+        const merged = mergeSectionsFromApi(pageData.sections)
+        setSections(merged)
+        setGalleryPreviews(Array(merged.gallery.items.length).fill(null))
+        setServiceMenuPreviews(buildBlockPreviews(merged.service_menus))
+        setArtistsPreviews(buildBlockPreviews(merged.our_artists_sections))
+        setNailAcademyPreviews(Array(merged.nail_academy.items.length).fill(null))
       }
       setMessage('Landing page saved successfully!')
       setSaveToast({ tone: 'success', text: 'Landing page saved successfully!' })
@@ -445,30 +537,54 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   }, [])
 
   const handleImageUpload = useCallback(async (
-    sectionKey: 'gallery' | 'service_menu' | 'our_artists',
-    index: number,
+    groupKey: MediaGroupKey,
+    blockIndex: number,
+    itemIndex: number,
     file: File,
   ) => {
     const previewUrl = URL.createObjectURL(file)
-    const setPreviews =
-      sectionKey === 'gallery'
-        ? setGalleryPreviews
-        : sectionKey === 'our_artists'
-          ? setArtistsPreviews
-          : setServiceMenuPreviews
-    setPreviews((prev) => {
-      const next = ensureArrayLength(prev, index + 1)
-      next[index] = previewUrl
-      return next
-    })
+    const uploadSection = groupKey === 'gallery' ? 'gallery' : groupKey === 'service_menus' ? 'service_menu' : 'our_artists'
 
-    const url = await uploadImage(file, sectionKey)
+    if (groupKey === 'gallery') {
+      setGalleryPreviews((prev) => {
+        const next = ensureArrayLength(prev, itemIndex + 1)
+        next[itemIndex] = previewUrl
+        return next
+      })
+    } else if (groupKey === 'service_menus') {
+      setServiceMenuPreviews((prev) => {
+        const next = [...prev]
+        while (next.length <= blockIndex) next.push([])
+        const row = ensureArrayLength(next[blockIndex] ?? [], itemIndex + 1)
+        row[itemIndex] = previewUrl
+        next[blockIndex] = row
+        return next
+      })
+    } else {
+      setArtistsPreviews((prev) => {
+        const next = [...prev]
+        while (next.length <= blockIndex) next.push([])
+        const row = ensureArrayLength(next[blockIndex] ?? [], itemIndex + 1)
+        row[itemIndex] = previewUrl
+        next[blockIndex] = row
+        return next
+      })
+    }
+
+    const url = await uploadImage(file, uploadSection)
     if (!url) return
 
     setSections((prev) => {
-      const items = [...prev[sectionKey].items]
-      items[index] = { ...items[index], src: url }
-      return { ...prev, [sectionKey]: { ...prev[sectionKey], items } }
+      if (groupKey === 'gallery') {
+        const items = [...prev.gallery.items]
+        items[itemIndex] = { ...items[itemIndex], src: url }
+        return { ...prev, gallery: { ...prev.gallery, items } }
+      }
+      const blocks = [...prev[groupKey]]
+      const items = [...blocks[blockIndex].items]
+      items[itemIndex] = { ...items[itemIndex], src: url }
+      blocks[blockIndex] = { ...blocks[blockIndex], items }
+      return { ...prev, [groupKey]: blocks }
     })
   }, [ensureArrayLength])
 
@@ -492,13 +608,6 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     })
   }
 
-  const toggleSection = (sectionKey: keyof Sections) => {
-    setSections((prev) => ({
-      ...prev,
-      [sectionKey]: { ...prev[sectionKey], is_active: !prev[sectionKey].is_active },
-    }))
-  }
-
   const toggleSectionCollapsed = (sectionKey: string) => {
     setCollapsedSections((prev) => ({
       ...prev,
@@ -507,54 +616,83 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   }
 
   const updateGalleryItem = (
-    sectionKey: 'gallery' | 'service_menu' | 'our_artists',
-    index: number,
+    groupKey: MediaGroupKey,
+    blockIndex: number,
+    itemIndex: number,
     field: string,
     value: string,
   ) => {
     setSections((prev) => {
-      const items = [...prev[sectionKey].items]
-      items[index] = { ...items[index], [field]: value }
-      return { ...prev, [sectionKey]: { ...prev[sectionKey], items } }
+      if (groupKey === 'gallery') {
+        const items = [...prev.gallery.items]
+        items[itemIndex] = { ...items[itemIndex], [field]: value }
+        return { ...prev, gallery: { ...prev.gallery, items } }
+      }
+      const blocks = [...prev[groupKey]]
+      const items = [...blocks[blockIndex].items]
+      items[itemIndex] = { ...items[itemIndex], [field]: value }
+      blocks[blockIndex] = { ...blocks[blockIndex], items }
+      return { ...prev, [groupKey]: blocks }
     })
   }
 
-  const addGalleryItem = (sectionKey: 'gallery' | 'service_menu' | 'our_artists') => {
+  const addGalleryItem = (groupKey: MediaGroupKey, blockIndex: number) => {
     setSections((prev) => {
-      const next = {
-        ...prev,
-        [sectionKey]: {
-          ...prev[sectionKey],
-          items: [...prev[sectionKey].items, sectionKey === 'our_artists'
-            ? { src: '', caption: '', text: '', text_align: 'center', link_url: '' }
-            : { src: '', caption: '' }],
-        },
+      if (groupKey === 'gallery') {
+        return {
+          ...prev,
+          gallery: {
+            ...prev.gallery,
+            items: [...prev.gallery.items, { src: '', caption: '' }],
+          },
+        }
       }
-      return next
+      const blocks = [...prev[groupKey]]
+      const block = blocks[blockIndex]
+      const newItem = groupKey === 'our_artists_sections'
+        ? { src: '', caption: '', text: '', text_align: 'center' as const, link_url: '' }
+        : { src: '', caption: '' }
+      blocks[blockIndex] = { ...block, items: [...block.items, newItem] }
+      return { ...prev, [groupKey]: blocks }
     })
-    if (sectionKey === 'gallery') {
+    if (groupKey === 'gallery') {
       setGalleryPreviews((prev) => [...prev, null])
-    } else if (sectionKey === 'our_artists') {
-      setArtistsPreviews((prev) => [...prev, null])
+    } else if (groupKey === 'our_artists_sections') {
+      setArtistsPreviews((prev) => {
+        const next = [...prev]
+        next[blockIndex] = [...(next[blockIndex] ?? []), null]
+        return next
+      })
     } else {
-      setServiceMenuPreviews((prev) => [...prev, null])
+      setServiceMenuPreviews((prev) => {
+        const next = [...prev]
+        next[blockIndex] = [...(next[blockIndex] ?? []), null]
+        return next
+      })
     }
   }
 
-  const removeGalleryItem = (sectionKey: 'gallery' | 'service_menu' | 'our_artists', index: number) => {
-    setSections((prev) => ({
-      ...prev,
-      [sectionKey]: {
-        ...prev[sectionKey],
-        items: prev[sectionKey].items.filter((_, i) => i !== index),
-      },
-    }))
-    if (sectionKey === 'gallery') {
-      setGalleryPreviews((prev) => prev.filter((_, i) => i !== index))
-    } else if (sectionKey === 'our_artists') {
-      setArtistsPreviews((prev) => prev.filter((_, i) => i !== index))
+  const removeGalleryItem = (groupKey: MediaGroupKey, blockIndex: number, itemIndex: number) => {
+    setSections((prev) => {
+      if (groupKey === 'gallery') {
+        return {
+          ...prev,
+          gallery: { ...prev.gallery, items: prev.gallery.items.filter((_, i) => i !== itemIndex) },
+        }
+      }
+      const blocks = [...prev[groupKey]]
+      blocks[blockIndex] = {
+        ...blocks[blockIndex],
+        items: blocks[blockIndex].items.filter((_, i) => i !== itemIndex),
+      }
+      return { ...prev, [groupKey]: blocks }
+    })
+    if (groupKey === 'gallery') {
+      setGalleryPreviews((prev) => prev.filter((_, i) => i !== itemIndex))
+    } else if (groupKey === 'our_artists_sections') {
+      setArtistsPreviews((prev) => prev.map((row, i) => (i === blockIndex ? row.filter((_, j) => j !== itemIndex) : row)))
     } else {
-      setServiceMenuPreviews((prev) => prev.filter((_, i) => i !== index))
+      setServiceMenuPreviews((prev) => prev.map((row, i) => (i === blockIndex ? row.filter((_, j) => j !== itemIndex) : row)))
     }
   }
 
@@ -565,35 +703,89 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     return next
   }, [])
 
-  const moveGalleryItem = useCallback((sectionKey: 'gallery' | 'service_menu' | 'our_artists', index: number, direction: -1 | 1) => {
+  const moveGalleryItem = useCallback((groupKey: MediaGroupKey, blockIndex: number, itemIndex: number, direction: -1 | 1) => {
     setSections((prev) => {
-      const targetIndex = index + direction
-      const section = prev[sectionKey]
-      if (targetIndex < 0 || targetIndex >= section.items.length) return prev
-      const items = reorder(section.items, index, targetIndex)
-      return { ...prev, [sectionKey]: { ...section, items } }
+      if (groupKey === 'gallery') {
+        const targetIndex = itemIndex + direction
+        if (targetIndex < 0 || targetIndex >= prev.gallery.items.length) return prev
+        return { ...prev, gallery: { ...prev.gallery, items: reorder(prev.gallery.items, itemIndex, targetIndex) } }
+      }
+      const blocks = [...prev[groupKey]]
+      const block = blocks[blockIndex]
+      const targetIndex = itemIndex + direction
+      if (targetIndex < 0 || targetIndex >= block.items.length) return prev
+      blocks[blockIndex] = { ...block, items: reorder(block.items, itemIndex, targetIndex) }
+      return { ...prev, [groupKey]: blocks }
     })
 
-    if (sectionKey === 'gallery') {
+    if (groupKey === 'gallery') {
       setGalleryPreviews((prev) => {
-        const targetIndex = index + direction
+        const targetIndex = itemIndex + direction
         if (targetIndex < 0 || targetIndex >= prev.length) return prev
-        return reorder(prev, index, targetIndex)
+        return reorder(prev, itemIndex, targetIndex)
       })
-    } else if (sectionKey === 'our_artists') {
-      setArtistsPreviews((prev) => {
-        const targetIndex = index + direction
-        if (targetIndex < 0 || targetIndex >= prev.length) return prev
-        return reorder(prev, index, targetIndex)
-      })
+    } else if (groupKey === 'our_artists_sections') {
+      setArtistsPreviews((prev) => prev.map((row, i) => {
+        if (i !== blockIndex) return row
+        const targetIndex = itemIndex + direction
+        if (targetIndex < 0 || targetIndex >= row.length) return row
+        return reorder(row, itemIndex, targetIndex)
+      }))
     } else {
-      setServiceMenuPreviews((prev) => {
-        const targetIndex = index + direction
-        if (targetIndex < 0 || targetIndex >= prev.length) return prev
-        return reorder(prev, index, targetIndex)
-      })
+      setServiceMenuPreviews((prev) => prev.map((row, i) => {
+        if (i !== blockIndex) return row
+        const targetIndex = itemIndex + direction
+        if (targetIndex < 0 || targetIndex >= row.length) return row
+        return reorder(row, itemIndex, targetIndex)
+      }))
     }
   }, [reorder])
+
+  const addMediaSectionBlock = (groupKey: 'service_menus' | 'our_artists_sections') => {
+    setSections((prev) => {
+      const nextIndex = prev[groupKey].length
+      const block = groupKey === 'service_menus'
+        ? defaultServiceMenuBlock(nextIndex)
+        : defaultArtistSectionBlock(nextIndex)
+      return { ...prev, [groupKey]: [...prev[groupKey], block] }
+    })
+    if (groupKey === 'service_menus') {
+      setServiceMenuPreviews((prev) => [...prev, []])
+    } else {
+      setArtistsPreviews((prev) => [...prev, []])
+    }
+  }
+
+  const removeMediaSectionBlock = (groupKey: 'service_menus' | 'our_artists_sections', blockIndex: number) => {
+    setSections((prev) => ({
+      ...prev,
+      [groupKey]: prev[groupKey].filter((_, i) => i !== blockIndex),
+    }))
+    if (groupKey === 'service_menus') {
+      setServiceMenuPreviews((prev) => prev.filter((_, i) => i !== blockIndex))
+    } else {
+      setArtistsPreviews((prev) => prev.filter((_, i) => i !== blockIndex))
+    }
+  }
+
+  const moveMediaSectionBlock = (groupKey: 'service_menus' | 'our_artists_sections', blockIndex: number, direction: -1 | 1) => {
+    const targetIndex = blockIndex + direction
+    setSections((prev) => {
+      if (targetIndex < 0 || targetIndex >= prev[groupKey].length) return prev
+      return { ...prev, [groupKey]: reorder(prev[groupKey], blockIndex, targetIndex) }
+    })
+    if (groupKey === 'service_menus') {
+      setServiceMenuPreviews((prev) => {
+        if (targetIndex < 0 || targetIndex >= prev.length) return prev
+        return reorder(prev, blockIndex, targetIndex)
+      })
+    } else {
+      setArtistsPreviews((prev) => {
+        if (targetIndex < 0 || targetIndex >= prev.length) return prev
+        return reorder(prev, blockIndex, targetIndex)
+      })
+    }
+  }
 
   const handleNailAcademyImageUpload = async (index: number, file: File) => {
     const previewUrl = URL.createObjectURL(file)
@@ -764,193 +956,188 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
     [],
   )
 
-  const gallerySectionsMeta = useMemo(() => ({
-    gallery: {
-      title: 'Gallery section',
-      description: 'Upload images to appear on the booking landing page gallery.',
-      inputRefs: galleryImageInputRefs,
-      previews: galleryPreviews,
-      setPreviews: setGalleryPreviews,
-    },
-    service_menu: {
-      title: 'Service Menu section',
-      description: 'Upload images to appear under the service menu section.',
-      inputRefs: serviceMenuImageInputRefs,
-      previews: serviceMenuPreviews,
-      setPreviews: setServiceMenuPreviews,
-    },
-    our_artists: {
-      title: 'Our Artists section',
-      description: 'Upload artist cards with optional CTA link.',
-      inputRefs: artistsImageInputRefs,
-      previews: artistsPreviews,
-      setPreviews: setArtistsPreviews,
-    },
-  }), [artistsPreviews, galleryPreviews, serviceMenuPreviews])
-
   if (loading) {
     return <div className="rounded-lg border border-gray-200 bg-white p-6 text-sm text-gray-500">Loading landing page...</div>
   }
 
-  const renderMediaSection = (sectionKey: 'gallery' | 'service_menu' | 'our_artists') => {
-    const section = sections[sectionKey]
-    const meta = gallerySectionsMeta[sectionKey]
-    const collapsed = collapsedSections[sectionKey] ?? false
+  const renderGallerySection = () => {
+    const section = sections.gallery
+    const collapsed = collapsedSections.gallery ?? false
 
-    const handleImageClick = (index: number) => {
-      meta.inputRefs.current.get(index)?.click()
+    const handleImageClick = (itemIndex: number) => {
+      galleryImageInputRefs.current.get(itemIndex)?.click()
     }
 
     return (
       <SectionCard
-        sectionKey={sectionKey}
-        title={meta.title}
-        description={meta.description}
+        sectionKey="gallery"
+        title="Gallery section"
+        description="Upload images to appear on the booking landing page gallery."
         active={section.is_active}
-        onToggle={(value) => setSections((prev) => ({ ...prev, [sectionKey]: { ...prev[sectionKey], is_active: value } }))}
+        onToggle={(value) => setSections((prev) => ({ ...prev, gallery: { ...prev.gallery, is_active: value } }))}
         canUpdate={canEdit}
         collapsed={collapsed}
-        onToggleCollapse={() => toggleSectionCollapsed(sectionKey)}
+        onToggleCollapse={() => toggleSectionCollapsed('gallery')}
       >
         <div className="space-y-4">
           <SectionHeadingFields
             heading={section.heading}
-            onChange={(heading) => setSections((prev) => ({ ...prev, [sectionKey]: { ...prev[sectionKey], heading } }))}
+            onChange={(heading) => setSections((prev) => ({ ...prev, gallery: { ...prev.gallery, heading } }))}
             canUpdate={canEdit}
           />
-
           {section.items.length === 0 ? (
             <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
               No images yet. Add images to build the section grid.
             </div>
           ) : (
             <div className="grid gap-4 md:grid-cols-2">
-              {section.items.map((item, index) => (
-                <div key={`${sectionKey}-${index}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+              {section.items.map((item, itemIndex) => (
+                <div key={`gallery-${itemIndex}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">Image {index + 1}</p>
+                      <p className="text-sm font-semibold text-gray-900">Image {itemIndex + 1}</p>
                       <p className="text-xs text-gray-500">Suggested size: 900 x 1200 (3:4)</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => moveGalleryItem(sectionKey, index, -1)}
-                        disabled={!canEdit || index === 0}
-                        className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                        aria-label="Move image up"
-                      >
-                        <i className="fa-solid fa-arrow-up" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => moveGalleryItem(sectionKey, index, 1)}
-                        disabled={!canEdit || index === section.items.length - 1}
-                        className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                        aria-label="Move image down"
-                      >
-                        <i className="fa-solid fa-arrow-down" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeGalleryItem(sectionKey, index)}
-                        disabled={!canEdit}
-                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"
-                      >
-                        <i className="fa-solid fa-trash" />
-                      </button>
+                      <button type="button" onClick={() => moveGalleryItem('gallery', 0, itemIndex, -1)} disabled={!canEdit || itemIndex === 0} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" aria-label="Move image up"><i className="fa-solid fa-arrow-up" /></button>
+                      <button type="button" onClick={() => moveGalleryItem('gallery', 0, itemIndex, 1)} disabled={!canEdit || itemIndex === section.items.length - 1} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" aria-label="Move image down"><i className="fa-solid fa-arrow-down" /></button>
+                      <button type="button" onClick={() => removeGalleryItem('gallery', 0, itemIndex)} disabled={!canEdit} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"><i className="fa-solid fa-trash" /></button>
                     </div>
                   </div>
-
                   <div className="mt-3 space-y-3">
-                    <div
-                      onClick={() => canEdit && handleImageClick(index)}
-                      className={`relative border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${
-                        (meta.previews[index] ?? item.src)
-                          ? 'border-gray-300'
-                          : 'border-gray-300 hover:border-blue-400'
-                      } ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}
-                    >
-                      <input
-                        ref={(el) => {
-                          if (el) {
-                            meta.inputRefs.current.set(index, el)
-                          } else {
-                            meta.inputRefs.current.delete(index)
-                          }
-                        }}
-                        type="file"
-                        accept="image/*"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0]
-                          if (file) void handleImageUpload(sectionKey, index, file)
-                        }}
-                        className="hidden"
-                        disabled={!canEdit}
-                      />
-                      {(meta.previews[index] ?? item.src) ? (
+                    <div onClick={() => canEdit && handleImageClick(itemIndex)} className={`relative border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${(galleryPreviews[itemIndex] ?? item.src) ? 'border-gray-300' : 'border-gray-300 hover:border-blue-400'} ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}>
+                      <input ref={(el) => { if (el) galleryImageInputRefs.current.set(itemIndex, el); else galleryImageInputRefs.current.delete(itemIndex) }} type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleImageUpload('gallery', 0, itemIndex, file) }} className="hidden" disabled={!canEdit} />
+                      {(galleryPreviews[itemIndex] ?? item.src) ? (
                         <div className="relative group h-48 flex items-center justify-center bg-gray-50 rounded">
                           {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={meta.previews[index] ?? item.src}
-                            alt={item.caption || `Image ${index + 1}`}
-                            className="max-w-full max-h-full object-contain rounded"
-                          />
-                          <div className="absolute top-2 right-2 flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
-                            <button
-                              type="button"
-                              onClick={(ev) => {
-                                ev.stopPropagation()
-                                handleImageClick(index)
-                              }}
-                              className="w-8 h-8 bg-blue-500/95 backdrop-blur-md text-white rounded-full flex items-center justify-center shadow-lg border border-blue-400/30 hover:bg-blue-600 hover:shadow-xl hover:scale-110 transition-all duration-200"
-                              aria-label="Replace image"
-                              disabled={!canEdit}
-                            >
-                              <i className="fa-solid fa-image text-xs" />
-                            </button>
-                          </div>
+                          <img src={galleryPreviews[itemIndex] ?? item.src} alt={item.caption || `Image ${itemIndex + 1}`} className="max-w-full max-h-full object-contain rounded" />
                         </div>
                       ) : (
-                        <div className="flex flex-col items-center justify-center h-48">
-                          <i className="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-2" />
-                          <p className="text-sm text-gray-600">Click to upload</p>
-                        </div>
+                        <div className="flex flex-col items-center justify-center h-48"><i className="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-2" /><p className="text-sm text-gray-600">Click to upload</p></div>
                       )}
                     </div>
-
-                    <div className="grid gap-2">
-                      <input value={item.caption} onChange={(e) => updateGalleryItem(sectionKey, index, 'caption', e.target.value)} placeholder="Alt text / Caption" className={inputCls} disabled={!canEdit} />
-                      {sectionKey === 'our_artists' && (
-                        <>
-                          <input value={(item as ArtistItem).text ?? ''} onChange={(e) => updateGalleryItem(sectionKey, index, 'text', e.target.value)} placeholder="Artist text / description" className={inputCls} disabled={!canEdit} />
-                          <select value={(item as ArtistItem).text_align ?? 'center'} onChange={(e) => updateGalleryItem(sectionKey, index, 'text_align', e.target.value)} className={inputCls} disabled={!canEdit}>
-                            <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
-                          </select>
-                          <input value={(item as ArtistItem).link_url ?? ''} onChange={(e) => updateGalleryItem(sectionKey, index, 'link_url', e.target.value)} placeholder="Optional text link URL" className={inputCls} disabled={!canEdit} />
-                        </>
-                      )}
-                    </div>
+                    <input value={item.caption} onChange={(e) => updateGalleryItem('gallery', 0, itemIndex, 'caption', e.target.value)} placeholder="Alt text / Caption" className={inputCls} disabled={!canEdit} />
                   </div>
                 </div>
               ))}
             </div>
           )}
-
           <div className="flex items-center justify-between text-xs text-gray-500">
             <span>{section.items.length} images</span>
-            <button
-              type="button"
-              onClick={() => addGalleryItem(sectionKey)}
-              disabled={!canEdit}
-              className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <i className="fa-solid fa-plus" />
-              Add image
-            </button>
+            <button type="button" onClick={() => addGalleryItem('gallery', 0)} disabled={!canEdit} className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"><i className="fa-solid fa-plus" />Add image</button>
           </div>
         </div>
       </SectionCard>
+    )
+  }
+
+  const renderMediaSectionBlocks = (
+    groupKey: 'service_menus' | 'our_artists_sections',
+    titleBase: string,
+    description: string,
+    isArtist: boolean,
+  ) => {
+    const blocks = sections[groupKey]
+    const previews = groupKey === 'service_menus' ? serviceMenuPreviews : artistsPreviews
+    const inputRefs = groupKey === 'service_menus' ? serviceMenuImageInputRefs : artistsImageInputRefs
+
+    return (
+      <div className="space-y-4">
+        {blocks.map((section, blockIndex) => {
+          const sectionKey = `${groupKey}-${blockIndex}`
+          const collapsed = collapsedSections[sectionKey] ?? false
+          const handleImageClick = (itemIndex: number) => {
+            inputRefs.current.get(previewKey(blockIndex, itemIndex))?.click()
+          }
+
+          return (
+            <SectionCard
+              key={sectionKey}
+              sectionKey={sectionKey}
+              title={`${titleBase} ${blockIndex + 1}`}
+              description={description}
+              active={section.is_active}
+              onToggle={(value) => setSections((prev) => {
+                const nextBlocks = [...prev[groupKey]]
+                nextBlocks[blockIndex] = { ...nextBlocks[blockIndex], is_active: value }
+                return { ...prev, [groupKey]: nextBlocks }
+              })}
+              canUpdate={canEdit}
+              collapsed={collapsed}
+              onToggleCollapse={() => toggleSectionCollapsed(sectionKey)}
+            >
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                <p className="text-xs text-gray-500">Reorder or remove this block on the landing page.</p>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => moveMediaSectionBlock(groupKey, blockIndex, -1)} disabled={!canEdit || blockIndex === 0} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" title="Move block up"><i className="fa-solid fa-arrow-up" /></button>
+                  <button type="button" onClick={() => moveMediaSectionBlock(groupKey, blockIndex, 1)} disabled={!canEdit || blockIndex === blocks.length - 1} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50" title="Move block down"><i className="fa-solid fa-arrow-down" /></button>
+                  <button type="button" onClick={() => removeMediaSectionBlock(groupKey, blockIndex)} disabled={!canEdit || blocks.length <= 1} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50" title="Remove block"><i className="fa-solid fa-trash" /></button>
+                </div>
+              </div>
+              <div className="space-y-4">
+                <SectionHeadingFields
+                  heading={section.heading}
+                  onChange={(heading) => setSections((prev) => {
+                    const nextBlocks = [...prev[groupKey]]
+                    nextBlocks[blockIndex] = { ...nextBlocks[blockIndex], heading }
+                    return { ...prev, [groupKey]: nextBlocks }
+                  })}
+                  canUpdate={canEdit}
+                />
+                {section.items.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">No images yet. Add images to build the section grid.</div>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    {section.items.map((item, itemIndex) => (
+                      <div key={`${sectionKey}-item-${itemIndex}`} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div><p className="text-sm font-semibold text-gray-900">Image {itemIndex + 1}</p><p className="text-xs text-gray-500">Suggested size: 900 x 1200 (3:4)</p></div>
+                          <div className="flex items-center gap-2">
+                            <button type="button" onClick={() => moveGalleryItem(groupKey, blockIndex, itemIndex, -1)} disabled={!canEdit || itemIndex === 0} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"><i className="fa-solid fa-arrow-up" /></button>
+                            <button type="button" onClick={() => moveGalleryItem(groupKey, blockIndex, itemIndex, 1)} disabled={!canEdit || itemIndex === section.items.length - 1} className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-600 hover:bg-gray-50 disabled:opacity-50"><i className="fa-solid fa-arrow-down" /></button>
+                            <button type="button" onClick={() => removeGalleryItem(groupKey, blockIndex, itemIndex)} disabled={!canEdit} className="rounded border border-red-200 px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-50"><i className="fa-solid fa-trash" /></button>
+                          </div>
+                        </div>
+                        <div className="mt-3 space-y-3">
+                          <div onClick={() => canEdit && handleImageClick(itemIndex)} className={`relative border-2 border-dashed rounded-lg p-3 cursor-pointer transition-colors ${(previews[blockIndex]?.[itemIndex] ?? item.src) ? 'border-gray-300' : 'border-gray-300 hover:border-blue-400'} ${!canEdit ? 'cursor-not-allowed opacity-50' : ''}`}>
+                            <input ref={(el) => { const key = previewKey(blockIndex, itemIndex); if (el) inputRefs.current.set(key, el); else inputRefs.current.delete(key) }} type="file" accept="image/*" onChange={(e) => { const file = e.target.files?.[0]; if (file) void handleImageUpload(groupKey, blockIndex, itemIndex, file) }} className="hidden" disabled={!canEdit} />
+                            {(previews[blockIndex]?.[itemIndex] ?? item.src) ? (
+                              <div className="relative group h-48 flex items-center justify-center bg-gray-50 rounded">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={previews[blockIndex]?.[itemIndex] ?? item.src} alt={item.caption || `Image ${itemIndex + 1}`} className="max-w-full max-h-full object-contain rounded" />
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center h-48"><i className="fa-solid fa-cloud-arrow-up text-3xl text-gray-400 mb-2" /><p className="text-sm text-gray-600">Click to upload</p></div>
+                            )}
+                          </div>
+                          <input value={item.caption} onChange={(e) => updateGalleryItem(groupKey, blockIndex, itemIndex, 'caption', e.target.value)} placeholder="Alt text / Caption" className={inputCls} disabled={!canEdit} />
+                          {isArtist && (
+                            <>
+                              <input value={(item as ArtistItem).text ?? ''} onChange={(e) => updateGalleryItem(groupKey, blockIndex, itemIndex, 'text', e.target.value)} placeholder="Artist text / description" className={inputCls} disabled={!canEdit} />
+                              <select value={(item as ArtistItem).text_align ?? 'center'} onChange={(e) => updateGalleryItem(groupKey, blockIndex, itemIndex, 'text_align', e.target.value)} className={inputCls} disabled={!canEdit}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select>
+                              <input value={(item as ArtistItem).link_url ?? ''} onChange={(e) => updateGalleryItem(groupKey, blockIndex, itemIndex, 'link_url', e.target.value)} placeholder="Optional text link URL" className={inputCls} disabled={!canEdit} />
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex items-center justify-between text-xs text-gray-500">
+                  <span>{section.items.length} images</span>
+                  <button type="button" onClick={() => addGalleryItem(groupKey, blockIndex)} disabled={!canEdit} className="inline-flex items-center gap-2 rounded border border-indigo-600 bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"><i className="fa-solid fa-plus" />Add image</button>
+                </div>
+              </div>
+            </SectionCard>
+          )
+        })}
+        <div className="flex justify-end">
+          <button type="button" onClick={() => addMediaSectionBlock(groupKey)} disabled={!canEdit} className="inline-flex items-center gap-2 rounded border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">
+            <i className="fa-solid fa-plus" />
+            Add {titleBase} section
+          </button>
+        </div>
+      </div>
     )
   }
 
@@ -1038,11 +1225,13 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
       </SectionCard>
 
       {/* Gallery */}
-      {renderMediaSection('gallery')}
+      {renderGallerySection()}
 
-      {/* Service Menu */}
-      {renderMediaSection('service_menu')}
-      {renderMediaSection('our_artists')}
+      {/* Service Menu sections */}
+      {renderMediaSectionBlocks('service_menus', 'Service Menu section', 'Upload images to appear under each service menu block on the landing page.', false)}
+
+      {/* Our Artists sections */}
+      {renderMediaSectionBlocks('our_artists_sections', 'Our Artists section', 'Upload artist cards with optional CTA link for each artists block.', true)}
 
       {/* Nail Academy (courses) */}
       <SectionCard

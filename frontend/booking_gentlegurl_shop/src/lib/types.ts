@@ -389,6 +389,12 @@ export type LandingGalleryItem = {
   link_url?: string;
 };
 
+export type LandingGallerySectionBlock = {
+  is_active: boolean;
+  heading: LandingHeading;
+  items: LandingGalleryItem[];
+};
+
 export type LandingFaqItem = {
   question: string;
   answer: string;
@@ -449,16 +455,12 @@ export type LandingSections = {
     heading: LandingHeading;
     items: LandingGalleryItem[];
   };
-  service_menu: {
-    is_active: boolean;
-    heading: LandingHeading;
-    items: LandingGalleryItem[];
-  };
-  our_artists: {
-    is_active: boolean;
-    heading: LandingHeading;
-    items: LandingGalleryItem[];
-  };
+  service_menus?: LandingGallerySectionBlock[];
+  our_artists_sections?: LandingGallerySectionBlock[];
+  /** @deprecated use service_menus */
+  service_menu?: LandingGallerySectionBlock;
+  /** @deprecated use our_artists_sections */
+  our_artists?: LandingGallerySectionBlock;
   nail_academy: {
     is_active: boolean;
     heading: LandingHeading;

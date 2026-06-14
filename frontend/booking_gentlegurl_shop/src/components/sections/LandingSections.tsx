@@ -21,6 +21,7 @@ import {
   resolveVisitStudioWhatsAppMessage,
   resolveVisitStudioWhatsAppPhone,
 } from "@/lib/whatsapp";
+import { resolveOurArtistsSections, resolveServiceMenuSections } from "@/lib/landingSectionBlocks";
 
 function asDisplayText(value: unknown): string {
   if (value == null) return "";
@@ -147,20 +148,22 @@ export function ServicesPreview({ services }: { services: Service[] }) {
 
 export function DynamicSections({ sections }: { sections: LandingSections }) {
   const galleryItems = sections.gallery?.items ?? [];
-  const menuItems = sections.service_menu?.items ?? [];
-  const artistItems = sections.our_artists?.items ?? [];
+  const serviceMenuSections = resolveServiceMenuSections(sections);
+  const artistSections = resolveOurArtistsSections(sections);
 
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
-  const [lightboxSource, setLightboxSource] = useState<"gallery" | "menu">("gallery");
+  const [lightboxImages, setLightboxImages] = useState<LandingGalleryItem[] | null>(null);
   const [openFaqId, setOpenFaqId] = useState<string | null>(null);
 
-  const openLightbox = (idx: number, source: "gallery" | "menu") => {
-    setLightboxSource(source);
+  const openLightbox = (idx: number, images: LandingGalleryItem[]) => {
+    setLightboxImages(images);
     setLightboxIndex(idx);
   };
 
-  const activeLightboxImages: LandingGalleryItem[] =
-    lightboxSource === "gallery" ? galleryItems : menuItems;
+  const closeLightbox = () => {
+    setLightboxIndex(null);
+    setLightboxImages(null);
+  };
 
   const getTextAlignClass = (align: "left" | "center" | "right" | undefined) => {
     if (align === "center") return "text-center";
@@ -202,7 +205,6 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
 
   const renderImageGrid = (
     items: LandingGalleryItem[],
-    source: "gallery" | "menu",
     keyPrefix: string,
   ) => (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -210,7 +212,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
         <button
           key={`${keyPrefix}-${idx}`}
           type="button"
-          onClick={() => openLightbox(idx, source)}
+          onClick={() => openLightbox(idx, items)}
           className="group flex w-full cursor-zoom-in flex-col gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)]/80 p-3 text-left shadow-[0_16px_40px_-32px_rgba(17,24,39,0.5)] transition hover:-translate-y-1 hover:shadow-[0_22px_50px_-32px_rgba(17,24,39,0.45)]"
           aria-label="Open image zoom"
         >
@@ -236,7 +238,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
     if (lightboxIndex === null) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setLightboxIndex(null);
+        closeLightbox();
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -282,59 +284,62 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
               {sections.gallery.heading?.title ?? "Click to view services and pricing"}
             </h2>
           </div>
-          {renderImageGrid(galleryItems, "gallery", "gallery")}
+          {renderImageGrid(galleryItems, "gallery")}
         </section>
       )}
 
-      {/* Service Menu Section */}
-      {sections.service_menu?.is_active && menuItems.length > 0 && (
-        <section className="space-y-6">
-          <div className="mb-8 text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
-              {sections.service_menu.heading?.label ?? "Service Menu"}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-              {sections.service_menu.heading?.title ?? "Click to view services and pricing"}
-            </h2>
-          </div>
-          {renderImageGrid(menuItems, "menu", "menu")}
-        </section>
+      {serviceMenuSections.map((menuSection, blockIndex) =>
+        menuSection.is_active && (menuSection.items?.length ?? 0) > 0 ? (
+          <section key={`service-menu-${blockIndex}`} className="space-y-6">
+            <div className={`mb-8 ${getTextAlignClass(menuSection.heading?.align)}`}>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                {menuSection.heading?.label ?? "Service Menu"}
+              </p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+                {menuSection.heading?.title ?? "Click to view services and pricing"}
+              </h2>
+            </div>
+            {renderImageGrid(menuSection.items ?? [], `menu-${blockIndex}`)}
+          </section>
+        ) : null,
       )}
 
-      {sections.our_artists?.is_active && artistItems.length > 0 && (
-        <section className="space-y-6">
-          <div className={`mb-8 ${getTextAlignClass(sections.our_artists.heading?.align)}`}>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
-              {sections.our_artists.heading?.label ?? "Our Artists"}
-            </p>
-            <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
-              {sections.our_artists.heading?.title ?? "Meet our creative professionals"}
-            </h2>
-          </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-            {artistItems.map((artist, idx) => (
-              <div key={`artist-${idx}`} className="group flex flex-col gap-3">
-                <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
-                  <Image src={artist.src || "/images/dummy.webp"} alt={artist.caption || `Artist ${idx + 1}`} fill className="object-cover" sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw" />
+      {artistSections.map((artistSection, blockIndex) =>
+        artistSection.is_active && (artistSection.items?.length ?? 0) > 0 ? (
+          <section key={`our-artists-${blockIndex}`} className="space-y-6">
+            <div className={`mb-8 ${getTextAlignClass(artistSection.heading?.align)}`}>
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--text-muted)]">
+                {artistSection.heading?.label ?? "Our Artists"}
+              </p>
+              <h2 className="mt-2 text-3xl font-semibold tracking-tight text-[var(--foreground)]">
+                {artistSection.heading?.title ?? "Meet our creative professionals"}
+              </h2>
+            </div>
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+              {(artistSection.items ?? []).map((artist, idx) => (
+                <div key={`artist-${blockIndex}-${idx}`} className="group flex flex-col gap-3">
+                  <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
+                    <Image src={artist.src || "/images/dummy.webp"} alt={artist.caption || `Artist ${idx + 1}`} fill className="object-cover" sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw" />
+                  </div>
+                  {asDisplayText(artist.caption) ? (
+                    <p className={`text-xs text-[var(--foreground)]/60 ${getTextAlignClass(artist.text_align)}`}>
+                      {asDisplayText(artist.caption)}
+                    </p>
+                  ) : null}
+                  {asDisplayText(artist.text) ? (
+                    artist.link_url ? (
+                      <Link href={artist.link_url} className={`text-sm font-medium text-[var(--accent-strong)] hover:underline ${getTextAlignClass(artist.text_align)}`}>
+                        {asDisplayText(artist.text)}
+                      </Link>
+                    ) : (
+                      <p className={`text-sm text-[var(--foreground)]/80 ${getTextAlignClass(artist.text_align)}`}>{asDisplayText(artist.text)}</p>
+                    )
+                  ) : null}
                 </div>
-                {asDisplayText(artist.caption) ? (
-                  <p className={`text-xs text-[var(--foreground)]/60 ${getTextAlignClass(artist.text_align)}`}>
-                    {asDisplayText(artist.caption)}
-                  </p>
-                ) : null}
-                {asDisplayText(artist.text) ? (
-                  artist.link_url ? (
-                    <Link href={artist.link_url} className={`text-sm font-medium text-[var(--accent-strong)] hover:underline ${getTextAlignClass(artist.text_align)}`}>
-                      {asDisplayText(artist.text)}
-                    </Link>
-                  ) : (
-                    <p className={`text-sm text-[var(--foreground)]/80 ${getTextAlignClass(artist.text_align)}`}>{asDisplayText(artist.text)}</p>
-                  )
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </section>
+              ))}
+            </div>
+          </section>
+        ) : null,
       )}
 
       {nailAcademy?.is_active && nailItems.length > 0 && (
@@ -417,24 +422,24 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
       )}
 
       {/* Lightbox */}
-      {lightboxIndex !== null && activeLightboxImages.length > 0 && (
+      {lightboxIndex !== null && (lightboxImages?.length ?? 0) > 0 && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="relative w-full max-w-5xl">
             <button
               type="button"
-              onClick={() => setLightboxIndex(null)}
+              onClick={closeLightbox}
               className="absolute right-3 top-3 z-10 inline-flex h-10 w-10 items-center justify-center rounded-full bg-black/65 text-white transition hover:bg-black/80"
               aria-label="Close image preview"
             >
               <span aria-hidden>✕</span>
             </button>
-            {activeLightboxImages.length > 1 && (
+            {(lightboxImages?.length ?? 0) > 1 && (
               <>
                 <button
                   type="button"
                   onClick={() =>
                     setLightboxIndex((prev) =>
-                      prev === null ? prev : (prev - 1 + activeLightboxImages.length) % activeLightboxImages.length,
+                      prev === null || !lightboxImages ? prev : (prev - 1 + lightboxImages.length) % lightboxImages.length,
                     )
                   }
                   className="absolute left-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
@@ -446,7 +451,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
                   type="button"
                   onClick={() =>
                     setLightboxIndex((prev) =>
-                      prev === null ? prev : (prev + 1) % activeLightboxImages.length,
+                      prev === null || !lightboxImages ? prev : (prev + 1) % lightboxImages.length,
                     )
                   }
                   className="absolute right-3 top-1/2 z-10 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition hover:bg-black/80"
@@ -458,7 +463,7 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
             )}
 
             <div className="relative aspect-[16/10] w-full overflow-hidden rounded-xl border border-white/10 bg-black/40 shadow-2xl">
-              {activeLightboxImages.map((image, index) => (
+              {(lightboxImages ?? []).map((image, index) => (
                 <div
                   key={`lightbox-${index}`}
                   className={`absolute inset-0 transition-all duration-500 ease-out will-change-transform ${

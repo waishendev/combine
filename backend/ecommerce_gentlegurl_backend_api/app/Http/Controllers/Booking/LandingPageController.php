@@ -56,17 +56,13 @@ class LandingPageController extends Controller
         ]);
 
         $sections = $this->mergeWithDefaults($request->input('sections', []));
+        $sections = $this->migrateLegacyMediaSections($sections);
 
-        $sectionKeys = ['hero', 'gallery', 'service_menu', 'our_artists', 'nail_academy', 'faqs', 'notes'];
-        foreach ($sectionKeys as $key) {
-            if (isset($sections[$key]['items']) && is_array($sections[$key]['items'])) {
-                foreach ($sections[$key]['items'] as $idx => $item) {
-                    if (is_array($item) && isset($item['src'])) {
-                        $sections[$key]['items'][$idx]['src'] = $this->extractPath($item['src']);
-                    }
-                }
-            }
-        }
+        $this->extractPathsFromItems($sections, 'gallery');
+        $this->extractPathsFromItems($sections, 'nail_academy');
+        $this->extractPathsFromBlocks($sections, 'service_menus');
+        $this->extractPathsFromBlocks($sections, 'our_artists_sections');
+        unset($sections['service_menu'], $sections['our_artists']);
 
         $page = BookingLandingPage::updateOrCreate(
             ['slug' => 'home'],
@@ -120,15 +116,19 @@ class LandingPageController extends Controller
                     'heading' => ['label' => 'GALLERY', 'title' => 'Click to view services and pricing', 'align' => 'center'],
                     'items' => [],
                 ],
-                'service_menu' => [
-                    'is_active' => true,
-                    'heading' => ['label' => 'Service Menu', 'title' => 'Click to view services and pricing', 'align' => 'center'],
-                    'items' => [],
+                'service_menus' => [
+                    [
+                        'is_active' => true,
+                        'heading' => ['label' => 'Service Menu', 'title' => 'Click to view services and pricing', 'align' => 'center'],
+                        'items' => [],
+                    ],
                 ],
-                'our_artists' => [
-                    'is_active' => true,
-                    'heading' => ['label' => 'Our Artists', 'title' => 'Meet our creative professionals', 'align' => 'center'],
-                    'items' => [],
+                'our_artists_sections' => [
+                    [
+                        'is_active' => true,
+                        'heading' => ['label' => 'Our Artists', 'title' => 'Meet our creative professionals', 'align' => 'center'],
+                        'items' => [],
+                    ],
                 ],
                 'nail_academy' => [
                     'is_active' => true,
@@ -173,18 +173,95 @@ class LandingPageController extends Controller
 
     private function resolveImageUrls(array $sections): array
     {
-        $sectionKeys = ['gallery', 'service_menu', 'our_artists', 'nail_academy'];
-        foreach ($sectionKeys as $key) {
-            if (isset($sections[$key]['items']) && is_array($sections[$key]['items'])) {
-                foreach ($sections[$key]['items'] as $idx => $item) {
-                    if (is_array($item) && ! empty($item['src'])) {
-                        $sections[$key]['items'][$idx]['src'] = $this->resolveUrl($item['src']);
-                    }
-                }
+        $sections = $this->migrateLegacyMediaSections($sections);
+        $this->resolveUrlsFromItems($sections, 'gallery');
+        $this->resolveUrlsFromItems($sections, 'nail_academy');
+        $this->resolveUrlsFromBlocks($sections, 'service_menus');
+        $this->resolveUrlsFromBlocks($sections, 'our_artists_sections');
+
+        return $sections;
+    }
+
+    private function migrateLegacyMediaSections(array $sections): array
+    {
+        if (! isset($sections['service_menus']) || ! is_array($sections['service_menus']) || $sections['service_menus'] === []) {
+            if (isset($sections['service_menu']) && is_array($sections['service_menu'])) {
+                $sections['service_menus'] = [$sections['service_menu']];
             }
+        }
+        if (! isset($sections['our_artists_sections']) || ! is_array($sections['our_artists_sections']) || $sections['our_artists_sections'] === []) {
+            if (isset($sections['our_artists']) && is_array($sections['our_artists'])) {
+                $sections['our_artists_sections'] = [$sections['our_artists']];
+            }
+        }
+        unset($sections['service_menu'], $sections['our_artists']);
+
+        if (isset($sections['service_menus']) && is_array($sections['service_menus'])) {
+            $sections['service_menus'] = array_values($sections['service_menus']);
+        }
+        if (isset($sections['our_artists_sections']) && is_array($sections['our_artists_sections'])) {
+            $sections['our_artists_sections'] = array_values($sections['our_artists_sections']);
         }
 
         return $sections;
+    }
+
+    private function extractPathsFromItems(array &$sections, string $key): void
+    {
+        if (! isset($sections[$key]['items']) || ! is_array($sections[$key]['items'])) {
+            return;
+        }
+        foreach ($sections[$key]['items'] as $idx => $item) {
+            if (is_array($item) && isset($item['src'])) {
+                $sections[$key]['items'][$idx]['src'] = $this->extractPath($item['src']);
+            }
+        }
+    }
+
+    private function extractPathsFromBlocks(array &$sections, string $key): void
+    {
+        if (! isset($sections[$key]) || ! is_array($sections[$key])) {
+            return;
+        }
+        foreach ($sections[$key] as $blockIdx => $block) {
+            if (! is_array($block) || ! isset($block['items']) || ! is_array($block['items'])) {
+                continue;
+            }
+            foreach ($block['items'] as $idx => $item) {
+                if (is_array($item) && isset($item['src'])) {
+                    $sections[$key][$blockIdx]['items'][$idx]['src'] = $this->extractPath($item['src']);
+                }
+            }
+        }
+    }
+
+    private function resolveUrlsFromItems(array &$sections, string $key): void
+    {
+        if (! isset($sections[$key]['items']) || ! is_array($sections[$key]['items'])) {
+            return;
+        }
+        foreach ($sections[$key]['items'] as $idx => $item) {
+            if (is_array($item) && ! empty($item['src'])) {
+                $sections[$key]['items'][$idx]['src'] = $this->resolveUrl($item['src']);
+            }
+        }
+    }
+
+    private function resolveUrlsFromBlocks(array &$sections, string $key): void
+    {
+        if (! isset($sections[$key]) || ! is_array($sections[$key])) {
+            return;
+        }
+        foreach ($sections[$key] as $blockIdx => $block) {
+            if (! is_array($block) || ! isset($block['items']) || ! is_array($block['items'])) {
+                continue;
+            }
+            foreach ($block['items'] as $idx => $item) {
+                if (is_array($item) && ! empty($item['src'])) {
+                    $sections[$key][$blockIdx]['items'][$idx]['src'] = $this->resolveUrl($item['src']);
+                }
+            }
+        }
     }
 
     private function extractPath(?string $urlOrPath): string
@@ -227,8 +304,17 @@ class LandingPageController extends Controller
 
     private function mergeWithDefaults(array $sections): array
     {
+        $sections = $this->migrateLegacyMediaSections($sections);
         $defaults = $this->defaultPage()['sections'];
         foreach ($defaults as $key => $value) {
+            if ($key === 'service_menus' || $key === 'our_artists_sections') {
+                if (! isset($sections[$key]) || ! is_array($sections[$key]) || $sections[$key] === []) {
+                    $sections[$key] = $value;
+                } else {
+                    $sections[$key] = array_values($sections[$key]);
+                }
+                continue;
+            }
             if (! isset($sections[$key]) || ! is_array($sections[$key])) {
                 $sections[$key] = $value;
                 continue;

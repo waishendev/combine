@@ -40,34 +40,68 @@ class BookingLandingPageSeeder extends Seeder
                             ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
                         ],
                     ],
-                    'service_menu' => [
-                        'is_active' => true,
-                        'heading' => [
-                            'label' => 'Service Menu',
-                            'title' => 'Click to view services and pricing',
-                            'align' => 'center',
+                    'service_menus' => [
+                        [
+                            'is_active' => true,
+                            'heading' => [
+                                'label' => 'Service Menu',
+                                'title' => 'Click to view services and pricing',
+                                'align' => 'center',
+                            ],
+                            'items' => [
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                            ],
                         ],
-                        'items' => [
-                            ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
-                            ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
-                            ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
-                            ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
-                            ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
-                            ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                        [
+                            'is_active' => true,
+                            'heading' => [
+                                'label' => 'Service Menu',
+                                'title' => 'More services and pricing',
+                                'align' => 'center',
+                            ],
+                            'items' => [
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'DUMMY TEXT'],
+                            ],
                         ],
                     ],
-                    'our_artists' => [
-                        'is_active' => true,
-                        'heading' => [
-                            'label' => 'Our Artists',
-                            'title' => 'Meet our creative professionals',
-                            'align' => 'center',
+                    'our_artists_sections' => [
+                        [
+                            'is_active' => true,
+                            'heading' => [
+                                'label' => 'Our Artists',
+                                'title' => 'Meet our creative professionals',
+                                'align' => 'center',
+                            ],
+                            'items' => [
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Senior Stylist — 10 years experience', 'text_align' => 'center', 'link_url' => '/booking'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Color Specialist — Balayage & highlights', 'text_align' => 'center', 'link_url' => ''],
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Nail Artist — Gel and extensions', 'text_align' => 'center', 'link_url' => ''],
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Makeup Artist — Bridal & events', 'text_align' => 'center', 'link_url' => ''],
+                            ],
                         ],
-                        'items' => [
-                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Senior Stylist — 10 years experience', 'text_align' => 'center', 'link_url' => '/booking'],
-                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Color Specialist — Balayage & highlights', 'text_align' => 'center', 'link_url' => ''],
-                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Nail Artist — Gel and extensions', 'text_align' => 'center', 'link_url' => ''],
-                            ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Makeup Artist — Bridal & events', 'text_align' => 'center', 'link_url' => ''],
+                        [
+                            'is_active' => true,
+                            'heading' => [
+                                'label' => 'Our Artists',
+                                'title' => 'More of our team',
+                                'align' => 'center',
+                            ],
+                            'items' => [
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Junior Stylist — Fresh creative energy', 'text_align' => 'center', 'link_url' => '/booking'],
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Lash Specialist — Classic & volume sets', 'text_align' => 'center', 'link_url' => ''],
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Brow Artist — Shaping & tinting', 'text_align' => 'center', 'link_url' => ''],
+                                ['src' => '/images/dummy.webp', 'caption' => 'Artist portrait', 'text' => 'Spa Therapist — Relaxation treatments', 'text_align' => 'center', 'link_url' => ''],
+                            ],
                         ],
                     ],
                     'nail_academy' => [

@@ -10,7 +10,13 @@ use Illuminate\Database\Seeder;
  *
  *   php artisan db:seed --class=BookingLandingPageVisitStudioWhatsAppSeeder
  *
- * Migrates visit_studio.whatsapp_url → whatsapp_phone + whatsapp_message.
+ * NON-DESTRUCTIVE: reads the existing landing page row and only patches structure.
+ * It does NOT replace headings, images, items, or add extra Service Menu / Our Artists blocks.
+ *
+ * Migrates:
+ * - visit_studio.whatsapp_url → whatsapp_phone + whatsapp_message (only when those fields are empty)
+ * - sections.service_menu → sections.service_menus[] (wraps the exact same block, no content change)
+ * - sections.our_artists → sections.our_artists_sections[] (wraps the exact same block, no content change)
  */
 class BookingLandingPageVisitStudioWhatsAppSeeder extends Seeder
 {
@@ -27,7 +33,32 @@ class BookingLandingPageVisitStudioWhatsAppSeeder extends Seeder
         }
 
         $sections = is_array($page->sections) ? $page->sections : [];
+        $changed = false;
+
+        if ($this->migrateVisitStudioWhatsApp($sections)) {
+            $changed = true;
+        }
+
+        if ($this->migrateLegacyMediaSections($sections)) {
+            $changed = true;
+        }
+
+        if (! $changed) {
+            $this->command?->info('Booking landing page (slug=home) already up to date. No changes made.');
+
+            return;
+        }
+
+        $page->sections = $sections;
+        $page->save();
+
+        $this->command?->info('Updated booking landing page (slug=home): WhatsApp fields and multi-section media blocks.');
+    }
+
+    private function migrateVisitStudioWhatsApp(array &$sections): bool
+    {
         $visitStudio = is_array($sections['visit_studio'] ?? null) ? $sections['visit_studio'] : [];
+        $before = json_encode($visitStudio);
 
         $legacyUrl = trim((string) ($visitStudio['whatsapp_url'] ?? ''));
         $phone = trim((string) ($visitStudio['whatsapp_phone'] ?? ''));
@@ -37,7 +68,8 @@ class BookingLandingPageVisitStudioWhatsAppSeeder extends Seeder
             $phone = $this->extractPhoneFromWhatsAppUrl($legacyUrl);
         }
 
-        if ($message === '') {
+        // Only fill message when migrating from legacy whatsapp_url — never overwrite an existing message.
+        if ($message === '' && $legacyUrl !== '') {
             $fromUrl = $this->extractMessageFromWhatsAppUrl($legacyUrl);
             $message = $fromUrl !== '' ? $fromUrl : self::DEFAULT_MESSAGE;
         }
@@ -47,10 +79,61 @@ class BookingLandingPageVisitStudioWhatsAppSeeder extends Seeder
         unset($visitStudio['whatsapp_url']);
 
         $sections['visit_studio'] = $visitStudio;
-        $page->sections = $sections;
-        $page->save();
 
-        $this->command?->info('Updated visit_studio WhatsApp fields on booking landing page (slug=home).');
+        return json_encode($visitStudio) !== $before;
+    }
+
+    /**
+     * Wrap legacy single blocks into arrays. Existing CRM content is preserved byte-for-byte.
+     * Skips entirely when service_menus / our_artists_sections already exist.
+     */
+    private function migrateLegacyMediaSections(array &$sections): bool
+    {
+        $changed = false;
+
+        $hasServiceMenus = isset($sections['service_menus']) && is_array($sections['service_menus']) && $sections['service_menus'] !== [];
+        $hasArtistSections = isset($sections['our_artists_sections']) && is_array($sections['our_artists_sections']) && $sections['our_artists_sections'] !== [];
+
+        if (! $hasServiceMenus && isset($sections['service_menu']) && is_array($sections['service_menu'])) {
+            // Wrap only — same heading, items, images as before.
+            $sections['service_menus'] = [$sections['service_menu']];
+            $changed = true;
+        }
+
+        if (! $hasArtistSections && isset($sections['our_artists']) && is_array($sections['our_artists'])) {
+            // Wrap only — same heading, items, images as before.
+            $sections['our_artists_sections'] = [$sections['our_artists']];
+            $changed = true;
+        }
+
+        // Drop old keys only; never touch hero, gallery, nail_academy, faqs, notes, visit_studio body.
+        if (isset($sections['service_menu'])) {
+            unset($sections['service_menu']);
+            $changed = true;
+        }
+
+        if (isset($sections['our_artists'])) {
+            unset($sections['our_artists']);
+            $changed = true;
+        }
+
+        if (isset($sections['service_menus']) && is_array($sections['service_menus'])) {
+            $reindexed = array_values($sections['service_menus']);
+            if ($reindexed !== $sections['service_menus']) {
+                $sections['service_menus'] = $reindexed;
+                $changed = true;
+            }
+        }
+
+        if (isset($sections['our_artists_sections']) && is_array($sections['our_artists_sections'])) {
+            $reindexed = array_values($sections['our_artists_sections']);
+            if ($reindexed !== $sections['our_artists_sections']) {
+                $sections['our_artists_sections'] = $reindexed;
+                $changed = true;
+            }
+        }
+
+        return $changed;
     }
 
     private function extractPhoneFromWhatsAppUrl(string $url): string
