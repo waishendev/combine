@@ -19,6 +19,7 @@ interface FormState {
   end_time: string
   break_start: string
   break_end: string
+  is_active: boolean
 }
 
 const DAYS: Array<{ value: number; label: string }> = [
@@ -38,6 +39,7 @@ const initialFormState: FormState = {
   end_time: '19:00',
   break_start: '13:00',
   break_end: '14:00',
+  is_active: true,
 }
 
 const timeToMinutes = (time: string): number => {
@@ -82,8 +84,12 @@ export default function StaffScheduleCreateModal({
   }, [])
 
   const handleChange = (event: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
-    const { name, value } = event.target
-    setForm((prev) => ({ ...prev, [name]: value }))
+    const { name, value, type } = event.target
+    const checked = type === 'checkbox' ? (event.target as HTMLInputElement).checked : undefined
+    setForm((prev) => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value,
+    }))
   }
 
   const validate = (): string | null => {
@@ -140,6 +146,7 @@ export default function StaffScheduleCreateModal({
           end_time: form.end_time,
           break_start: form.break_start || null,
           break_end: form.break_end || null,
+          is_active: form.is_active,
         }),
       })
 
@@ -166,6 +173,7 @@ export default function StaffScheduleCreateModal({
             end_time: form.end_time,
             break_start: form.break_start || null,
             break_end: form.break_end || null,
+            is_active: form.is_active,
           }
 
       setForm({ ...initialFormState })
@@ -304,6 +312,20 @@ export default function StaffScheduleCreateModal({
               />
             </div>
           </div>
+
+          <label className="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              name="is_active"
+              checked={form.is_active}
+              onChange={handleChange}
+              className="h-4 w-4 rounded border-gray-300 text-blue-600"
+              disabled={submitting}
+            />
+            <span>
+              Active — staff can be booked on this day when status is on
+            </span>
+          </label>
 
           {error && (
             <div className="text-sm text-red-600" role="alert">

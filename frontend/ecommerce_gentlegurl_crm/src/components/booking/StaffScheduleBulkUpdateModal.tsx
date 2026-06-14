@@ -11,12 +11,13 @@ interface StaffScheduleBulkUpdateModalProps {
   onSuccess: () => Promise<void> | void
 }
 
-type FieldKey = 'start' | 'end' | 'break'
+type FieldKey = 'start' | 'end' | 'break' | 'status'
 
 const FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
   { key: 'start', label: 'Start' },
   { key: 'end', label: 'End' },
   { key: 'break', label: 'Break' },
+  { key: 'status', label: 'Status' },
 ]
 
 const DAYS: Array<{ value: number; label: string }> = [
@@ -40,6 +41,7 @@ export default function StaffScheduleBulkUpdateModal({
   const [endTime, setEndTime] = useState('19:00')
   const [breakStart, setBreakStart] = useState('')
   const [breakEnd, setBreakEnd] = useState('')
+  const [isActive, setIsActive] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -84,6 +86,9 @@ export default function StaffScheduleBulkUpdateModal({
       if (selectedFields.includes('break')) {
         payload.break_start = breakStart || null
         payload.break_end = breakEnd || null
+      }
+      if (selectedFields.includes('status')) {
+        payload.is_active = isActive
       }
 
       const res = await fetch('/api/proxy/admin/booking/staff-schedules/bulk', {
@@ -157,7 +162,7 @@ export default function StaffScheduleBulkUpdateModal({
           <h3 className="text-md font-semibold text-gray-800 mb-3">
             Select Fields to Update <span className="text-gray-500">(you can choose more than one)</span>
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             {FIELD_OPTIONS.map((field) => {
               const isSelected = selectedFields.includes(field.key)
               return (
@@ -230,6 +235,20 @@ export default function StaffScheduleBulkUpdateModal({
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
+            </div>
+          )}
+
+          {selectedFields.includes('status') && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Status</label>
+              <select
+                value={isActive ? 'true' : 'false'}
+                onChange={(event) => setIsActive(event.target.value === 'true')}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              >
+                <option value="true">Active — bookable on this day</option>
+                <option value="false">Inactive — not bookable on this day</option>
+              </select>
             </div>
           )}
         </div>

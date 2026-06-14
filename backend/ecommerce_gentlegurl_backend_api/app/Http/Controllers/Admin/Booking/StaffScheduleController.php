@@ -18,6 +18,13 @@ class StaffScheduleController extends Controller
             $query->where('staff_id', (int) $request->staff_id);
         }
 
+        if ($request->has('is_active')) {
+            $isActive = filter_var($request->get('is_active'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+            if ($isActive !== null) {
+                $query->where('is_active', $isActive);
+            }
+        }
+
         return $this->respond($query->paginate(50));
     }
     public function show(int $id) { return $this->respond(BookingStaffSchedule::findOrFail($id)); }
@@ -29,7 +36,9 @@ class StaffScheduleController extends Controller
             'end_time' => ['required', 'date_format:H:i'],
             'break_start' => ['nullable', 'date_format:H:i'],
             'break_end' => ['nullable', 'date_format:H:i'],
+            'is_active' => ['nullable', 'boolean'],
         ]);
+        $data['is_active'] = $data['is_active'] ?? true;
         return $this->respond(BookingStaffSchedule::create($data), null, true, 201);
     }
     public function update(Request $request, int $id) {
@@ -40,6 +49,7 @@ class StaffScheduleController extends Controller
             'end_time' => ['sometimes', 'date_format:H:i'],
             'break_start' => ['nullable', 'date_format:H:i'],
             'break_end' => ['nullable', 'date_format:H:i'],
+            'is_active' => ['sometimes', 'boolean'],
         ]));
         return $this->respond($item);
     }
@@ -53,14 +63,16 @@ class StaffScheduleController extends Controller
             'end_time' => ['sometimes', 'nullable', 'date_format:H:i'],
             'break_start' => ['sometimes', 'nullable', 'date_format:H:i'],
             'break_end' => ['sometimes', 'nullable', 'date_format:H:i'],
+            'is_active' => ['sometimes', 'boolean'],
         ]);
 
         $hasStart = array_key_exists('start_time', $data);
         $hasEnd = array_key_exists('end_time', $data);
         $hasBreakStart = array_key_exists('break_start', $data);
         $hasBreakEnd = array_key_exists('break_end', $data);
+        $hasIsActive = array_key_exists('is_active', $data);
 
-        if (! $hasStart && ! $hasEnd && ! $hasBreakStart && ! $hasBreakEnd) {
+        if (! $hasStart && ! $hasEnd && ! $hasBreakStart && ! $hasBreakEnd && ! $hasIsActive) {
             return $this->respondError('At least one updatable field is required.', 422);
         }
 
@@ -73,7 +85,7 @@ class StaffScheduleController extends Controller
             ->get();
 
         try {
-            DB::transaction(function () use ($schedules, $data, $hasStart, $hasEnd, $hasBreakStart) {
+            DB::transaction(function () use ($schedules, $data, $hasStart, $hasEnd, $hasBreakStart, $hasIsActive) {
                 foreach ($schedules as $schedule) {
                     $start = $hasStart ? $data['start_time'] : $schedule->start_time;
                     $end = $hasEnd ? $data['end_time'] : $schedule->end_time;
@@ -110,6 +122,9 @@ class StaffScheduleController extends Controller
                         $payload['break_start'] = $data['break_start'];
                         $payload['break_end'] = $data['break_end'];
                     }
+                    if ($hasIsActive) {
+                        $payload['is_active'] = (bool) $data['is_active'];
+                    }
 
                     if (! empty($payload)) {
                         $schedule->update($payload);
@@ -143,7 +158,7 @@ class StaffScheduleController extends Controller
             return response()->json(['message' => 'Unable to build booking staff schedules CSV export.'], 500);
         }
 
-        $headers = ['id', 'staff_id', 'staff_name', 'day_of_week', 'start_time', 'end_time', 'break_start', 'break_end'];
+        $headers = ['id', 'staff_id', 'staff_name', 'day_of_week', 'start_time', 'end_time', 'break_start', 'break_end', 'is_active'];
         fputcsv($stream, $headers);
 
         foreach ($rows as $row) {
@@ -156,6 +171,7 @@ class StaffScheduleController extends Controller
                 substr((string) $row->end_time, 0, 5),
                 $row->break_start ? substr((string) $row->break_start, 0, 5) : null,
                 $row->break_end ? substr((string) $row->break_end, 0, 5) : null,
+                $row->is_active ? 'true' : 'false',
             ]);
         }
 
@@ -188,7 +204,7 @@ class StaffScheduleController extends Controller
         }
 
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
-        $allowedHeaders = ['id', 'staff_id', 'day_of_week', 'start_time', 'end_time', 'break_start', 'break_end', 'staff_name'];
+        $allowedHeaders = ['id', 'staff_id', 'day_of_week', 'start_time', 'end_time', 'break_start', 'break_end', 'is_active', 'staff_name'];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
         if (! empty($unknownHeaders)) {
             fclose($handle);
@@ -219,6 +235,9 @@ class StaffScheduleController extends Controller
 
             $summary['totalRows']++;
 
+            $rawIsActive = $payload['is_active'] ?? 'true';
+            $parsedIsActive = filter_var((string) $rawIsActive, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+
             $validator = Validator::make([
                 'staff_id' => $payload['staff_id'] ?? null,
                 'day_of_week' => $payload['day_of_week'] ?? null,
@@ -226,6 +245,7 @@ class StaffScheduleController extends Controller
                 'end_time' => $payload['end_time'] ?? null,
                 'break_start' => $payload['break_start'] ?: null,
                 'break_end' => $payload['break_end'] ?: null,
+                'is_active' => $parsedIsActive ?? true,
             ], [
                 'staff_id' => ['required', 'integer', 'exists:staffs,id'],
                 'day_of_week' => ['required', 'integer', 'between:0,6'],
@@ -233,6 +253,7 @@ class StaffScheduleController extends Controller
                 'end_time' => ['required', 'date_format:H:i'],
                 'break_start' => ['nullable', 'date_format:H:i'],
                 'break_end' => ['nullable', 'date_format:H:i'],
+                'is_active' => ['nullable', 'boolean'],
             ]);
 
             if ($validator->fails()) {
@@ -242,6 +263,9 @@ class StaffScheduleController extends Controller
             }
 
             $validated = $validator->validated();
+            $validated['is_active'] = array_key_exists('is_active', $validated)
+                ? (bool) $validated['is_active']
+                : true;
             $id = isset($payload['id']) && is_numeric($payload['id']) ? (int) $payload['id'] : null;
 
             try {
@@ -272,7 +296,8 @@ class StaffScheduleController extends Controller
                         (substr((string) $record->start_time, 0, 5) === $validated['start_time']) &&
                         (substr((string) $record->end_time, 0, 5) === $validated['end_time']) &&
                         (($record->break_start ? substr((string) $record->break_start, 0, 5) : null) === ($validated['break_start'] ?? null)) &&
-                        (($record->break_end ? substr((string) $record->break_end, 0, 5) : null) === ($validated['break_end'] ?? null));
+                        (($record->break_end ? substr((string) $record->break_end, 0, 5) : null) === ($validated['break_end'] ?? null)) &&
+                        ((bool) $record->is_active === (bool) $validated['is_active']);
                     if ($isUnchanged) {
                         $summary['skipped']++;
                         continue;

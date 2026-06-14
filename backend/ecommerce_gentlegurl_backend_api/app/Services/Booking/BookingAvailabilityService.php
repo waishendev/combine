@@ -33,6 +33,7 @@ class BookingAvailabilityService
         $day = Carbon::parse($date, $timezone);
         $schedule = BookingStaffSchedule::where('staff_id', $staffId)
             ->where('day_of_week', $day->dayOfWeek)
+            ->where('is_active', true)
             ->first();
 
         if (!$schedule) {
@@ -391,6 +392,18 @@ class BookingAvailabilityService
                 'is_available' => false,
                 'failure_reason' => 'no_staff_schedule',
                 'business_timezone' => $timezone,
+                'day_of_week' => $start->dayOfWeek,
+                'localized_start' => $start->toDateTimeString(),
+                'localized_end' => $end->toDateTimeString(),
+            ];
+        }
+
+        if (! $schedule->is_active) {
+            return [
+                'is_available' => false,
+                'failure_reason' => 'schedule_inactive',
+                'business_timezone' => $timezone,
+                'schedule_id' => (int) $schedule->id,
                 'day_of_week' => $start->dayOfWeek,
                 'localized_start' => $start->toDateTimeString(),
                 'localized_end' => $end->toDateTimeString(),

@@ -208,6 +208,7 @@ class AvailabilityController extends Controller
         foreach ($staffs as $staff) {
             $schedule = \App\Models\Booking\BookingStaffSchedule::where('staff_id', $staff->id)
                 ->where('day_of_week', $day->dayOfWeek)
+                ->where('is_active', true)
                 ->first();
 
             if ($schedule) {
@@ -233,7 +234,8 @@ class AvailabilityController extends Controller
             
             $staffAvailability = [];
             foreach ($staffs as $staff) {
-                $isAvailable = !$this->availabilityService->hasConflict($staff->id, $startAt, $endAt, (int) $service->buffer_min);
+                $isAvailable = $this->availabilityService->isWithinStaffAvailability($staff->id, $startAt, $endAt)
+                    && ! $this->availabilityService->hasConflict($staff->id, $startAt, $endAt, (int) $service->buffer_min);
                 $staffAvailability[] = [
                     'staff_id' => (int) $staff->id,
                     'staff_name' => $staff->name,

@@ -18,7 +18,11 @@ class LeaveRequestController extends Controller
 
     public function index(Request $request)
     {
-        $query = BookingLeaveRequest::query()->with(['staff:id,name', 'reviewer:id,name']);
+        $query = BookingLeaveRequest::query()->with([
+            'staff:id,name',
+            'reviewer:id,name',
+            'creationLog.creator:id,name',
+        ]);
 
         if ($request->filled('status')) {
             $query->where('status', (string) $request->input('status'));
@@ -62,59 +66,150 @@ class LeaveRequestController extends Controller
         }
 
         $created = DB::transaction(function () use ($data, $request, $startDate, $endDate) {
-            $days = $this->leaveService->calculateRequestedDays($startDate, $endDate, 'full_day');
-
-            $item = BookingLeaveRequest::query()->create([
-                'staff_id' => (int) $data['staff_id'],
-                'leave_type' => 'off_day',
-                'day_type' => 'full_day',
-                'start_date' => $data['start_date'],
-                'end_date' => $data['end_date'],
-                'days' => $days,
-                'reason' => $data['reason'] ?? null,
-                'status' => 'approved',
-                'admin_remark' => 'Off day set by admin',
-                'reviewed_by_user_id' => $request->user()?->id,
-                'reviewed_at' => now(),
-            ]);
-
-            [$startAt, $endAt] = $this->leaveService->resolveTimeoffWindow(
-                (int) $item->staff_id,
+            return $this->leaveService->createApprovedOffDay(
+                (int) $data['staff_id'],
                 $startDate,
                 $endDate,
-                'full_day'
+                $data['reason'] ?? null,
+                $request->user()?->id,
+                'Off day set by admin'
             );
-
-            $timeoff = BookingStaffTimeoff::create([
-                'staff_id' => $item->staff_id,
-                'start_at' => $startAt,
-                'end_at' => $endAt,
-                'reason' => sprintf('Off day #%d', $item->id),
-            ]);
-
-            $item->approved_timeoff_id = $timeoff->id;
-            $item->save();
-
-            $this->leaveService->logAction(
-                (int) $item->staff_id,
-                (int) $item->id,
-                'approved',
-                null,
-                [
-                    'status' => $item->status,
-                    'leave_type' => $item->leave_type,
-                    'day_type' => $item->day_type,
-                    'total_days' => (float) $item->days,
-                    'approved_timeoff_id' => $item->approved_timeoff_id,
-                ],
-                'Off day created by admin.',
-                $request->user()?->id
-            );
-
-            return $item;
         });
 
-        return $this->respond($created->fresh(['staff:id,name', 'reviewer:id,name']), null, true, 201);
+        if (! $created) {
+            return $this->respondError('There is already an overlapping leave/off-day request.', 422);
+        }
+
+        return $this->respond($created->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name']), null, true, 201);
+    }
+
+    public function generateOffDaysFromWeeklySchedule(Request $request)
+    {
+        $data = $request->validate([
+            'staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'target_month' => ['required', 'date_format:Y-m'],
+            'days_of_week' => ['required', 'array', 'min:1'],
+            'days_of_week.*' => ['integer', 'between:0,6', 'distinct'],
+        ]);
+
+        $staffId = (int) $data['staff_id'];
+        $monthStart = Carbon::createFromFormat('Y-m', $data['target_month'])->startOfMonth();
+        $monthEnd = $monthStart->copy()->endOfMonth();
+        $targetWeekdays = array_values(array_unique(array_map('intval', $data['days_of_week'])));
+        $weekdayLabels = $this->leaveService->weekdayLabels();
+        $selectedDayNames = array_map(fn (int $day) => $weekdayLabels[$day] ?? (string) $day, $targetWeekdays);
+        $createdDates = [];
+        $skippedDates = [];
+
+        DB::transaction(function () use (
+            $staffId,
+            $monthStart,
+            $monthEnd,
+            $targetWeekdays,
+            $weekdayLabels,
+            $request,
+            &$createdDates,
+            &$skippedDates
+        ) {
+            for ($cursor = $monthStart->copy(); $cursor->lte($monthEnd); $cursor->addDay()) {
+                if (! in_array($cursor->dayOfWeek, $targetWeekdays, true)) {
+                    continue;
+                }
+
+                $dateKey = $cursor->toDateString();
+                $weekdayLabel = $weekdayLabels[$cursor->dayOfWeek] ?? (string) $cursor->dayOfWeek;
+                $reason = sprintf(
+                    'Auto-generated off day (%s, %s)',
+                    $weekdayLabel,
+                    $cursor->format('F Y')
+                );
+
+                $item = $this->leaveService->createApprovedOffDay(
+                    $staffId,
+                    $cursor->copy()->startOfDay(),
+                    $cursor->copy()->startOfDay(),
+                    $reason,
+                    $request->user()?->id,
+                    'Off day generated for selected weekday(s)'
+                );
+
+                if ($item) {
+                    $createdDates[] = $dateKey;
+                } else {
+                    $skippedDates[] = $dateKey;
+                }
+            }
+        });
+
+        return $this->respond([
+            'staff_id' => $staffId,
+            'target_month' => $data['target_month'],
+            'days_of_week' => $targetWeekdays,
+            'weekday_labels' => $selectedDayNames,
+            'created_count' => count($createdDates),
+            'skipped_count' => count($skippedDates),
+            'created_dates' => $createdDates,
+            'skipped_dates' => $skippedDates,
+        ], 'Monthly off days generated for selected weekday(s).');
+    }
+
+    public function updateOffDay(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'start_date' => ['required', 'date'],
+            'end_date' => ['required', 'date', 'after_or_equal:start_date'],
+            'reason' => ['nullable', 'string', 'max:255'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $item = BookingLeaveRequest::query()->findOrFail($id);
+
+        if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
+            return $this->respondError('Only approved off days can be updated.', 422);
+        }
+
+        $startDate = Carbon::parse($data['start_date'])->startOfDay();
+        $endDate = Carbon::parse($data['end_date'])->startOfDay();
+
+        $updated = DB::transaction(function () use ($item, $data, $request, $startDate, $endDate) {
+            return $this->leaveService->updateApprovedOffDay(
+                $item,
+                $startDate,
+                $endDate,
+                array_key_exists('reason', $data) ? ($data['reason'] ?? null) : $item->reason,
+                $request->user()?->id,
+                $data['remark'] ?? null
+            );
+        });
+
+        if (! $updated) {
+            return $this->respondError('There is already an overlapping leave/off-day request for the new date range.', 422);
+        }
+
+        return $this->respond($updated);
+    }
+
+    public function cancelOffDay(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $item = BookingLeaveRequest::query()->findOrFail($id);
+
+        if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
+            return $this->respondError('Only approved off days can be cancelled.', 422);
+        }
+
+        DB::transaction(function () use ($item, $data, $request) {
+            $this->leaveService->cancelApprovedOffDay(
+                $item,
+                $request->user()?->id,
+                $data['remark'] ?? null
+            );
+        });
+
+        return $this->respond($item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name']));
     }
 
     public function decide(Request $request, int $id)
@@ -182,6 +277,6 @@ class LeaveRequestController extends Controller
             );
         });
 
-        return $this->respond($item->fresh(['staff:id,name', 'reviewer:id,name']));
+        return $this->respond($item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name']));
     }
 }

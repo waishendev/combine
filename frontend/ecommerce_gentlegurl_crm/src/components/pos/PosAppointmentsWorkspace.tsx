@@ -659,7 +659,7 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentSelectedOptionIds([])
     setCreateAppointmentExtraServiceBlocks([])
     setCreateAppointmentQuestions([])
-    setCreateAppointmentAssignedStaffId(currentUser.staff_id ?? null)
+    setCreateAppointmentAssignedStaffId(null)
     setCreateAppointmentDate(appointmentDateFilter || '')
     setCreateAppointmentSlotValue('')
     setCreateAppointmentSlots([])
@@ -684,7 +684,7 @@ export default function PosAppointmentsWorkspace({
     if (!createAppointmentServices.length) {
       void fetchCreateAppointmentServices()
     }
-  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, currentUser.staff_id, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg])
+  }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg])
 
   const closeCreateAppointmentMemberPicker = useCallback(() => {
     setCreateAppointmentMemberPickerOpen(false)
@@ -760,14 +760,17 @@ export default function PosAppointmentsWorkspace({
   }, [createAppointmentExtraServiceBlocks, createAppointmentServiceDraft])
 
   const createAppointmentStaffPickerOptions = useMemo(() => {
+    if (!createAppointmentDate || !createAppointmentSlotValue) return []
     const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
     const staffIds = slot?.available_staff_ids
     const base = createAppointmentAllowedStaffs
     if (Array.isArray(staffIds) && staffIds.length > 0) {
       return base.filter((s) => staffIds.includes(s.id))
     }
-    return base
-  }, [createAppointmentSlots, createAppointmentSlotValue, createAppointmentAllowedStaffs])
+    return []
+  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSlotValue, createAppointmentSlots])
+
+  const createAppointmentStaffPickerReady = Boolean(createAppointmentDate && createAppointmentSlotValue)
 
   const createAppointmentSelectedServiceIds = useMemo(
     () => [
@@ -1814,6 +1817,30 @@ export default function PosAppointmentsWorkspace({
     createAppointmentExtraTotals.baseDuration,
     createAppointmentModalOpen,
     createAppointmentServiceDraft?.id,
+  ])
+
+  useEffect(() => {
+    if (!createAppointmentModalOpen || !createAppointmentDate || !createAppointmentSlotValue) {
+      setCreateAppointmentAssignedStaffId(null)
+      return
+    }
+
+    const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
+    const staffIds = slot?.available_staff_ids ?? []
+    const options = Array.isArray(staffIds) && staffIds.length > 0
+      ? createAppointmentAllowedStaffs.filter((staff) => staffIds.includes(staff.id))
+      : []
+
+    setCreateAppointmentAssignedStaffId((prev) => {
+      if (prev && options.some((staff) => staff.id === prev)) return prev
+      return options[0]?.id ?? null
+    })
+  }, [
+    createAppointmentAllowedStaffs,
+    createAppointmentDate,
+    createAppointmentModalOpen,
+    createAppointmentSlotValue,
+    createAppointmentSlots,
   ])
 
   useEffect(() => {
@@ -2908,11 +2935,7 @@ export default function PosAppointmentsWorkspace({
                           const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
                           setCreateAppointmentServiceDraft(service)
                           setCreateAppointmentSelectedOptionIds([])
-                          setCreateAppointmentAssignedStaffId(
-                            service?.allowed_staffs?.some((staff) => staff.id === currentUser.staff_id)
-                              ? (currentUser.staff_id ?? null)
-                              : (service?.allowed_staffs?.[0]?.id ?? currentUser.staff_id ?? null),
-                          )
+                          setCreateAppointmentAssignedStaffId(null)
                           setCreateAppointmentSlotValue('')
                           setCreateAppointmentSlots([])
                           if (service?.id) {
@@ -3207,35 +3230,17 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   )}
 
-                  <div>
-                    <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
-                    <div className="mt-1">
-                      <BookingPackageItemServicePicker
-                        options={createAppointmentStaffPickerOptions.map((s) => ({ id: s.id, name: s.name }))}
-                        value={createAppointmentAssignedStaffId != null ? String(createAppointmentAssignedStaffId) : ''}
-                        onChange={(next) => setCreateAppointmentAssignedStaffId(Number(next) || null)}
-                        disabled={
-                          createAppointmentSubmitting ||
-                          !createAppointmentServiceDraft ||
-                          createAppointmentStaffPickerOptions.length === 0
-                        }
-                        placeholder="Select staff"
-                        searchPlaceholder="Search staff…"
-                        unknownEntityLabel="Staff"
-                        ariaLabel="Select staff"
-                        emptySearchMessage="No staff match your search."
-                        emptyListMessage="No staff available."
-                      />
-                    </div>
-                  </div>
-
                   <div className="grid gap-3 sm:grid-cols-2">
                     <div>
                       <label className="text-xs font-semibold text-gray-600">Appointment Date</label>
                       <input
                         type="date"
                         value={createAppointmentDate}
-                        onChange={(e) => setCreateAppointmentDate(e.target.value)}
+                        onChange={(e) => {
+                          setCreateAppointmentDate(e.target.value)
+                          setCreateAppointmentSlotValue('')
+                          setCreateAppointmentAssignedStaffId(null)
+                        }}
                         className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                       />
                     </div>
@@ -3243,15 +3248,7 @@ export default function PosAppointmentsWorkspace({
                       <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
                       <select
                         value={createAppointmentSlotValue}
-                        onChange={(e) => {
-                          const next = e.target.value
-                          setCreateAppointmentSlotValue(next)
-                          const slot = createAppointmentSlots.find((s) => s.start_at === next)
-                          const staffIds = slot?.available_staff_ids
-                          if (staffIds && (!createAppointmentAssignedStaffId || !staffIds.includes(Number(createAppointmentAssignedStaffId)))) {
-                            setCreateAppointmentAssignedStaffId(staffIds[0] ?? null)
-                          }
-                        }}
+                        onChange={(e) => setCreateAppointmentSlotValue(e.target.value)}
                         disabled={!createAppointmentDate || createAppointmentSlotsLoading}
                         className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:bg-gray-100"
                       >
@@ -3262,6 +3259,33 @@ export default function PosAppointmentsWorkspace({
                           </option>
                         ))}
                       </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
+                    <div className="mt-1">
+                      <BookingPackageItemServicePicker
+                        options={createAppointmentStaffPickerOptions.map((s) => ({ id: s.id, name: s.name }))}
+                        value={createAppointmentAssignedStaffId != null ? String(createAppointmentAssignedStaffId) : ''}
+                        onChange={(next) => setCreateAppointmentAssignedStaffId(Number(next) || null)}
+                        disabled={
+                          createAppointmentSubmitting ||
+                          !createAppointmentServiceDraft ||
+                          !createAppointmentStaffPickerReady ||
+                          createAppointmentStaffPickerOptions.length === 0
+                        }
+                        placeholder={createAppointmentStaffPickerReady ? 'Select staff' : 'Select date and slot first'}
+                        searchPlaceholder="Search staff…"
+                        unknownEntityLabel="Staff"
+                        ariaLabel="Select staff"
+                        emptySearchMessage="No staff match your search."
+                        emptyListMessage={
+                          createAppointmentStaffPickerReady
+                            ? 'No staff available for this slot.'
+                            : 'Select appointment date and slot first.'
+                        }
+                      />
                     </div>
                   </div>
 

@@ -168,6 +168,203 @@ class BookingLeaveService
     }
 
     /**
+     * Weekdays (0=Sun … 6=Sat) with no active weekly staff schedule.
+     *
+     * @return array<int>
+     */
+    public function getOffWeekdaysForStaff(int $staffId): array
+    {
+        $activeDays = BookingStaffSchedule::query()
+            ->where('staff_id', $staffId)
+            ->where('is_active', true)
+            ->pluck('day_of_week')
+            ->map(fn ($day) => (int) $day)
+            ->unique()
+            ->values()
+            ->all();
+
+        return array_values(array_diff(range(0, 6), $activeDays));
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    public function weekdayLabels(): array
+    {
+        return [
+            0 => 'Sunday',
+            1 => 'Monday',
+            2 => 'Tuesday',
+            3 => 'Wednesday',
+            4 => 'Thursday',
+            5 => 'Friday',
+            6 => 'Saturday',
+        ];
+    }
+
+    public function createApprovedOffDay(
+        int $staffId,
+        Carbon $startDate,
+        Carbon $endDate,
+        ?string $reason,
+        ?int $actorUserId,
+        ?string $adminRemark = 'Off day set by admin'
+    ): ?BookingLeaveRequest {
+        if ($this->hasOverlappingRequest($staffId, $startDate, $endDate, 'full_day')) {
+            return null;
+        }
+
+        $days = $this->calculateRequestedDays($startDate, $endDate, 'full_day');
+
+        $item = BookingLeaveRequest::query()->create([
+            'staff_id' => $staffId,
+            'leave_type' => 'off_day',
+            'day_type' => 'full_day',
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
+            'days' => $days,
+            'reason' => $reason,
+            'status' => 'approved',
+            'admin_remark' => $adminRemark,
+            'reviewed_by_user_id' => $actorUserId,
+            'reviewed_at' => now(),
+        ]);
+
+        [$startAt, $endAt] = $this->resolveTimeoffWindow($staffId, $startDate, $endDate, 'full_day');
+
+        $timeoff = \App\Models\Booking\BookingStaffTimeoff::create([
+            'staff_id' => $item->staff_id,
+            'start_at' => $startAt,
+            'end_at' => $endAt,
+            'reason' => sprintf('Off day #%d', $item->id),
+        ]);
+
+        $item->approved_timeoff_id = $timeoff->id;
+        $item->save();
+
+        $this->logAction(
+            $staffId,
+            (int) $item->id,
+            'approved',
+            null,
+            [
+                'status' => $item->status,
+                'leave_type' => $item->leave_type,
+                'day_type' => $item->day_type,
+                'total_days' => (float) $item->days,
+                'approved_timeoff_id' => $item->approved_timeoff_id,
+            ],
+            $adminRemark,
+            $actorUserId
+        );
+
+        return $item;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function snapshotOffDay(BookingLeaveRequest $item): array
+    {
+        return [
+            'leave_type' => (string) $item->leave_type,
+            'status' => (string) $item->status,
+            'start_date' => (string) $item->start_date,
+            'end_date' => (string) $item->end_date,
+            'reason' => $item->reason,
+            'total_days' => (float) $item->days,
+            'approved_timeoff_id' => $item->approved_timeoff_id,
+        ];
+    }
+
+    public function cancelApprovedOffDay(BookingLeaveRequest $item, ?int $actorUserId, ?string $remark = null): bool
+    {
+        if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
+            return false;
+        }
+
+        $before = $this->snapshotOffDay($item);
+
+        if ($item->approvedTimeoff) {
+            $item->approvedTimeoff->delete();
+        }
+
+        $item->status = 'cancelled';
+        $item->approved_timeoff_id = null;
+        $item->save();
+
+        $this->logAction(
+            (int) $item->staff_id,
+            (int) $item->id,
+            'cancelled',
+            $before,
+            $this->snapshotOffDay($item->fresh()),
+            $remark ?? 'Off day cancelled by admin.',
+            $actorUserId
+        );
+
+        return true;
+    }
+
+    public function updateApprovedOffDay(
+        BookingLeaveRequest $item,
+        Carbon $startDate,
+        Carbon $endDate,
+        ?string $reason,
+        ?int $actorUserId,
+        ?string $remark = null
+    ): ?BookingLeaveRequest {
+        if ($item->leave_type !== 'off_day' || $item->status !== 'approved') {
+            return null;
+        }
+
+        if ($this->hasOverlappingRequest((int) $item->staff_id, $startDate, $endDate, 'full_day', (int) $item->id)) {
+            return null;
+        }
+
+        $before = $this->snapshotOffDay($item);
+        $days = $this->calculateRequestedDays($startDate, $endDate, 'full_day');
+
+        [$startAt, $endAt] = $this->resolveTimeoffWindow((int) $item->staff_id, $startDate, $endDate, 'full_day');
+
+        if ($item->approvedTimeoff) {
+            $item->approvedTimeoff->update([
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+                'reason' => sprintf('Off day #%d', $item->id),
+            ]);
+        } else {
+            $timeoff = \App\Models\Booking\BookingStaffTimeoff::create([
+                'staff_id' => $item->staff_id,
+                'start_at' => $startAt,
+                'end_at' => $endAt,
+                'reason' => sprintf('Off day #%d', $item->id),
+            ]);
+            $item->approved_timeoff_id = $timeoff->id;
+        }
+
+        $item->start_date = $startDate->toDateString();
+        $item->end_date = $endDate->toDateString();
+        $item->days = $days;
+        if ($reason !== null) {
+            $item->reason = $reason;
+        }
+        $item->save();
+
+        $this->logAction(
+            (int) $item->staff_id,
+            (int) $item->id,
+            'updated',
+            $before,
+            $this->snapshotOffDay($item->fresh()),
+            $remark ?? 'Off day updated by admin.',
+            $actorUserId
+        );
+
+        return $item->fresh(['staff:id,name', 'reviewer:id,name', 'creationLog.creator:id,name']);
+    }
+
+    /**
      * @return array{0: float, 1: float}
      */
     private function resolveDayPeriod(Carbon $date, Carbon $rangeStart, Carbon $rangeEnd, string $dayType): array

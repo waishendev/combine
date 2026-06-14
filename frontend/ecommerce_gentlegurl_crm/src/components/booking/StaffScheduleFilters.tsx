@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n'
 export interface StaffScheduleFilterValues {
   staff_id: string
   day_of_week: string
+  is_active: string
 }
 
 export const staffScheduleFiltersFormId = 'staff-schedule-filters-form'
@@ -13,6 +14,7 @@ export const staffScheduleFiltersFormId = 'staff-schedule-filters-form'
 export const emptyStaffScheduleFilters: StaffScheduleFilterValues = {
   staff_id: '',
   day_of_week: '',
+  is_active: '',
 }
 
 interface StaffScheduleFiltersProps {
@@ -106,6 +108,26 @@ export default function StaffScheduleFilters({
                 {day.label}
               </option>
             ))}
+          </select>
+        </div>
+
+        <div>
+          <label
+            htmlFor="is_active"
+            className="block text-sm font-medium text-gray-700 mb-1"
+          >
+            Status
+          </label>
+          <select
+            id="is_active"
+            name="is_active"
+            value={values.is_active}
+            onChange={handleChange}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+          >
+            <option value="">{t('common.all')}</option>
+            <option value="true">Active</option>
+            <option value="false">Inactive</option>
           </select>
         </div>
       </div>

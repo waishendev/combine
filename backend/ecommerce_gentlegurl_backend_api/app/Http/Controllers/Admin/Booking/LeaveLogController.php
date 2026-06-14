@@ -33,6 +33,10 @@ class LeaveLogController extends Controller
             $query->where('created_at', '<=', Carbon::parse((string) $request->input('to_date'))->endOfDay());
         }
 
+        if ($request->filled('leave_request_id')) {
+            $query->where('leave_request_id', (int) $request->input('leave_request_id'));
+        }
+
         $rows = $query
             ->orderByDesc('created_at')
             ->paginate((int) $request->input('per_page', 20));

@@ -25,7 +25,7 @@ export default async function Page() {
         <Link href="/booking/leave-calendar" className="text-blue-600 hover:underline">Leave Calendar</Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">Leave Calendar</h2>
-      <BookingLeaveCalendarPage />
+      <BookingLeaveCalendarPage permissions={user.permissions} />
     </div>
   )
 }

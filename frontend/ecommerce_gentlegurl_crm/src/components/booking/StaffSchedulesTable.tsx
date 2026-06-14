@@ -85,6 +85,7 @@ export default function StaffSchedulesTable({
   const [isImporting, setIsImporting] = useState(false)
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null)
   const [importFailedRows, setImportFailedRows] = useState<ImportFailedRow[]>([])
+  const [togglingStatusId, setTogglingStatusId] = useState<number | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const canCreate = permissions.includes('booking.schedules.create')
@@ -168,6 +169,7 @@ export default function StaffSchedulesTable({
       qs.set('per_page', String(pageSize))
       if (filters.staff_id) qs.set('staff_id', filters.staff_id)
       if (filters.day_of_week) qs.set('day_of_week', filters.day_of_week)
+      if (filters.is_active) qs.set('is_active', filters.is_active)
 
       const res = await fetch(`/api/proxy/admin/booking/staff-schedules?${qs.toString()}`, {
         cache: 'no-store',
@@ -339,7 +341,7 @@ export default function StaffSchedulesTable({
   const allVisibleSelected =
     visibleRowIds.length > 0 && visibleRowIds.every((id) => selectedIds.has(id))
   const hasSelection = selectedIds.size > 0
-  const colCount = (showSelection ? 1 : 0) + (showActions ? 6 : 5)
+  const colCount = (showSelection ? 1 : 0) + (showActions ? 7 : 6)
 
   const totalPages = meta.last_page || 1
 
@@ -351,6 +353,7 @@ export default function StaffSchedulesTable({
   const filterLabels: Record<keyof StaffScheduleFilterValues, string> = {
     staff_id: 'Staff',
     day_of_week: 'Day of Week',
+    is_active: 'Status',
   }
 
   const renderFilterValue = (key: keyof StaffScheduleFilterValues, value: string) => {
@@ -371,7 +374,41 @@ export default function StaffSchedulesTable({
       const day = DAYS.find(d => String(d.value) === value)
       return day ? day.label : value
     }
+    if (key === 'is_active') {
+      return value === 'true' ? 'Active' : value === 'false' ? 'Inactive' : value
+    }
     return value
+  }
+
+  const handleToggleStatus = async (schedule: StaffScheduleRowData) => {
+    if (!canUpdate) return
+    setTogglingStatusId(schedule.id)
+    try {
+      const res = await fetch(`/api/proxy/admin/booking/staff-schedules/${schedule.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({ is_active: !schedule.is_active }),
+      })
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        window.alert(data?.message || 'Failed to update schedule status.')
+        return
+      }
+      const payload = data?.data as StaffScheduleApiItem | undefined
+      if (payload) {
+        handleScheduleUpdated(mapStaffScheduleApiItemToRow(payload, staffNameMap))
+      } else {
+        handleScheduleUpdated({ ...schedule, is_active: !schedule.is_active })
+      }
+    } catch (error) {
+      console.error(error)
+      window.alert('Failed to update schedule status.')
+    } finally {
+      setTogglingStatusId(null)
+    }
   }
 
   const handleScheduleCreated = (schedule: StaffScheduleRowData) => {
@@ -716,6 +753,7 @@ export default function StaffSchedulesTable({
                   { key: 'start_time', label: 'Start' },
                   { key: 'end_time', label: 'End' },
                   { key: 'break_start', label: 'Break' },
+                  { key: 'is_active', label: 'Status' },
                 ] as const
               ).map(({ key, label }) => (
                 <th
@@ -755,7 +793,9 @@ export default function StaffSchedulesTable({
                   canDelete={canDelete}
                   showSelection={showSelection}
                   isSelected={selectedIds.has(schedule.id)}
+                  togglingStatus={togglingStatusId === schedule.id}
                   onToggleSelect={handleToggleSelect}
+                  onToggleStatus={handleToggleStatus}
                   onEdit={() => {
                     if (canUpdate) {
                       setEditingScheduleId(schedule.id)

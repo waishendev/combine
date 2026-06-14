@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import TableEmptyState from '../TableEmptyState'
 import PaginationControls from '../PaginationControls'
 
-type ActionType = 'created' | 'approved' | 'rejected' | 'cancelled' | 'adjusted'
+type ActionType = 'created' | 'approved' | 'rejected' | 'cancelled' | 'adjusted' | 'updated'
 
 type LeaveLogRow = {
   id: number
@@ -35,6 +35,7 @@ const ACTION_LABEL: Record<ActionType, string> = {
   rejected: 'Rejected',
   cancelled: 'Cancelled',
   adjusted: 'Adjusted',
+  updated: 'Updated',
 }
 
 const ACTION_BADGE: Record<ActionType, string> = {
@@ -43,6 +44,7 @@ const ACTION_BADGE: Record<ActionType, string> = {
   rejected: 'bg-rose-100 text-rose-700',
   cancelled: 'bg-amber-100 text-amber-700',
   adjusted: 'bg-violet-100 text-violet-700',
+  updated: 'bg-indigo-100 text-indigo-700',
 }
 
 const readNumberField = (value: unknown, key: string): number | null => {

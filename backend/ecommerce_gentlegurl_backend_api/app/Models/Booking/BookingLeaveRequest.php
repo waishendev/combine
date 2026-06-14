@@ -41,6 +41,13 @@ class BookingLeaveRequest extends Model
         return $this->belongsTo(User::class, 'reviewed_by_user_id');
     }
 
+    public function creationLog()
+    {
+        return $this->hasOne(BookingLeaveLog::class, 'leave_request_id')
+            ->where('action_type', 'created')
+            ->latest('id');
+    }
+
     public function approvedTimeoff()
     {
         return $this->belongsTo(BookingStaffTimeoff::class, 'approved_timeoff_id');

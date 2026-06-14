@@ -8,6 +8,7 @@ export type StaffScheduleApiItem = {
   end_time?: string | null
   break_start?: string | null
   break_end?: string | null
+  is_active?: boolean | number | string | null
 }
 
 export type StaffOption = {
@@ -31,6 +32,13 @@ export const mapStaffScheduleApiItemToRow = (
 
   const staffName = staffNameMap.get(staffId) || `Staff #${staffId}`
 
+  const isActiveRaw = item.is_active
+  const is_active =
+    isActiveRaw === true ||
+    isActiveRaw === 1 ||
+    isActiveRaw === '1' ||
+    isActiveRaw === 'true'
+
   return {
     id: normalizedId,
     staff_id: staffId,
@@ -40,5 +48,6 @@ export const mapStaffScheduleApiItemToRow = (
     end_time: item.end_time ?? '',
     break_start: item.break_start ?? null,
     break_end: item.break_end ?? null,
+    is_active,
   }
 }

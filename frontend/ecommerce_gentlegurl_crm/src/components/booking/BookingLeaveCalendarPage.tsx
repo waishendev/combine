@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid' | 'off_day'
 type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
 
+type UserRef = { id: number; name: string }
+
 type LeaveRow = {
   id: number
   staff_id: number
@@ -13,7 +15,24 @@ type LeaveRow = {
   start_date: string
   end_date: string
   reason: string | null
+  status?: string
   staff?: { id: number; name: string }
+  reviewer?: UserRef | null
+  creation_log?: { creator?: UserRef | null } | null
+}
+
+type LeaveLogEntry = {
+  id: number
+  action_type: string
+  remark: string | null
+  created_at: string
+  before_value: unknown
+  after_value: unknown
+  creator?: UserRef | null
+}
+
+type BookingLeaveCalendarPageProps = {
+  permissions?: string[]
 }
 
 type StaffOption = { staff_id: number; staff_name: string }
@@ -32,6 +51,41 @@ const LEAVE_CLASS: Record<LeaveType, string> = {
   emergency: 'bg-rose-100 text-rose-700',
   unpaid: 'bg-violet-100 text-violet-700',
   off_day: 'bg-slate-200 text-slate-700',
+}
+
+const LEAVE_DOT_CLASS: Record<LeaveType, string> = {
+  annual: 'bg-blue-500',
+  mc: 'bg-orange-500',
+  emergency: 'bg-rose-500',
+  unpaid: 'bg-violet-500',
+  off_day: 'bg-slate-500',
+}
+
+const LEAVE_LABEL_SHORT: Record<LeaveType, string> = {
+  annual: 'AL',
+  mc: 'MC',
+  emergency: 'Emer',
+  unpaid: 'Unpaid',
+  off_day: 'Off',
+}
+
+const WEEKDAY_HEADERS: Array<{ short: string; full: string }> = [
+  { short: 'S', full: 'Sun' },
+  { short: 'M', full: 'Mon' },
+  { short: 'T', full: 'Tue' },
+  { short: 'W', full: 'Wed' },
+  { short: 'T', full: 'Thu' },
+  { short: 'F', full: 'Fri' },
+  { short: 'S', full: 'Sat' },
+]
+
+const formatCalendarLeaveLabel = (item: LeaveRow, compact = false): string => {
+  const base = compact ? LEAVE_LABEL_SHORT[item.leave_type] : LEAVE_LABEL[item.leave_type]
+  if (item.day_type === 'full_day') return base
+  if (compact) {
+    return item.day_type === 'half_day_am' ? `${base} AM` : `${base} PM`
+  }
+  return `${base} · ${DAY_TYPE_LABEL[item.day_type]}`
 }
 
 const DAY_TYPE_LABEL: Record<DayType, string> = {
@@ -80,8 +134,73 @@ const formatDateRange = (startDate: string, endDate: string): string => {
   return `${startKey} → ${endKey}`
 }
 
+const LOG_ACTION_LABEL: Record<string, string> = {
+  created: 'Created',
+  approved: 'Approved',
+  rejected: 'Rejected',
+  cancelled: 'Cancelled',
+  adjusted: 'Adjusted',
+  updated: 'Updated',
+}
 
-export default function BookingLeaveCalendarPage() {
+const resolveCreatedBy = (item: LeaveRow): string => {
+  if (item.reviewer?.name) return item.reviewer.name
+  if (item.creation_log?.creator?.name) return item.creation_log.creator.name
+  return '-'
+}
+
+const isSingleDayRange = (startDate: string, endDate: string): boolean => {
+  const startKey = toBusinessDateKey(startDate)
+  const endKey = toBusinessDateKey(endDate)
+  return Boolean(startKey && endKey && startKey === endKey)
+}
+
+const WEEKDAY_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+]
+
+const formatWeekdayLabel = (value: string): string => {
+  const parsed = parseYmdLocal(value)
+  if (!parsed) return '-'
+  return WEEKDAY_OPTIONS[parsed.getDay()]?.label ?? '-'
+}
+
+const readLogDate = (value: unknown, key: string): string | null => {
+  if (!value || typeof value !== 'object') return null
+  const raw = (value as Record<string, unknown>)[key]
+  if (typeof raw !== 'string') return null
+  return toBusinessDateKey(raw) ?? raw.slice(0, 10)
+}
+
+const formatLogChange = (log: LeaveLogEntry): string => {
+  const beforeStart = readLogDate(log.before_value, 'start_date')
+  const beforeEnd = readLogDate(log.before_value, 'end_date')
+  const afterStart = readLogDate(log.after_value, 'start_date')
+  const afterEnd = readLogDate(log.after_value, 'end_date')
+
+  if (beforeStart && afterStart && (beforeStart !== afterStart || beforeEnd !== afterEnd)) {
+    const beforeText = beforeStart === beforeEnd ? beforeStart : `${beforeStart} → ${beforeEnd}`
+    const afterText = afterStart === afterEnd ? afterStart : `${afterStart} → ${afterEnd}`
+    return `${beforeText} → ${afterText}`
+  }
+
+  return log.remark ?? LOG_ACTION_LABEL[log.action_type] ?? log.action_type
+}
+
+const canManageOffDay = (item: LeaveRow, canUpdate: boolean): boolean =>
+  canUpdate && item.leave_type === 'off_day' && (item.status ?? 'approved') === 'approved'
+
+const monthToTargetValue = (date: Date) =>
+  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+
+export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLeaveCalendarPageProps) {
+  const canUpdate = permissions.includes('booking.schedules.update')
   const now = new Date()
   const [month, setMonth] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
   const [staffFilter, setStaffFilter] = useState('')
@@ -91,7 +210,21 @@ export default function BookingLeaveCalendarPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [isOffDayModalOpen, setIsOffDayModalOpen] = useState(false)
+  const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
   const [offDayForm, setOffDayForm] = useState({ staff_id: '', start_date: '', end_date: '', reason: '' })
+  const [generateForm, setGenerateForm] = useState({
+    staff_id: '',
+    target_month: monthToTargetValue(now),
+    days_of_week: [] as number[],
+  })
+  const [isGenerating, setIsGenerating] = useState(false)
+  const [generateSummary, setGenerateSummary] = useState<string | null>(null)
+  const [editingOffDay, setEditingOffDay] = useState<LeaveRow | null>(null)
+  const [editOffDayForm, setEditOffDayForm] = useState({ start_date: '', end_date: '', reason: '' })
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
+  const [logsByRequestId, setLogsByRequestId] = useState<Record<number, LeaveLogEntry[]>>({})
+  const [logsLoadingId, setLogsLoadingId] = useState<number | null>(null)
+  const [expandedLogsId, setExpandedLogsId] = useState<number | null>(null)
 
   const loadStaffOptions = async () => {
     const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
@@ -123,6 +256,185 @@ export default function BookingLeaveCalendarPage() {
   const closeOffDayModal = () => {
     setError(null)
     setIsOffDayModalOpen(false)
+  }
+
+  const closeGenerateModal = () => {
+    setError(null)
+    setGenerateSummary(null)
+    setIsGenerateModalOpen(false)
+  }
+
+  const openGenerateModal = () => {
+    setError(null)
+    setGenerateSummary(null)
+    setGenerateForm({
+      staff_id: staffFilter || '',
+      target_month: monthToTargetValue(month),
+      days_of_week: [],
+    })
+    setIsGenerateModalOpen(true)
+  }
+
+  const generateOffDaysFromWeeklySchedule = async () => {
+    setError(null)
+    setGenerateSummary(null)
+
+    if (!generateForm.staff_id || !generateForm.target_month) {
+      setError('Please select staff and target month.')
+      return
+    }
+
+    if (generateForm.days_of_week.length === 0) {
+      setError('Please select at least one weekday.')
+      return
+    }
+
+    setIsGenerating(true)
+    try {
+      const res = await fetch('/api/proxy/admin/booking/off-days/generate-from-weekly-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: Number(generateForm.staff_id),
+          target_month: generateForm.target_month,
+          days_of_week: generateForm.days_of_week,
+        }),
+      })
+
+      const payload = await res.json().catch(() => ({})) as { message?: string }
+      if (!res.ok) {
+        setError(payload.message ?? 'Failed to generate off days.')
+        return
+      }
+
+      setGenerateSummary('Off days created successfully.')
+      await loadRows()
+    } catch {
+      setError('Failed to generate off days.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const loadOffDayLogs = async (leaveRequestId: number) => {
+    setLogsLoadingId(leaveRequestId)
+    try {
+      const qs = new URLSearchParams()
+      qs.set('leave_request_id', String(leaveRequestId))
+      qs.set('per_page', '20')
+      const res = await fetch(`/api/proxy/admin/booking/leave-logs?${qs.toString()}`, { cache: 'no-store' })
+      if (!res.ok) {
+        setLogsByRequestId((prev) => ({ ...prev, [leaveRequestId]: [] }))
+        return
+      }
+      const rows = extractArray<LeaveLogEntry>(await res.json().catch(() => ({})))
+      setLogsByRequestId((prev) => ({ ...prev, [leaveRequestId]: rows }))
+    } finally {
+      setLogsLoadingId(null)
+    }
+  }
+
+  const toggleOffDayLogs = async (leaveRequestId: number) => {
+    if (expandedLogsId === leaveRequestId) {
+      setExpandedLogsId(null)
+      return
+    }
+    setExpandedLogsId(leaveRequestId)
+    if (!logsByRequestId[leaveRequestId]) {
+      await loadOffDayLogs(leaveRequestId)
+    }
+  }
+
+  const openEditOffDay = (item: LeaveRow) => {
+    setError(null)
+    setEditingOffDay(item)
+    const startKey = toBusinessDateKey(item.start_date) ?? ''
+    const endKey = toBusinessDateKey(item.end_date) ?? startKey
+    setEditOffDayForm({
+      start_date: startKey,
+      end_date: endKey,
+      reason: item.reason ?? '',
+    })
+  }
+
+  const closeEditOffDay = () => {
+    setError(null)
+    setEditingOffDay(null)
+  }
+
+  const saveEditOffDay = async () => {
+    if (!editingOffDay) return
+    setError(null)
+
+    const startDate = editOffDayForm.start_date
+    const endDate = isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date)
+      ? startDate
+      : (editOffDayForm.end_date || startDate)
+
+    if (!startDate || !endDate) {
+      setError('Please select the new off day date(s).')
+      return
+    }
+
+    setActionLoadingId(editingOffDay.id)
+    try {
+      const res = await fetch(`/api/proxy/admin/booking/off-days/${editingOffDay.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          start_date: startDate,
+          end_date: endDate,
+          reason: editOffDayForm.reason || null,
+        }),
+      })
+      const payload = await res.json().catch(() => ({})) as { message?: string }
+      if (!res.ok) {
+        setError(payload.message ?? 'Failed to update off day.')
+        return
+      }
+
+      closeEditOffDay()
+      setExpandedLogsId(null)
+      setLogsByRequestId((prev) => {
+        const next = { ...prev }
+        delete next[editingOffDay.id]
+        return next
+      })
+      await loadRows()
+    } finally {
+      setActionLoadingId(null)
+    }
+  }
+
+  const cancelOffDay = async (item: LeaveRow) => {
+    if (!window.confirm(`Cancel off day for ${item.staff?.name ?? `Staff #${item.staff_id}`} on ${formatDateRange(item.start_date, item.end_date)}?`)) {
+      return
+    }
+
+    setError(null)
+    setActionLoadingId(item.id)
+    try {
+      const res = await fetch(`/api/proxy/admin/booking/off-days/${item.id}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      })
+      const payload = await res.json().catch(() => ({})) as { message?: string }
+      if (!res.ok) {
+        setError(payload.message ?? 'Failed to cancel off day.')
+        return
+      }
+
+      setExpandedLogsId(null)
+      setLogsByRequestId((prev) => {
+        const next = { ...prev }
+        delete next[item.id]
+        return next
+      })
+      await loadRows()
+    } finally {
+      setActionLoadingId(null)
+    }
   }
 
   const createOffDay = async () => {
@@ -290,6 +602,118 @@ export default function BookingLeaveCalendarPage() {
         </div>
       )}
 
+      {isGenerateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeGenerateModal}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+              <h2 className="text-lg font-semibold">Generate Monthly Off Days by Weekday</h2>
+              <button
+                onClick={closeGenerateModal}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                aria-label="Close"
+                type="button"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-slate-500">
+                Mark every selected weekday in the target month as off days for this staff.
+              </p>
+
+              {error && <p className="text-sm text-rose-600">{error}</p>}
+              {generateSummary && <p className="text-sm text-emerald-700">{generateSummary}</p>}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
+                  <select
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    value={generateForm.staff_id}
+                    onChange={(e) => setGenerateForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                    disabled={isGenerating}
+                  >
+                    <option value="">Select Staff</option>
+                    {staffOptions.map((row) => (
+                      <option key={row.staff_id} value={row.staff_id}>
+                        {row.staff_name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Target month</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    type="month"
+                    value={generateForm.target_month}
+                    onChange={(e) => setGenerateForm((prev) => ({ ...prev, target_month: e.target.value }))}
+                    disabled={isGenerating}
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Weekday(s)</label>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {WEEKDAY_OPTIONS.map((day) => {
+                      const checked = generateForm.days_of_week.includes(day.value)
+                      return (
+                        <label
+                          key={day.value}
+                          className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                            checked ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-300'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-gray-300 text-emerald-600"
+                            checked={checked}
+                            disabled={isGenerating}
+                            onChange={(e) => {
+                              setGenerateForm((prev) => ({
+                                ...prev,
+                                days_of_week: e.target.checked
+                                  ? [...prev.days_of_week, day.value].sort((a, b) => a - b)
+                                  : prev.days_of_week.filter((value) => value !== day.value),
+                              }))
+                            }}
+                          />
+                          <span>{day.label}</span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+                onClick={closeGenerateModal}
+                disabled={isGenerating}
+              >
+                {generateSummary ? 'Close' : 'Cancel'}
+              </button>
+              {!generateSummary && (
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                  onClick={generateOffDaysFromWeeklySchedule}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? 'Generating…' : 'Generate'}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-end gap-3">
           <button
@@ -299,6 +723,15 @@ export default function BookingLeaveCalendarPage() {
           >
             <i className="fa-solid fa-plus" />
             Create Off Days
+          </button>
+
+          <button
+            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+            onClick={openGenerateModal}
+            type="button"
+          >
+            <i className="fa-solid fa-calendar-week" />
+            Generate by Weekday
           </button>
 
           <div>
@@ -325,41 +758,86 @@ export default function BookingLeaveCalendarPage() {
         </div>
       </div>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-7 gap-2 text-xs font-medium text-slate-500">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => <div key={d} className="px-1 py-2 text-center">{d}</div>)}
+      <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm sm:p-4">
+        <div className="grid grid-cols-7 gap-0.5 text-[10px] font-medium text-slate-500 sm:gap-2 sm:text-xs">
+          {WEEKDAY_HEADERS.map((day) => (
+            <div key={day.full} className="px-0.5 py-1.5 text-center sm:px-1 sm:py-2">
+              <span className="sm:hidden">{day.short}</span>
+              <span className="hidden sm:inline">{day.full}</span>
+            </div>
+          ))}
         </div>
 
-        <div className="grid grid-cols-7 gap-2">
+        <div className="grid grid-cols-7 gap-0.5 sm:gap-2">
           {calendarDays.map((cell, idx) => {
-            if (!cell.date) return <div key={`empty-${idx}`} className="min-h-28 rounded border border-transparent" />
+            if (!cell.date) {
+              return <div key={`empty-${idx}`} className="min-h-[4.5rem] rounded border border-transparent sm:min-h-28" />
+            }
 
             const key = formatDate(cell.date)
             const items = leaveByDate.get(key) ?? []
+            const isSelected = selectedDate === key
 
             return (
               <button
                 key={key}
                 type="button"
                 onClick={() => setSelectedDate(key)}
-                className="min-h-28 rounded border border-slate-200 p-1 text-left hover:bg-slate-50"
+                className={`min-h-[4.5rem] overflow-hidden rounded border p-0.5 text-left transition sm:min-h-28 sm:p-1 ${
+                  isSelected
+                    ? 'border-blue-400 bg-blue-50/70 ring-2 ring-blue-300'
+                    : 'border-slate-200 hover:bg-slate-50'
+                }`}
               >
-                <div className="text-xs font-semibold text-slate-700">{cell.date.getDate()}</div>
-                <div className="mt-1 space-y-1">
+                <div className={`text-[10px] font-semibold sm:text-xs ${isSelected ? 'text-blue-800' : 'text-slate-700'}`}>
+                  {cell.date.getDate()}
+                </div>
+
+                {/* Mobile: dots + short summary */}
+                <div className="mt-1 sm:hidden">
+                  {items.length > 0 && (
+                    <>
+                      <div className="flex flex-wrap items-center gap-0.5">
+                        {items.slice(0, 4).map((item) => (
+                          <span
+                            key={`dot-${item.id}-${item.staff_id}`}
+                            className={`inline-block h-1.5 w-1.5 shrink-0 rounded-full ${LEAVE_DOT_CLASS[item.leave_type]}`}
+                            title={`${item.staff?.name ?? `Staff #${item.staff_id}`} · ${LEAVE_LABEL[item.leave_type]}`}
+                          />
+                        ))}
+                        {items.length > 4 && (
+                          <span className="text-[9px] leading-none text-slate-500">…</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 truncate text-[9px] leading-tight text-slate-600">
+                        {items.length === 1
+                          ? `${items[0].staff?.name ?? 'Staff'} · ${formatCalendarLeaveLabel(items[0], true)}`
+                          : `${items.length} records`}
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Desktop: compact cards with truncation */}
+                <div className="mt-1 hidden space-y-1 overflow-hidden sm:block">
                   {items.slice(0, 2).map((item) => (
-                    <div key={`${item.id}-${item.staff_id}`} className="rounded border border-slate-200 bg-white px-1.5 py-1">
+                    <div key={`${item.id}-${item.staff_id}`} className="overflow-hidden rounded border border-slate-200 bg-white px-1.5 py-1">
                       <div className="truncate text-[10px] font-semibold text-slate-900">
                         {item.staff?.name ?? `Staff #${item.staff_id}`}
                       </div>
-                      <div className="mt-0.5">
-                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium ${LEAVE_CLASS[item.leave_type]}`}>
-                          {LEAVE_LABEL[item.leave_type]}
-                          {item.day_type !== 'full_day' ? ` - ${DAY_TYPE_LABEL[item.day_type]}` : ''}
+                      <div className="mt-0.5 overflow-hidden">
+                        <span
+                          className={`block max-w-full truncate rounded-full px-2 py-0.5 text-[10px] font-medium ${LEAVE_CLASS[item.leave_type]}`}
+                          title={formatCalendarLeaveLabel(item)}
+                        >
+                          {formatCalendarLeaveLabel(item)}
                         </span>
                       </div>
                     </div>
                   ))}
-                  {items.length > 2 && <div className="text-[10px] text-slate-500">+{items.length - 2} more</div>}
+                  {items.length > 2 && (
+                    <div className="truncate text-[10px] text-slate-500">+{items.length - 2} more</div>
+                  )}
                 </div>
               </button>
             )
@@ -373,27 +851,219 @@ export default function BookingLeaveCalendarPage() {
             <h4 className="font-semibold">Details for {selectedDate}</h4>
           </div>
 
+          {error && <p className="mt-3 text-sm text-rose-600">{error}</p>}
+
           <div className="mt-3 space-y-3 text-sm">
             {selectedItems.length === 0 && <p className="text-slate-500">No leave records on this date.</p>}
-            {selectedItems.map((item) => (
-              <div key={`detail-${item.id}-${item.staff_id}`} className="rounded border border-slate-200 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div className="font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
-                  </div>
-                  <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${LEAVE_CLASS[item.leave_type]}`}>
-                    {LEAVE_LABEL[item.leave_type]}
-                    {item.day_type !== 'full_day' ? ` - ${DAY_TYPE_LABEL[item.day_type]}` : ''}
-                  </span>
-                </div>
+            {selectedItems.map((item) => {
+              const logs = logsByRequestId[item.id] ?? []
+              const showLogs = expandedLogsId === item.id
+              const manageable = canManageOffDay(item, canUpdate)
+              const isLoading = actionLoadingId === item.id
 
-                {item.reason && (
-                  <div className="mt-2 rounded bg-slate-50 py-2 text-xs text-slate-700">
-                    <span className="font-medium">Reason:</span> {item.reason}
+              return (
+                <div
+                  key={`detail-${item.id}-${item.staff_id}`}
+                  className={`overflow-hidden rounded-lg border ${
+                    manageable ? 'border-slate-200 bg-white shadow-sm' : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <div className="p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="font-semibold text-slate-900">{item.staff?.name ?? `Staff #${item.staff_id}`}</div>
+                        <div className="mt-1 text-xs text-slate-500">
+                          {formatDateRange(item.start_date, item.end_date)}
+                          {isSingleDayRange(item.start_date, item.end_date) ? ` · ${formatWeekdayLabel(item.start_date)}` : ''}
+                        </div>
+                        <div className="mt-1 text-xs text-slate-600">
+                          <span className="font-medium text-slate-500">Created by</span> {resolveCreatedBy(item)}
+                        </div>
+                      </div>
+                      <span className={`inline-flex shrink-0 items-center rounded-full px-3 py-1 text-xs font-medium ${LEAVE_CLASS[item.leave_type]}`}>
+                        {LEAVE_LABEL[item.leave_type]}
+                        {item.day_type !== 'full_day' ? ` · ${DAY_TYPE_LABEL[item.day_type]}` : ''}
+                      </span>
+                    </div>
+
+                    {item.reason && (
+                      <div className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-700">
+                        <span className="font-medium text-slate-500">Reason</span>
+                        <div className="mt-0.5">{item.reason}</div>
+                      </div>
+                    )}
                   </div>
-                )}
+
+                  {manageable && (
+                    <>
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 bg-slate-50/80 px-4 py-2.5">
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 transition hover:text-slate-900"
+                          onClick={() => void toggleOffDayLogs(item.id)}
+                        >
+                          <i className={`fa-solid ${showLogs ? 'fa-chevron-up' : 'fa-clock-rotate-left'} text-[11px]`} />
+                          {showLogs ? 'Hide activity log' : 'Activity log'}
+                        </button>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center gap-2 rounded-lg bg-blue-600 px-3.5 text-xs font-medium text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => openEditOffDay(item)}
+                            disabled={isLoading}
+                            title="Edit off day"
+                          >
+                            <i className="fa-solid fa-pen-to-square text-[11px]" />
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            className="inline-flex h-9 items-center gap-2 rounded-lg border border-rose-200 bg-white px-3.5 text-xs font-medium text-rose-700 shadow-sm transition hover:border-rose-300 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                            onClick={() => void cancelOffDay(item)}
+                            disabled={isLoading}
+                            title="Cancel off day"
+                          >
+                            <i className="fa-solid fa-ban text-[11px]" />
+                            {isLoading ? 'Working…' : 'Cancel'}
+                          </button>
+                        </div>
+                      </div>
+
+                      {showLogs && (
+                        <div className="space-y-2 border-t border-slate-100 bg-slate-50/50 px-4 py-3">
+                          {logsLoadingId === item.id && <p className="text-xs text-slate-500">Loading logs…</p>}
+                          {!logsLoadingId && logs.length === 0 && <p className="text-xs text-slate-500">No activity yet.</p>}
+                          {logs.map((log) => (
+                            <div key={log.id} className="rounded-md border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-700 shadow-sm">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 font-medium text-slate-700">
+                                  {LOG_ACTION_LABEL[log.action_type] ?? log.action_type}
+                                </span>
+                                <span className="text-slate-500">
+                                  {new Date(log.created_at).toLocaleString('en-MY', {
+                                    day: '2-digit',
+                                    month: 'short',
+                                    year: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit',
+                                  })}
+                                </span>
+                              </div>
+                              <div className="mt-1.5 text-slate-700">{formatLogChange(log)}</div>
+                              <div className="mt-1 text-slate-500">By {log.creator?.name ?? '-'}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
+      {editingOffDay && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeEditOffDay}>
+          <div className="absolute inset-0 bg-black/50" />
+          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+              <h2 className="text-lg font-semibold">Edit Off Day</h2>
+              <button
+                onClick={closeEditOffDay}
+                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+                aria-label="Close"
+                type="button"
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3">
+              <p className="text-xs text-slate-500">
+                Move this off day to another date. Pick a new date to change the weekday (e.g. Thursday → Tuesday).
+              </p>
+
+              {error && <p className="text-sm text-rose-600">{error}</p>}
+
+              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                <div className="font-medium text-slate-900">{editingOffDay.staff?.name ?? `Staff #${editingOffDay.staff_id}`}</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Current: {formatDateRange(editingOffDay.start_date, editingOffDay.end_date)}
+                  {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date)
+                    ? ` (${formatWeekdayLabel(editingOffDay.start_date)})`
+                    : ''}
+                </div>
               </div>
-            ))}
+
+              {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date) ? (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New date</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    type="date"
+                    value={editOffDayForm.start_date}
+                    onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value, end_date: e.target.value }))}
+                  />
+                  {editOffDayForm.start_date && (
+                    <p className="mt-1 text-xs text-slate-500">
+                      Weekday: {formatWeekdayLabel(editOffDayForm.start_date)}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">New start date</label>
+                    <input
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      type="date"
+                      value={editOffDayForm.start_date}
+                      onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">New end date</label>
+                    <input
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                      type="date"
+                      value={editOffDayForm.end_date}
+                      onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  value={editOffDayForm.reason}
+                  onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+                onClick={closeEditOffDay}
+                disabled={actionLoadingId === editingOffDay.id}
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                onClick={() => void saveEditOffDay()}
+                disabled={actionLoadingId === editingOffDay.id}
+              >
+                {actionLoadingId === editingOffDay.id ? 'Saving…' : 'Save'}
+              </button>
+            </div>
           </div>
         </div>
       )}

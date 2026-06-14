@@ -21,6 +21,7 @@ export interface StaffScheduleRowData {
   end_time: string
   break_start: string | null
   break_end: string | null
+  is_active: boolean
 }
 
 interface StaffScheduleRowProps {
@@ -30,9 +31,11 @@ interface StaffScheduleRowProps {
   canDelete?: boolean
   showSelection?: boolean
   isSelected?: boolean
+  togglingStatus?: boolean
   onToggleSelect?: (schedule: StaffScheduleRowData, checked: boolean) => void
   onEdit?: (schedule: StaffScheduleRowData) => void
   onDelete?: (schedule: StaffScheduleRowData) => void
+  onToggleStatus?: (schedule: StaffScheduleRowData) => void
 }
 
 const formatDay = (day: number): string => DAYS.find((d) => d.value === day)?.label ?? String(day)
@@ -44,13 +47,16 @@ export default function StaffScheduleRow({
   canDelete = false,
   showSelection = false,
   isSelected = false,
+  togglingStatus = false,
   onToggleSelect,
   onEdit,
   onDelete,
+  onToggleStatus,
 }: StaffScheduleRowProps) {
   const { t } = useI18n()
+  const rowClassName = schedule.is_active ? 'text-sm' : 'text-sm bg-slate-50 text-slate-500'
   return (
-    <tr className="text-sm">
+    <tr className={rowClassName}>
       {showSelection && (
         <td className="px-4 py-2 border border-gray-200">
           <input
@@ -68,6 +74,30 @@ export default function StaffScheduleRow({
       <td className="px-4 py-2 border border-gray-200">{schedule.end_time}</td>
       <td className="px-4 py-2 border border-gray-200">
         {schedule.break_start && schedule.break_end ? `${schedule.break_start} - ${schedule.break_end}` : '-'}
+      </td>
+      <td className="px-4 py-2 border border-gray-200">
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              schedule.is_active
+                ? 'bg-emerald-100 text-emerald-800'
+                : 'bg-slate-200 text-slate-700'
+            }`}
+          >
+            {schedule.is_active ? 'Active' : 'Inactive'}
+          </span>
+          {canUpdate && onToggleStatus ? (
+            <button
+              type="button"
+              className="text-xs text-blue-600 hover:text-blue-800 disabled:opacity-50"
+              onClick={() => onToggleStatus(schedule)}
+              disabled={togglingStatus}
+              title={schedule.is_active ? 'Set inactive for this day' : 'Set active for this day'}
+            >
+              {togglingStatus ? '…' : schedule.is_active ? 'Turn off' : 'Turn on'}
+            </button>
+          ) : null}
+        </div>
       </td>
       {showActions && (
         <td className="px-4 py-2 border border-gray-200">
