@@ -324,7 +324,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
           },
         ],
       },
-  
+
       // ======================
       // Reports
       // ======================
@@ -567,6 +567,12 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             label: 'Upload Logo',
             href: '/shop-logo',
             requiredPermission: 'ecommerce.settings.view',
+          },
+          {
+            key: 'landing-page-settings',
+            label: 'Landing Page',
+            href: '/landing-page',
+            requiredPermission: 'ecommerce.landing-page.view',
           },
 
         ],

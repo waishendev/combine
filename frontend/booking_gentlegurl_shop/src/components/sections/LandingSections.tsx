@@ -318,9 +318,20 @@ export function DynamicSections({ sections }: { sections: LandingSections }) {
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
               {(artistSection.items ?? []).map((artist, idx) => (
                 <div key={`artist-${blockIndex}-${idx}`} className="group flex flex-col gap-3">
-                  <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)]">
-                    <Image src={artist.src || "/images/dummy.webp"} alt={artist.caption || `Artist ${idx + 1}`} fill className="object-cover" sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw" />
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openLightbox(idx, artistSection.items ?? [])}
+                    className="relative aspect-[3/4] w-full cursor-zoom-in overflow-hidden rounded-xl border border-[var(--card-border)] bg-[var(--background-soft)] text-left transition hover:border-[var(--accent-strong)]/40"
+                    aria-label={`Zoom ${artist.caption || `artist ${idx + 1}`}`}
+                  >
+                    <Image
+                      src={artist.src || "/images/dummy.webp"}
+                      alt={artist.caption || `Artist ${idx + 1}`}
+                      fill
+                      className="object-cover transition duration-300 group-hover:scale-[1.02]"
+                      sizes="(min-width: 1280px) 240px, (min-width: 768px) 220px, 50vw"
+                    />
+                  </button>
                   {asDisplayText(artist.caption) ? (
                     <p className={`text-xs text-[var(--foreground)]/60 ${getTextAlignClass(artist.text_align)}`}>
                       {asDisplayText(artist.caption)}

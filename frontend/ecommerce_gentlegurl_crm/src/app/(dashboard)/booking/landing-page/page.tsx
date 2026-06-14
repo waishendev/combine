@@ -26,12 +26,12 @@ export default async function BookingLandingPageSettingsPage() {
         <span className="text-gray-500">Booking</span>
         <span className="mx-1">/</span>
         <Link href="/booking/landing-page" className="text-blue-600 hover:underline">
-          Landing Page
+          Booking Landing Page
         </Link>
         <span className="mx-1">/</span>
         <span className="text-gray-700">Edit</span>
       </div>
-      <h2 className="text-3xl font-semibold mb-2">Landing Page Editor</h2>
+      <h2 className="text-3xl font-semibold mb-2">Booking Landing Page Editor</h2>
       <p className="mb-6 text-sm text-gray-500">All changes remain local until you press Save All Changes.</p>
 
       <BookingLandingPageEditor canEdit={canUpdate} />

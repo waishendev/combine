@@ -151,6 +151,7 @@ Route::prefix('/public/shop')->group(function () {
     Route::get('/sliders', [PublicHomeSliderController::class, 'index']);
     Route::get('/homepage', [PublicHomepageController::class, 'show'])
         ->middleware('api.session');
+    Route::get('/landing-page', [\App\Http\Controllers\Ecommerce\LandingPageController::class, 'show']);
     Route::post('/homepage/flush-cache', [PublicHomepageController::class, 'flushCache']);
     Route::get('/loyalty/rewards', [PublicLoyaltyController::class, 'rewards'])
         ->middleware('api.session');
@@ -1036,6 +1037,11 @@ $protectedRoutes = function () {
 
         Route::post('/marquees/{marquee}/move-down', [MarqueeController::class, 'moveDown'])
             ->middleware('permission:ecommerce.marquees.update');
+
+        Route::get('/landing-page', [\App\Http\Controllers\Ecommerce\LandingPageController::class, 'adminShow'])
+            ->middleware('permission:ecommerce.landing-page.view');
+        Route::put('/landing-page', [\App\Http\Controllers\Ecommerce\LandingPageController::class, 'update'])
+            ->middleware('permission:ecommerce.landing-page.update');
 
         // Notification Templates
         // Route::get('/notification-templates', [NotificationTemplateController::class, 'index'])

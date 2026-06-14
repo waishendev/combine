@@ -1,10 +1,13 @@
 import AnnouncementModal from "@/components/home/AnnouncementModal";
 import Slider from "@/components/home/Slider";
+import EcommerceLandingHero from "@/components/landing/EcommerceLandingHero";
+import VisitStudioSection from "@/components/landing/VisitStudioSection";
 import ProductGrid from "@/components/products/ProductGrid";
+import { getEcommerceLandingPage } from "@/lib/server/getLandingVisitStudio";
 import { getHomepage } from "@/lib/server/getHomepage";
 
 export default async function HomePage() {
-  const data = await getHomepage();
+  const [data, landing] = await Promise.all([getHomepage(), getEcommerceLandingPage()]);
   if (!data) {
     return (
       <main className="p-6">
@@ -16,22 +19,39 @@ export default async function HomePage() {
     );
   }
 
+  const visitStudio =
+    landing?.visit_studio?.is_active ? landing.visit_studio : null;
+  const sliderIntro = landing?.slider_intro;
+  const hero = landing?.hero;
+  const sliderHeadline =
+    sliderIntro?.is_active && sliderIntro.headline?.trim()
+      ? sliderIntro.headline.trim()
+      : "Effortless silhouettes, luxe textures, everyday confidence.";
+
   return (
     <main className="bg-gradient-to-b from-transparent via-[var(--card)]/60 to-transparent pb-16">
       <div className="mx-auto max-w-6xl space-y-14 px-4 pt-8 sm:px-6 lg:px-8">
         {data.sliders && data.sliders.length > 0 && (
           <section className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="mt-2 text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
-                  Effortless silhouettes, luxe textures, everyday confidence.
-                </h1>
+            {sliderIntro?.is_active !== false ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="mt-2 text-3xl font-semibold leading-tight text-[var(--foreground)] sm:text-4xl">
+                    {sliderHeadline}
+                  </h1>
+                </div>
               </div>
-            </div>
+            ) : null}
 
             <Slider items={data.sliders} />
+
+            {hero ? <EcommerceLandingHero hero={hero} /> : null}
           </section>
         )}
+
+        {(!data.sliders || data.sliders.length === 0) && hero ? (
+          <EcommerceLandingHero hero={hero} />
+        ) : null}
 
         {data.announcements?.length > 0 && <AnnouncementModal items={data.announcements} />}
 
@@ -79,6 +99,8 @@ export default async function HomePage() {
             </div>
           </section>
         )}
+
+        {visitStudio ? <VisitStudioSection studio={visitStudio} /> : null}
       </div>
     </main>
   );
