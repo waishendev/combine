@@ -234,6 +234,33 @@ function collectProductSaveErrorMessages(payload: unknown, fallbackMessage: stri
   return collectApiErrorMessages(payload, { fallback: fallbackMessage })
 }
 
+function productFieldBorderClass(hasError: boolean, disabled = false) {
+  if (hasError) {
+    return disabled
+      ? 'border-red-500 bg-red-50/40'
+      : 'border-red-500 focus:border-red-500 focus:ring-red-500 bg-red-50/40'
+  }
+  return disabled
+    ? 'border-gray-300 disabled:bg-gray-100 disabled:text-gray-500'
+    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+}
+
+function focusFirstProductField(fieldKeys: string[]) {
+  if (fieldKeys.length === 0) return
+  const firstKey = fieldKeys[0]
+  const el = document.querySelector(`[data-field-key="${firstKey}"]`) as HTMLElement | null
+  if (!el) return
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  const focusable =
+    el instanceof HTMLInputElement ||
+    el instanceof HTMLSelectElement ||
+    el instanceof HTMLTextAreaElement ||
+    el instanceof HTMLButtonElement
+      ? el
+      : (el.querySelector('input, select, textarea, button') as HTMLElement | null)
+  focusable?.focus({ preventScroll: true })
+}
+
 /** Cost/stock on variant rows are only locked for rows that existed on load as a variant product (use stock adjustment). */
 const buildPersistedVariantCostStockLock = (
   mode: ProductFormMode,
@@ -556,6 +583,7 @@ export default function ProductForm({
   const [loadingCategories, setLoadingCategories] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [fieldErrors, setFieldErrors] = useState<Set<string>>(() => new Set())
   const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = useState(false)
   const [categorySearchQuery, setCategorySearchQuery] = useState('')
   const [isSeoMetadataOpen, setIsSeoMetadataOpen] = useState(false)
@@ -746,13 +774,85 @@ export default function ProductForm({
   }, [mode, product?.id, copyTemplate?.id])
 
   useEffect(() => {
-    if (!error) return
+    if (!error || fieldErrors.size > 0) return
     const el = productFormErrorAnchorRef.current
     if (!el) return
     requestAnimationFrame(() => {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
     })
-  }, [error])
+  }, [error, fieldErrors])
+
+  const clearFieldError = (fieldKey: string) => {
+    setFieldErrors((prev) => {
+      if (!prev.has(fieldKey)) return prev
+      const next = new Set(prev)
+      next.delete(fieldKey)
+      return next
+    })
+  }
+
+  const fieldHasError = (fieldKey: string) => fieldErrors.has(fieldKey)
+
+  const fieldInputClass = (fieldKey: string, extra = '') => {
+    const border = productFieldBorderClass(fieldHasError(fieldKey))
+    return `w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 transition-colors ${border} ${extra}`.trim()
+  }
+
+  const fieldPriceInputClass = (fieldKey: string, extra = '') => {
+    const border = productFieldBorderClass(fieldHasError(fieldKey))
+    return `w-full rounded-lg border pl-10 pr-3 py-2 text-sm focus:ring-2 transition-colors ${border} ${extra}`.trim()
+  }
+
+  const fieldSelectClass = (fieldKey: string, size: 'sm' | 'md' = 'md') => {
+    const border = productFieldBorderClass(fieldHasError(fieldKey))
+    if (size === 'sm') {
+      return `w-full rounded border px-3 py-2 text-xs focus:ring-2 transition-colors ${border}`.trim()
+    }
+    return fieldInputClass(fieldKey)
+  }
+
+  const showFieldValidationErrors = (message: string, fields: string[]) => {
+    setError(message)
+    setFieldErrors(new Set(fields))
+
+    if (fields.length === 0) {
+      requestAnimationFrame(() => {
+        productFormErrorAnchorRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+      return
+    }
+
+    const variantIndices = new Set<number>()
+    const bundleIndices = new Set<number>()
+    fields.forEach((key) => {
+      const variantMatch = key.match(/^variant-(\d+)-/)
+      if (variantMatch) variantIndices.add(Number(variantMatch[1]))
+      const bundleMatch = key.match(/^bundle-(\d+)-/)
+      if (bundleMatch) bundleIndices.add(Number(bundleMatch[1]))
+    })
+
+    if (variantIndices.size > 0) {
+      setCollapsedVariants((prev) => {
+        const next = [...prev]
+        variantIndices.forEach((index) => {
+          next[index] = false
+        })
+        return next
+      })
+    }
+
+    if (bundleIndices.size > 0) {
+      setCollapsedBundles((prev) => {
+        const next = [...prev]
+        bundleIndices.forEach((index) => {
+          next[index] = false
+        })
+        return next
+      })
+    }
+
+    window.setTimeout(() => focusFirstProductField(fields), 100)
+  }
 
   useEffect(() => {
     if (!rewardOnly) {
@@ -870,6 +970,7 @@ export default function ProductForm({
     const target = event.target
     const { name, value, type } = target
     const checked = 'checked' in target ? target.checked : false
+    if (name) clearFieldError(name)
     setForm((prev) => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
@@ -877,6 +978,7 @@ export default function ProductForm({
   }
 
   const handleCategoryToggle = (id: number) => {
+    clearFieldError('categoryIds')
     setForm((prev) => {
       const exists = prev.categoryIds.includes(id)
       const categoryIds = exists
@@ -887,6 +989,7 @@ export default function ProductForm({
   }
 
   const handleSelectAllCategories = () => {
+    clearFieldError('categoryIds')
     const filteredCategories = categorySearchQuery
       ? categories.filter((cat) =>
           cat.name.toLowerCase().includes(categorySearchQuery.toLowerCase())
@@ -918,6 +1021,7 @@ export default function ProductForm({
   }
 
   const handleClearAllCategories = () => {
+    clearFieldError('categoryIds')
     setForm((prev) => ({ ...prev, categoryIds: [] }))
   }
 
@@ -1634,6 +1738,11 @@ export default function ProductForm({
     event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = event.target
+    const rewardFieldMap: Record<string, string> = {
+      title: 'rewardTitle',
+      pointsRequired: 'rewardPoints',
+    }
+    if (name) clearFieldError(rewardFieldMap[name] ?? name)
     setRewardForm((prev) => ({
       ...prev,
       [name]: value,
@@ -1659,6 +1768,7 @@ export default function ProductForm({
     field: keyof VariantFormValue,
     value: string | boolean,
   ) => {
+    clearFieldError(`variant-${index}-${String(field)}`)
     setVariants((prev) =>
       prev.map((variant, idx) =>
         idx === index
@@ -1955,6 +2065,7 @@ export default function ProductForm({
     field: keyof BundleFormValue,
     value: string | boolean,
   ) => {
+    clearFieldError(`bundle-${index}-${String(field)}`)
     setBundles((prev) =>
       prev.map((bundle, idx) =>
         idx === index
@@ -1973,6 +2084,8 @@ export default function ProductForm({
     field: keyof BundleItemFormValue,
     value: string,
   ) => {
+    clearFieldError(`bundle-${bundleIndex}-item-${itemIndex}-${field === 'componentVariantId' ? 'component' : field}`)
+    clearFieldError(`bundle-${bundleIndex}-components`)
     setBundles((prev) =>
       prev.map((bundle, idx) => {
         if (idx !== bundleIndex) return bundle
@@ -2032,6 +2145,7 @@ export default function ProductForm({
   }
 
   const handleAddBundleItem = (bundleIndex: number) => {
+    clearFieldError(`bundle-${bundleIndex}-components`)
     setBundles((prev) =>
       prev.map((bundle, idx) => {
         if (idx !== bundleIndex) return bundle
@@ -2072,6 +2186,7 @@ export default function ProductForm({
     variant: VariantFormValue,
     checked: boolean,
   ) => {
+    clearFieldError(`bundle-${bundleIndex}-components`)
     const variantKey = getVariantKey(variant)
     if (!variantKey) return
 
@@ -2224,91 +2339,118 @@ export default function ProductForm({
     }
   }
 
+  const validateBeforeSubmit = (): { message: string; fields: string[] } | null => {
+    const fields: string[] = []
+    const resolvedType = rewardOnly ? 'single' : form.type
+
+    if (rewardOnly) {
+      if (!rewardForm.title.trim()) fields.push('rewardTitle')
+      const rewardPoints = Number.parseInt(rewardForm.pointsRequired, 10)
+      if (!Number.isFinite(rewardPoints)) fields.push('rewardPoints')
+    }
+
+    if (!form.name.trim()) fields.push('name')
+    if (!form.slug.trim()) fields.push('slug')
+    if (resolvedType !== 'variant' && !form.sku.trim()) fields.push('sku')
+    if (showCategories && form.categoryIds.length === 0) fields.push('categoryIds')
+
+    if (resolvedType !== 'variant' && !rewardOnly) {
+      const price = parsePriceValue(form.price)
+      if (price === null || form.price.trim() === '') fields.push('price')
+    }
+
+    if (resolvedType !== 'variant' && mode === 'create' && form.stock === '') {
+      fields.push('stock')
+    }
+
+    if (resolvedType === 'variant') {
+      if (variants.length === 0) {
+        return { message: 'Please add at least one variant.', fields: [] }
+      }
+
+      variants.forEach((variant, index) => {
+        if (!variant.name.trim()) fields.push(`variant-${index}-name`)
+        if (!variant.sku.trim()) fields.push(`variant-${index}-sku`)
+        if (!variant.price.trim()) fields.push(`variant-${index}-price`)
+        if (variant.trackStock) {
+          if (!isPersistedVariantCostStockLocked(variant) && variant.stock === '') {
+            fields.push(`variant-${index}-stock`)
+          }
+          if (variant.lowStockThreshold === '') {
+            fields.push(`variant-${index}-lowStockThreshold`)
+          }
+        }
+      })
+
+      bundles.forEach((bundle, index) => {
+        if (!bundle.name.trim()) fields.push(`bundle-${index}-name`)
+        if (!bundle.sku.trim()) fields.push(`bundle-${index}-sku`)
+        if (!bundle.price.trim()) fields.push(`bundle-${index}-price`)
+        if (bundle.bundleItems.length < 1) {
+          fields.push(`bundle-${index}-components`)
+        } else {
+          const componentKeys = new Set<string>()
+          bundle.bundleItems.forEach((item, itemIndex) => {
+            if (!item.componentVariantId && !item.componentSku) {
+              fields.push(`bundle-${index}-item-${itemIndex}-component`)
+            }
+            const quantityValue = Number.parseInt(item.quantity || '0', 10)
+            if (!Number.isFinite(quantityValue) || quantityValue < 1) {
+              fields.push(`bundle-${index}-item-${itemIndex}-quantity`)
+            }
+            const component = resolveComponentVariant(item, variants)
+            if (!component) return
+            const componentKey = component.id
+              ? `id:${component.id}`
+              : component.sku
+                ? `sku:${component.sku}`
+                : null
+            if (componentKey) {
+              if (componentKeys.has(componentKey)) {
+                fields.push(`bundle-${index}-item-${itemIndex}-component`)
+              }
+              componentKeys.add(componentKey)
+            }
+            if (component.sku === bundle.sku) {
+              fields.push(`bundle-${index}-sku`)
+            }
+          })
+        }
+      })
+    }
+
+    if (fields.length === 0) return null
+
+    let message = t('common.allFieldsRequired')
+    if (resolvedType === 'variant') {
+      const hasVariantField = fields.some((field) => field.startsWith('variant-'))
+      const hasBundleField = fields.some((field) => field.startsWith('bundle-'))
+      if (hasVariantField && !hasBundleField) {
+        message = 'Please complete all required variant fields before saving.'
+      } else if (hasBundleField) {
+        message = 'Please complete all required bundle fields before saving.'
+      }
+    }
+
+    return { message, fields }
+  }
+
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     setSubmitting(true)
     setError(null)
+    setFieldErrors(new Set())
 
-    const rewardTitle = rewardForm.title.trim()
-    const rewardPoints = Number.parseInt(rewardForm.pointsRequired, 10)
-
-    if (rewardOnly) {
-      if (!rewardTitle || !Number.isFinite(rewardPoints)) {
-        setError(t('common.allFieldsRequired'))
-        setSubmitting(false)
-        return
-      }
-    }
-
-    const resolvedType = rewardOnly ? 'single' : form.type
-
-    if (resolvedType === 'variant' && variants.length === 0) {
-      setError('Please add at least one variant.')
+    const validation = validateBeforeSubmit()
+    if (validation) {
+      showFieldValidationErrors(validation.message, validation.fields)
       setSubmitting(false)
       return
     }
 
-    if (resolvedType === 'variant') {
-      const invalidVariant = variants.find((variant) => {
-        if (!variant.name.trim() || !variant.sku.trim() || !variant.price) {
-          return true
-        }
-        if (variant.trackStock) {
-          return variant.stock === '' || variant.lowStockThreshold === ''
-        }
-        return false
-      })
-
-      if (invalidVariant) {
-        setError('Please complete all required variant fields before saving.')
-        setSubmitting(false)
-        return
-      }
-
-      const invalidBundle = bundles.find((bundle) => {
-        if (!bundle.name.trim() || !bundle.sku.trim() || !bundle.price) {
-          return true
-        }
-        if (bundle.bundleItems.length < 1) {
-          return true
-        }
-        const componentKeys = new Set<string>()
-        for (const item of bundle.bundleItems) {
-          if (!item.componentVariantId && !item.componentSku) {
-            return true
-          }
-          const quantityValue = Number.parseInt(item.quantity || '0', 10)
-          if (!Number.isFinite(quantityValue) || quantityValue < 1) {
-            return true
-          }
-          const component = resolveComponentVariant(item, variants)
-          if (!component) {
-            return true
-          }
-          const componentKey = component.id
-            ? `id:${component.id}`
-            : component.sku
-              ? `sku:${component.sku}`
-              : null
-          if (componentKey) {
-            if (componentKeys.has(componentKey)) {
-              return true
-            }
-            componentKeys.add(componentKey)
-          }
-          if (component.sku === bundle.sku) {
-            return true
-          }
-        }
-        return false
-      })
-
-      if (invalidBundle) {
-        setError('Please complete all required bundle fields before saving.')
-        setSubmitting(false)
-        return
-      }
-    }
+    const rewardTitle = rewardForm.title.trim()
+    const rewardPoints = Number.parseInt(rewardForm.pointsRequired, 10)
+    const resolvedType = rewardOnly ? 'single' : form.type
 
     if (form.metaOgImageFile) {
       if (
@@ -2607,7 +2749,7 @@ export default function ProductForm({
   )
 
   return (
-    <form className="p-6 space-y-6" onSubmit={handleSubmit}>
+    <form className="p-6 space-y-6" onSubmit={handleSubmit} noValidate>
       <div ref={productFormErrorAnchorRef} tabIndex={-1} className="outline-none scroll-mt-6">
         <ErrorBox error={error} />
       </div>
@@ -2645,7 +2787,8 @@ export default function ProductForm({
                 type="text"
                 value={rewardForm.title}
                 onChange={handleRewardChange}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                data-field-key="rewardTitle"
+                className={fieldInputClass('rewardTitle')}
                 placeholder="Reward title"
               />
             </div>
@@ -2680,7 +2823,8 @@ export default function ProductForm({
                 min="1"
                 value={rewardForm.pointsRequired}
                 onChange={handleRewardChange}
-                className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                data-field-key="rewardPoints"
+                className={fieldInputClass('rewardPoints')}
                 placeholder="0"
               />
             </div>
@@ -3208,8 +3352,8 @@ export default function ProductForm({
                   name="name"
                   value={form.name}
                   onChange={handleChange}
-                  required
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  data-field-key="name"
+                  className={fieldInputClass('name')}
                   placeholder={t('product.namePlaceholder')}
                 />
               </div>
@@ -3222,8 +3366,8 @@ export default function ProductForm({
                   name="slug"
                   value={form.slug}
                   onChange={handleChange}
-                  required
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  data-field-key="slug"
+                  className={fieldInputClass('slug')}
                   placeholder={t('product.slugPlaceholder')}
                 />
               </div>
@@ -3237,8 +3381,8 @@ export default function ProductForm({
                   name="sku"
                   value={form.sku}
                   onChange={handleChange}
-                  required={form.type !== 'variant'}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  data-field-key="sku"
+                  className={fieldInputClass('sku')}
                   placeholder={t('product.skuPlaceholder')}
                 />
               </div>
@@ -3303,6 +3447,7 @@ export default function ProductForm({
                     <div className="relative">
                       <button
                         type="button"
+                        data-field-key="categoryIds"
                         onClick={() => {
                           setIsCategoryDropdownOpen(!isCategoryDropdownOpen)
                           if (!isCategoryDropdownOpen) {
@@ -3314,7 +3459,7 @@ export default function ProductForm({
                             setCategorySearchQuery('')
                           }
                         }}
-                        className="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-left bg-white hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md pr-10"
+                        className={`w-full rounded-lg border px-4 py-2.5 text-sm text-left bg-white hover:bg-gray-50 focus:ring-2 transition-all duration-200 flex items-center justify-between shadow-sm hover:shadow-md pr-10 ${productFieldBorderClass(fieldHasError('categoryIds'))}`}
                       >
                         <div className="flex items-center gap-2 flex-1 min-w-0">
                           {form.categoryIds.length === 0 ? (
@@ -3547,7 +3692,8 @@ export default function ProductForm({
                         step="0.01"
                         value={form.price}
                         onChange={handleChange}
-                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        data-field-key="price"
+                        className={fieldPriceInputClass('price')}
                         placeholder="0.00"
                       />
                     </div>
@@ -3654,8 +3800,9 @@ export default function ProductForm({
                   type="number"
                   value={form.stock}
                   onChange={handleChange}
+                  data-field-key="stock"
                   disabled={mode === 'edit'}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+                  className={fieldInputClass('stock', mode === 'edit' ? 'disabled:bg-gray-100 disabled:text-gray-500' : '')}
                   placeholder="0"
                 />
                 {mode === 'edit' && (
@@ -3958,7 +4105,8 @@ export default function ProductForm({
                     <input
                       value={variant.name}
                       onChange={(event) => handleVariantChange(index, 'name', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      data-field-key={`variant-${index}-name`}
+                      className={fieldInputClass(`variant-${index}-name`)}
                       placeholder="200ml"
                     />
                   </div>
@@ -3967,7 +4115,8 @@ export default function ProductForm({
                     <input
                       value={variant.sku}
                       onChange={(event) => handleVariantChange(index, 'sku', event.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      data-field-key={`variant-${index}-sku`}
+                      className={fieldInputClass(`variant-${index}-sku`)}
                       placeholder="SKU-200ML"
                     />
                   </div>
@@ -3989,7 +4138,8 @@ export default function ProductForm({
                         step="0.01"
                         value={variant.price}
                         onChange={(event) => handleVariantChange(index, 'price', event.target.value)}
-                        className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                        data-field-key={`variant-${index}-price`}
+                        className={fieldPriceInputClass(`variant-${index}-price`)}
                         placeholder="0.00"
                       />
                     </div>
@@ -4082,8 +4232,14 @@ export default function ProductForm({
                           type="number"
                           value={variant.stock}
                           onChange={(event) => handleVariantChange(index, 'stock', event.target.value)}
+                          data-field-key={`variant-${index}-stock`}
                           disabled={isPersistedVariantCostStockLocked(variant)}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors disabled:bg-gray-100 disabled:text-gray-500"
+                          className={fieldInputClass(
+                            `variant-${index}-stock`,
+                            isPersistedVariantCostStockLocked(variant)
+                              ? 'disabled:bg-gray-100 disabled:text-gray-500'
+                              : '',
+                          )}
                           placeholder="0"
                         />
                         {isPersistedVariantCostStockLocked(variant) && (
@@ -4096,7 +4252,8 @@ export default function ProductForm({
                           type="number"
                           value={variant.lowStockThreshold}
                           onChange={(event) => handleVariantChange(index, 'lowStockThreshold', event.target.value)}
-                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                          data-field-key={`variant-${index}-lowStockThreshold`}
+                          className={fieldInputClass(`variant-${index}-lowStockThreshold`)}
                           placeholder="0"
                         />
                       </div>
@@ -4447,7 +4604,8 @@ export default function ProductForm({
                             onChange={(event) =>
                               handleBundleChange(index, 'name', event.target.value)
                             }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            data-field-key={`bundle-${index}-name`}
+                            className={fieldInputClass(`bundle-${index}-name`)}
                             placeholder="200ml + 300ml Set"
                           />
                         </div>
@@ -4458,7 +4616,8 @@ export default function ProductForm({
                             onChange={(event) =>
                               handleBundleChange(index, 'sku', event.target.value)
                             }
-                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            data-field-key={`bundle-${index}-sku`}
+                            className={fieldInputClass(`bundle-${index}-sku`)}
                             placeholder="SKU-BUNDLE-01"
                           />
                         </div>
@@ -4486,7 +4645,8 @@ export default function ProductForm({
                               onChange={(event) =>
                                 handleBundleChange(index, 'price', event.target.value)
                               }
-                              className="w-full rounded-lg border border-gray-300 pl-10 pr-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                              data-field-key={`bundle-${index}-price`}
+                              className={fieldPriceInputClass(`bundle-${index}-price`)}
                               placeholder="0.00"
                             />
                           </div>
@@ -4599,7 +4759,10 @@ export default function ProductForm({
                       </div>
                     </div>
 
-                    <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                    <div
+                      className={`space-y-3 rounded-lg border bg-gray-50 p-4 ${fieldHasError(`bundle-${index}-components`) ? 'border-red-500 bg-red-50/30' : 'border-gray-200'}`}
+                      data-field-key={`bundle-${index}-components`}
+                    >
                       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                         <div>
                           <p className="text-sm font-semibold text-gray-900">Bundle Components</p>
@@ -4699,7 +4862,8 @@ export default function ProductForm({
                                       event.target.value,
                                     )
                                   }
-                                  className="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                  data-field-key={`bundle-${index}-item-${itemIndex}-component`}
+                                  className={fieldSelectClass(`bundle-${index}-item-${itemIndex}-component`, 'sm')}
                                 >
                                   <option value="">Select component</option>
                                   {variants.map((option) => {
@@ -4736,7 +4900,8 @@ export default function ProductForm({
                                         event.target.value,
                                       )
                                     }
-                                    className="w-full rounded border border-gray-300 px-3 py-2 text-xs focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                    data-field-key={`bundle-${index}-item-${itemIndex}-quantity`}
+                                    className={fieldSelectClass(`bundle-${index}-item-${itemIndex}-quantity`, 'sm')}
                                   />
                                   <button
                                     type="button"
