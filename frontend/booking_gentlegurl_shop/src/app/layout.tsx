@@ -9,7 +9,10 @@ import { Footer } from "@/components/layout/Footer";
 import { WhatsappButton } from "@/components/layout/WhatsappButton";
 import CursorTrail from "@/components/visual/CursorTrail";
 import { getBookingHomepage } from "@/lib/serverHomepage";
+import { getUser } from "@/lib/server/getUser";
 import { buildMetadataIcons } from "@/lib/pwaIcons";
+
+export const dynamic = "force-dynamic";
 
 const heading = Playfair_Display({ subsets: ["latin"], variable: "--font-heading" });
 const body = Inter({ subsets: ["latin"], variable: "--font-body" });
@@ -53,7 +56,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const homepage = await getBookingHomepage();
+  const [homepage, initialUser] = await Promise.all([getBookingHomepage(), getUser()]);
   
   // Prioritize NEXT_PUBLIC_COLOR to avoid system env variable override
   // System env variables can override .env.local, but NEXT_PUBLIC_* vars are handled differently
@@ -74,7 +77,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         )}
       </head>
       <body data-theme={theme} className={`${heading.variable} ${body.variable} antialiased`}>
-        <Providers>
+        <Providers initialUser={initialUser}>
           <CursorTrail />
           {homepage?.marquees && homepage.marquees.length > 0 && <Marquee items={homepage.marquees} />}
           <Header logoUrl={homepage?.shop_logo_url ?? null} />

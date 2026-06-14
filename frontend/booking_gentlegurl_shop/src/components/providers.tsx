@@ -1,22 +1,15 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
-import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ReactNode } from "react";
+import { AuthProvider } from "@/contexts/AuthContext";
+import type { AuthUser } from "@/lib/types";
 
-function AuthBootstrap({ children }: { children: ReactNode }) {
-  const { refresh } = useAuth();
-
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
-
-  return <>{children}</>;
-}
-
-export function Providers({ children }: { children: ReactNode }) {
-  return (
-    <AuthProvider>
-      <AuthBootstrap>{children}</AuthBootstrap>
-    </AuthProvider>
-  );
+export function Providers({
+  children,
+  initialUser,
+}: {
+  children: ReactNode;
+  initialUser?: AuthUser | null;
+}) {
+  return <AuthProvider initialUser={initialUser}>{children}</AuthProvider>;
 }

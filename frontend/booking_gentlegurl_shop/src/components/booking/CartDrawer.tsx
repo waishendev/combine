@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
+import { useAuth } from "@/contexts/AuthContext";
 import { normalizeInternationalPhone } from "@/lib/phone";
 import {
   checkoutCart,
@@ -12,7 +13,6 @@ import {
   getBookingDepositTncSettings,
   getBookingPaymentGateways,
   getBillplzPaymentGatewayOptions,
-  getMe,
   getServicePackageAvailableFor,
   payBooking,
   payPublicOrder,
@@ -68,6 +68,7 @@ interface CartDrawerProps {
 
 export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const router = useRouter();
+  const { user } = useAuth();
   const [cart, setCart] = useState<BookingCart | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -112,25 +113,18 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       queueMicrotask(() => {
         void loadCart();
       });
-      getMe()
-        .then((me) => {
-          if (!me) {
-            setIsLoggedIn(false);
-            setCustomerId(null);
-            return;
-          }
-          setIsLoggedIn(true);
-          setCustomerId(me.id);
-          setAllowNoDepositBooking(Boolean(me.allow_booking_without_deposit));
-          setGuestName((prev) => prev || me.name || "");
-          setGuestPhone((prev) => prev || me.phone || "");
-          setGuestEmail((prev) => prev || me.email || "");
-        })
-        .catch(() => {
-          setIsLoggedIn(false);
-          setCustomerId(null);
-          setAllowNoDepositBooking(false);
-        });
+      if (user) {
+        setIsLoggedIn(true);
+        setCustomerId(user.id);
+        setAllowNoDepositBooking(Boolean(user.allow_booking_without_deposit));
+        setGuestName((prev) => prev || user.name || "");
+        setGuestPhone((prev) => prev || user.phone || "");
+        setGuestEmail((prev) => prev || user.email || "");
+      } else {
+        setIsLoggedIn(false);
+        setCustomerId(null);
+        setAllowNoDepositBooking(false);
+      }
 
       Promise.all([
         getBookingPaymentGateways(),
@@ -174,7 +168,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           setDepositTncImage(null);
         });
     }
-  }, [isOpen, loadCart]);
+  }, [isOpen, loadCart, user]);
 
   useEffect(() => {
     if (!isOpen) setDepositTncImagePreviewOpen(false);

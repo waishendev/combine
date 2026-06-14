@@ -423,13 +423,34 @@ export async function registerCustomer(payload: {
 }
 
 export async function getMe(): Promise<AuthUser | undefined> {
-  const response = await request<{ data: AuthUser } | AuthUser>("/public/shop/account/overview");
-  const data = unwrapData<AuthUser | { profile?: AuthUser }>(response);
-  if (!data || typeof data !== "object") return undefined;
-  if ("profile" in data) {
-    return data.profile;
+  try {
+    const response = await fetch(`${API_PREFIX}/public/shop/account/overview`, {
+      headers: {
+        Accept: "application/json",
+        "X-Workspace": "booking",
+      },
+      credentials: "include",
+      cache: "no-store",
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      return undefined;
+    }
+
+    if (!response.ok) {
+      return undefined;
+    }
+
+    const payload = await response.json().catch(() => null);
+    const data = unwrapData<AuthUser | { profile?: AuthUser }>(payload ?? {});
+    if (!data || typeof data !== "object") return undefined;
+    if ("profile" in data) {
+      return data.profile;
+    }
+    return data as AuthUser;
+  } catch {
+    return undefined;
   }
-  return data as AuthUser;
 }
 
 export async function logoutCustomer() {
