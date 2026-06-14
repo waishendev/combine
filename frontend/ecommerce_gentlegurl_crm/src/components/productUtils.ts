@@ -68,6 +68,7 @@ export type ProductApiVideo = {
 export type ProductApiItem = {
   id: number | string
   name?: string | null
+  cn_name?: string | null
   slug?: string | null
   sku?: string | null
   barcode?: string | null
@@ -104,6 +105,7 @@ export type ProductApiItem = {
     id?: number | string | null
     name?: string | null
     title?: string | null
+    cn_name?: string | null
     sku?: string | null
     barcode?: string | null
     price?: string | number | null
@@ -208,6 +210,7 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
           ? variant.id
           : Number(variant.id) || 0,
       name: variant.title ?? variant.name ?? '',
+      cnName: typeof variant.cn_name === 'string' ? variant.cn_name : '',
       sku: variant.sku ?? '',
       barcode: variant.barcode ?? null,
       price:
@@ -305,6 +308,7 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
   return {
     id: normalizedId,
     name: item.name ?? '-',
+    cnName: typeof item.cn_name === 'string' ? item.cn_name : '',
     slug: item.slug ?? '-',
     sku: item.sku ?? '-',
     barcode: item.barcode ?? null,

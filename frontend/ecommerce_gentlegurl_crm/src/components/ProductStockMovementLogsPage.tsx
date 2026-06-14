@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import { NameStack, VariantNameStack } from './NameStack'
 
 type ProductOption = {
   id: number
@@ -47,11 +48,13 @@ type MovementRow = {
   product?: {
     id: number
     name: string
+    cn_name?: string | null
     sku?: string | null
   } | null
   variant?: {
     id: number
     title?: string | null
+    cn_name?: string | null
     sku?: string | null
     is_bundle?: boolean
   } | null
@@ -486,12 +489,12 @@ export default function ProductStockMovementLogsPage({
                       {toDateTime(row.created_at)}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <p className="font-medium text-gray-900">{row.product?.name ?? '-'}</p>
-                      <p className="text-xs text-gray-500">{row.product?.sku ?? '-'}</p>
+                      <NameStack name={row.product?.name} cnName={row.product?.cn_name} fallback="-" />
+                      <p className="mt-0.5 text-xs text-gray-500">{row.product?.sku ?? '-'}</p>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <p>{row.variant?.title ?? '-'}</p>
-                      <p className="text-xs text-gray-500">{row.variant?.sku ?? '-'}</p>
+                      <VariantNameStack name={row.variant?.title} cnName={row.variant?.cn_name} fallback="-" />
+                      <p className="mt-0.5 text-xs text-gray-500">{row.variant?.sku ?? '-'}</p>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       <div className="flex flex-wrap gap-1">
@@ -603,10 +606,18 @@ export default function ProductStockMovementLogsPage({
               </div>
 
               <div className="rounded-lg border border-gray-200 p-3">
-                <p><span className="font-semibold">Product:</span> {viewTarget.product?.name ?? '-'}</p>
-                <p><span className="font-semibold">Product SKU:</span> {viewTarget.product?.sku ?? '-'}</p>
-                <p><span className="font-semibold">Variant:</span> {viewTarget.variant?.title ?? '-'}</p>
-                <p><span className="font-semibold">Variant SKU:</span> {viewTarget.variant?.sku ?? '-'}</p>
+                <p className="font-semibold">Product:</p>
+                <NameStack name={viewTarget.product?.name} cnName={viewTarget.product?.cn_name} fallback="-" />
+                <p className="mt-2"><span className="font-semibold">Product SKU:</span> {viewTarget.product?.sku ?? '-'}</p>
+                <p className="mt-2 font-semibold">Variant:</p>
+                <VariantNameStack
+                  name={viewTarget.variant?.title}
+                  cnName={viewTarget.variant?.cn_name}
+                  nameClassName="text-sm text-gray-900"
+                  labelClassName="hidden"
+                  fallback="-"
+                />
+                <p className="mt-2"><span className="font-semibold">Variant SKU:</span> {viewTarget.variant?.sku ?? '-'}</p>
               </div>
 
               <div className="rounded-lg border border-gray-200 p-3">
@@ -670,9 +681,17 @@ export default function ProductStockMovementLogsPage({
                 <p><span className="font-semibold">Movement:</span> #{revokeTarget.id}</p>
                 <p><span className="font-semibold">Date / Time:</span> {toDateTime(revokeTarget.created_at)}</p>
                 <p><span className="font-semibold">Type:</span> {movementTypeLabel(revokeTarget.type)}</p>
-                <p><span className="font-semibold">Product:</span> {revokeTarget.product?.name ?? '-'}</p>
-                <p><span className="font-semibold">Variant:</span> {revokeTarget.variant?.title ?? '-'}</p>
-                <p><span className="font-semibold">Quantity Change:</span> {revokeTarget.quantity_change}</p>
+                <p className="font-semibold">Product:</p>
+                <NameStack name={revokeTarget.product?.name} cnName={revokeTarget.product?.cn_name} fallback="-" />
+                <p className="mt-2 font-semibold">Variant:</p>
+                <VariantNameStack
+                  name={revokeTarget.variant?.title}
+                  cnName={revokeTarget.variant?.cn_name}
+                  nameClassName="text-sm text-gray-900"
+                  labelClassName="hidden"
+                  fallback="-"
+                />
+                <p className="mt-2"><span className="font-semibold">Quantity Change:</span> {revokeTarget.quantity_change}</p>
                 <p><span className="font-semibold">Input Cost / Unit:</span> {revokeTarget.input_cost_price_per_unit === null ? '-' : toCurrency(revokeTarget.input_cost_price_per_unit)}</p>
               </div>
 

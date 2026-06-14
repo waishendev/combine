@@ -344,6 +344,11 @@ export type PublicAccountOrder = {
     line_total?: number | null;
     booking_id?: number | null;
     service_package_id?: number | null;
+    product_type?: string | null;
+    product_variant_id?: number | null;
+    variant_name?: string | null;
+    variant_cn_name?: string | null;
+    variant_sku?: string | null;
     selected_booking_product_options?: Array<{ options?: Array<{ id?: number; label?: string | null; cn_label?: string | null; extra_price?: number | string | null }> }>;
   }>;
 };

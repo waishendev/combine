@@ -69,6 +69,7 @@ class ReturnRequestController extends Controller
             'order',
             'customer',
             'items.orderItem.product.images',
+            'items.orderItem.productVariant',
         ]);
 
         return $this->respond([
@@ -111,7 +112,9 @@ class ReturnRequestController extends Controller
                     'product_type' => $productType,
                     'is_variant_product' => $productType === 'variant',
                     'product_name' => $orderItem?->product_name_snapshot ?? $orderItem?->product?->name,
+                    'product_cn_name' => ($productCn = trim((string) ($orderItem?->product?->cn_name ?? ''))) !== '' ? $productCn : null,
                     'variant_name' => $orderItem?->variant_name_snapshot,
+                    'variant_cn_name' => $orderItem?->displayVariantCnName(),
                     'variant_sku' => $orderItem?->variant_sku_snapshot,
                     'quantity' => $item->quantity,
                     'unit_price' => $orderItem?->price_snapshot,

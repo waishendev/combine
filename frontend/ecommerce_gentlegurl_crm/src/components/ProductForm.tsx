@@ -35,6 +35,7 @@ type PendingVideoUpload = {
 type VariantFormValue = {
   id?: number
   name: string
+  cnName: string
   sku: string
   barcode: string
   price: string
@@ -67,6 +68,7 @@ type BundleFormValue = VariantFormValue
 
 type ProductFormValues = {
   name: string
+  cnName: string
   slug: string
   sku: string
   barcode: string
@@ -94,6 +96,7 @@ type ProductFormValues = {
 
 const emptyForm: ProductFormValues = {
   name: '',
+  cnName: '',
   slug: '',
   sku: '',
   barcode: '',
@@ -121,6 +124,7 @@ const emptyForm: ProductFormValues = {
 
 const emptyVariant = (sortOrder = 0): VariantFormValue => ({
   name: '',
+  cnName: '',
   sku: '',
   barcode: '',
   price: '',
@@ -415,6 +419,7 @@ export default function ProductForm({
     if (seed) {
       return {
         name: seed.name,
+        cnName: seed.cnName ?? '',
         slug: seed.slug,
         sku: seed.sku,
         barcode: seed.barcode ?? '',
@@ -479,6 +484,7 @@ export default function ProductForm({
       .map((variant, index) => ({
         id: copy ? undefined : variant.id,
         name: variant.name ?? '',
+        cnName: variant.cnName ?? '',
         sku: variant.sku ?? '',
         barcode: variant.barcode ?? '',
         price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
@@ -540,6 +546,7 @@ export default function ProductForm({
         return {
           id: copy ? undefined : variant.id,
           name: variant.name ?? '',
+          cnName: variant.cnName ?? '',
           sku: variant.sku ?? '',
           barcode: variant.barcode ?? '',
           price: variant.price !== null && variant.price !== undefined ? String(variant.price) : '',
@@ -2486,6 +2493,7 @@ export default function ProductForm({
     const resolvedPrice =
       resolvedType === 'variant' ? '1' : rewardOnly ? '1' : form.price || '0'
     formData.append('name', form.name.trim())
+    formData.append('cn_name', form.cnName.trim())
     formData.append('slug', form.slug.trim())
     formData.append('sku', form.sku.trim())
     formData.append('barcode', form.barcode.trim())
@@ -2532,6 +2540,7 @@ export default function ProductForm({
           formData.append(`variants[${index}][id]`, String(variant.id))
         }
         formData.append(`variants[${index}][title]`, variant.name.trim())
+        formData.append(`variants[${index}][cn_name]`, variant.cnName.trim())
         formData.append(`variants[${index}][sku]`, variant.sku.trim())
         formData.append(`variants[${index}][barcode]`, variant.barcode.trim())
         formData.append(`variants[${index}][price]`, variant.price || '0')
@@ -3358,6 +3367,20 @@ export default function ProductForm({
                 />
               </div>
               <div className="space-y-2">
+                <label className="block text-sm font-medium text-gray-700" htmlFor="cnName">
+                  Chinese Name
+                </label>
+                <input
+                  id="cnName"
+                  name="cnName"
+                  value={form.cnName}
+                  onChange={handleChange}
+                  data-field-key="cnName"
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                  placeholder="产品中文名称"
+                />
+              </div>
+              <div className="space-y-2">
                 <label className="block text-sm font-medium text-gray-700" htmlFor="slug">
                   {t('product.slug')} <span className="text-red-500">*</span>
                 </label>
@@ -4111,6 +4134,15 @@ export default function ProductForm({
                     />
                   </div>
                   <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700">Chinese Name</label>
+                    <input
+                      value={variant.cnName}
+                      onChange={(event) => handleVariantChange(index, 'cnName', event.target.value)}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="变体中文名称"
+                    />
+                  </div>
+                  <div className="space-y-2">
                     <label className="block text-sm font-medium text-gray-700">SKU <span className="text-red-500">*</span></label>
                     <input
                       value={variant.sku}
@@ -4607,6 +4639,17 @@ export default function ProductForm({
                             data-field-key={`bundle-${index}-name`}
                             className={fieldInputClass(`bundle-${index}-name`)}
                             placeholder="200ml + 300ml Set"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <label className="block text-sm font-medium text-gray-700">Chinese Name</label>
+                          <input
+                            value={bundle.cnName}
+                            onChange={(event) =>
+                              handleBundleChange(index, 'cnName', event.target.value)
+                            }
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                            placeholder="套装中文名称"
                           />
                         </div>
                         <div className="space-y-2">

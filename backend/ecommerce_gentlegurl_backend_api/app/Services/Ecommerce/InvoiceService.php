@@ -20,6 +20,7 @@ class InvoiceService
      *     product_cn_name: string|null,
      *     product_sku: mixed,
      *     variant_name: mixed,
+     *     variant_cn_name: string|null,
      *     variant_sku: mixed,
      *     quantity: int,
      *     unit_price: float,
@@ -73,9 +74,11 @@ class InvoiceService
         return [
             'line_type' => $lineType,
             'product_name' => $productName,
+            'product_name_only' => (string) ($item->product_name_snapshot ?: $item->product?->name ?: $productName),
             'product_cn_name' => $item->displayCnName(),
             'product_sku' => $item->sku_snapshot,
             'variant_name' => $variantName,
+            'variant_cn_name' => $item->displayVariantCnName(),
             'variant_sku' => $item->variant_sku_snapshot,
             'quantity' => (int) $item->quantity,
             'unit_price' => (float) ($item->effective_unit_price ?? $item->unit_price_snapshot ?? $item->price_snapshot),
@@ -89,6 +92,42 @@ class InvoiceService
             'is_staff_free_applied' => $isStaffFree,
             'staff_free_list_line_total' => $isStaffFree ? (float) ($item->line_total_snapshot ?? 0) : 0.0,
             'selected_booking_product_options' => is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [],
+        ];
+    }
+
+    /**
+     * Structured line for receipt emails — aligned with PDF invoice item naming.
+     *
+     * @return array{name: string, cn_name: string|null, variant_name: string|null, variant_cn_name: string|null}
+     */
+    public function mapInvoiceRowToEmailItem(array $row): array
+    {
+        $lineType = (string) ($row['line_type'] ?? 'product');
+        $variantName = trim((string) ($row['variant_name'] ?? ''));
+        $hiddenVariantLabels = [
+            'Final Settlement',
+            'Booking Add-on Settlement',
+            'Service',
+            'Booking Deposit',
+            'Booking Add-on Deposit',
+            'Service Package',
+        ];
+        $showVariant = $variantName !== ''
+            && $lineType !== 'booking_addon'
+            && ! in_array($variantName, $hiddenVariantLabels, true);
+
+        $productCnName = trim((string) ($row['product_cn_name'] ?? ''));
+        $variantCnName = trim((string) ($row['variant_cn_name'] ?? ''));
+
+        $emailName = $lineType === 'product' || $lineType === ''
+            ? trim((string) ($row['product_name_only'] ?? $row['product_name'] ?? ''))
+            : trim((string) ($row['product_name'] ?? ''));
+
+        return [
+            'name' => $emailName,
+            'cn_name' => $productCnName !== '' ? $productCnName : null,
+            'variant_name' => $showVariant ? $variantName : null,
+            'variant_cn_name' => $showVariant && $variantCnName !== '' ? $variantCnName : null,
         ];
     }
 
@@ -135,7 +174,7 @@ class InvoiceService
 
     public function buildPdf(Order $order)
     {
-        $order->loadMissing(['items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'customer']);
+        $order->loadMissing(['items.product', 'items.productVariant', 'items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'customer']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
         $mixedItems = $order->items->map(fn (OrderItem $item) => $this->mapOrderItemToInvoiceRow($item))->values();

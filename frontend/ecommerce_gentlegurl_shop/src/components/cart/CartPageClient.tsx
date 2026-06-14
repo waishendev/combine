@@ -10,6 +10,7 @@ import { getPrimaryProductImage } from "@/lib/productMedia";
 import { calculatePromotionDiscounts } from "@/lib/promotionCalculator";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 import VoucherList from "@/components/vouchers/VoucherList";
+import CartVariantSelect from "@/components/cart/CartVariantSelect";
 
 export default function CartPageClient() {
   const router = useRouter();
@@ -339,6 +340,10 @@ export default function CartPageClient() {
                   item.available_variants?.find((variant) => variant.id === item.product_variant_id)?.name ??
                   (item as { variant_label?: string }).variant_label ??
                   null;
+                const selectedVariant = item.available_variants?.find(
+                  (variant) => variant.id === item.product_variant_id,
+                );
+                const variantCnName = item.variant_cn_name ?? selectedVariant?.cn_name ?? null;
                 const maxStock = getItemStock(item);
                 const hasVariantSelection =
                   item.product_type === "variant" &&
@@ -346,9 +351,9 @@ export default function CartPageClient() {
                   item.available_variants.length > 0;
 
                 return (
-                  <div key={item.id} className="bg-[var(--card)]/70 px-3 py-2 lg:px-4 lg:py-4">
-                    <div className={`grid items-center gap-3 md:gap-3 lg:gap-4 ${gridColsMd} ${gridColsLg}`}>
-                      <div className="flex items-center justify-center">
+                  <div key={item.id} className="bg-[var(--card)]/70 px-3 py-3 lg:px-4 lg:py-4">
+                    <div className={`grid items-start gap-3 md:gap-3 lg:gap-4 ${gridColsMd} ${gridColsLg}`}>
+                      <div className="flex items-start justify-center pt-1">
                         <input
                           type="checkbox"
                           className="h-4 w-4 ios-input"
@@ -357,84 +362,87 @@ export default function CartPageClient() {
                         />
                       </div>
 
-                      <div className="flex min-w-0 items-center gap-3 lg:gap-4">
-                        <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/30">
-                          {imageUrl ? (
-                            <Image src={imageUrl} alt={name} fill className="object-contain" />
-                          ) : (
-                            <Image src="/images/placeholder.png" alt={name} fill className="object-contain" />
-                          )}
-                          
-                        </div>
+                      <div className="flex min-w-0 items-start gap-3">
+                        {productSlug ? (
+                          <Link
+                            href={`/product/${productSlug}`}
+                            className="relative block h-[72px] w-[72px] shrink-0 overflow-hidden rounded border border-[var(--muted)]/70 bg-white"
+                          >
+                            {imageUrl ? (
+                              <Image src={imageUrl} alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                            ) : (
+                              <Image src="/images/placeholder.png" alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                            )}
+                          </Link>
+                        ) : (
+                          <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded border border-[var(--muted)]/70 bg-white">
+                            {imageUrl ? (
+                              <Image src={imageUrl} alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                            ) : (
+                              <Image src="/images/placeholder.png" alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                            )}
+                          </div>
+                        )}
 
-                        <div className="min-w-0 space-y-1">
+                        <div className="min-w-0 flex-1">
                           {productSlug ? (
                             <Link
                               href={`/product/${productSlug}`}
-                              className="block text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-strong)]"
+                              className="line-clamp-2 text-sm font-medium leading-snug text-[var(--foreground)] transition hover:text-[var(--accent-strong)]"
                             >
-                              <span className="line-clamp-2 lg:line-clamp-none">{name}</span>
+                              {name}
                             </Link>
-                            
                           ) : (
-                            <div className="line-clamp-2 text-sm font-semibold lg:line-clamp-none">{name}</div>
-                          )}
-                          {quantityNotices[item.id] && (
-                            <p className="text-xs text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
-                          )}
-                          {isReward && (
-                            <span className="inline-flex items-center rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
-                              Reward item
-                            </span>
+                            <p className="line-clamp-2 text-sm font-medium leading-snug text-[var(--foreground)]">{name}</p>
                           )}
 
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-[var(--foreground)]/60">
-                              {sku && <span>SKU: {sku}</span>}
-                              {/* {item.product_type === "variant" && (
-                                <span className={variantLabel ? "" : "text-[color:var(--status-error)]"}>
-                                  Variant: {variantLabel ?? "Please select variant"}
-                                </span>
-                              )} */}
+                          {item.cn_name ? (
+                            <p className="mt-0.5 line-clamp-1 text-xs text-[color:var(--text-muted)]">{item.cn_name}</p>
+                          ) : null}
+
+                          {hasVariantSelection ? (
+                            <div className="mt-2 space-y-1">
+                              {item.product_type === "variant" && !item.product_variant_id ? (
+                                <p className="text-[11px] text-[color:var(--status-error)]">Please select</p>
+                              ) : null}
+                              <CartVariantSelect
+                                itemId={item.id}
+                                variants={item.available_variants ?? []}
+                                value={item.product_variant_id ?? null}
+                                productName={name}
+                                disabled={updatingVariants.has(item.id)}
+                                updating={updatingVariants.has(item.id)}
+                                onChange={(variantId) => {
+                                  void handleVariantChange(item.id, variantId);
+                                }}
+                              />
                             </div>
-                            {hasVariantSelection && (
-                              <div className="mt-2">
-                                <select
-                                  value={item.product_variant_id ?? ""}
-                                  onChange={(event) => {
-                                    const nextId = Number(event.target.value);
-                                    if (!Number.isFinite(nextId)) return;
-                                    handleVariantChange(item.id, nextId);
-                                  }}
-                                  disabled={updatingVariants.has(item.id)}
-                                  className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                                >
-                                  <option value="" disabled>
-                                    {updatingVariants.has(item.id) ? "Updating..." : "Select variant"}
-                                  </option>
-                                  {item.available_variants?.map((variant) => {
-                                    const isActive = variant.is_active !== false;
-                                    const outOfStock =
-                                      (variant.track_stock ?? true) &&
-                                      ((variant.is_bundle ? variant.derived_available_qty ?? 0 : variant.stock ?? 0) <=
-                                        0);
-                                    const isSelectable = isActive && !outOfStock;
-                                    const suffix = !isSelectable
-                                      ? " (Out of stock)"
-                                      : "";
-                                    return (
-                                      <option key={variant.id} value={variant.id} disabled={!isSelectable}>
-                                        {variant.name}
-                                        {suffix}
-                                      </option>
-                                    );
-                                  })}
-                                </select>
-                              </div>
-                            )}
+                          ) : null}
+
+                          {!hasVariantSelection && item.product_variant_id && variantLabel ? (
+                            <p className="mt-1.5 text-xs text-[var(--foreground)]/85">
+                              {variantLabel}
+                              {variantCnName ? <span className="text-[color:var(--text-muted)]"> · {variantCnName}</span> : null}
+                            </p>
+                          ) : null}
+
+                          {!hasVariantSelection && sku ? (
+                            <p className="mt-1 text-[11px] text-[var(--foreground)]/45">{sku}</p>
+                          ) : null}
+
+                          {isReward ? (
+                            <span className="mt-1.5 inline-flex items-center rounded bg-[var(--status-success-bg)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--status-success)]">
+                              Reward item
+                            </span>
+                          ) : null}
+
+                          {quantityNotices[item.id] ? (
+                            <p className="mt-1 text-[11px] text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
+                          ) : null}
                         </div>
                       </div>
 
-                      <div className="text-right text-sm font-medium">
+                      <div className="self-center text-right text-sm font-medium">
                         {hasPromotionDiscount ? (
                           <div className="space-y-0.5">
                             <div className="text-xs text-[var(--foreground)]/50 line-through">
@@ -455,7 +463,7 @@ export default function CartPageClient() {
                         )}
                       </div>
 
-                      <div className="flex justify-end md:justify-center">
+                      <div className="flex self-center justify-end md:justify-center">
                         {isReward ? (
                           <div className="rounded border border-dashed border-[var(--muted)] px-3 py-2 text-xs text-[var(--foreground)]/60">
                             Locked
@@ -500,7 +508,7 @@ export default function CartPageClient() {
                       </div>
 
 
-                      <div className="text-right text-sm font-semibold">
+                      <div className="self-center text-right text-sm font-semibold">
                         {hasPromotionDiscount ? (
                           <div className="space-y-0.5">
                             <div className="text-xs text-[var(--foreground)]/50 line-through">
@@ -515,7 +523,7 @@ export default function CartPageClient() {
                         )}
                       </div>
 
-                      <div className="flex justify-end">
+                      <div className="flex self-center justify-end">
                         {isReward ? (
                           <span className="rounded-md bg-[var(--muted)]/40 px-3 py-1 text-xs font-semibold text-[var(--foreground)]/70">
                             Locked
@@ -546,7 +554,6 @@ export default function CartPageClient() {
                 item.unit_price ?? (item as { price?: number | string }).price ?? 0,
               );
               const itemDiscount = promotionDiscount.itemDiscounts[item.id] || 0;
-              const discountedUnitPrice = itemDiscount > 0 ? unitPrice - (itemDiscount / item.quantity) : unitPrice;
               const lineTotal = unitPrice * item.quantity;
               const discountedLineTotal = lineTotal - itemDiscount;
               const isReward = item.is_reward || item.locked;
@@ -566,6 +573,10 @@ export default function CartPageClient() {
                 item.available_variants?.find((variant) => variant.id === item.product_variant_id)?.name ??
                 (item as { variant_label?: string }).variant_label ??
                 null;
+              const selectedVariant = item.available_variants?.find(
+                (variant) => variant.id === item.product_variant_id,
+              );
+              const variantCnName = item.variant_cn_name ?? selectedVariant?.cn_name ?? null;
               const hasVariantSelection =
                 item.product_type === "variant" &&
                 Array.isArray(item.available_variants) &&
@@ -582,144 +593,89 @@ export default function CartPageClient() {
                       onChange={() => toggleSelectItem(item.id)}
                     />
 
-                    <div className="flex flex-1 gap-3">
-                      <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/30">
-                        {imageUrl ? (
-                          <Image src={imageUrl} alt={name} fill className="object-contain" />
-                        ) : (
-                          <Image src="/images/placeholder.png" alt={name} fill className="object-contain" />
-                        )}
-                      </div>
+                    <div className="flex min-w-0 flex-1 gap-3">
+                      {productSlug ? (
+                        <Link
+                          href={`/product/${productSlug}`}
+                          className="relative block h-[72px] w-[72px] shrink-0 overflow-hidden rounded border border-[var(--muted)]/70 bg-white"
+                        >
+                          {imageUrl ? (
+                            <Image src={imageUrl} alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                          ) : (
+                            <Image src="/images/placeholder.png" alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                          )}
+                        </Link>
+                      ) : (
+                        <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden rounded border border-[var(--muted)]/70 bg-white">
+                          {imageUrl ? (
+                            <Image src={imageUrl} alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                          ) : (
+                            <Image src="/images/placeholder.png" alt={name} fill className="object-contain p-0.5" sizes="72px" />
+                          )}
+                        </div>
+                      )}
 
-                      <div className="min-w-0 flex-1 space-y-1">
+                      <div className="min-w-0 flex-1">
                         {productSlug ? (
                           <Link
                             href={`/product/${productSlug}`}
-                            className="block text-sm font-semibold text-[var(--foreground)] transition hover:text-[var(--accent-strong)]"
+                            className="line-clamp-2 text-sm font-medium leading-snug text-[var(--foreground)] transition hover:text-[var(--accent-strong)]"
                           >
-                            <span className="line-clamp-2">{name}</span>
+                            {name}
                           </Link>
                         ) : (
-                          <div className="line-clamp-2 text-sm font-semibold">{name}</div>
+                          <p className="line-clamp-2 text-sm font-medium leading-snug">{name}</p>
                         )}
+                        {item.cn_name ? (
+                          <p className="mt-0.5 line-clamp-1 text-xs text-[color:var(--text-muted)]">{item.cn_name}</p>
+                        ) : null}
 
-                        <div className="text-xs text-[var(--foreground)]/60">
-                          {sku && <span>SKU: {sku}</span>}
-                          {item.product_type === "variant" && (
-                            <span className={variantLabel ? "ml-2" : "ml-2 text-[color:var(--status-error)]"}>
-                              Variant: {variantLabel ?? "Please select variant"}
-                            </span>
-                          )}
-                          {isReward && (
-                            <span className="rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
-                              Reward
-                            </span>
-                          )}
-                        </div>
-                        {hasVariantSelection && (
-                          <div className="mt-2">
-                            <select
-                              value={item.product_variant_id ?? ""}
-                              onChange={(event) => {
-                                const nextId = Number(event.target.value);
-                                if (!Number.isFinite(nextId)) return;
-                                handleVariantChange(item.id, nextId);
-                              }}
+                        {hasVariantSelection ? (
+                          <div className="mt-2 space-y-1">
+                            {item.product_type === "variant" && !item.product_variant_id ? (
+                              <p className="text-[11px] text-[color:var(--status-error)]">Please select</p>
+                            ) : null}
+                            <CartVariantSelect
+                              itemId={item.id}
+                              variants={item.available_variants ?? []}
+                              value={item.product_variant_id ?? null}
+                              productName={name}
                               disabled={updatingVariants.has(item.id)}
-                              className="w-full rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 px-2 py-1 text-xs outline-none disabled:opacity-60 disabled:cursor-not-allowed"
-                            >
-                              <option value="" disabled>
-                                {updatingVariants.has(item.id) ? "Updating..." : "Select variant"}
-                              </option>
-                              {item.available_variants?.map((variant) => {
-                                const isActive = variant.is_active !== false;
-                                const outOfStock =
-                                  (variant.track_stock ?? true) &&
-                                  ((variant.is_bundle ? variant.derived_available_qty ?? 0 : variant.stock ?? 0) <= 0);
-                                const isSelectable = isActive && !outOfStock;
-                                const suffix = !isSelectable ? " (Out of stock)" : "";
-                                return (
-                                  <option key={variant.id} value={variant.id} disabled={!isSelectable}>
-                                    {variant.name}
-                                    {suffix}
-                                  </option>
-                                );
-                              })}
-                            </select>
+                              updating={updatingVariants.has(item.id)}
+                              onChange={(variantId) => {
+                                void handleVariantChange(item.id, variantId);
+                              }}
+                            />
                           </div>
-                        )}
+                        ) : null}
 
-                        <div className="text-sm font-medium text-[var(--foreground)]">
-                          {hasPromotionDiscount ? (
-                            <div className="space-y-0.5">
-                              <div className="text-xs text-[var(--foreground)]/50 line-through">
-                                RM {unitPrice.toFixed(2)}
-                              </div>
-                              <div className="text-[color:var(--status-success)] font-semibold">
-                                RM {discountedUnitPrice.toFixed(2)}
-                              </div>
-                              <div className="text-[10px] text-[color:var(--status-success)]">
-                                Promo Applied
-                              </div>
-                            </div>
-                          ) : (
-                            <>
-                              RM {unitPrice.toFixed(2)}
-                              {isReward && <span className="ml-2 text-[11px] text-[var(--foreground)]/60">Locked</span>}
-                            </>
-                          )}
-                        </div>
+                        {!hasVariantSelection && item.product_variant_id && variantLabel ? (
+                          <p className="mt-1.5 text-xs text-[var(--foreground)]/85">
+                            {variantLabel}
+                            {variantCnName ? <span className="text-[color:var(--text-muted)]"> · {variantCnName}</span> : null}
+                          </p>
+                        ) : null}
+
+                        {!hasVariantSelection && sku ? (
+                          <p className="mt-1 text-[11px] text-[var(--foreground)]/45">{sku}</p>
+                        ) : null}
+
+                        {isReward ? (
+                          <span className="mt-1.5 inline-flex items-center rounded bg-[var(--status-success-bg)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--status-success)]">
+                            Reward
+                          </span>
+                        ) : null}
+
                         {quantityNotices[item.id] && (
-                          <p className="text-xs text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
+                          <p className="mt-1 text-xs text-[color:var(--status-warning)]">{quantityNotices[item.id]}</p>
                         )}
 
-                        <div className="flex items-center gap-2 pt-1">
-                          {isReward ? (
-                            <div className="rounded border border-dashed border-[var(--muted)] px-3 py-2 text-xs text-[var(--foreground)]/60">
-                              Locked
-                            </div>
-                          ) : (
-                            <div className="flex items-center rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 text-sm">
-                              <button
-                                type="button"
-                                className="px-3 py-1"
-                                onClick={() => handleQuantityChange(item, Math.max(1, item.quantity - 1))}
-                                aria-label="Decrease quantity"
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min={1}
-                                max={maxStock ?? undefined}
-                                className="w-14 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none ios-input"
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  handleQuantityChange(item, Number(e.target.value) || 1)
-                                }
-                              />
-                              <button
-                                type="button"
-                                className="px-3 py-1"
-                                onClick={() => {
-                                  if (maxStock !== null && item.quantity >= maxStock) {
-                                    setQuantityNotice(item.id, `Only ${maxStock} available in stock.`);
-                                    return;
-                                  }
-                                  handleQuantityChange(item, item.quantity + 1);
-                                }}
-                                aria-label="Increase quantity"
-                                disabled={maxStock !== null && item.quantity >= maxStock}
-                              >
-                                +
-                              </button>
-                            </div>
-                          )}
-                          <div className="ml-auto flex flex-col items-end gap-2">
-                            <div className="text-right text-sm font-semibold">
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-baseline justify-start gap-2">
+                            <div className="text-right text-sm font-semibold tabular-nums">
                               {hasPromotionDiscount ? (
                                 <div className="space-y-0.5">
-                                  <div className="text-xs text-[var(--foreground)]/50 line-through">
+                                  <div className="text-xs font-normal text-[var(--foreground)]/50 line-through">
                                     RM {lineTotal.toFixed(2)}
                                   </div>
                                   <div className="text-[color:var(--status-success)]">
@@ -730,18 +686,61 @@ export default function CartPageClient() {
                                 <>RM {lineTotal.toFixed(2)}</>
                               )}
                             </div>
+                            {hasPromotionDiscount ? (
+                              <span className="text-[10px] text-[color:var(--status-success)]">Promo applied</span>
+                            ) : null}
+                          </div>
+
+                          <div className="flex items-center gap-3">
                             {isReward ? (
-                              <span className="rounded-md bg-[var(--muted)]/40 px-3 py-2 text-[11px] font-semibold text-[var(--foreground)]/70">
+                              <div className="rounded border border-dashed border-[var(--muted)] px-3 py-2 text-xs text-[var(--foreground)]/60">
                                 Locked
-                              </span>
+                              </div>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => removeItem(item.id)}
-                                className="rounded-md bg-[var(--status-error-bg)] px-3 py-2 text-xs font-semibold text-[color:var(--status-error)] transition hover:bg-[var(--status-error-bg)]/80"
-                              >
-                                Remove
-                              </button>
+                              <>
+                                <div className="flex items-center rounded border border-[var(--input-border)] bg-[var(--input-bg)]/80 text-sm">
+                                  <button
+                                    type="button"
+                                    className="px-3 py-1"
+                                    onClick={() => handleQuantityChange(item, Math.max(1, item.quantity - 1))}
+                                    aria-label="Decrease quantity"
+                                  >
+                                    -
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    max={maxStock ?? undefined}
+                                    className="w-14 border-x border-[var(--input-border)] px-2 py-1 text-center outline-none ios-input"
+                                    value={item.quantity}
+                                    onChange={(e) =>
+                                      handleQuantityChange(item, Number(e.target.value) || 1)
+                                    }
+                                  />
+                                  <button
+                                    type="button"
+                                    className="px-3 py-1"
+                                    onClick={() => {
+                                      if (maxStock !== null && item.quantity >= maxStock) {
+                                        setQuantityNotice(item.id, `Only ${maxStock} available in stock.`);
+                                        return;
+                                      }
+                                      handleQuantityChange(item, item.quantity + 1);
+                                    }}
+                                    aria-label="Increase quantity"
+                                    disabled={maxStock !== null && item.quantity >= maxStock}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeItem(item.id)}
+                                  className="text-xs font-semibold text-[color:var(--status-error)] transition hover:opacity-80"
+                                >
+                                  Remove
+                                </button>
+                              </>
                             )}
                           </div>
                         </div>

@@ -113,6 +113,7 @@ class ProductController extends Controller
 
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'cn_name' => ['nullable', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:products,slug'],
             'sku' => [
                 Rule::requiredIf(fn() => $request->input('type') !== 'variant'),
@@ -151,6 +152,7 @@ class ProductController extends Controller
             'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
             'variants.*.barcode' => ['nullable', 'string', 'max:100'],
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
+            'variants.*.cn_name' => ['nullable', 'string', 'max:255'],
             'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
             'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
             'variants.*.sale_price_start_at' => ['nullable', 'date'],
@@ -229,6 +231,7 @@ class ProductController extends Controller
 
         $validated = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
+            'cn_name' => ['nullable', 'string', 'max:255'],
             'slug' => ['sometimes', 'string', 'max:255', Rule::unique('products', 'slug')->ignore($product->id)],
             'sku' => [
                 Rule::requiredIf(fn() => ($request->input('type') ?? $product->type) !== 'variant'),
@@ -270,6 +273,7 @@ class ProductController extends Controller
             'variants.*.sku' => ['required_with:variants.*.title', 'string', 'max:100'],
             'variants.*.barcode' => ['nullable', 'string', 'max:100'],
             'variants.*.title' => ['required_with:variants.*.sku', 'string', 'max:255'],
+            'variants.*.cn_name' => ['nullable', 'string', 'max:255'],
             'variants.*.price' => ['nullable', 'numeric', 'gt:0'],
             'variants.*.sale_price' => ['nullable', 'numeric', 'gte:0'],
             'variants.*.sale_price_start_at' => ['nullable', 'date'],
@@ -448,7 +452,7 @@ class ProductController extends Controller
         $rows = $products->map(fn (Product $product) => $this->serializeProductForCsvExport($product))->values()->all();
 
         $headers = [
-            'name', 'slug', 'sku', 'barcode', 'type', 'description', 'price', 'sale_price',
+            'name', 'cn_name', 'slug', 'sku', 'barcode', 'type', 'description', 'price', 'sale_price',
             'sale_price_start_at', 'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold',
             'track_stock', 'dummy_sold_count', 'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only',
             'meta_title', 'meta_description', 'meta_keywords', 'meta_og_image', 'category_ids', 'variants',
@@ -517,7 +521,7 @@ class ProductController extends Controller
         }, $headers);
 
         $allowedFields = [
-            'name', 'slug', 'sku', 'barcode', 'type', 'description', 'price', 'sale_price', 'sale_price_start_at',
+            'name', 'cn_name', 'slug', 'sku', 'barcode', 'type', 'description', 'price', 'sale_price', 'sale_price_start_at',
             'sale_price_end_at', 'cost_price', 'stock', 'low_stock_threshold', 'track_stock', 'dummy_sold_count',
             'is_active', 'is_featured', 'is_hidden_in_shop', 'is_staff_free', 'is_reward_only', 'meta_title', 'meta_description', 'meta_keywords',
             'meta_og_image', 'category_ids', 'variants',
@@ -610,6 +614,7 @@ class ProductController extends Controller
 
             $nullableFields = [
                 'sku',
+                'cn_name',
                 'sale_price',
                 'sale_price_start_at',
                 'sale_price_end_at',
@@ -766,6 +771,7 @@ class ProductController extends Controller
 
             $validator = Validator::make($payload, [
                 'name' => ['required', 'string', 'max:255'],
+                'cn_name' => ['nullable', 'string', 'max:255'],
                 'slug' => ['required', 'string', 'max:255', 'unique:products,slug'],
                 'sku' => [
                     Rule::requiredIf(fn() => ($payload['type'] ?? 'single') !== 'variant'),
@@ -1133,6 +1139,7 @@ class ProductController extends Controller
                 'sku' => $variantData['sku'] ?? $variant->sku,
                 'barcode' => $variantData['barcode'] ?? $variant->barcode,
                 'title' => $variantData['title'] ?? $variant->title,
+                'cn_name' => $variantData['cn_name'] ?? $variant->cn_name,
                 'price' => $variantData['price'] ?? null,
                 'sale_price' => $variantData['sale_price'] ?? null,
                 'sale_price_start_at' => $variantData['sale_price_start_at'] ?? null,
@@ -1209,6 +1216,7 @@ class ProductController extends Controller
     {
         return [
             'name' => $product->name,
+            'cn_name' => $product->cn_name,
             'slug' => $product->slug,
             'sku' => $product->sku,
             'barcode' => $product->barcode,
@@ -1245,6 +1253,7 @@ class ProductController extends Controller
                 'sku' => $variant->sku,
                 'barcode' => $variant->barcode,
                 'title' => $variant->title,
+                'cn_name' => $variant->cn_name,
                 'price' => $variant->price,
                 'sale_price' => $variant->sale_price,
                 'sale_price_start_at' => $variant->sale_price_start_at,
@@ -1290,6 +1299,7 @@ class ProductController extends Controller
                 'sku' => $variantData['sku'] ?? null,
                 'barcode' => $variantData['barcode'] ?? null,
                 'title' => $variantData['title'] ?? ($variantData['name'] ?? null),
+                'cn_name' => $variantData['cn_name'] ?? null,
                 'price' => isset($variantData['price']) ? (float) $variantData['price'] : null,
                 'sale_price' => isset($variantData['sale_price']) ? (float) $variantData['sale_price'] : null,
                 'sale_price_start_at' => $variantData['sale_price_start_at'] ?? null,

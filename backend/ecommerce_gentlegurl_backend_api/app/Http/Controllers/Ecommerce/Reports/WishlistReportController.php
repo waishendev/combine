@@ -67,6 +67,7 @@ class WishlistReportController extends Controller
             ->when($search !== '', function (Builder $q) use ($search) {
                 $q->where(function (Builder $sq) use ($search) {
                     $sq->where('p.name', 'like', "%{$search}%")
+                        ->orWhere('p.cn_name', 'like', "%{$search}%")
                         ->orWhere('p.sku', 'like', "%{$search}%");
                 });
             })
@@ -86,6 +87,7 @@ class WishlistReportController extends Controller
             ->select([
                 'p.id as product_id',
                 'p.name as product_name',
+                'p.cn_name as product_cn_name',
                 'p.sku',
                 'img.image_url',
                 'p.stock as current_stock',

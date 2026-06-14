@@ -10,6 +10,7 @@ import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
 import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 import { getPrimaryProductImage } from "@/lib/productMedia";
+import { NameStack, VariantNameBlock } from "@/components/common/NameStack";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -74,15 +75,6 @@ const resolveOrderItemLabel = (item: OrderItemSummary) => {
   if (lineType === "service_package") return item.name || "Service Package";
   return item.name || "Item";
 };
-
-function OrderItemNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
-  return (
-    <>
-      <p className="text-sm font-semibold text-[var(--foreground)]">{name}</p>
-      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
-    </>
-  );
-}
 
 export function OrdersClient({ orders }: OrdersClientProps) {
   const router = useRouter();
@@ -475,7 +467,6 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       const shouldShowVariant = item.product_type === "variant" || !!item.product_variant_id;
                       const isProductLine = !item.line_type || item.line_type === "product";
                       const variantName = item.variant_name ?? "—";
-                      const variantSkuSuffix = item.variant_sku ? ` (${item.variant_sku})` : "";
                       const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
                       return (
                         <div
@@ -496,12 +487,13 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                               </div>
                             )}
                             <div>
-                              <OrderItemNameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
+                              <NameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
                               {shouldShowVariant && (
-                                <p className="text-xs text-[var(--foreground)]/60">
-                                  Variant: {variantName}
-                                  {variantSkuSuffix}
-                                </p>
+                                <VariantNameBlock
+                                  label="Variant"
+                                  name={variantName === "—" ? null : variantName}
+                                  cnName={item.variant_cn_name}
+                                />
                               )}
                               {String(item.line_type ?? "").toLowerCase() === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
@@ -549,12 +541,13 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                   className="h-12 w-12 rounded-lg object-cover"
                 />
                 <div className="space-y-0.5">
-                  <OrderItemNameStack name={modal.item.name ?? "Item"} cnName={modal.item.cn_name} />
+                  <NameStack name={modal.item.name ?? "Item"} cnName={modal.item.cn_name} />
                   {(modal.item.product_type === "variant" || modal.item.product_variant_id) && (
-                    <p className="text-xs text-[var(--foreground)]/60">
-                      Variant: {modal.item.variant_name ?? "—"}
-                      {modal.item.variant_sku ? ` (${modal.item.variant_sku})` : ""}
-                    </p>
+                    <VariantNameBlock
+                      label="Variant"
+                      name={modal.item.variant_name ?? "—"}
+                      cnName={modal.item.variant_cn_name}
+                    />
                   )}
                   <p className="text-xs text-[var(--foreground)]/70">Qty: {modal.item.quantity}</p>
                   

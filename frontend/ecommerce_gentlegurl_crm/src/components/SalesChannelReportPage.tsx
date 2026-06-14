@@ -127,6 +127,7 @@ type OrderDetailLine = {
   name: string
   cn_name?: string | null
   variant_name?: string | null
+  variant_cn_name?: string | null
   sku?: string | null
   qty: number
   unit_price: number
@@ -925,10 +926,11 @@ export default function SalesChannelReportPage({
                               <p className="text-xs font-semibold uppercase text-slate-400">{line.type_label}</p>
                               <p className="mt-1 font-semibold text-slate-900">{line.name}</p>
                               {line.cn_name ? <p className="mt-0.5 text-xs text-slate-500">{line.cn_name}</p> : null}
-                              {line.variant_name || line.sku ? (
-                                <p className="mt-1 text-xs text-slate-500">
-                                  {[line.variant_name, line.sku].filter(Boolean).join(' · ')}
-                                </p>
+                              {line.variant_name ? (
+                                <div className="mt-1 text-xs text-slate-500">
+                                  <p>Variant: {line.variant_name}</p>
+                                  {line.variant_cn_name ? <p>{line.variant_cn_name}</p> : null}
+                                </div>
                               ) : null}
                               {line.booking_no ? <p className="mt-1 text-xs text-blue-700">Booking: {line.booking_no}</p> : null}
                             </td>

@@ -24,6 +24,7 @@ export type ProductMedia = {
 export type ProductDetail = {
   id: number;
   name: string;
+  cn_name?: string | null;
   slug: string;
   type?: string | null;
   price: string | number;
@@ -61,6 +62,7 @@ export type ProductDetail = {
   variants?: Array<{
     id: number;
     name: string;
+    cn_name?: string | null;
     sku?: string | null;
     price?: string | number | null;
     sale_price?: string | number | null;

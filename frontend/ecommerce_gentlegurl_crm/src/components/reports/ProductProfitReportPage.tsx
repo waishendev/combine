@@ -6,7 +6,9 @@ type ProductProfitRow = {
   product_id: number
   product_variant_id: number | null
   product_name: string
+  product_cn_name?: string | null
   variant_name: string | null
+  variant_cn_name?: string | null
   sku: string | null
   quantity_sold: number
   sales_amount: number
@@ -251,7 +253,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
             <thead className="bg-slate-50 text-slate-600">
               <tr>
                 <th className="px-4 py-3 text-left">Product</th>
-                <th className="px-4 py-3 text-left">Variant / SKU</th>
+                <th className="px-4 py-3 text-left">Variant</th>
                 <th className="px-4 py-3 text-right">Quantity Sold</th>
                 <th className="px-4 py-3 text-right">Sales Amount</th>
                 <th className="px-4 py-3 text-right">Cost Amount</th>
@@ -271,11 +273,22 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
                 <tr key={`${row.product_id}:${row.product_variant_id ?? 'base'}`} className="cursor-pointer border-t hover:bg-blue-50/40" onClick={() => loadDetails(row)}>
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{row.product_name}</div>
+                    {row.product_cn_name ? <div className="text-xs text-slate-500">{row.product_cn_name}</div> : null}
                     {row.missing_cost_items_count > 0 && <MissingCostBadge count={row.missing_cost_items_count} />}
                   </td>
                   <td className="px-4 py-3">
-                    <div>{row.variant_name || 'Base product'}</div>
-                    <div className="text-xs text-slate-500">{row.sku || '-'}</div>
+                    {row.variant_name ? (
+                      <div className="text-sm text-slate-700">
+                        <p>Variant: {row.variant_name}</p>
+                        {row.variant_cn_name ? <p className="text-xs text-slate-500">{row.variant_cn_name}</p> : null}
+                        {row.sku ? <p className="mt-0.5 text-xs text-slate-500">SKU: {row.sku}</p> : null}
+                      </div>
+                    ) : (
+                      <div className="text-sm text-slate-500">
+                        <p>Base product</p>
+                        {row.sku ? <p className="text-xs text-slate-500">SKU: {row.sku}</p> : null}
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">{row.quantity_sold}</td>
                   <td className="px-4 py-3 text-right">{formatMoney(row.sales_amount)}</td>
@@ -305,7 +318,17 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="border-b px-4 py-3">
             <div className="font-semibold text-slate-900">Order Item Breakdown</div>
-            <div className="text-sm text-slate-500">{selectedRow.product_name} {selectedRow.variant_name ? `· ${selectedRow.variant_name}` : ''}</div>
+            <div className="text-sm text-slate-500">
+              {selectedRow.product_name}
+              {selectedRow.product_cn_name ? ` · ${selectedRow.product_cn_name}` : ''}
+              {selectedRow.variant_name ? (
+                <>
+                  {' · Variant: '}
+                  {selectedRow.variant_name}
+                  {selectedRow.variant_cn_name ? ` · ${selectedRow.variant_cn_name}` : ''}
+                </>
+              ) : null}
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-full text-sm">

@@ -45,9 +45,11 @@ type CategoryRow = {
 type ProductRow = {
   product_id: number
   product_name: string
+  product_cn_name?: string | null
   product_sku?: string | null
   variant_id?: number | null
   variant_name?: string | null
+  variant_cn_name?: string | null
   variant_sku?: string | null
   display_name?: string | null
   sku: string | null
@@ -129,6 +131,31 @@ const formatAmount = (amount: number) =>
   })
 
 const formatMargin = (value: number) => `${value.toFixed(2)}%`
+
+function ReportProductNameStack({
+  name,
+  cnName,
+  variantName,
+  variantCnName,
+}: {
+  name?: string | null
+  cnName?: string | null
+  variantName?: string | null
+  variantCnName?: string | null
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="font-medium text-slate-900">{name || '—'}</p>
+      {cnName?.trim() ? <p className="mt-0.5 text-xs text-slate-500">{cnName}</p> : null}
+      {variantName ? (
+        <div className="mt-1 text-xs text-slate-500">
+          <p>Variant: {variantName}</p>
+          {variantCnName?.trim() ? <p>{variantCnName}</p> : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
 
 const resolveProductDisplay = (row: ProductRow) => {
   const variantName = row.variant_name ?? ''
@@ -785,15 +812,14 @@ export default function SalesReportPage({
                   className="rounded-xl border border-slate-200 bg-white px-4 py-4 shadow-sm"
                 >
                   <p className="text-xs font-semibold uppercase text-slate-400">{topLabel}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-700">{name}</p>
-                  {/* {baseName ? (
-                    <p className="text-xs text-slate-500">Base: {baseName}</p>
-                  ) : null} */}
-                  {variantName ? (
-                    <p className="text-xs text-slate-500">Variant: {variantName}</p>
-                  ) : null}
+                  <ReportProductNameStack
+                    name={name}
+                    cnName={'product_cn_name' in row ? (row as ProductRow).product_cn_name : null}
+                    variantName={variantName}
+                    variantCnName={'product_cn_name' in row ? (row as ProductRow).variant_cn_name : null}
+                  />
                   {sku ? (
-                    <p className="text-xs text-slate-500">SKU: {sku}</p>
+                    <p className="mt-1 text-xs text-slate-500">SKU: {sku}</p>
                   ) : null}
                   <p className="text-xs font-semibold uppercase text-slate-400 mt-2">Revenue</p>
                   <p className="text-lg font-semibold text-slate-700">
@@ -890,19 +916,12 @@ export default function SalesReportPage({
                   return (
                     <tr key={`${row.product_id}-${row.variant_id ?? 'base'}`}>
                       <td className="px-4 py-2 border border-gray-200 font-medium">
-                        <div className="flex flex-col">
-                          <span>{display.displayName}</span>
-                          {/* {display.baseName ? (
-                            <span className="text-xs text-slate-500">
-                              Base: {display.baseName}
-                            </span>
-                          ) : null} */}
-                          {display.variantName ? (
-                            <span className="text-xs text-slate-500">
-                              Variant: {display.variantName}
-                            </span>
-                          ) : null}
-                        </div>
+                        <ReportProductNameStack
+                          name={display.displayName}
+                          cnName={row.product_cn_name}
+                          variantName={display.variantName || null}
+                          variantCnName={row.variant_cn_name}
+                        />
                       </td>
                       <td className="px-4 py-2 border border-gray-200">
                         {display.sku ?? '—'}

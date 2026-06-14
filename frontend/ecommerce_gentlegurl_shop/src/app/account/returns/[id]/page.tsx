@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getReturnRequest } from "@/lib/server/getReturnRequest";
 import { getPrimaryProductImage } from "@/lib/productMedia";
+import { NameStack, VariantNameBlock } from "@/components/common/NameStack";
 import { TrackingFormClient } from "./TrackingFormClient";
 import { formatReturnStatusLabel, getReturnStatusBadgeClasses } from "@/lib/returns/returnStatus";
 
@@ -193,13 +194,15 @@ export default async function ReturnDetailPage({ params }: ReturnDetailPageProps
                     className="h-12 w-12 rounded-lg object-cover"
                   />
                   <div>
-                    <p className="text-sm font-semibold text-[var(--foreground)]">{item.product_name ?? "Item"}</p>
+                    <NameStack name={item.product_name ?? "Item"} cnName={item.cn_name} />
                     <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku ?? "—"}</p>
                     {(item.product_type === "variant" || item.product_variant_id) && (
-                      <p className="text-xs text-[var(--foreground)]/60">
-                        Variant: {item.variant_name ?? "—"}
-                        {item.variant_sku ? ` (${item.variant_sku})` : ""}
-                      </p>
+                      <VariantNameBlock
+                        label="Variant"
+                        name={item.variant_name ?? "—"}
+                        cnName={item.variant_cn_name}
+                        sku={item.variant_sku ?? null}
+                      />
                     )}
                   </div>
                 </div>

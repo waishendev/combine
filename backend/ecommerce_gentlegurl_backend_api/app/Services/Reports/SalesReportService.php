@@ -700,6 +700,7 @@ class SalesReportService
             ->select(
                 'p.id as product_id',
                 'p.name as product_name',
+                'p.cn_name as product_cn_name',
                 'p.sku as product_sku',
                 DB::raw(
                     $groupBy === 'product'
@@ -710,6 +711,11 @@ class SalesReportService
                     $groupBy === 'product'
                         ? 'NULL as variant_name'
                         : 'COALESCE(oi.variant_name_snapshot, pv.title) as variant_name'
+                ),
+                DB::raw(
+                    $groupBy === 'product'
+                        ? 'NULL as variant_cn_name'
+                        : 'pv.cn_name as variant_cn_name'
                 ),
                 DB::raw(
                     $groupBy === 'product'
@@ -726,14 +732,16 @@ class SalesReportService
             ->orderByDesc('revenue');
 
         if ($groupBy === 'product') {
-            $rowsQuery = $rowsQuery->groupBy('p.id', 'p.name', 'p.sku');
+            $rowsQuery = $rowsQuery->groupBy('p.id', 'p.name', 'p.cn_name', 'p.sku');
         } else {
             $rowsQuery = $rowsQuery->groupBy(
                 'p.id',
                 'p.name',
+                'p.cn_name',
                 'p.sku',
                 'oi.product_variant_id',
                 DB::raw('COALESCE(oi.variant_name_snapshot, pv.title)'),
+                'pv.cn_name',
                 DB::raw('COALESCE(oi.variant_sku_snapshot, pv.sku)')
             );
         }
@@ -755,9 +763,11 @@ class SalesReportService
             return [
                 'product_id' => (int) $row->product_id,
                 'product_name' => $row->product_name,
+                'product_cn_name' => $row->product_cn_name ?? null,
                 'product_sku' => $row->product_sku,
                 'variant_id' => $row->variant_id ? (int) $row->variant_id : null,
                 'variant_name' => $variantName,
+                'variant_cn_name' => $row->variant_cn_name ?? null,
                 'variant_sku' => $row->variant_sku,
                 'display_name' => $displayName,
                 'sku' => $resolvedSku,

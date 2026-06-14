@@ -27,6 +27,7 @@ export interface ProductVideo {
 export interface ProductVariant {
   id: number
   name: string
+  cnName?: string
   sku: string
   barcode?: string | null
   price?: number | null
@@ -55,6 +56,7 @@ export interface ProductVariant {
 export interface ProductRowData {
   id: number
   name: string
+  cnName?: string
   slug: string
   sku: string
   barcode?: string | null
@@ -178,7 +180,10 @@ export default function ProductRow({
           ) : (
             <div className="h-10 w-10 rounded border border-dashed border-gray-300 bg-gray-50" />
           )}
-          <span className="text-gray-900">{product.name}</span>
+          <div className="min-w-0">
+            <span className="text-gray-900">{product.name}</span>
+            {product.cnName ? <p className="text-xs text-gray-500 mt-0.5">{product.cnName}</p> : null}
+          </div>
         </div>
       </td>
       <td className="px-4 py-2 border border-gray-200">{product.sku}</td>

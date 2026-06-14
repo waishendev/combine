@@ -12,7 +12,7 @@ class NotificationService
     }
 
     /**
-     * @param array<int, array{sku:string,name:string,stock:int,threshold:int}> $products
+     * @param array<int, array{sku:string,name:string,cn_name?:string,variant_name?:string|null,variant_cn_name?:string|null,stock:int,threshold:int}> $products
      */
     public function sendDailyLowStockSummary(array $products): void
     {
@@ -22,13 +22,35 @@ class NotificationService
 
         $lines = [];
         foreach ($products as $p) {
-            $lines[] = sprintf(
+            $sku = trim((string) ($p['sku'] ?? ''));
+            $name = trim((string) ($p['name'] ?? ''));
+            $cnName = trim((string) ($p['cn_name'] ?? ''));
+            $variantName = trim((string) ($p['variant_name'] ?? ''));
+            $variantCnName = trim((string) ($p['variant_cn_name'] ?? ''));
+            $stock = (int) ($p['stock'] ?? 0);
+            $threshold = (int) ($p['threshold'] ?? 0);
+
+            $line = sprintf(
                 '%s - %s (Stock: %d, Threshold: %d)',
-                $p['sku'] ?? '',
-                $p['name'] ?? '',
-                $p['stock'] ?? 0,
-                $p['threshold'] ?? 0
+                $sku !== '' ? $sku : '-',
+                $name !== '' ? $name : '-',
+                $stock,
+                $threshold
             );
+
+            if ($cnName !== '') {
+                $line .= "\n  {$cnName}";
+            }
+
+            if ($variantName !== '') {
+                $line .= "\n  Variant: {$variantName}";
+            }
+
+            if ($variantCnName !== '') {
+                $line .= "\n  {$variantCnName}";
+            }
+
+            $lines[] = $line;
         }
 
         $data = [

@@ -1,6 +1,7 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
@@ -50,7 +51,9 @@ type CartItem = {
   product_id?: number | null
   variant_id?: number | null
   product_name?: string | null
+  product_cn_name?: string | null
   variant_name?: string | null
+  variant_cn_name?: string | null
   variant_sku?: string | null
   discount_type?: 'percentage' | 'fixed' | null
   discount_value?: number
@@ -70,7 +73,6 @@ type CartItem = {
   manual_discount_allowed?: boolean
   booking_product_id?: number | null
   booking_product_category?: string | null
-  product_cn_name?: string | null
   selected_booking_product_options?: Array<{
     question_id?: number
     title?: string
@@ -630,6 +632,7 @@ type ProductOption = {
   id: number
   product_id: number
   name: string
+  cn_name?: string | null
   sku: string
   barcode: string
   price: number
@@ -668,6 +671,7 @@ type FetchProductOptions = {
 type ProductVariantOption = {
   id: number
   name: string
+  cn_name?: string | null
   sku: string
   barcode: string
   price: number
@@ -678,6 +682,248 @@ type ProductVariantOption = {
   track_stock?: boolean | null
   stock?: number | null
   is_bundle?: boolean
+}
+
+function posVariantHasSellableStock(
+  trackStock: boolean | null | undefined,
+  stock: number | null | undefined,
+) {
+  if (!(trackStock ?? true)) return true
+  if (stock === null || stock === undefined) return true
+  return typeof stock === 'number' && Number.isFinite(stock) && stock > 0
+}
+
+function PosCartVariantSelect({
+  itemId,
+  variants,
+  loading,
+  disabled,
+  selectedVariantId,
+  fallbackName,
+  fallbackCnName,
+  fallbackSku,
+  productName,
+  isOpen,
+  onToggle,
+  onClose,
+  onOpen,
+  onSelect,
+}: {
+  itemId: number
+  variants: ProductVariantOption[]
+  loading: boolean
+  disabled: boolean
+  selectedVariantId?: number | null
+  fallbackName?: string | null
+  fallbackCnName?: string | null
+  fallbackSku?: string | null
+  productName?: string | null
+  isOpen: boolean
+  onToggle: () => void
+  onClose: () => void
+  onOpen: () => void
+  onSelect: (variantId: number) => void
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const [useSheet, setUseSheet] = useState(false)
+  const [menuStyle, setMenuStyle] = useState<{
+    top?: number
+    bottom?: number
+    left: number
+    width: number
+    maxHeight: number
+  } | null>(null)
+
+  const selected = variants.find((variant) => variant.id === selectedVariantId)
+  const name = selected?.name ?? fallbackName ?? (loading ? 'Loading variants...' : 'Select variant')
+  const cnName = selected?.cn_name ?? fallbackCnName ?? null
+  const sku = selected?.sku ?? fallbackSku ?? null
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const mediaQuery = window.matchMedia('(max-width: 768px)')
+    const syncSheetMode = () => setUseSheet(mediaQuery.matches)
+
+    syncSheetMode()
+    mediaQuery.addEventListener('change', syncSheetMode)
+    return () => mediaQuery.removeEventListener('change', syncSheetMode)
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!isOpen || useSheet) {
+      setMenuStyle(null)
+      return
+    }
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current
+      if (!trigger) return
+
+      const rect = trigger.getBoundingClientRect()
+      const maxHeight = 240
+      const spaceBelow = window.innerHeight - rect.bottom
+      const spaceAbove = rect.top
+      const openUp = spaceBelow < maxHeight + 12 && spaceAbove > spaceBelow
+
+      setMenuStyle({
+        left: rect.left,
+        width: rect.width,
+        maxHeight: Math.min(maxHeight, openUp ? spaceAbove - 12 : spaceBelow - 12),
+        ...(openUp
+          ? { bottom: window.innerHeight - rect.top + 4 }
+          : { top: rect.bottom + 4 }),
+      })
+    }
+
+    updatePosition()
+    window.addEventListener('scroll', updatePosition, true)
+    window.addEventListener('resize', updatePosition)
+    return () => {
+      window.removeEventListener('scroll', updatePosition, true)
+      window.removeEventListener('resize', updatePosition)
+    }
+  }, [isOpen, useSheet, variants.length])
+
+  useEffect(() => {
+    if (!isOpen || !useSheet || typeof document === 'undefined') return
+
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [isOpen, useSheet])
+
+  const variantOptions = variants.map((variant) => {
+    const variantHasStock = posVariantHasSellableStock(variant.track_stock, variant.stock)
+    const isDisabled = !variantHasStock || !variant.is_active
+    const isSelected = variant.id === selectedVariantId
+
+    return (
+      <button
+        key={variant.id}
+        type="button"
+        disabled={isDisabled}
+        onClick={() => onSelect(variant.id)}
+        className={`block w-full border-b border-gray-100 px-3 py-3 text-left last:border-b-0 sm:px-2.5 sm:py-2 ${
+          isSelected
+            ? 'bg-blue-50'
+            : isDisabled
+              ? 'cursor-not-allowed bg-gray-50 opacity-60'
+              : 'hover:bg-gray-50 active:bg-gray-100'
+        }`}
+      >
+        <ServiceNameStack
+          name={variant.name}
+          cnName={variant.cn_name ?? null}
+          primaryClassName="text-sm font-semibold text-gray-900 sm:text-xs"
+          secondaryClassName="mt-0.5 text-xs text-gray-500 sm:text-[11px]"
+        />
+        {variant.sku ? <p className="mt-1 break-all text-xs font-mono text-gray-500 sm:text-[11px]">{variant.sku}</p> : null}
+        {!variantHasStock ? <p className="mt-1 text-[10px] font-bold text-red-600">Out of Stock</p> : null}
+      </button>
+    )
+  })
+
+  const sheetPortal = isOpen && useSheet && variants.length > 0 && typeof document !== 'undefined'
+    ? createPortal(
+        <>
+          <button
+            type="button"
+            aria-label="Close variant picker"
+            className="fixed inset-0 z-[120] bg-black/40"
+            onClick={onClose}
+          />
+          <div
+            className="fixed inset-x-0 bottom-0 z-[121] flex max-h-[min(72vh,560px)] flex-col rounded-t-2xl border border-gray-200 bg-white shadow-2xl"
+            data-cart-variant-select={itemId}
+          >
+            <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-4 py-3">
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-gray-900">Select variant</p>
+                {productName ? <p className="mt-0.5 truncate text-xs text-gray-500">{productName}</p> : null}
+              </div>
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-lg p-2 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700"
+                aria-label="Close"
+              >
+                <span className="text-xl leading-none">×</span>
+              </button>
+            </div>
+            <div className="overflow-y-auto overscroll-contain px-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+              {variantOptions}
+            </div>
+          </div>
+        </>,
+        document.body,
+      )
+    : null
+
+  const menuPortal = isOpen && !useSheet && menuStyle && variants.length > 0 && typeof document !== 'undefined'
+    ? createPortal(
+        <div
+          data-cart-variant-select={itemId}
+          style={{
+            position: 'fixed',
+            left: menuStyle.left,
+            width: menuStyle.width,
+            top: menuStyle.top,
+            bottom: menuStyle.bottom,
+            maxHeight: menuStyle.maxHeight,
+            zIndex: 120,
+          }}
+          className="overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+        >
+          {variantOptions}
+        </div>,
+        document.body,
+      )
+    : null
+
+  return (
+    <>
+      <div className="relative" data-cart-variant-select={itemId}>
+        <button
+          ref={triggerRef}
+          type="button"
+          onClick={() => {
+            if (disabled || loading) return
+            onOpen()
+            onToggle()
+          }}
+          disabled={disabled || loading}
+          className={`flex w-full items-center justify-between gap-2 rounded-lg border px-2.5 py-2.5 text-left text-xs sm:py-2 ${
+            disabled || loading
+              ? 'cursor-not-allowed border-gray-300 bg-gray-100 text-gray-400'
+              : 'border-slate-300 bg-white text-gray-900 hover:border-blue-400 active:bg-gray-50'
+          }`}
+        >
+          <div className="min-w-0 flex-1">
+            <ServiceNameStack
+              name={name}
+              cnName={cnName}
+              primaryClassName="text-xs font-semibold text-gray-900"
+              secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+            />
+            {sku ? <p className="mt-1 break-all text-[11px] font-mono text-gray-500">{sku}</p> : null}
+          </div>
+          <svg
+            className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+      {sheetPortal}
+      {menuPortal}
+    </>
+  )
 }
 
 type CheckoutMeta = {
@@ -833,6 +1079,7 @@ type VariantPayload = {
   id?: number | string
   title?: string | null
   name?: string | null
+  cn_name?: string | null
   sku?: string | null
   barcode?: string | null
   price?: number | string | null
@@ -857,6 +1104,7 @@ type ProductApiItem = {
   id: number
   product_id?: number | string | null
   name?: string
+  cn_name?: string | null
   sku?: string
   barcode?: string | null
   price?: number | string
@@ -873,6 +1121,7 @@ type ProductApiItem = {
     id?: number
     name?: string | null
     title?: string | null
+    cn_name?: string | null
     sku?: string | null
     barcode?: string | null
     price?: number | string | null
@@ -1138,6 +1387,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartVariantOptions, setCartVariantOptions] = useState<Record<number, ProductVariantOption[]>>({})
   const [cartVariantLoading, setCartVariantLoading] = useState<Record<number, boolean>>({})
   const [cartVariantFetched, setCartVariantFetched] = useState<Record<number, boolean>>({})
+  const [openCartVariantItemId, setOpenCartVariantItemId] = useState<number | null>(null)
   const [checkoutResult, setCheckoutResult] = useState<null | {
     order_id: number
     order_number: string
@@ -1245,9 +1495,36 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     if (productSearchMode === 'name') {
-      return products
-        .filter((item) => (item.name?.toLowerCase() ?? '').includes(normalizedProductQuery))
-        .map((product) => ({ product }))
+      return products.flatMap((product) => {
+        const productName = product.name?.toLowerCase() ?? ''
+        const productCnName = product.cn_name?.toLowerCase() ?? ''
+
+        if (
+          productName.includes(normalizedProductQuery) ||
+          productCnName.includes(normalizedProductQuery)
+        ) {
+          return [{ product }]
+        }
+
+        const matchedVariant = (product.variants ?? []).find((variant) => {
+          if (variant.is_active === false) return false
+          const variantName = variant.name?.toLowerCase() ?? ''
+          const variantCnName = variant.cn_name?.toLowerCase() ?? ''
+          return (
+            variantName.includes(normalizedProductQuery) ||
+            variantCnName.includes(normalizedProductQuery)
+          )
+        })
+
+        if (!matchedVariant) return []
+
+        return [{
+          product,
+          matchedVariantId: matchedVariant.id,
+          matchedVariantSku: matchedVariant.sku,
+          matchedVariantName: matchedVariant.name,
+        }]
+      })
     }
 
     return products.flatMap((product) => {
@@ -1940,6 +2217,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             return {
               id: variantId,
               name: variant?.name?.trim() || variant?.title?.trim() || `Variant #${variantId}`,
+              cn_name: typeof variant?.cn_name === 'string' ? variant.cn_name.trim() || null : null,
               sku,
               barcode: barcode || sku,
               price: Number.isFinite(parsedPrice) ? parsedPrice : 0,
@@ -1978,6 +2256,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       id: productId,
       product_id: productId,
       name: item.name ?? '-',
+      cn_name: typeof item.cn_name === 'string' ? item.cn_name.trim() || null : null,
       sku,
       barcode: activeBarcode || itemBarcode || sku,
       price: Number.isFinite(price) ? price : 0,
@@ -2040,6 +2319,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           ...normalized,
           product_id: productId, // Ensure product_id is correct
           name: payload.name ?? current.name, // Use payload name to ensure correctness
+          cn_name: normalized.cn_name ?? current.cn_name ?? null,
         }
       })
       
@@ -4139,6 +4419,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               return {
                 id,
                 name: variant?.title?.trim() || variant?.name?.trim() || sku,
+                cn_name: typeof variant?.cn_name === 'string' ? variant.cn_name.trim() || null : null,
                 sku,
                 barcode: (typeof (variant as any)?.barcode === 'string' && String((variant as any).barcode).trim())
                   ? String((variant as any).barcode).trim()
@@ -4204,6 +4485,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       void fetchCartItemVariants(item)
     })
   }, [cart, cartVariantFetched, cartVariantOptions, cartVariantLoading])
+
+  useEffect(() => {
+    if (openCartVariantItemId == null) return
+
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      if (!target.closest(`[data-cart-variant-select="${openCartVariantItemId}"]`)) {
+        setOpenCartVariantItemId(null)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [openCartVariantItemId])
 
   const checkoutPaymentRows = useMemo(() => SPLIT_PAYMENT_METHODS.map(({ method }) => ({ method, amount: Number(splitPaymentAmounts[method] || 0) })).filter((row) => Number.isFinite(row.amount) && row.amount > 0), [splitPaymentAmounts])
   const splitTotalPaid = useMemo(() => checkoutPaymentRows.reduce((sum, row) => sum + row.amount, 0), [checkoutPaymentRows])
@@ -5245,7 +5541,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     value={productQuery}
                     onChange={(e) => setProductQuery(e.target.value)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 pl-10 pr-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder={productSearchMode === 'name' ? 'Search by product name' : 'Search by product barcode'}
+                    placeholder={
+                      productSearchMode === 'name'
+                        ? 'Search by product name or Chinese name'
+                        : 'Search by product barcode'
+                    }
                   />
                 </div>
               </div>
@@ -5320,6 +5620,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <div className="flex flex-col flex-1 p-4 bg-white min-h-0 justify-between">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-bold leading-tight text-gray-900 line-clamp-2 mb-1" title={titleWithVariant}>{titleWithVariant}</p>
+                      {item.cn_name ? <p className="text-xs text-gray-500 line-clamp-1">{item.cn_name}</p> : null}
                       <p className="text-xs text-gray-500 font-mono truncate">{displaySku}</p>
                       {catalogCardOutOfStock && (
                         <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-red-600">
@@ -5754,7 +6055,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
                             </>
                           )}
-                          <p className="mt-0.5 break-all text-xs font-mono text-gray-600" title={(item.variant_sku || item.variant_name || '') || undefined}>{item.variant_sku || item.variant_name || ''}</p>
                           {/* {item.promotion_applied ? (
                             <div className="mt-1.5">
                               <span className="inline-flex items-center rounded bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-700">
@@ -5832,40 +6132,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </div>
                         {!!item.product_id && (item.variant_id || (cartVariantOptions[item.id]?.length ?? 0) > 0) ? (
                           <div className="mt-2 w-full min-w-0 border-t border-gray-100 pt-3 sm:border-t-0 sm:pt-0">
-                            <select
-                              className={`h-9 w-full max-w-full rounded-lg border px-2 text-xs ${
-                                cartVariantLoading[item.id] 
-                                  ? 'border-slate-300 bg-gray-50 text-gray-400 cursor-wait' 
-                                  : (cartVariantOptions[item.id] ?? []).length === 0
-                                  ? 'border-gray-300 bg-gray-100 text-gray-400 cursor-not-allowed'
-                                  : 'border-slate-300 bg-white text-gray-900'
-                              }`}
-                              value={item.variant_id ? String(item.variant_id) : ''}
-                              onFocus={() => { if (item.variant_id) void fetchCartItemVariants(item) }}
-                              onChange={(e) => void updateItemVariant(item, Number(e.target.value))}
-                              disabled={cartVariantLoading[item.id] || (cartVariantOptions[item.id] ?? []).length === 0}
-                            >
-                              <option value="" disabled>{cartVariantLoading[item.id] ? 'Loading variants...' : 'Select variant'}</option>
-                              {(cartVariantOptions[item.id] ?? []).map((variant) => {
-                                const variantTrackStock = variant.track_stock ?? null
-                                const variantStock =
-                                  typeof variant.stock === 'number' && Number.isFinite(variant.stock)
-                                    ? variant.stock
-                                    : null
-                                const variantHasStock = variantHasSellableStock(variantTrackStock, variantStock)
-                                const isDisabled = !variantHasStock || !variant.is_active
-                                
-                                return (
-                                  <option 
-                                    key={variant.id} 
-                                    value={String(variant.id)}
-                                    disabled={isDisabled}
-                                  >
-                                    {variant.name} ({variant.sku}){!variantHasStock ? ' - Out of Stock' : ''}
-                                  </option>
-                                )
-                              })}
-                            </select>
+                            <PosCartVariantSelect
+                              itemId={item.id}
+                              variants={cartVariantOptions[item.id] ?? []}
+                              loading={Boolean(cartVariantLoading[item.id])}
+                              disabled={(cartVariantOptions[item.id] ?? []).length === 0 && !cartVariantLoading[item.id]}
+                              selectedVariantId={item.variant_id}
+                              fallbackName={item.variant_name}
+                              fallbackCnName={item.variant_cn_name}
+                              fallbackSku={item.variant_sku}
+                              productName={item.product_name}
+                              isOpen={openCartVariantItemId === item.id}
+                              onToggle={() => {
+                                setOpenCartVariantItemId((current) => (current === item.id ? null : item.id))
+                              }}
+                              onClose={() => setOpenCartVariantItemId(null)}
+                              onOpen={() => {
+                                if (item.variant_id) void fetchCartItemVariants(item)
+                              }}
+                              onSelect={(variantId) => {
+                                setOpenCartVariantItemId(null)
+                                void updateItemVariant(item, variantId)
+                              }}
+                            />
                           </div>
                         ) : null}
                       </div>
@@ -6485,7 +6774,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 })()}
 
                 <div>
-                  <h1 className="text-2xl font-bold text-gray-900">{selectedProduct.name}</h1>
+                  <ServiceNameStack
+                    name={selectedProduct.name}
+                    cnName={selectedProduct.cn_name}
+                    primaryClassName="text-2xl font-bold text-gray-900"
+                    secondaryClassName="mt-1 text-sm text-gray-500"
+                  />
                   <p className="text-sm text-gray-500 mt-1.5 font-mono">{selectedProduct.sku || selectedProduct.barcode}</p>
                 </div>
 
@@ -6529,7 +6823,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           >
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="font-bold text-gray-900">{variant.name}</p>
+                                <ServiceNameStack
+                                  name={variant.name}
+                                  cnName={variant.cn_name}
+                                  primaryClassName="font-bold text-gray-900"
+                                  secondaryClassName="mt-0.5 text-xs text-gray-500"
+                                />
                                 <p className="text-xs text-gray-600 mt-0.5 font-mono">{variant.sku}</p>
                                 <p className="text-sm font-bold text-gray-900 mt-1.5">RM {variant.price.toFixed(2)}</p>
                                 {typeof variant.stock === 'number' && (variant.track_stock ?? true) && (
@@ -7213,7 +7512,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <p className="font-semibold text-gray-900">{item.product_name}</p>
                             {item.product_cn_name ? <p className="mt-0.5 text-xs text-gray-500">{item.product_cn_name}</p> : null}
                             {hasVariant && variantDisplay && (
-                              <p className="text-xs text-blue-600 font-medium mt-0.5">Variant: {variantDisplay}</p>
+                              <div className="mt-1">
+                                <p className="text-[11px] font-semibold uppercase tracking-wide text-blue-600">Variant</p>
+                                <ServiceNameStack
+                                  name={variantDisplay}
+                                  cnName={item.variant_cn_name ?? null}
+                                  primaryClassName="text-xs font-medium text-blue-700"
+                                  secondaryClassName="mt-0.5 text-xs text-gray-500"
+                                />
+                              </div>
                             )}
                             {!hasVariant && item.product_id && (
                               <p className="text-xs text-gray-400 italic mt-0.5">No variant selected</p>

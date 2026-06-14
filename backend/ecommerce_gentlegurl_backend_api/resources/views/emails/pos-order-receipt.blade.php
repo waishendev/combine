@@ -31,7 +31,18 @@
                 <tbody>
                     @foreach ($items as $item)
                         <tr>
-                            <td style="padding: 8px 4px; border-bottom: 1px solid #efefef;">{{ $item['name'] }}</td>
+                            <td style="padding: 8px 4px; border-bottom: 1px solid #efefef;">
+                                <div>{{ $item['name'] }}</div>
+                                @if (!empty($item['cn_name']))
+                                    <div style="font-size: 12px; color: #666; margin-top: 2px;">{{ $item['cn_name'] }}</div>
+                                @endif
+                                @if (!empty($item['variant_name']))
+                                    <div style="font-size: 12px; color: #666; margin-top: 2px;">Variant: {{ $item['variant_name'] }}</div>
+                                @endif
+                                @if (!empty($item['variant_cn_name']))
+                                    <div style="font-size: 12px; color: #666; margin-top: 2px;">{{ $item['variant_cn_name'] }}</div>
+                                @endif
+                            </td>
                             <td style="padding: 8px 4px; border-bottom: 1px solid #efefef; text-align:center;">{{ $item['qty'] }}</td>
                             <td style="padding: 8px 4px; border-bottom: 1px solid #efefef; text-align:right;">RM {{ number_format((float) $item['line_total'], 2) }}</td>
                         </tr>

@@ -9,6 +9,7 @@ interface ProductGridProps {
   items: Array<{
     id: number | string;
     name: string;
+    cn_name?: string | null;
     price: number | string;
     sale_price?: number | string | null;
     sale_price_start_at?: string | null;
@@ -140,6 +141,9 @@ export default function ProductGrid({ items }: ProductGridProps) {
                 <h3 className="text-sm font-semibold leading-snug text-[var(--foreground)] md:text-base">
                   {product.name}
                 </h3>
+                {product.cn_name ? (
+                  <p className="text-xs leading-snug text-[color:var(--text-muted)]">{product.cn_name}</p>
+                ) : null}
 
                 <div className="space-y-1">
                   {isVariantProduct ? (

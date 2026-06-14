@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 export type ConsumableVariant = {
   id: number
   name: string
+  cn_name?: string | null
   sku?: string | null
   price: number
   image_url?: string | null
@@ -17,6 +18,7 @@ export type ConsumableProduct = {
   id: number
   product_id: number
   name: string
+  cn_name?: string | null
   sku?: string | null
   price: number
   image_url?: string | null
@@ -89,6 +91,7 @@ export default function StaffConsumableProductModal({
           return {
             id,
             name: String(variant.name ?? variant.title ?? variant.sku ?? 'Variant'),
+            cn_name: typeof variant.cn_name === 'string' ? variant.cn_name : null,
             sku: typeof variant.sku === 'string' ? variant.sku : null,
             price: Number(variant.price ?? variant.sale_price ?? item.price ?? 0),
             image_url:
@@ -227,6 +230,9 @@ export default function StaffConsumableProductModal({
                 Staff free · RM0
               </span>
               <h1 className="mt-2 text-2xl font-bold text-gray-900">{product.name}</h1>
+              {product.cn_name?.trim() ? (
+                <p className="mt-0.5 text-sm text-gray-500">{product.cn_name}</p>
+              ) : null}
               <p className="mt-1 font-mono text-sm text-gray-500">{selectedVariant?.sku ?? product.sku ?? '—'}</p>
               {product.category || product.categories?.[0]?.name ? (
                 <p className="mt-1 text-sm text-gray-500">{product.category ?? product.categories?.[0]?.name}</p>
@@ -259,6 +265,9 @@ export default function StaffConsumableProductModal({
                         }`}
                       >
                         <p className="font-semibold text-gray-900">{variant.name || variant.sku}</p>
+                        {variant.cn_name?.trim() ? (
+                          <p className="mt-0.5 text-xs text-gray-500">{variant.cn_name}</p>
+                        ) : null}
                         <p className="mt-0.5 font-mono text-xs text-gray-500">{variant.sku ?? '—'}</p>
                         {variant.track_stock ? (
                           <p className="mt-1 text-xs text-gray-500">

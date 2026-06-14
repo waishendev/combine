@@ -40,6 +40,7 @@ interface BtDevice {
 
 export type ReceiptLineItem = {
   name: string
+  cn_name?: string | null
   qty: number
   amount: number
 }
@@ -241,7 +242,7 @@ function buildReceiptBytes(data: ReceiptData): Uint8Array {
 
   if (data.items && data.items.length > 0) {
     for (const item of data.items) {
-      push(itemLine(item.name, item.qty, item.amount))
+      push(itemLine(item.cn_name ? `${item.name} / ${item.cn_name}` : item.name, item.qty, item.amount))
     }
     push(divider())
   }

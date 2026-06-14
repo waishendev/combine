@@ -12,6 +12,7 @@ import { bankQrImageCompactClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } fr
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import VoucherDetailsModal from "@/components/vouchers/VoucherDetailsModal";
 import VoucherList from "@/components/vouchers/VoucherList";
+import { NameStack } from "@/components/common/NameStack";
 import {
   AddressPayload,
   CheckoutPayload,
@@ -946,10 +947,10 @@ export default function CheckoutForm() {
   return (
     <>
 
-      <main className="mx-auto max-w-5xl px-4 py-8 text-[var(--foreground)]">
+      <main className="mx-auto max-w-5xl px-4 py-8 pb-28 text-[var(--foreground)] md:pb-8">
       <h1 className="mb-6 text-2xl font-semibold">Checkout</h1>
 
-      <form onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[2fr,1fr]">
+      <form id="checkout-form" onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <div className="space-y-4">
           {!isSelfPickup ? (
             <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
@@ -1327,34 +1328,60 @@ export default function CheckoutForm() {
                 return (
                   <div
                     key={item.id}
-                    className="flex flex-col gap-3 rounded-lg border border-[var(--card-border)]/60 bg-[var(--card)]/70 p-3 sm:flex-row sm:items-center"
+                    className="flex gap-3 rounded-lg border border-[var(--card-border)]/60 bg-[var(--card)]/70 p-3"
                   >
-                    <div className="relative h-20 w-full overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/20 sm:h-20 sm:w-20">
+                    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-md border border-[var(--muted)]/70 bg-[var(--muted)]/20">
                       {imageUrl ? (
-                        <Image src={imageUrl} alt={item.name} fill className="object-contain" />
+                        <Image src={imageUrl} alt={item.name} fill className="object-contain" sizes="80px" />
                       ) : (
-                        <Image src="/images/placeholder.png" alt={item.name} fill className="object-contain" />
+                        <Image src="/images/placeholder.png" alt={item.name} fill className="object-contain" sizes="80px" />
                       )}
                     </div>
 
-                    <div className="flex-1 space-y-1">
-                      <p className="text-sm font-semibold text-[var(--foreground)]">{item.name}</p>
-                      
+                    <div className="min-w-0 flex-1">
+                      <NameStack name={item.name} cnName={item.cn_name} />
+
                       {item.sku && <p className="text-[11px] text-[var(--foreground)]/50">SKU: {item.sku}</p>}
-                      {item.variant_name && (
-                        <p className="text-[11px] text-[var(--foreground)]/50">
-                          Variant: {item.variant_name}
-                        </p>
-                      )}
+                      {item.variant_name ? (
+                        <div className="mt-1.5">
+                          <NameStack
+                            name={item.variant_name}
+                            cnName={
+                              item.variant_cn_name ??
+                              item.available_variants?.find((variant) => variant.id === item.product_variant_id)?.cn_name ??
+                              null
+                            }
+                            nameClassName="text-xs font-medium text-[var(--foreground)]/85"
+                            cnClassName="mt-0.5 text-[11px] text-[color:var(--text-muted)]"
+                          />
+                        </div>
+                      ) : null}
                       <p className="text-xs text-[var(--foreground)]/60">Qty: {item.quantity}</p>
                       {hasPromotionDiscount && (
-                        <span className="inline-flex items-center rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
+                        <span className="mt-1 inline-flex items-center rounded-full bg-[var(--status-success-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase text-[color:var(--status-success)]">
                           Promo Applied
                         </span>
                       )}
+
+                      <div className="mt-2 flex items-baseline justify-start md:hidden">
+                        {hasPromotionDiscount ? (
+                          <div className="text-right">
+                            <span className="mr-1.5 text-xs text-[var(--foreground)]/45 line-through">
+                              RM {lineTotal.toFixed(2)}
+                            </span>
+                            <span className="text-base font-semibold tabular-nums text-[color:var(--status-success)]">
+                              RM {discountedLineTotal.toFixed(2)}
+                            </span>
+                          </div>
+                        ) : (
+                          <p className="text-base font-semibold tabular-nums text-[var(--accent-strong)]">
+                            RM {lineTotal.toFixed(2)}
+                          </p>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="space-y-1 text-sm text-right sm:min-w-[140px]">
+                    <div className="hidden space-y-1 text-sm text-right sm:min-w-[140px] md:block">
                       {hasPromotionDiscount ? (
                         <>
                           <div className="text-[var(--foreground)]/70">
@@ -1673,12 +1700,36 @@ export default function CheckoutForm() {
           <button
             type="submit"
             disabled={isSubmitting || selectedItems.length === 0}
-            className="mt-1 w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-semibold uppercase text-white transition-colors hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1 hidden w-full rounded-lg bg-[var(--accent)] px-4 py-3 text-sm font-semibold uppercase text-white transition-colors hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60 md:block"
           >
             {isSubmitting ? "Placing Order..." : "Place Order"}
           </button>
         </aside>
       </form>
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--card-border)] bg-[var(--card)]/98 shadow-[0_-4px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm md:hidden">
+        <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-medium text-[var(--foreground)]/55">Total</p>
+            <p className="mt-0.5 text-xl font-bold tabular-nums leading-tight text-[var(--foreground)]">
+              RM {safeTotals.grand.toFixed(2)}
+            </p>
+            {safeTotals.discount > 0 ? (
+              <p className="mt-0.5 text-[11px] text-[color:var(--status-success)]">
+                Saved RM {safeTotals.discount.toFixed(2)}
+              </p>
+            ) : null}
+          </div>
+          <button
+            type="submit"
+            form="checkout-form"
+            disabled={isSubmitting || selectedItems.length === 0}
+            className="shrink-0 rounded-lg bg-[var(--accent)] px-5 py-3.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[var(--accent-strong)] disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isSubmitting ? "Placing..." : "Place Order"}
+          </button>
+        </div>
+      </div>
 
       {showAddressModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">

@@ -76,7 +76,9 @@ class CartService
                 'product_variant_id' => $item->product_variant_id,
                 'product_type' => $product?->type,
                 'product_name' => $product?->name,
+                'cn_name' => $product?->cn_name,
                 'variant_name' => $variant?->title,
+                'variant_cn_name' => $variant?->cn_name,
                 'variant_sku' => $variant?->sku,
                 'product_slug' => $product?->slug,
                 'product_image' => $thumbnail,
@@ -93,6 +95,7 @@ class CartService
                         return [
                             'id' => $productVariant->id,
                             'name' => $productVariant->title,
+                            'cn_name' => $productVariant->cn_name,
                             'sku' => $productVariant->sku,
                             'price' => $productVariant->price,
                             'sale_price' => $productVariant->sale_price,

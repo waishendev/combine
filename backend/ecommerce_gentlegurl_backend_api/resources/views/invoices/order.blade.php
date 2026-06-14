@@ -629,19 +629,11 @@
                   <div class="sku" style="margin-top:1px;">{{ $item['product_cn_name'] }}</div>
                 <?php endif; ?>
 
-                @php
-                  $sku = $item['variant_sku'] ?? $item['product_sku'];
-                @endphp
-                <?php if($sku): ?>
-                  <div class="sku">SKU: {{ $sku }}</div>
-                <?php endif; ?>
                 <?php if(! $isBookingProductLine && $item['variant_name'] && !in_array($item['variant_name'], $hiddenReceiptVariantLabels, true)): ?>
-                  <div class="sku">
-                    Variant: {{ $item['variant_name'] }}
-                    <?php if($item['variant_sku']): ?>
-                      ({{ $item['variant_sku'] }})
-                    <?php endif; ?>
-                  </div>
+                  <div class="sku">Variant: {{ $item['variant_name'] }}</div>
+                  <?php if(!empty($item['variant_cn_name'])): ?>
+                    <div class="sku" style="margin-top:1px;">{{ $item['variant_cn_name'] }}</div>
+                  <?php endif; ?>
                 <?php endif; ?>
                 <?php if(!empty($item['promotion_summary'])): ?>
                   <div class="sku">Promotion: {{ $item['promotion_summary'] }}</div>

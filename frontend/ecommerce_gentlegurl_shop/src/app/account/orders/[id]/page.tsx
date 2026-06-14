@@ -71,14 +71,7 @@ const resolveOrderItemLabel = (item: { line_type?: string | null; name?: string 
 };
 
 
-function OrderItemNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
-  return (
-    <>
-      <p className="text-sm font-semibold text-[var(--foreground)]">{name}</p>
-      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
-    </>
-  );
-}
+import { NameStack, VariantNameBlock } from "@/components/common/NameStack";
 
 export default async function OrderDetailPage({ params }: OrderDetailPageProps) {
   const { id } = await params;
@@ -176,12 +169,13 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <OrderItemNameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
+                      <NameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
                       {(item.product_type === "variant" || item.product_variant_id) && (
-                        <p className="text-xs text-[var(--foreground)]/60">
-                          Variant: {item.variant_name ?? "—"}
-                          {item.variant_sku ? ` (${item.variant_sku})` : ""}
-                        </p>
+                        <VariantNameBlock
+                          label="Variant"
+                          name={item.variant_name ?? "—"}
+                          cnName={item.variant_cn_name}
+                        />
                       )}
                       {item.line_type === "service" ? (
                         <p className="text-xs font-medium text-emerald-700">Covered by Package</p>

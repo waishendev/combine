@@ -216,8 +216,15 @@ class PublicShopController extends Controller
             // If we fail to tokenize for any reason, fall back to raw keyword.
             if (empty($terms)) {
                 $productsQuery->where(function ($query) use ($rawKeyword) {
-                    $query->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($rawKeyword) . '%'])
-                        ->orWhereRaw('LOWER(sku) LIKE ?', ['%' . mb_strtolower($rawKeyword) . '%']);
+                    $like = '%' . mb_strtolower($rawKeyword) . '%';
+                    $query->whereRaw('LOWER(name) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(cn_name) LIKE ?', [$like])
+                        ->orWhereRaw('LOWER(sku) LIKE ?', [$like])
+                        ->orWhereHas('variants', function ($variantQuery) use ($like) {
+                            $variantQuery->whereRaw('LOWER(title) LIKE ?', [$like])
+                                ->orWhereRaw('LOWER(cn_name) LIKE ?', [$like])
+                                ->orWhereRaw('LOWER(sku) LIKE ?', [$like]);
+                        });
                 });
             } else {
                 $productsQuery->where(function ($query) use ($terms) {
@@ -229,7 +236,13 @@ class PublicShopController extends Controller
                         $like = '%' . $term . '%';
                         $query->where(function ($sub) use ($like) {
                             $sub->whereRaw('LOWER(name) LIKE ?', [$like])
-                                ->orWhereRaw('LOWER(sku) LIKE ?', [$like]);
+                                ->orWhereRaw('LOWER(cn_name) LIKE ?', [$like])
+                                ->orWhereRaw('LOWER(sku) LIKE ?', [$like])
+                                ->orWhereHas('variants', function ($variantQuery) use ($like) {
+                                    $variantQuery->whereRaw('LOWER(title) LIKE ?', [$like])
+                                        ->orWhereRaw('LOWER(cn_name) LIKE ?', [$like])
+                                        ->orWhereRaw('LOWER(sku) LIKE ?', [$like]);
+                                });
                         });
                     }
                 });
@@ -287,6 +300,7 @@ class PublicShopController extends Controller
                 return [
                     'id' => $product->id,
                     'name' => $product->name,
+                    'cn_name' => $product->cn_name,
                     'slug' => $product->slug,
                     'sku' => $product->sku,
                     'type' => $product->type,
@@ -517,6 +531,7 @@ class PublicShopController extends Controller
         $data = [
             'id' => $product->id,
             'name' => $product->name,
+            'cn_name' => $product->cn_name,
             'slug' => $product->slug,
             'sku' => $product->sku,
             'type' => $product->type,
@@ -573,6 +588,7 @@ class PublicShopController extends Controller
                     return [
                         'id' => $variant->id,
                         'name' => $variant->title,
+                        'cn_name' => $variant->cn_name,
                         'sku' => $variant->sku,
                         'price' => $variant->price ?? $product->price,
                         'sale_price' => $variantPricing['promotion_active']

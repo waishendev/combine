@@ -139,7 +139,9 @@ type OrderDetailData = {
     product_type?: string | null
     is_variant_product?: boolean | null
     product_name: string
+    product_cn_name?: string | null
     variant_name?: string | null
+    variant_cn_name?: string | null
     variant_sku?: string | null
     quantity: number
     unit_price?: string | null
@@ -654,10 +656,11 @@ export default function OrderViewPanel({
                                       />
                                       <div>
                                         <div className="font-medium text-slate-900">{item.product_name}</div>
+                                        {item.product_cn_name ? <div className="text-xs text-slate-500">{item.product_cn_name}</div> : null}
                                         {(item.product_type === 'variant' || item.product_variant_id) && (
                                           <div className="text-xs text-slate-500">
-                                            Variant: {item.variant_name ?? '—'}
-                                            {item.variant_sku ? ` (${item.variant_sku})` : ''}
+                                            <div>Variant: {item.variant_name ?? '—'}</div>
+                                            {item.variant_cn_name ? <div>{item.variant_cn_name}</div> : null}
                                           </div>
                                         )}
                                       </div>

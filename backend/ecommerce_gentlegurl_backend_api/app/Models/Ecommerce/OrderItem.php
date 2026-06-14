@@ -154,7 +154,23 @@ class OrderItem extends Model
             return $snapshot !== '' ? $snapshot : null;
         }
 
-        $cnName = trim((string) ($this->bookingService?->cn_name ?? ''));
+        $bookingServiceCn = trim((string) ($this->bookingService?->cn_name ?? ''));
+        if ($bookingServiceCn !== '') {
+            return $bookingServiceCn;
+        }
+
+        $productCn = trim((string) ($this->product?->cn_name ?? ''));
+
+        return $productCn !== '' ? $productCn : null;
+    }
+
+    public function displayVariantCnName(): ?string
+    {
+        if (! $this->product_variant_id) {
+            return null;
+        }
+
+        $cnName = trim((string) ($this->productVariant?->cn_name ?? ''));
 
         return $cnName !== '' ? $cnName : null;
     }

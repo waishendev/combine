@@ -179,6 +179,7 @@ class OrderController extends Controller
     {
         $order->load([
             'items.product.images',
+            'items.productVariant',
             'items.booking:id,booking_code,customer_id,guest_name,guest_phone,guest_email,staff_id,service_id,start_at,end_at,status,payment_status,deposit_amount,addon_items_json,settled_service_amount',
             'items.booking.customer:id,name,phone,email',
             'items.booking.service:id,name,cn_name,duration_min,service_price,price',
@@ -253,7 +254,9 @@ class OrderController extends Controller
                     'product_type' => $productType,
                     'is_variant_product' => $productType === 'variant',
                     'product_name' => $item->product_name_snapshot ?? $item->product_name ?? $item->product?->name,
+                    'product_cn_name' => ($productCn = trim((string) ($item->product?->cn_name ?? ''))) !== '' ? $productCn : null,
                     'variant_name' => $item->variant_name_snapshot,
+                    'variant_cn_name' => $item->displayVariantCnName(),
                     'variant_sku' => $item->variant_sku_snapshot,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->price_snapshot ?? $item->unit_price,
@@ -353,10 +356,12 @@ class OrderController extends Controller
                         return [
                             'order_item_id' => $item->order_item_id,
                             'product_name' => $productName,
+                            'product_cn_name' => ($productCn = trim((string) ($orderItem?->product?->cn_name ?? ''))) !== '' ? $productCn : null,
                             'product_variant_id' => $orderItem?->product_variant_id,
                             'product_type' => $productType,
                             'is_variant_product' => $productType === 'variant',
                             'variant_name' => $orderItem?->variant_name_snapshot,
+                            'variant_cn_name' => $orderItem?->displayVariantCnName(),
                             'variant_sku' => $orderItem?->variant_sku_snapshot,
                             'qty' => $item->quantity,
                         ];

@@ -15,7 +15,14 @@ class BookingSettlementReceiptMail extends Mailable implements ShouldQueue
     private string $pdfBytesBase64;
 
     /**
-     * @param array<int, array{name:string,qty:int,line_total:float}> $items
+     * @param array<int, array{
+     *     name: string,
+     *     cn_name?: string|null,
+     *     variant_name?: string|null,
+     *     variant_cn_name?: string|null,
+     *     qty: int,
+     *     line_total: float
+     * }> $items
      */
     public function __construct(
         private string $bookingReference,
@@ -42,6 +49,15 @@ class BookingSettlementReceiptMail extends Mailable implements ShouldQueue
         $this->items = array_map(
             fn (array $item): array => [
                 'name' => mb_scrub((string) ($item['name'] ?? ''), 'UTF-8'),
+                'cn_name' => ($cnName = trim((string) ($item['cn_name'] ?? ''))) !== ''
+                    ? mb_scrub($cnName, 'UTF-8')
+                    : null,
+                'variant_name' => ($variantName = trim((string) ($item['variant_name'] ?? ''))) !== ''
+                    ? mb_scrub($variantName, 'UTF-8')
+                    : null,
+                'variant_cn_name' => ($variantCnName = trim((string) ($item['variant_cn_name'] ?? ''))) !== ''
+                    ? mb_scrub($variantCnName, 'UTF-8')
+                    : null,
                 'qty' => (int) ($item['qty'] ?? 0),
                 'line_total' => (float) ($item['line_total'] ?? 0),
             ],

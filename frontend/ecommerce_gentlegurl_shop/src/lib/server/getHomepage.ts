@@ -58,6 +58,7 @@ export type HomepageProductImage = {
 export type HomepageProduct = {
   id: number;
   name: string;
+  cn_name?: string | null;
   slug: string;
   price: string;
   sale_price?: string | number | null;

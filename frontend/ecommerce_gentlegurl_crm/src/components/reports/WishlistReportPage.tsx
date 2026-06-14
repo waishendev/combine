@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import { NameStack } from '@/components/NameStack'
 import { resolveImageUrl } from '@/utils/resolveImageUrl'
 
 type WishlistRow = {
   product_id: number
   product_name: string
+  product_cn_name?: string | null
   sku: string | null
   image_url: string | null
   category_name: string | null
@@ -120,7 +122,7 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
               className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search product name or SKU"
+              placeholder="Search product name, Chinese name or SKU"
             />
           </div>
           <div className="md:col-span-2">
@@ -193,7 +195,12 @@ export default function WishlistReportPage({ initialDateFrom = '', initialDateTo
                           <div className="h-10 w-10 rounded border bg-gray-100" />
                         )}
                         <div>
-                          <div className="font-medium text-slate-900">{row.product_name}</div>
+                          <NameStack
+                            name={row.product_name}
+                            cnName={row.product_cn_name}
+                            primaryClassName="font-medium text-slate-900"
+                            secondaryClassName="mt-0.5 text-xs text-slate-500"
+                          />
                           <div className="text-xs text-slate-500">{row.product_status ?? '-'}</div>
                         </div>
                       </div>

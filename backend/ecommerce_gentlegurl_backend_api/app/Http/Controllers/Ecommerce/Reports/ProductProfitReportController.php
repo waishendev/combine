@@ -49,8 +49,10 @@ class ProductProfitReportController extends Controller
                 'oi.product_id',
                 'oi.product_variant_id',
                 'oi.product_name_snapshot as product_name',
+                DB::raw('MAX(p.cn_name) as product_cn_name'),
                 'oi.sku_snapshot as product_sku',
                 'oi.variant_name_snapshot as variant_name',
+                DB::raw('MAX(pv.cn_name) as variant_cn_name'),
                 'oi.variant_sku_snapshot as variant_sku',
                 DB::raw('SUM(oi.quantity) as quantity_sold'),
                 DB::raw('COALESCE(SUM(oi.line_total), 0) as sales_amount'),
@@ -154,6 +156,8 @@ class ProductProfitReportController extends Controller
     ): Builder {
         return DB::table('order_items as oi')
             ->join('orders as o', 'o.id', '=', 'oi.order_id')
+            ->leftJoin('products as p', 'p.id', '=', 'oi.product_id')
+            ->leftJoin('product_variants as pv', 'pv.id', '=', 'oi.product_variant_id')
             ->whereBetween(DB::raw('COALESCE(o.placed_at, o.created_at)'), [$start, $end])
             ->whereIn('o.payment_status', SalesReportService::VALID_PAYMENT_STATUSES_FOR_REPORT)
             ->whereIn('o.status', SalesReportService::VALID_ORDER_STATUSES_FOR_REPORT)
@@ -166,7 +170,9 @@ class ProductProfitReportController extends Controller
                     $subQuery->where('oi.product_name_snapshot', 'like', "%{$search}%")
                         ->orWhere('oi.sku_snapshot', 'like', "%{$search}%")
                         ->orWhere('oi.variant_name_snapshot', 'like', "%{$search}%")
-                        ->orWhere('oi.variant_sku_snapshot', 'like', "%{$search}%");
+                        ->orWhere('oi.variant_sku_snapshot', 'like', "%{$search}%")
+                        ->orWhere('p.cn_name', 'like', "%{$search}%")
+                        ->orWhere('pv.cn_name', 'like', "%{$search}%");
                 });
             })
             ->when($categoryId, function (Builder $query) use ($categoryId) {
@@ -198,7 +204,9 @@ class ProductProfitReportController extends Controller
             'product_id' => (int) $row->product_id,
             'product_variant_id' => $row->product_variant_id ? (int) $row->product_variant_id : null,
             'product_name' => (string) $row->product_name,
+            'product_cn_name' => $row->product_cn_name ?? null,
             'variant_name' => $row->variant_name,
+            'variant_cn_name' => $row->variant_cn_name ?? null,
             'sku' => $row->variant_sku ?: $row->product_sku,
             'product_sku' => $row->product_sku,
             'variant_sku' => $row->variant_sku,

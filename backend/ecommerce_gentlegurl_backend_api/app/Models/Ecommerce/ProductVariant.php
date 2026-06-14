@@ -16,6 +16,7 @@ class ProductVariant extends Model
         'sku',
         'barcode',
         'title',
+        'cn_name',
         'price',
         'sale_price',
         'sale_price_start_at',

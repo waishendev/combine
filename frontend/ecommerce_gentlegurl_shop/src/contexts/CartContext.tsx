@@ -136,26 +136,57 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     }
   }, [selectionStorageKey]);
 
-  const applyCartResponse = useCallback((cart?: CartResponse) => {
-    const normalizedItems = (cart?.items ?? []).map((item) => ({
-      ...item,
-      name: item.name ?? (item as unknown as { product_name?: string }).product_name ?? "",
-      is_reward: (item as unknown as { is_reward?: boolean }).is_reward ?? false,
-      reward_redemption_id: (item as unknown as { reward_redemption_id?: number | null }).reward_redemption_id ?? null,
-      locked: (item as unknown as { locked?: boolean }).locked ?? false,
-      product: item.product ??
-        ((item as unknown as { product_slug?: string }).product_slug
-          ? { slug: (item as unknown as { product_slug?: string }).product_slug }
-          : undefined),
-      product_image: getPrimaryProductImage({
-        product_image: item.product_image ?? (item as { product_image?: string | null }).product_image ?? null,
-        cover_image_url: (item as { cover_image_url?: string | null }).cover_image_url ?? item.product?.cover_image_url ?? null,
-        images: item.product?.images,
-        media: item.product?.media,
-      }),
-    }));
+  const normalizeCartItem = useCallback((item: CartItem) => ({
+    ...item,
+    name: item.name ?? (item as unknown as { product_name?: string }).product_name ?? "",
+    cn_name:
+      item.cn_name ??
+      (item as unknown as { product_cn_name?: string | null }).product_cn_name ??
+      null,
+    variant_cn_name: item.variant_cn_name ?? null,
+    is_reward: (item as unknown as { is_reward?: boolean }).is_reward ?? false,
+    reward_redemption_id: (item as unknown as { reward_redemption_id?: number | null }).reward_redemption_id ?? null,
+    locked: (item as unknown as { locked?: boolean }).locked ?? false,
+    product: item.product ??
+      ((item as unknown as { product_slug?: string }).product_slug
+        ? { slug: (item as unknown as { product_slug?: string }).product_slug }
+        : undefined),
+    product_image: getPrimaryProductImage({
+      product_image: item.product_image ?? (item as { product_image?: string | null }).product_image ?? null,
+      cover_image_url: (item as { cover_image_url?: string | null }).cover_image_url ?? item.product?.cover_image_url ?? null,
+      images: item.product?.images,
+      media: item.product?.media,
+    }),
+  }), []);
 
-    setItems(normalizedItems);
+  const preserveItemOrder = useCallback((prevItems: CartItem[], incomingItems: CartItem[]) => {
+    if (prevItems.length === 0) return incomingItems;
+
+    const incomingById = new Map(incomingItems.map((item) => [item.id, item]));
+    const ordered: CartItem[] = [];
+    const seen = new Set<number>();
+
+    for (const prev of prevItems) {
+      const next = incomingById.get(prev.id);
+      if (next) {
+        ordered.push(next);
+        seen.add(prev.id);
+      }
+    }
+
+    for (const item of incomingItems) {
+      if (!seen.has(item.id)) {
+        ordered.push(item);
+      }
+    }
+
+    return ordered;
+  }, []);
+
+  const applyCartResponse = useCallback((cart?: CartResponse) => {
+    const incomingItems = (cart?.items ?? []).map(normalizeCartItem);
+
+    setItems((prevItems) => preserveItemOrder(prevItems, incomingItems));
     setVoucherError(null);
     setVoucherMessage(null);
     setAppliedVoucher(null);
@@ -167,7 +198,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
     }
 
     const storedSelection = readStoredSelection();
-    const availableIds = normalizedItems.map((item) => item.id);
+    const availableIds = incomingItems.map((item) => item.id);
     const nextSelection =
       storedSelection === null
         ? availableIds
@@ -175,7 +206,7 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
 
     setSelectedItemIds(nextSelection);
     selectionHydratedRef.current = true;
-  }, [readStoredSelection]);
+  }, [normalizeCartItem, preserveItemOrder, readStoredSelection]);
 
   useEffect(() => {
     setSelectedItemIds((prev) => prev.filter((id) => items.some((item) => item.id === id)));
@@ -273,9 +304,10 @@ export function CartProvider({ children, setOnCustomerLogin, shippingSetting }: 
             ? {
                 ...item,
                 product_variant_id: productVariantId,
-                // Update variant name if available
                 variant_name:
                   item.available_variants?.find((v) => v.id === productVariantId)?.name ?? item.variant_name,
+                variant_cn_name:
+                  item.available_variants?.find((v) => v.id === productVariantId)?.cn_name ?? item.variant_cn_name,
               }
             : item,
         ),

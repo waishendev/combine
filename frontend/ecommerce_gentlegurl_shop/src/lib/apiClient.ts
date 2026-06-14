@@ -143,14 +143,17 @@ export type CartItem = {
   product_variant_id?: number | null;
   product_type?: string | null;
   name: string;
+  cn_name?: string | null;
   sku?: string | null;
   variant_name?: string | null;
+  variant_cn_name?: string | null;
   variant_sku?: string | null;
   product_image?: string | null;
   product_stock?: number | null;
   available_variants?: Array<{
     id: number;
     name: string;
+    cn_name?: string | null;
     sku?: string | null;
     price?: number | string | null;
     stock?: number | null;

@@ -6,6 +6,7 @@ import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
+import { VariantNameStack } from './NameStack'
 
 type Summary = {
   orders_count: number
@@ -49,6 +50,8 @@ type DetailRow = {
   item_type?: ReportItemType
   product_name: string | null
   product_cn_name?: string | null
+  variant_name?: string | null
+  variant_cn_name?: string | null
   qty: number
   item_total_price: number
   item_snapshot_total: number
@@ -615,6 +618,17 @@ export default function MyPosSummaryPage({
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
                       <ReportNameStack name={row.product_name} cnName={row.product_cn_name} />
+                      {row.variant_name?.trim() || row.variant_cn_name?.trim() ? (
+                        <div className="mt-1">
+                          <VariantNameStack
+                            name={row.variant_name}
+                            cnName={row.variant_cn_name}
+                            nameClassName="text-xs text-slate-700"
+                            labelClassName="text-xs text-slate-500"
+                            cnClassName="text-xs text-slate-500"
+                          />
+                        </div>
+                      ) : null}
                       <p className="text-xs text-slate-500">{getItemTypeLabel(row.item_type)}</p>
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
@@ -734,6 +748,17 @@ export default function MyPosSummaryPage({
                           primaryClassName="mt-1 text-base font-bold text-blue-900"
                           secondaryClassName="mt-0.5 text-xs font-medium text-blue-700/80"
                         />
+                        {selectedRow.variant_name?.trim() || selectedRow.variant_cn_name?.trim() ? (
+                          <div className="mt-1">
+                            <VariantNameStack
+                              name={selectedRow.variant_name}
+                              cnName={selectedRow.variant_cn_name}
+                              nameClassName="text-sm font-semibold text-blue-900"
+                              labelClassName="text-xs font-semibold text-blue-600"
+                              cnClassName="text-xs font-medium text-blue-700/80"
+                            />
+                          </div>
+                        ) : null}
                         <p className="mt-1 text-xs font-semibold uppercase text-blue-600">
                           {getItemTypeLabel(selectedRow.item_type)}
                         </p>

@@ -3093,6 +3093,7 @@ class PosController extends Controller
                     'id' => $variant->id,
                     'product_id' => $product?->id,
                     'name' => $product?->name,
+                    'cn_name' => $product?->cn_name,
                     'sku' => $variant->sku,
                     'barcode' => $variant->barcode ?? $variant->sku,
                     'price' => (float) ($pricing['effective_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
@@ -3102,6 +3103,7 @@ class PosController extends Controller
                     'variants' => [[
                         'id' => $variant->id,
                         'name' => $variant->title,
+                        'cn_name' => $variant->cn_name,
                         'title' => $variant->title,
                         'sku' => $variant->sku,
                         'barcode' => $variant->barcode,
@@ -3145,13 +3147,16 @@ class PosController extends Controller
                 $builder->where(function ($search) use ($query, $exact) {
                     $search
                         ->where('products.name', 'like', "%{$query}%")
+                        ->orWhere('products.cn_name', 'like', "%{$query}%")
                         ->orWhere('products.sku', 'like', "%{$query}%")
                         ->orWhere('products.barcode', 'like', "%{$query}%")
                         ->orWhereRaw('LOWER(products.sku) = ?', [$exact])
                         ->orWhereRaw('LOWER(products.barcode) = ?', [$exact])
                         ->orWhereHas('variants', function ($variantQuery) use ($query, $exact) {
                             $variantQuery
-                                ->where('product_variants.sku', 'like', "%{$query}%")
+                                ->where('product_variants.title', 'like', "%{$query}%")
+                                ->orWhere('product_variants.cn_name', 'like', "%{$query}%")
+                                ->orWhere('product_variants.sku', 'like', "%{$query}%")
                                 ->orWhere('product_variants.barcode', 'like', "%{$query}%")
                                 ->orWhereRaw('LOWER(product_variants.sku) = ?', [$exact])
                                 ->orWhereRaw('LOWER(product_variants.barcode) = ?', [$exact]);
@@ -3252,8 +3257,8 @@ class PosController extends Controller
             ->with([
                 'order.creator.staff:id,name',
                 'staff:id,name',
-                'product:id,name,sku',
-                'productVariant:id,title,sku',
+                'product:id,name,cn_name,sku',
+                'productVariant:id,title,cn_name,sku',
             ])
             ->where('is_staff_free_applied', true)
             ->whereHas('order', function ($builder) {
@@ -3293,8 +3298,15 @@ class PosController extends Controller
                 $searchQuery
                     ->where('product_name_snapshot', 'like', "%{$search}%")
                     ->orWhere('display_name_snapshot', 'like', "%{$search}%")
+                    ->orWhere('variant_name_snapshot', 'like', "%{$search}%")
                     ->orWhere('sku_snapshot', 'like', "%{$search}%")
                     ->orWhere('variant_sku_snapshot', 'like', "%{$search}%")
+                    ->orWhereHas('product', fn ($productQuery) => $productQuery
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('cn_name', 'like', "%{$search}%"))
+                    ->orWhereHas('productVariant', fn ($variantQuery) => $variantQuery
+                        ->where('title', 'like', "%{$search}%")
+                        ->orWhere('cn_name', 'like', "%{$search}%"))
                     ->orWhereHas('order', fn ($orderQuery) => $orderQuery->where('order_number', 'like', "%{$search}%"))
                     ->orWhereHas('staff', fn ($staffQuery) => $staffQuery->where('name', 'like', "%{$search}%"))
                     ->orWhereHas('order.creator', function ($creatorQuery) use ($search) {
@@ -3321,7 +3333,10 @@ class PosController extends Controller
             'created_by' => $creator?->name ?? $creator?->email ?? 'System',
             'order_number' => (string) ($order?->order_number ?? '-'),
             'reference_no' => (string) ($order?->order_number ?? '-'),
-            'product' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: $item->product?->name ?: 'Product'),
+            'product' => (string) ($item->product_name_snapshot ?: $item->product?->name ?: 'Product'),
+            'product_cn_name' => $item->displayCnName(),
+            'variant' => (string) ($item->variant_name_snapshot ?: $item->productVariant?->title ?: ''),
+            'variant_cn_name' => $item->displayVariantCnName(),
             'sku' => (string) ($item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku ?: $item->product?->sku ?: '-'),
             'qty' => (int) $item->quantity,
             'original_price' => (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0),
@@ -3463,6 +3478,7 @@ class PosController extends Controller
             'id' => (int) $product->id,
             'product_id' => (int) $product->id,
             'name' => (string) $product->name,
+            'cn_name' => $product->cn_name,
             'sku' => (string) ($product->sku ?? ''),
             'barcode' => (string) ($product->barcode ?? ''),
             'price' => (float) ($pricing['effective_price'] ?? $product->sale_price ?? $product->price ?? 0),
@@ -3479,6 +3495,7 @@ class PosController extends Controller
                     'id' => (int) $variant->id,
                     'name' => (string) $variant->title,
                     'title' => (string) $variant->title,
+                    'cn_name' => $variant->cn_name,
                     'sku' => (string) ($variant->sku ?? ''),
                     'barcode' => (string) ($variant->barcode ?? ''),
                     'price' => (float) ($variantPricing['effective_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
@@ -5607,7 +5624,7 @@ class PosController extends Controller
         ]);
 
         $order = Order::query()
-            ->with(['items.booking', 'serviceItems', 'bankAccount'])
+            ->with(['items.booking', 'items.product', 'items.productVariant', 'items.bookingService', 'serviceItems', 'bankAccount'])
             ->findOrFail($orderId);
 
         $receiptUrl = $this->buildReceiptUrl($order, $request);
@@ -5624,7 +5641,7 @@ class PosController extends Controller
             $optionLineTotal = (float) $bookingProductOptions->sum(fn (array $option) => (float) ($option['extra_price'] ?? 0) * $quantity);
 
             $lines = [[
-                'name' => $this->invoiceService->formatEmailLineLabelFromInvoiceRow($row),
+                ...$this->invoiceService->mapInvoiceRowToEmailItem($row),
                 'qty' => $quantity,
                 'line_total' => max(0, (float) $row['line_total'] - $optionLineTotal),
             ]];
@@ -5633,7 +5650,10 @@ class PosController extends Controller
                 $label = trim((string) ($option['label'] ?? '')) ?: 'Booking Product Option';
                 $cnLabel = trim((string) ($option['cn_label'] ?? ''));
                 $lines[] = [
-                    'name' => $cnLabel !== '' ? $label . ' - ' . $cnLabel : $label,
+                    'name' => $label,
+                    'cn_name' => $cnLabel !== '' ? $cnLabel : null,
+                    'variant_name' => null,
+                    'variant_cn_name' => null,
                     'qty' => $quantity,
                     'line_total' => (float) ($option['extra_price'] ?? 0) * $quantity,
                 ];
@@ -5906,8 +5926,10 @@ class PosController extends Controller
                 'product_id' => $product?->id,
                 'variant_id' => $variant?->id,
                 'variant_name' => $variant?->title,
+                'variant_cn_name' => $variant?->cn_name,
                 'variant_sku' => $variant?->sku,
                 'product_name' => $product?->name,
+                'product_cn_name' => $product?->cn_name,
                 'discount_type' => $item->discount_type,
                 'discount_value' => (float) ($item->discount_value ?? 0),
                 'discount_remark' => $item->discount_remark,

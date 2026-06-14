@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getReturns } from "@/lib/server/getReturns";
 import { formatReturnStatusLabel, getReturnStatusBadgeClasses } from "@/lib/returns/returnStatus";
 import { getPrimaryProductImage } from "@/lib/productMedia";
+import { NameStack, VariantNameBlock } from "@/components/common/NameStack";
 
 const formatAmount = (value?: string | number | null) => {
   if (value === null || value === undefined || value === "") return "0.00";
@@ -131,17 +132,17 @@ export default async function AccountReturnsPage() {
                               className="h-12 w-12 rounded-lg object-cover"
                             />
                             <div>
-                              <p className="text-sm font-semibold text-[var(--foreground)]">
-                                {item.product_name ?? "Item"}
-                              </p>
+                              <NameStack name={item.product_name ?? "Item"} cnName={item.cn_name} />
                               {item.sku && (
                                 <p className="text-xs text-[var(--foreground)]/60">SKU: {item.sku}</p>
                               )}
                               {(item.product_type === "variant" || item.product_variant_id) && (
-                                <p className="text-xs text-[var(--foreground)]/60">
-                                  Variant: {item.variant_name ?? "—"}
-                                  {item.variant_sku ? ` (${item.variant_sku})` : ""}
-                                </p>
+                                <VariantNameBlock
+                                  label="Variant"
+                                  name={item.variant_name ?? "—"}
+                                  cnName={item.variant_cn_name}
+                                  sku={item.variant_sku ?? null}
+                                />
                               )}
                             </div>
                           </div>

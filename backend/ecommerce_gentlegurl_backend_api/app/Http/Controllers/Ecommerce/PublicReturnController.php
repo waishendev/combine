@@ -213,7 +213,7 @@ class PublicReturnController extends Controller
             'per_page' => ['nullable', 'integer'],
         ]);
 
-        $query = ReturnRequest::with(['order', 'items.orderItem.product'])
+        $query = ReturnRequest::with(['order', 'items.orderItem.product', 'items.orderItem.productVariant'])
             ->where('customer_id', $customer->id);
 
         if (!empty($validated['status'])) {
@@ -256,6 +256,7 @@ class PublicReturnController extends Controller
                     return [
                         'order_item_id' => $item->order_item_id,
                         'product_name' => $item->orderItem?->product_name_snapshot,
+                        'cn_name' => $item->orderItem?->displayCnName(),
                         'requested_quantity' => $item->quantity,
                         'quantity' => $item->orderItem?->quantity,
                         'sku' => $item->orderItem?->sku_snapshot,
@@ -264,6 +265,7 @@ class PublicReturnController extends Controller
                         'product_type' => $productType,
                         'is_variant_product' => $productType === 'variant',
                         'variant_name' => $item->orderItem?->variant_name_snapshot,
+                        'variant_cn_name' => $item->orderItem?->displayVariantCnName(),
                         'variant_sku' => $item->orderItem?->variant_sku_snapshot,
                         'product_image' => $thumbnail,
                         'cover_image_url' => $thumbnail,
@@ -283,7 +285,7 @@ class PublicReturnController extends Controller
             return $this->respond(null, __('You are not allowed to access this return request.'), false, 403);
         }
 
-        $returnRequest->load(['items.orderItem.product.images', 'order']);
+        $returnRequest->load(['items.orderItem.product.images', 'items.orderItem.productVariant', 'order']);
         $refundProofUrl = $returnRequest->refund_proof_path
             ? Storage::disk('public')->url($returnRequest->refund_proof_path)
             : null;
@@ -300,12 +302,14 @@ class PublicReturnController extends Controller
             return [
                 'order_item_id' => $item->order_item_id,
                 'product_name' => $item->orderItem?->product_name_snapshot,
+                'cn_name' => $item->orderItem?->displayCnName(),
                 'sku' => $item->orderItem?->sku_snapshot,
                 'product_sku' => $item->orderItem?->sku_snapshot,
                 'product_variant_id' => $item->orderItem?->product_variant_id,
                 'product_type' => $productType,
                 'is_variant_product' => $productType === 'variant',
                 'variant_name' => $item->orderItem?->variant_name_snapshot,
+                'variant_cn_name' => $item->orderItem?->displayVariantCnName(),
                 'variant_sku' => $item->orderItem?->variant_sku_snapshot,
                 'order_quantity' => $item->orderItem?->quantity,
                 'requested_quantity' => $item->quantity,

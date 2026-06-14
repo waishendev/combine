@@ -412,6 +412,15 @@ export function BookingOrdersClient() {
                           >
                             <div className="min-w-0 flex-1 overflow-hidden">
                               <LineNameStack name={resolveLineLabel(item)} cnName={item.cn_name} />
+                              {(item.product_type === "variant" || item.product_variant_id) && (
+                                <div className="mt-1">
+                                  <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--foreground)]/50">Variant</p>
+                                  <p className="text-xs font-medium text-[var(--foreground)]">{item.variant_name ?? "—"}</p>
+                                  {item.variant_cn_name ? (
+                                    <p className="mt-0.5 text-[11px] text-[var(--foreground)]/60">{item.variant_cn_name}</p>
+                                  ) : null}
+                                </div>
+                              )}
                               {item.line_type === "service" ? (
                                 <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
                               ) : null}

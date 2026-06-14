@@ -53,8 +53,8 @@ class SalesChannelReportService
                 'payments:id,order_id,payment_method,amount,reference_no',
                 'uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
                 'items' => fn ($query) => $query->orderBy('id'),
-                'items.product:id,name',
-                'items.productVariant:id,title,sku',
+                'items.product:id,name,cn_name',
+                'items.productVariant:id,title,sku,cn_name',
                 'items.booking:id,booking_code,service_id,guest_name,guest_phone,guest_email',
                 'items.booking.service:id,name,cn_name',
                 'items.bookingService:id,name,cn_name',
@@ -183,6 +183,11 @@ class SalesChannelReportService
         $net = (float) ($item->line_total_after_discount ?? $item->effective_line_total ?? max(0.0, $gross - $discount));
         $unitPrice = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
         $variantName = trim((string) ($item->variant_name_snapshot ?: $item->productVariant?->title ?: ''));
+        $lineType = (string) ($item->line_type ?? 'product');
+        $productCnName = match ($lineType) {
+            'product' => ($cn = trim((string) ($item->product?->cn_name ?? ''))) !== '' ? $cn : null,
+            default => $item->displayCnName(),
+        };
         $bookingNo = $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null);
 
         $staffSplits = $item->staffSplits
@@ -200,8 +205,9 @@ class SalesChannelReportService
             'type_label' => $this->displayLineType((string) ($item->line_type ?? 'product')),
             'booking_no' => $bookingNo,
             'name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: $item->product?->name ?: $item->bookingService?->name ?: 'Line item'),
-            'cn_name' => $item->displayCnName(),
+            'cn_name' => $productCnName,
             'variant_name' => $variantName !== '' ? $variantName : null,
+            'variant_cn_name' => $item->displayVariantCnName(),
             'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku,
             'qty' => (int) ($item->quantity ?? 1),
             'unit_price' => $unitPrice,

@@ -45,6 +45,7 @@ type ReceiptItem = {
   name: string;
   cn_name?: string | null;
   variant_name?: string;
+  variant_cn_name?: string | null;
   qty: number;
   unit_price: number;
   line_total?: number;
@@ -142,6 +143,18 @@ function ItemNameStack({ name, cnName }: { name: string; cnName?: string | null 
   );
 }
 
+function VariantNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
+  return (
+    <>
+      <p className="text-xs text-[var(--foreground)]/80">
+        <span className="text-[var(--foreground)]/60">Variant: </span>
+        {name}
+      </p>
+      {cnName ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">{cnName}</p> : null}
+    </>
+  );
+}
+
 export default async function PublicReceiptPage({ params }: Props) {
   const { token } = await params;
   const receipt = await getReceipt(token);
@@ -217,9 +230,10 @@ export default async function PublicReceiptPage({ params }: Props) {
                 <tr className="border-t border-[var(--card-border)] text-sm">
                   <td className="px-4 py-3">
                     <ItemNameStack name={resolveItemLabel(item)} cnName={item.cn_name} />
-                    {item.sku ? <p className="text-xs text-[var(--foreground)]/70">SKU: {item.sku}</p> : null}
                     {!isBookingProductLine && shouldShowReceiptVariant(item.variant_name) ? (
-                      <p className="text-xs text-[var(--foreground)]/70">Variant: {item.variant_name}</p>
+                      <div className="mt-0.5">
+                        <VariantNameStack name={item.variant_name ?? ""} cnName={item.variant_cn_name} />
+                      </div>
                     ) : null}
                     {isCoveredByPackage ? (
                       <>

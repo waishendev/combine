@@ -17,6 +17,7 @@ export type ReturnRequestSummary = {
   items?: Array<{
     order_item_id?: number | null;
     product_name?: string | null;
+    cn_name?: string | null;
     requested_quantity?: number | null;
     quantity?: number | null;
     sku?: string | null;
@@ -25,6 +26,7 @@ export type ReturnRequestSummary = {
     product_type?: string | null;
     is_variant_product?: boolean | null;
     variant_name?: string | null;
+    variant_cn_name?: string | null;
     variant_sku?: string | null;
     product_image?: string | null;
     cover_image_url?: string | null;

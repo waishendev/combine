@@ -153,6 +153,7 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw('order_items.id AS order_item_id')
             ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN 'booking_settlement' WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' WHEN order_items.line_type = 'booking_addon' THEN 'booking_addon' ELSE 'product' END AS item_type")
             ->selectRaw('order_items.product_name_snapshot AS product_name')
+            ->selectRaw('order_items.variant_name_snapshot AS variant_name')
             ->selectRaw('NULL::text AS product_cn_name')
             ->selectRaw('order_items.quantity AS qty')
             ->selectRaw("($effectiveLineTotalExpr) AS item_total_price")
@@ -171,6 +172,7 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw('customer_service_packages.id AS order_item_id')
             ->selectRaw("'service_package' AS item_type")
             ->selectRaw('service_packages.name AS product_name')
+            ->selectRaw('NULL::text AS variant_name')
             ->selectRaw('NULL::text AS product_cn_name')
             ->selectRaw('1 AS qty')
             ->selectRaw('COALESCE((SELECT SUM(sps_amount.split_sales_amount) FROM service_package_staff_splits sps_amount WHERE sps_amount.customer_service_package_id = customer_service_packages.id), service_packages.selling_price) AS item_total_price')
@@ -201,8 +203,13 @@ class MyPosSummaryReportController extends Controller
             ->map(fn ($v) => (int) $v)
             ->all();
 
-        $orderItemCnNames = OrderItem::query()
-            ->with(['bookingService:id,cn_name', 'booking:id,addon_items_json'])
+        $orderItemDisplay = OrderItem::query()
+            ->with([
+                'bookingService:id,cn_name',
+                'booking:id,addon_items_json',
+                'product:id,cn_name',
+                'productVariant:id,title,cn_name',
+            ])
             ->whereIn('id', collect($paginator->items())
                 ->filter(fn ($row) => ($row->item_type ?? 'product') !== 'service_package')
                 ->pluck('order_item_id')
@@ -211,7 +218,13 @@ class MyPosSummaryReportController extends Controller
                 ->values()
                 ->all())
             ->get()
-            ->mapWithKeys(fn (OrderItem $item) => [(int) $item->id => $item->displayCnName()]);
+            ->mapWithKeys(fn (OrderItem $item) => [
+                (int) $item->id => [
+                    'product_cn_name' => $item->displayCnName(),
+                    'variant_name' => ($name = trim((string) ($item->variant_name_snapshot ?? $item->productVariant?->title ?? ''))) !== '' ? $name : null,
+                    'variant_cn_name' => $item->displayVariantCnName(),
+                ],
+            ]);
 
         $splitsGrouped = collect();
         if (! empty($productItemIds)) {
@@ -294,7 +307,14 @@ class MyPosSummaryReportController extends Controller
         }
 
         $details = collect($paginator->items())
-            ->map(fn ($row) => [
+            ->map(function ($row) use ($orderItemDisplay, $splitsGrouped) {
+                $itemDisplay = ($row->item_type ?? 'product') !== 'service_package'
+                    ? $orderItemDisplay->get((int) $row->order_item_id)
+                    : null;
+                $variantName = trim((string) ($row->variant_name ?? ''));
+                $variantName = $variantName !== '' ? $variantName : ($itemDisplay['variant_name'] ?? null);
+
+                return [
                 'order_no' => $row->order_no,
                 'order_id' => (int) $row->order_id,
                 'order_date' => $row->order_date,
@@ -305,7 +325,9 @@ class MyPosSummaryReportController extends Controller
                 'order_item_id' => (int) $row->order_item_id,
                 'item_type' => $row->item_type,
                 'product_name' => $row->product_name,
-                'product_cn_name' => $row->product_cn_name ?? (($row->item_type ?? 'product') !== 'service_package' ? $orderItemCnNames->get((int) $row->order_item_id) : null),
+                'product_cn_name' => $itemDisplay['product_cn_name'] ?? null,
+                'variant_name' => $variantName,
+                'variant_cn_name' => $itemDisplay['variant_cn_name'] ?? null,
                 'qty' => (int) $row->qty,
                 'item_total_price' => round((float) $row->item_total_price, 2),
                 'item_snapshot_total' => round((float) ($row->item_snapshot_total ?? 0), 2),
@@ -314,7 +336,8 @@ class MyPosSummaryReportController extends Controller
                 'staff_splits' => ($splitsGrouped->get(sprintf('%s:%d', $row->item_type, (int) $row->order_item_id)) ?? collect())
                     ->map(fn ($split) => collect($split)->except('split_key')->all())
                     ->values(),
-            ])
+            ];
+            })
             ->values();
 
         return response()->json([

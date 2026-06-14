@@ -6,12 +6,17 @@ import StaffConsumableProductModal, {
   type ConsumableProduct,
   type ConsumableVariant,
 } from '@/components/staff-consumables/StaffConsumableProductModal'
+import { NameStack, VariantNameStack } from '@/components/NameStack'
 
 type CartItem = {
   key: string
   product_id: number
   variant_id?: number | null
   name: string
+  product_name: string
+  product_cn_name?: string | null
+  variant_name?: string | null
+  variant_cn_name?: string | null
   sku?: string | null
   image_url?: string | null
   category?: string | null
@@ -28,6 +33,9 @@ type ClaimHistoryRow = {
   order_number?: string | null
   reference_no?: string | null
   product?: string | null
+  product_cn_name?: string | null
+  variant?: string | null
+  variant_cn_name?: string | null
   sku?: string | null
   qty: number
   original_price: number
@@ -149,6 +157,10 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
           product_id: product.product_id,
           variant_id: variant?.id ?? null,
           name: variant ? `${product.name} - ${variant.name}` : product.name,
+          product_name: product.name,
+          product_cn_name: product.cn_name,
+          variant_name: variant?.name ?? null,
+          variant_cn_name: variant?.cn_name ?? null,
           sku: variant?.sku ?? product.sku,
           image_url: variant?.image_url ?? product.image_url ?? product.thumbnail_url,
           category: product.category ?? product.categories?.[0]?.name ?? null,
@@ -310,6 +322,9 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
                     <div className="flex min-h-0 min-w-0 flex-1 flex-col justify-between p-4">
                       <div className="min-w-0">
                         <p className="mb-1 line-clamp-2 text-sm font-bold leading-tight text-slate-900">{product.name}</p>
+                        {product.cn_name?.trim() ? (
+                          <p className="mb-1 line-clamp-1 text-xs text-slate-500">{product.cn_name}</p>
+                        ) : null}
                         <p className="truncate font-mono text-xs text-slate-500">{product.sku || '—'}</p>
                         {variantsCount > 0 ? (
                           <p className="mt-0.5 text-[11px] font-medium text-emerald-700">({variantsCount} variants)</p>
@@ -347,7 +362,23 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
                         ) : null}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-semibold text-slate-900">{item.name}</p>
+                        <NameStack
+                          name={item.product_name}
+                          cnName={item.product_cn_name}
+                          primaryClassName="truncate text-sm font-semibold text-slate-900"
+                          secondaryClassName="truncate text-xs text-slate-500"
+                        />
+                        {item.variant_name?.trim() || item.variant_cn_name?.trim() ? (
+                          <div className="mt-0.5">
+                            <VariantNameStack
+                              name={item.variant_name}
+                              cnName={item.variant_cn_name}
+                              nameClassName="truncate text-xs text-slate-700"
+                              labelClassName="text-xs text-slate-500"
+                              cnClassName="truncate text-xs text-slate-500"
+                            />
+                          </div>
+                        ) : null}
                         <p className="truncate text-xs text-slate-500">SKU: {item.sku || '-'}</p>
                         <p className="mt-1 text-xs text-slate-500">Original {formatCurrency(item.original_price)} → <span className="font-bold text-emerald-700">RM0.00</span></p>
                       </div>
@@ -405,7 +436,28 @@ export default function StaffConsumablesPageContent({ canCheckout, canViewLogs }
                       <tr key={row.id}>
                         <td className="py-2 pr-2 text-slate-500">{row.claimed_at ?? '-'}</td>
                         <td className="py-2 pr-2 text-slate-700">{row.staff ?? '-'}</td>
-                        <td className="py-2 pr-2"><span className="block font-semibold text-slate-800">{row.product ?? '-'}</span><span className="text-slate-500">{row.sku ?? '-'}</span><span className="block text-slate-500">Original {formatCurrency(row.original_price)}</span></td>
+                        <td className="py-2 pr-2">
+                          <NameStack
+                            name={row.product}
+                            cnName={row.product_cn_name}
+                            primaryClassName="font-semibold text-slate-800"
+                            secondaryClassName="text-xs text-slate-500"
+                            fallback="-"
+                          />
+                          {row.variant?.trim() || row.variant_cn_name?.trim() ? (
+                            <div className="mt-0.5">
+                              <VariantNameStack
+                                name={row.variant}
+                                cnName={row.variant_cn_name}
+                                nameClassName="text-xs text-slate-700"
+                                labelClassName="text-xs text-slate-500"
+                                cnClassName="text-xs text-slate-500"
+                              />
+                            </div>
+                          ) : null}
+                          <span className="text-slate-500">{row.sku ?? '-'}</span>
+                          <span className="block text-slate-500">Original {formatCurrency(row.original_price)}</span>
+                        </td>
                         <td className="py-2 pr-2 text-right text-slate-700">{row.qty}</td>
                         <td className="py-2 text-right font-bold text-emerald-700">{formatCurrency(row.final_amount)}</td>
                       </tr>

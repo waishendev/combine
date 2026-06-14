@@ -3,12 +3,14 @@ import { cookies } from "next/headers";
 export type ReturnRequestItem = {
   order_item_id: number;
   product_name?: string | null;
+  cn_name?: string | null;
   sku?: string | null;
   product_sku?: string | null;
   product_variant_id?: number | null;
   product_type?: string | null;
   is_variant_product?: boolean | null;
   variant_name?: string | null;
+  variant_cn_name?: string | null;
   variant_sku?: string | null;
   order_quantity?: number | null;
   requested_quantity?: number | null;

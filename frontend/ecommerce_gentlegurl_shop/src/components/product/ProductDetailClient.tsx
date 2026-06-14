@@ -15,6 +15,7 @@ import type { ProductReviewsData, ReviewEligibility, ReviewSettings } from "@/li
 export type VariantItem = {
   id: number;
   name: string;
+  cn_name?: string | null;
   sku?: string | null;
   price?: number | string | null;
   sale_price?: number | string | null;
@@ -39,6 +40,7 @@ type ProductDetailClientProps = {
   product: {
     id: number;
     name: string;
+    cn_name?: string | null;
     slug: string;
     type?: string | null;
     price: number | string;
@@ -385,6 +387,9 @@ export default function ProductDetailClient({
         <div className="space-y-6">
           <div className="space-y-3">
             <h1 className="text-2xl font-semibold">{product.name}</h1>
+            {product.cn_name ? (
+              <p className="text-base text-[color:var(--text-muted)]">{product.cn_name}</p>
+            ) : null}
 
             <div className="flex flex-wrap items-center gap-3 text-sm text-[color:var(--text-muted)]">
               <div className="flex items-center gap-2">
@@ -476,7 +481,7 @@ export default function ProductDetailClient({
                       }}
                       disabled={!isAvailable}
                       title={!isAvailable ? disabledLabel : undefined}
-                      className={`rounded border px-3 py-2 text-sm transition ${
+                      className={`min-w-[9rem] rounded border px-3 py-2 text-left text-sm transition ${
                         isSelected
                           ? "border-[var(--accent-strong)] bg-[var(--accent-soft)] text-[var(--accent-strong)]"
                           : !isAvailable
@@ -484,9 +489,12 @@ export default function ProductDetailClient({
                             : "border-[var(--card-border)] bg-[var(--card)] text-[var(--foreground)] hover:border-[var(--accent)]"
                       }`}
                     >
-                      <span className="block">{variant.name}</span>
+                      <span className="block font-medium">{variant.name}</span>
+                      {variant.cn_name ? (
+                        <span className="mt-0.5 block text-xs text-[color:var(--text-muted)]">{variant.cn_name}</span>
+                      ) : null}
                       {!isAvailable && (
-                        <span className="block text-[10px] uppercase text-[color:var(--status-error)]">
+                        <span className="mt-0.5 block text-[10px] uppercase text-[color:var(--status-error)]">
                           {disabledLabel}
                         </span>
                       )}

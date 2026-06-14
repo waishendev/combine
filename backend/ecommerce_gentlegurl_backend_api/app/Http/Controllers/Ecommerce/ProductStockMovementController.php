@@ -29,8 +29,8 @@ class ProductStockMovementController extends Controller
 
         $query = ProductStockMovement::query()
             ->with([
-                'product:id,name,sku',
-                'variant:id,title,sku,is_bundle',
+                'product:id,name,cn_name,sku',
+                'variant:id,title,cn_name,sku,is_bundle',
                 'createdBy:id,name,email',
                 'revokedBy:id,name,email',
                 'originalMovement:id,type,quantity_change,created_at',
@@ -178,8 +178,8 @@ class ProductStockMovementController extends Controller
             ])->save();
 
             return $reversal->load([
-                'product:id,name,sku',
-                'variant:id,title,sku,is_bundle',
+                'product:id,name,cn_name,sku',
+                'variant:id,title,cn_name,sku,is_bundle',
                 'createdBy:id,name,email',
                 'originalMovement:id,type,quantity_change,created_at',
             ]);

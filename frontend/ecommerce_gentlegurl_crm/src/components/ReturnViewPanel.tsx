@@ -7,6 +7,7 @@ import { IMAGE_PDF_ACCEPT } from './mediaAccept'
 type ReturnItem = {
   product_id?: number
   product_name?: string | null
+  product_cn_name?: string | null
   quantity?: number | null
   unit_price?: string | number | null
   line_total?: string | number | null
@@ -16,6 +17,7 @@ type ReturnItem = {
   product_type?: string | null
   is_variant_product?: boolean | null
   variant_name?: string | null
+  variant_cn_name?: string | null
   variant_sku?: string | null
   product_sku?: string | null
   // Legacy fields for backward compatibility
@@ -495,7 +497,6 @@ export default function ReturnViewPanel({
                           const productName = item.product_name ?? item.product_name_snapshot ?? 'Item'
                           const quantity = item.quantity ?? item.requested_quantity ?? 0
                           const productImage = item.product_image ?? item.cover_image_url ?? null
-                          const sku = item.variant_sku ?? item.product_sku ?? item.sku_snapshot ?? '—'
                           const imageUrl = getImageUrl(productImage)
                           
                           return (
@@ -517,12 +518,14 @@ export default function ReturnViewPanel({
                                 )}
                                 <div>
                                   <p className="text-sm font-semibold text-slate-900">{productName}</p>
-                                  <p className="text-xs text-slate-500">SKU: {sku}</p>
+                                  {item.product_cn_name ? (
+                                    <p className="text-xs text-slate-500">{item.product_cn_name}</p>
+                                  ) : null}
                                   {(item.product_type === 'variant' || item.product_variant_id) && (
-                                    <p className="text-xs text-slate-500">
-                                      Variant: {item.variant_name ?? '—'}
-                                      {item.variant_sku ? ` (${item.variant_sku})` : ''}
-                                    </p>
+                                    <div className="text-xs text-slate-500">
+                                      <p>Variant: {item.variant_name ?? '—'}</p>
+                                      {item.variant_cn_name ? <p>{item.variant_cn_name}</p> : null}
+                                    </div>
                                   )}
                                 </div>
                               </div>

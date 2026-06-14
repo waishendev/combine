@@ -2,11 +2,16 @@
 
 import { useCallback, useEffect, useState } from 'react'
 
+import { NameStack, VariantNameStack } from '@/components/NameStack'
+
 type LogRow = {
   id: number
   claimed_at?: string | null
   staff?: string | null
   product?: string | null
+  product_cn_name?: string | null
+  variant?: string | null
+  variant_cn_name?: string | null
   sku?: string | null
   qty: number
   original_price: number
@@ -211,7 +216,25 @@ export default function StaffConsumableLogsPageContent({ initialFilters = {} }: 
                   <td className="px-4 py-3 text-slate-600">{row.claimed_at ?? '-'}</td>
                   <td className="px-4 py-3 font-medium text-slate-800">{row.staff ?? '-'}</td>
                   <td className="px-4 py-3">
-                    <span className="block font-medium text-slate-800">{row.product ?? '-'}</span>
+                    <NameStack
+                      name={row.product}
+                      cnName={row.product_cn_name}
+                      primaryClassName="font-medium text-slate-800"
+                      secondaryClassName="mt-0.5 text-xs text-slate-500"
+                      fallback="-"
+                    />
+                    {row.variant?.trim() || row.variant_cn_name?.trim() ? (
+                      <div className="mt-1">
+                        <VariantNameStack
+                          name={row.variant}
+                          cnName={row.variant_cn_name}
+                          nameClassName="text-xs text-slate-700"
+                          labelClassName="text-xs text-slate-500"
+                          cnClassName="text-xs text-slate-500"
+                          fallback=""
+                        />
+                      </div>
+                    ) : null}
                     <span className="mt-0.5 block font-mono text-xs text-slate-500">{row.sku ?? '-'}</span>
                   </td>
                   <td className="px-4 py-3 text-left text-slate-700">{row.qty}</td>

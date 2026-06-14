@@ -11,6 +11,7 @@ export type OrderItemSummary = {
   cn_name?: string | null;
   sku?: string | null;
   variant_name?: string | null;
+  variant_cn_name?: string | null;
   variant_sku?: string | null;
   quantity: number;
   unit_price?: string | number;
