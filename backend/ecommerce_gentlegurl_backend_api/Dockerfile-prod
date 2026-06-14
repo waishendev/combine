@@ -21,6 +21,8 @@
           ffmpeg \
           libpq5 \
           libzip4 \
+          libjpeg62-turbo \
+          libwebp7 \
           unzip \
           git \
         ; \
@@ -53,12 +55,20 @@
           libzip-dev \
           libpng-dev \
           libpq-dev \
+          libjpeg62-turbo-dev \
+          libwebp-dev \
+          libfreetype6-dev \
         ; \
         rm -rf /var/lib/apt/lists/*
 
 
     # ========== Install PHP extensions ==========
     RUN set -eux; \
+        docker-php-ext-configure gd \
+          --with-freetype \
+          --with-jpeg \
+          --with-webp \
+        ; \
         docker-php-ext-install -j"$(nproc)" \
           pdo \
           pdo_pgsql \
@@ -67,6 +77,7 @@
           zip \
           bcmath \
           pcntl \
+          gd \
         ; \
         pecl install redis; \
         docker-php-ext-enable redis opcache
@@ -94,12 +105,16 @@
           libzip-dev \
           libpng-dev \
           libpq-dev \
+          libjpeg62-turbo-dev \
+          libwebp-dev \
+          libfreetype6-dev \
         ; \
         rm -rf /var/lib/apt/lists/*
 
-    # Quick sanity check for the exact errors you hit
+    # Quick sanity check
     RUN set -eux; \
-        php -m | grep -E 'pdo_pgsql|zip'; \
+        php -m | grep -E 'pdo_pgsql|zip|gd'; \
+        php -r 'var_dump(gd_info());'; \
         php -r 'echo "PHP OK\n";'
 
 

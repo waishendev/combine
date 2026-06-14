@@ -34,12 +34,27 @@
     --min-size=500    Only compress files > X KB (default 500)
 
   Notes:
-    - Uses PHP GD (no extra packages needed)
+    - Requires PHP GD extension (already added to Dockerfile-prod)
     - Safe to interrupt and re-run
     - Skips files already under 500KB
     - Won't overwrite if compressed result is larger
     - Preserves transparent PNGs
+    - Aspect ratio always maintained (e.g. 400x400 -> 200x200, never distorted)
     - Shows progress bar and summary at the end
+    - If PNG support missing, PNG files are auto-skipped (not errors)
+
+  Docker rebuild required (one-time, GD extension added):
+
+    docker compose -f docker-compose-prod.yml build --no-cache laravel-app
+    docker compose -f docker-compose-prod.yml up -d laravel-app laravel-queue
+
+  Then run the compress command inside the container:
+
+    docker compose -f docker-compose-prod.yml exec laravel-app \
+      php artisan images:compress --dry-run
+
+    docker compose -f docker-compose-prod.yml exec laravel-app \
+      php artisan images:compress
 
 
 2. NEW UPLOADS (Automatic, no action needed)

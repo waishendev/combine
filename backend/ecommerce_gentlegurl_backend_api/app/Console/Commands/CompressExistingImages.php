@@ -27,6 +27,8 @@ class CompressExistingImages extends Command
 
     private array $supportedExtensions = ['jpg', 'jpeg', 'png', 'webp'];
 
+    private array $supportedMimeTypes = [];
+
     private int $processed = 0;
     private int $skipped = 0;
     private int $errors = 0;
@@ -34,6 +36,8 @@ class CompressExistingImages extends Command
 
     public function handle(): int
     {
+        $this->detectGdSupport();
+
         $targetDir = $this->option('dir');
         $maxWidth = (int) $this->option('max-width');
         $maxHeight = (int) $this->option('max-height');
@@ -75,6 +79,33 @@ class CompressExistingImages extends Command
         $this->info("Saved:     " . $this->formatBytes($this->totalSaved));
 
         return Command::SUCCESS;
+    }
+
+    private function detectGdSupport(): void
+    {
+        if (! \function_exists('imagecreatetruecolor')) {
+            $this->error('PHP GD extension is not installed. Please install php-gd.');
+            $this->info('  Ubuntu/Debian: sudo apt-get install php-gd && sudo service php*-fpm restart');
+            $this->info('  CentOS/RHEL:   sudo yum install php-gd && sudo systemctl restart php-fpm');
+            exit(1);
+        }
+
+        $this->supportedMimeTypes = ['image/jpeg'];
+
+        if (\function_exists('imagecreatefrompng')) {
+            $this->supportedMimeTypes[] = 'image/png';
+        } else {
+            $this->warn('PHP GD PNG support not available — PNG files will be skipped.');
+            $this->info('  Fix: sudo apt-get install php-gd && sudo service php*-fpm restart');
+        }
+
+        if (\function_exists('imagecreatefromwebp')) {
+            $this->supportedMimeTypes[] = 'image/webp';
+        } else {
+            $this->warn('PHP GD WebP support not available — WebP files will be skipped.');
+        }
+
+        $this->newLine();
     }
 
     private function validateDirectory(string $dir): bool
@@ -168,6 +199,11 @@ class CompressExistingImages extends Command
 
         [$origWidth, $origHeight] = $imageInfo;
         $mimeType = $imageInfo['mime'];
+
+        if (! \in_array($mimeType, $this->supportedMimeTypes)) {
+            $this->skipped++;
+            return;
+        }
 
         $hasTransparency = $this->imageHasTransparency($filePath, $mimeType);
 
