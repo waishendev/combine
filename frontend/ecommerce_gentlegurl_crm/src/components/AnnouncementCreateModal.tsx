@@ -7,6 +7,7 @@ import { mapAnnouncementApiItemToRow, type AnnouncementApiItem } from './announc
 import { useI18n } from '@/lib/i18n'
 import type { Workspace } from '@/lib/workspace'
 import { IMAGE_ACCEPT } from './mediaAccept'
+import { compressImage } from '@/lib/compressImage'
 
 interface AnnouncementCreateModalProps {
   onClose: () => void
@@ -109,7 +110,8 @@ export default function AnnouncementCreateModal({
       formData.append('is_active', '1') // Always pass 1 for create
       
       if (form.imageFile) {
-        formData.append('image_file', form.imageFile)
+        const compressed = await compressImage(form.imageFile)
+        formData.append('image_file', compressed)
       }
 
       const res = await fetch(`/api/proxy/ecommerce/announcements?type=${workspaceType}`, {

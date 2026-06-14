@@ -6,6 +6,7 @@ import type { SliderRowData } from './SliderRow'
 import { IMAGE_ACCEPT } from './mediaAccept'
 import { formatHomeSliderApiError, mapSliderApiItemToRow, type SliderApiItem } from './sliderUtils'
 import { useI18n } from '@/lib/i18n'
+import { compressImage } from '@/lib/compressImage'
 
 interface SliderCreateModalProps {
   sliderType?: 'ecommerce' | 'booking'
@@ -130,9 +131,11 @@ export default function SliderCreateModal({
       const formData = new FormData()
       formData.append('title', trimmedTitle)
       formData.append('subtitle', trimmedSubtitle)
-      formData.append('image_file', imageFile)
+      const compressedImage = await compressImage(imageFile)
+      formData.append('image_file', compressedImage)
       if (mobileImageFile) {
-        formData.append('mobile_image_file', mobileImageFile)
+        const compressedMobileImage = await compressImage(mobileImageFile)
+        formData.append('mobile_image_file', compressedMobileImage)
       }
       formData.append('button_label', trimmedButtonLabel)
       formData.append('button_link', trimmedButtonLink)

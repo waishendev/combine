@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n'
 import { Switch } from '@/components/ui/switch'
 import ErrorBox from './ErrorBox'
 import { collectApiErrorMessages } from '@/lib/api-errors'
+import { compressImages } from '@/lib/compressImage'
 
 interface CategoryOption {
   id: number
@@ -1581,7 +1582,8 @@ export default function ProductForm({
 
   /** Returns false if any pending image or video upload failed (product may already be saved). */
   const uploadPendingMedia = async (productId: number): Promise<boolean> => {
-    const imageTasks = pendingImages.map((upload) => {
+    const compressedFiles = await compressImages(pendingImages.map((u) => u.file))
+    const imageTasks = pendingImages.map((upload, i) => {
       setPendingImages((prev) =>
         prev.map((item) =>
           item.id === upload.id ? { ...item, status: 'uploading' } : item,
@@ -1589,7 +1591,7 @@ export default function ProductForm({
       )
       return uploadMediaFile(
         'image',
-        upload.file,
+        compressedFiles[i],
         (progress) => {
           setPendingImages((prev) =>
             prev.map((item) => (item.id === upload.id ? { ...item, progress } : item)),

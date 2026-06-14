@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -132,10 +133,13 @@ export default function BookingPageContent() {
               {/* Same wide crop as service cards / add-ons on the booking shop (1080×680). */}
               <div className="relative aspect-[1080/680] w-full shrink-0 overflow-hidden bg-gray-100">
                 {(category.image_url || category.image_path) ? (
-                  <img
+                  <Image
                     src={(category.image_url || category.image_path) as string}
                     alt={category.name}
-                    className="h-full w-full object-cover object-center"
+                    fill
+                    sizes="(max-width: 640px) 50vw, 33vw"
+                    loading="lazy"
+                    className="object-cover object-center"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-gray-400">No image</div>
@@ -167,7 +171,14 @@ export default function BookingPageContent() {
             >
               <div className="relative w-full shrink-0 overflow-hidden bg-gray-100 aspect-[1080/680]">
                 {(service.image_url || service.image_path) ? (
-                  <img src={(service.image_url || service.image_path) as string} alt={service.name} className="h-full w-full object-cover" />
+                  <Image
+                    src={(service.image_url || service.image_path) as string}
+                    alt={service.name}
+                    fill
+                    sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+                    loading="lazy"
+                    className="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-gray-400">No image</div>
                 )}

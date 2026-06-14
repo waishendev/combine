@@ -6,6 +6,7 @@ import BookingProductCategoriesPicker from './BookingProductCategoriesPicker'
 import BookingProductQuestionsBuilder from './BookingProductQuestionsBuilder'
 import type { BookingProductCategory, BookingProductQuestion, BookingProductRowData } from './bookingProductTypes'
 import { IMAGE_ACCEPT } from '../mediaAccept'
+import { compressImage } from '@/lib/compressImage'
 
 const fieldClass =
   'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:bg-gray-50 disabled:text-gray-500'
@@ -145,7 +146,10 @@ export default function BookingProductUpsertModal({
       if (description.trim()) fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
       categoryIds.forEach((id) => fd.append('category_ids[]', String(id)))
-      if (imageFile) fd.append('image', imageFile)
+      if (imageFile) {
+        const compressed = await compressImage(imageFile)
+        fd.append('image', compressed)
+      }
 
       questions.forEach((q, qi) => {
         if (!q.title?.trim()) return

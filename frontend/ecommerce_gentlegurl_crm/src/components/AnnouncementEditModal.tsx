@@ -7,6 +7,7 @@ import { mapAnnouncementApiItemToRow, type AnnouncementApiItem } from './announc
 import { useI18n } from '@/lib/i18n'
 import type { Workspace } from '@/lib/workspace'
 import { IMAGE_ACCEPT } from './mediaAccept'
+import { compressImage } from '@/lib/compressImage'
 
 interface AnnouncementEditModalProps {
   announcementId: number
@@ -214,7 +215,8 @@ export default function AnnouncementEditModal({
       formData.append('end_at', form.endAt)
 
       if (form.imageFile) {
-        formData.append('image_file', form.imageFile)
+        const compressed = await compressImage(form.imageFile)
+        formData.append('image_file', compressed)
       } else if (imageRemoved) {
         formData.append('image_path', '')
       }

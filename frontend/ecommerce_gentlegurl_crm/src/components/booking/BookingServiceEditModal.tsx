@@ -13,6 +13,7 @@ import {
   type BookingServiceApiItem,
 } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
+import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 
 interface BookingServiceEditModalProps {
@@ -496,7 +497,8 @@ export default function BookingServiceEditModal({
         })
       })
       if (form.imageFile) {
-        fd.append('image', form.imageFile)
+        const compressed = await compressImage(form.imageFile)
+        fd.append('image', compressed)
       }
 
       const res = await fetch(`/api/proxy/admin/booking/services/${serviceId}`, {

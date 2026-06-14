@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
+import { compressImage } from '@/lib/compressImage'
 import { normalizeInternationalPhone } from '@/lib/phone'
 
 type HeadingConfig = { label: string; title: string; align: 'left' | 'center' | 'right' }
@@ -514,8 +515,9 @@ export default function BookingLandingPageEditor({ canEdit }: { canEdit: boolean
   }
 
   const uploadImage = async (file: File, section: string): Promise<string | null> => {
+    const compressed = await compressImage(file)
     const formData = new FormData()
-    formData.append('image', file)
+    formData.append('image', compressed)
     formData.append('section', section)
     try {
       const res = await fetch('/api/proxy/admin/booking/landing-page/upload-image', {

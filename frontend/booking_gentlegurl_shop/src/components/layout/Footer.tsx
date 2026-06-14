@@ -100,6 +100,7 @@ export function Footer({ footer }: { footer?: HomepageFooter | null }) {
               <div className="mt-5 flex flex-wrap gap-2">
                 <Badge>Billplz FPX</Badge>
                 <Badge>Manual Transfer</Badge>
+                <Badge>Credit Card</Badge>
               </div>
             )}
           </div>

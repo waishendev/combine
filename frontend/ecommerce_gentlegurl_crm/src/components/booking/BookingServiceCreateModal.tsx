@@ -20,6 +20,7 @@ import {
   type BookingServiceApiItem,
 } from './bookingServiceUtils'
 import { useI18n } from '@/lib/i18n'
+import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 
 type ServiceType = 'premium' | 'standard'
@@ -508,7 +509,10 @@ export default function BookingServiceCreateModal({
           fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')
         })
       })
-      if (form.imageFile) fd.append('image', form.imageFile)
+      if (form.imageFile) {
+        const compressed = await compressImage(form.imageFile)
+        fd.append('image', compressed)
+      }
 
       const res = await fetch('/api/proxy/admin/booking/services', {
         method: 'POST',

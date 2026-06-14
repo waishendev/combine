@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -396,7 +397,14 @@ export default function ServiceAddonsPage() {
                             ) : null}
                             <div className="relative w-full shrink-0 overflow-hidden bg-gray-100 aspect-[1080/680]">
                               {imgSrc ? (
-                                <img src={imgSrc} alt={opt.label} className="h-full w-full object-cover" />
+                                <Image
+                                  src={imgSrc}
+                                  alt={opt.label}
+                                  fill
+                                  sizes="(max-width: 640px) 100vw, (max-width: 768px) 50vw, 33vw"
+                                  loading="lazy"
+                                  className="object-cover"
+                                />
                               ) : (
                                 <div className="flex h-full w-full items-center justify-center text-sm text-gray-400">No image</div>
                               )}
