@@ -25,6 +25,7 @@ interface CustomerRowProps {
   canUpdate?: boolean
   canDelete?: boolean
   canView?: boolean
+  editLoading?: boolean
   onAssignVoucher?: (customer: CustomerRowData) => void
   onEdit?: (customer: CustomerRowData) => void
   onDelete?: (customer: CustomerRowData) => void
@@ -39,6 +40,7 @@ export default function CustomerRow({
   canUpdate = false,
   canDelete = false,
   canView = false,
+  editLoading = false,
   onAssignVoucher,
   onEdit,
   onDelete,
@@ -112,12 +114,17 @@ export default function CustomerRow({
             {canUpdate && (
               <button
                 type="button"
-                className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-blue-600 text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => onEdit?.(customer)}
+                disabled={editLoading}
                 aria-label={t('customer.editAction')}
                 title={t('customer.editAction')}
               >
-                <i className="fa-solid fa-pen-to-square" />
+                {editLoading ? (
+                  <i className="fa-solid fa-spinner fa-spin" />
+                ) : (
+                  <i className="fa-solid fa-pen-to-square" />
+                )}
               </button>
             )}
             {canDelete && (

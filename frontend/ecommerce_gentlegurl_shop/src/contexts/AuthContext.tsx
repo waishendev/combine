@@ -31,6 +31,8 @@ type AuthContextValue = {
     password: string;
     password_confirmation: string;
     type: string;
+    gender: string;
+    date_of_birth: string;
   }) => Promise<void>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -97,6 +99,8 @@ export function AuthProvider({ children, onLoginSuccess, initialCustomer }: Auth
       password: string;
       password_confirmation: string;
       type: string;
+      gender: string;
+      date_of_birth: string;
     }) => {
       setIsLoading(true);
       try {

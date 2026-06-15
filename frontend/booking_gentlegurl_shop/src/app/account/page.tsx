@@ -79,8 +79,28 @@ function Modal({ open, title, onClose, children, footer }: ModalProps) {
 type ProfileFormState = {
   name: string;
   phone: string;
+  gender: string;
   photo: File | null;
 };
+
+const GENDER_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+] as const;
+
+function formatGenderLabel(gender: string | null | undefined) {
+  if (!gender) return "-";
+  const match = GENDER_OPTIONS.find((option) => option.value === gender.toLowerCase());
+  return match?.label ?? gender;
+}
+
+function formatDateOfBirth(value: string | null | undefined) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleDateString();
+}
 
 type ChangePasswordFormState = {
   currentPassword: string;
@@ -109,6 +129,7 @@ export default function AccountPage() {
   const [profileForm, setProfileForm] = useState<ProfileFormState>({
     name: "",
     phone: "",
+    gender: "",
     photo: null,
   });
   const [changingPassword, setChangingPassword] = useState(false);
@@ -141,6 +162,7 @@ export default function AccountPage() {
           ...prev,
           name: profileResponse.data.name ?? "",
           phone: profileResponse.data.phone ?? "",
+          gender: profileResponse.data.gender ?? "",
           photo: null,
         }));
       } catch (err) {
@@ -166,6 +188,7 @@ export default function AccountPage() {
         ...prev,
         name: response.data.name ?? "",
         phone: response.data.phone ?? "",
+        gender: response.data.gender ?? "",
         photo: null,
       }));
     } catch (err) {
@@ -194,13 +217,20 @@ export default function AccountPage() {
       updatePayload.phone = normalizedPhone || null;
     }
     if (profileForm.photo) updatePayload.photo = profileForm.photo;
+    if (profileForm.gender !== (profile.gender ?? "")) {
+      updatePayload.gender = profileForm.gender || null;
+    }
 
     try {
       const response = await updateCustomerProfile(updatePayload);
       setProfile(response.data);
       setProfileModalOpen(false);
       setFeedback("Profile updated successfully.");
-      setProfileForm((prev) => ({ ...prev, photo: null }));
+      setProfileForm((prev) => ({
+        ...prev,
+        photo: null,
+        gender: response.data.gender ?? "",
+      }));
       setPhotoPreview(null);
     } catch (err) {
       setError(extractError(err));
@@ -399,18 +429,14 @@ export default function AccountPage() {
           </div>
 
           <div className="mt-6 grid gap-3 text-sm text-[color:var(--text-muted)]">
-            {profile.gender && (
-              <div className="flex justify-between">
-                <span>Gender</span>
-                <span className="font-medium capitalize">{profile.gender.toLowerCase()}</span>
-              </div>
-            )}
-            {profile.date_of_birth && (
-              <div className="flex justify-between">
-                <span>Date of Birth</span>
-                <span className="font-medium">{profile.date_of_birth}</span>
-              </div>
-            )}
+            <div className="flex justify-between">
+              <span>Gender</span>
+              <span className="font-medium">{formatGenderLabel(profile.gender)}</span>
+            </div>
+            <div className="flex justify-between">
+              <span>Date of Birth</span>
+              <span className="font-medium">{formatDateOfBirth(profile.date_of_birth)}</span>
+            </div>
           </div>
         </section>
 
@@ -583,6 +609,28 @@ export default function AccountPage() {
                 onChange={(phone) => setProfileForm({ ...profileForm, phone })}
               />
             </label>
+            <label className="block space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Gender</span>
+              <select
+                value={profileForm.gender}
+                onChange={(e) => setProfileForm({ ...profileForm, gender: e.target.value })}
+                className="w-full rounded-lg border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2 text-sm focus:border-[var(--accent-strong)] focus:outline-none focus:ring-2 focus:ring-[var(--ring)]/20"
+              >
+                <option value="">Select gender</option>
+                {GENDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="block space-y-1 text-sm">
+              <span className="text-[var(--accent-stronger)]">Date of Birth</span>
+              <p className="rounded-lg border border-[var(--input-border)] bg-[var(--background-soft)] px-3 py-2 text-sm text-[color:var(--text-muted)]">
+                {formatDateOfBirth(profile.date_of_birth)}
+              </p>
+              <p className="text-xs text-[color:var(--text-muted)]">Date of birth cannot be changed after registration.</p>
+            </div>
           </div>
         </div>
       </Modal>

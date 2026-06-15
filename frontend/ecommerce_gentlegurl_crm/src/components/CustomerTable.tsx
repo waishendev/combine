@@ -72,7 +72,8 @@ export default function CustomerTable({
   const [currentPage, setCurrentPage] = useState(1)
   const [sortColumn, setSortColumn] = useState<keyof CustomerRowData | null>(null)
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc' | null>(null)
-  const [editingCustomerId, setEditingCustomerId] = useState<number | null>(null)
+  const [editingCustomer, setEditingCustomer] = useState<CustomerApiItem | null>(null)
+  const [editLoadingId, setEditLoadingId] = useState<number | null>(null)
   const [deleteTarget, setDeleteTarget] = useState<CustomerRowData | null>(null)
   const [viewingCustomerId, setViewingCustomerId] = useState<number | null>(null)
   const [assigningCustomer, setAssigningCustomer] = useState<CustomerRowData | null>(null)
@@ -404,6 +405,47 @@ export default function CustomerTable({
     return value
   }
 
+  const handleEditCustomer = async (customerId: number) => {
+    setEditLoadingId(customerId)
+    try {
+      const res = await fetch(`/api/proxy/customers/${customerId}`, {
+        cache: 'no-store',
+        headers: {
+          Accept: 'application/json',
+          'Accept-Language': 'en',
+        },
+      })
+
+      const data = await res.json().catch(() => null)
+      if (data && typeof data === 'object' && data?.success === false && data?.message === 'Unauthorized') {
+        window.location.replace('/dashboard')
+        return
+      }
+
+      if (!res.ok) {
+        const message =
+          data && typeof data === 'object' && 'message' in data && typeof data.message === 'string'
+            ? data.message
+            : 'Failed to load customer details.'
+        window.alert(message)
+        return
+      }
+
+      const customer = data?.data as CustomerApiItem | undefined
+      if (!customer || typeof customer !== 'object') {
+        window.alert('Failed to load customer details.')
+        return
+      }
+
+      setEditingCustomer(customer)
+    } catch (error) {
+      console.error(error)
+      window.alert('Failed to load customer details.')
+    } finally {
+      setEditLoadingId(null)
+    }
+  }
+
   const handleCustomerCreated = (customer: CustomerRowData) => {
     setRows((prev) => {
       if (currentPage !== 1) return prev
@@ -706,9 +748,10 @@ export default function CustomerTable({
                   }}
                   onEdit={() => {
                     if (canUpdate) {
-                      setEditingCustomerId(customer.id)
+                      void handleEditCustomer(customer.id)
                     }
                   }}
+                  editLoading={editLoadingId === customer.id}
                   onDelete={() => {
                     if (canDelete) {
                       setDeleteTarget(customer)
@@ -734,12 +777,13 @@ export default function CustomerTable({
         </table>
       </div>
 
-      {editingCustomerId !== null && (
+      {editingCustomer !== null && (
         <CustomerEditModal
-          customerId={editingCustomerId}
-          onClose={() => setEditingCustomerId(null)}
+          customerId={Number(editingCustomer.id)}
+          initialCustomer={editingCustomer}
+          onClose={() => setEditingCustomer(null)}
           onSuccess={(customer) => {
-            setEditingCustomerId(null)
+            setEditingCustomer(null)
             handleCustomerUpdated(customer)
           }}
         />

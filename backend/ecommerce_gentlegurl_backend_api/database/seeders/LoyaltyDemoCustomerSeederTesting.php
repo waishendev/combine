@@ -25,6 +25,8 @@ class LoyaltyDemoCustomerSeederTesting extends Seeder
                 'phone' => '0123456789',
                 'password' => Hash::make('password'),
                 'tier' => 'gold',
+                'gender' => 'female',
+                'date_of_birth' => '1995-06-15',
                 'is_active' => true,
                 'email_verified_at' => now(),
                 'allow_booking_without_deposit' => true, // free-deposit loyalty test account

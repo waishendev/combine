@@ -3,54 +3,55 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 
 import type { CustomerRowData } from './CustomerRow'
-import { mapCustomerApiItemToRow, type CustomerApiItem } from './customerUtils'
+import {
+  mapCustomerApiItemToFormState,
+  mapCustomerApiItemToRow,
+  type CustomerApiItem,
+  type CustomerFormState,
+} from './customerUtils'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import { useI18n } from '@/lib/i18n'
 import { normalizeInternationalPhone } from '@/lib/phone'
 
 interface CustomerEditModalProps {
   customerId: number
+  initialCustomer: CustomerApiItem
   onClose: () => void
   onSuccess: (customer: CustomerRowData) => void
 }
 
-interface FormState {
-  name: string
-  email: string
-  phone: string
-  password: string
-  isActive: 'true' | 'false'
-  customerTypeId: string
-}
-
-const initialFormState: FormState = {
-  name: '',
-  email: '',
-  phone: '',
-  password: '',
-  isActive: 'true',
-  customerTypeId: '',
-}
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+] as const
 
 export default function CustomerEditModal({
   customerId,
+  initialCustomer,
   onClose,
   onSuccess,
 }: CustomerEditModalProps) {
   const { t } = useI18n()
-  const [form, setForm] = useState<FormState>({ ...initialFormState })
-  const [loading, setLoading] = useState(true)
+  const [form, setForm] = useState<CustomerFormState>(() => mapCustomerApiItemToFormState(initialCustomer))
+  const [typesLoading, setTypesLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [loadedCustomer, setLoadedCustomer] = useState<CustomerRowData | null>(null)
+  const [loadedCustomer, setLoadedCustomer] = useState<CustomerRowData | null>(() =>
+    mapCustomerApiItemToRow(initialCustomer),
+  )
   const [customerTypes, setCustomerTypes] = useState<Array<{ id: number; name: string }>>([])
 
   useEffect(() => {
     const controller = new AbortController()
 
     const loadCustomerTypes = async () => {
+      setTypesLoading(true)
       try {
-        const res = await fetch('/api/proxy/customer-types?per_page=200', { cache: 'no-store', signal: controller.signal })
+        const res = await fetch('/api/proxy/customer-types?per_page=200', {
+          cache: 'no-store',
+          signal: controller.signal,
+        })
         const data = await res.json().catch(() => null)
         const rows: unknown[] = Array.isArray(data?.data?.data)
           ? data.data.data
@@ -69,84 +70,20 @@ export default function CustomerEditModal({
           .filter((item): item is { id: number; name: string } => item !== null)
         setCustomerTypes(mapped)
       } catch {
-        setCustomerTypes([])
-      }
-    }
-
-    const loadCustomer = async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const res = await fetch(`/api/proxy/customers/${customerId}`, {
-          cache: 'no-store',
-          signal: controller.signal,
-          headers: {
-            Accept: 'application/json',
-            'Accept-Language': 'en',
-          },
-        })
-
-        const data = await res.json().catch(() => null)
-        if (data && typeof data === 'object') {
-          if (data?.success === false && data?.message === 'Unauthorized') {
-            window.location.replace('/dashboard')
-            return
-          }
-        }
-
-        if (!res.ok) {
-          if (data && typeof data === 'object' && 'message' in data) {
-            const message = (data as { message?: unknown }).message
-            if (typeof message === 'string') {
-              setError(message)
-              return
-            }
-          }
-          setError(t('customer.loadError'))
-          return
-        }
-
-        const customer = data?.data as CustomerApiItem | undefined
-        if (!customer || typeof customer !== 'object') {
-          setError(t('customer.loadError'))
-          return
-        }
-
-        const mappedCustomer = mapCustomerApiItemToRow(customer)
-        setLoadedCustomer(mappedCustomer)
-
-        setForm({
-          name: typeof customer.name === 'string' ? customer.name : '',
-          email: typeof customer.email === 'string' ? customer.email : '',
-          phone: typeof customer.phone === 'string' ? customer.phone : '',
-          password: '',
-          isActive:
-            customer.is_active === true || customer.is_active === 'true' || customer.is_active === 1
-              ? 'true'
-              : 'false',
-          customerTypeId:
-            customer.customer_type_id === null || customer.customer_type_id === undefined
-              ? ''
-              : String(customer.customer_type_id),
-        })
-      } catch (err) {
-        if (!(err instanceof DOMException && err.name === 'AbortError')) {
-          setError(t('customer.loadError'))
+        if (!controller.signal.aborted) {
+          setCustomerTypes([])
         }
       } finally {
-        setLoading(false)
+        if (!controller.signal.aborted) {
+          setTypesLoading(false)
+        }
       }
     }
 
-    loadCustomerTypes().catch(() => setCustomerTypes([]))
-
-    loadCustomer().catch(() => {
-      setLoading(false)
-      setError(t('customer.loadError'))
-    })
+    void loadCustomerTypes()
 
     return () => controller.abort()
-  }, [customerId, t])
+  }, [])
 
   const handleChange = (
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -178,6 +115,8 @@ export default function CustomerEditModal({
         phone: trimmedPhone,
         is_active: form.isActive === 'true',
         customer_type_id: Number(form.customerTypeId),
+        gender: form.gender || null,
+        date_of_birth: form.date_of_birth || null,
         ...(trimmedPassword ? { password: trimmedPassword } : {}),
       }
 
@@ -238,7 +177,10 @@ export default function CustomerEditModal({
             email: trimmedEmail,
             phone: trimmedPhone,
             tier: loadedCustomer?.tier ?? '-',
-            type: customerTypes.find((item) => String(item.id) === form.customerTypeId)?.name ?? loadedCustomer?.type ?? '-',
+            type:
+              customerTypes.find((item) => String(item.id) === form.customerTypeId)?.name ??
+              loadedCustomer?.type ??
+              '-',
             isActive: form.isActive === 'true',
             createdAt: loadedCustomer?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
@@ -254,24 +196,24 @@ export default function CustomerEditModal({
     }
   }
 
-  const disableForm = loading || submitting
+  const disableForm = typesLoading || submitting
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+      <div className="relative mx-auto flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-lg">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">{t('customer.editTitle')}</h2>
           <button
             onClick={() => {
               if (!submitting) onClose()
             }}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
             aria-label={t('common.close')}
             type="button"
           >
@@ -279,140 +221,179 @@ export default function CustomerEditModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
-          {loading ? (
-            <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
-          ) : (
-            <>
-              <div>
-                <label
-                  htmlFor="edit-name"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('common.name')} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-name"
-                  name="name"
-                  type="text"
-                  value={form.name}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder={t('common.name')}
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-email"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('common.email')} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-email"
-                  name="email"
-                  type="email"
-                  value={form.email}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder={t('common.emailPlaceholder')}
-                  disabled
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-phone"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Phone <span className="text-red-500">*</span>
-                </label>
-                <InternationalPhoneInput
-                  value={form.phone}
-                  onChange={(phone) => setForm((prev) => ({ ...prev, phone }))}
-                  placeholder="Enter phone"
-                  disabled={disableForm}
-                  required
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-customerTypeId"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  Type <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-customerTypeId"
-                  name="customerTypeId"
-                  value={form.customerTypeId}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="">Select type</option>
-                  {customerTypes.map((type) => (
-                    <option key={type.id} value={String(type.id)}>
-                      {type.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-password"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('common.passwordKeepBlank')} <span className="text-red-500">*</span>
-                </label>
-                <input
-                  id="edit-password"
-                  name="password"
-                  type="password"
-                  value={form.password}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder={t('common.newPasswordPlaceholder')}
-                  disabled={disableForm}
-                />
-              </div>
-
-              <div>
-                <label
-                  htmlFor="edit-isActive"
-                  className="block text-sm font-medium text-gray-700 mb-1"
-                >
-                  {t('common.status')} <span className="text-red-500">*</span>
-                </label>
-                <select
-                  id="edit-isActive"
-                  name="isActive"
-                  value={form.isActive}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  disabled={disableForm}
-                >
-                  <option value="true">{t('common.active')}</option>
-                  <option value="false">{t('common.inactive')}</option>
-                </select>
-              </div>
-            </>
-          )}
-
-          {error && (
-            <div className="text-sm text-red-600" role="alert">
-              {error}
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+            <div>
+              <label
+                htmlFor="edit-name"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                {t('common.name')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="edit-name"
+                name="name"
+                type="text"
+                value={form.name}
+                onChange={handleChange}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                placeholder={t('common.name')}
+                disabled={disableForm}
+              />
             </div>
-          )}
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+            <div>
+              <label
+                htmlFor="edit-email"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                {t('common.email')} <span className="text-red-500">*</span>
+              </label>
+              <input
+                id="edit-email"
+                name="email"
+                type="email"
+                value={form.email}
+                onChange={handleChange}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                placeholder={t('common.emailPlaceholder')}
+                disabled
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-phone"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                Phone <span className="text-red-500">*</span>
+              </label>
+              <InternationalPhoneInput
+                value={form.phone}
+                onChange={(phone) => setForm((prev) => ({ ...prev, phone }))}
+                placeholder="Enter phone"
+                disabled={disableForm}
+                required
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-customerTypeId"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                Type <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="edit-customerTypeId"
+                name="customerTypeId"
+                value={form.customerTypeId}
+                onChange={handleChange}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50"
+                disabled={disableForm}
+              >
+                <option value="">{typesLoading ? 'Loading types...' : 'Select type'}</option>
+                {customerTypes.map((type) => (
+                  <option key={type.id} value={String(type.id)}>
+                    {type.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-gender"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                Gender
+              </label>
+              <select
+                id="edit-gender"
+                name="gender"
+                value={form.gender}
+                onChange={handleChange}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                disabled={disableForm}
+              >
+                <option value="">Select gender</option>
+                {GENDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-date_of_birth"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                Date of Birth
+              </label>
+              <input
+                id="edit-date_of_birth"
+                name="date_of_birth"
+                type="date"
+                value={form.date_of_birth}
+                onChange={handleChange}
+                max={new Date().toISOString().split('T')[0]}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                disabled={disableForm}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-password"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                {t('common.passwordKeepBlank')}
+              </label>
+              <input
+                id="edit-password"
+                name="password"
+                type="password"
+                value={form.password}
+                onChange={handleChange}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                placeholder={t('common.newPasswordPlaceholder')}
+                disabled={disableForm}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="edit-isActive"
+                className="mb-1 block text-sm font-medium text-gray-700"
+              >
+                {t('common.status')} <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="edit-isActive"
+                name="isActive"
+                value={form.isActive}
+                onChange={handleChange}
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                disabled={disableForm}
+              >
+                <option value="true">{t('common.active')}</option>
+                <option value="false">{t('common.inactive')}</option>
+              </select>
+            </div>
+
+            {error && (
+              <div className="text-sm text-red-600" role="alert">
+                {error}
+              </div>
+            )}
+          </div>
+
+          <div className="flex flex-shrink-0 items-center justify-end gap-3 border-t border-gray-200 px-5 py-4">
             <button
               type="button"
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
               onClick={() => {
                 if (!submitting) onClose()
               }}
@@ -422,7 +403,7 @@ export default function CustomerEditModal({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
               disabled={disableForm}
             >
               {submitting ? t('common.saving') : t('customer.saveChanges')}

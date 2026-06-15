@@ -6,6 +6,12 @@ import InternationalPhoneInput from "@/components/common/InternationalPhoneInput
 import { normalizeInternationalPhone } from "@/lib/phone";
 import { extractApiError } from "@/lib/auth/redirect";
 
+const GENDER_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+] as const;
+
 function Field({
   label,
   id,
@@ -79,6 +85,8 @@ export function RegisterForm({
     name: "",
     email: "",
     phone: "",
+    gender: "",
+    date_of_birth: "",
     password: "",
     password_confirmation: "",
   });
@@ -107,6 +115,8 @@ export function RegisterForm({
     if (!formState.name.trim()) return false;
     if (!formState.email.trim()) return false;
     if (!normalizeInternationalPhone(formState.phone)) return false;
+    if (!formState.gender) return false;
+    if (!formState.date_of_birth) return false;
     if (!formState.password.trim()) return false;
     if (!formState.password_confirmation.trim()) return false;
     if (pwMismatch) return false;
@@ -183,6 +193,41 @@ export function RegisterForm({
           value={formState.phone}
           onChange={(v) => handleChange("phone", v)}
           placeholder="Phone"
+          required
+        />
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="gender">
+          Gender
+        </label>
+        <select
+          id="gender"
+          className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2.5 text-sm text-[var(--foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
+          value={formState.gender}
+          onChange={(e) => handleChange("gender", e.target.value)}
+          required
+        >
+          <option value="">Select gender</option>
+          {GENDER_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="space-y-1.5">
+        <label className="text-sm font-medium text-[var(--foreground)]/80" htmlFor="date_of_birth">
+          Date of Birth
+        </label>
+        <input
+          id="date_of_birth"
+          type="date"
+          className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-3 py-2.5 text-sm text-[var(--foreground)] focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--ring)]/25"
+          value={formState.date_of_birth}
+          onChange={(e) => handleChange("date_of_birth", e.target.value)}
+          max={new Date().toISOString().split("T")[0]}
           required
         />
       </div>

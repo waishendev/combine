@@ -471,31 +471,46 @@ export type UpdateCustomerProfilePayload = Partial<{
 }>;
 
 export async function updateCustomerProfile(payload: UpdateCustomerProfilePayload) {
-  const formData = new FormData();
+  const hasPhoto = payload.photo != null;
+
+  if (hasPhoto) {
+    const formData = new FormData();
+    formData.append("_method", "PUT");
+
+    if (payload.name !== undefined) {
+      formData.append("name", payload.name);
+    }
+
+    if (payload.phone !== undefined) {
+      formData.append("phone", payload.phone ?? "");
+    }
+
+    if (payload.gender !== undefined) {
+      formData.append("gender", payload.gender ?? "");
+    }
+
+    formData.append("photo", payload.photo as File);
+
+    return apiRequest<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", "POST", {
+      body: formData,
+    });
+  }
+
+  const jsonBody: Record<string, string | null> = {};
 
   if (payload.name !== undefined) {
-    formData.append("name", payload.name);
+    jsonBody.name = payload.name;
   }
 
   if (payload.phone !== undefined) {
-    formData.append("phone", payload.phone ?? "");
+    jsonBody.phone = payload.phone;
   }
 
   if (payload.gender !== undefined) {
-    formData.append("gender", payload.gender ?? "");
+    jsonBody.gender = payload.gender;
   }
 
-  if (payload.date_of_birth !== undefined) {
-    formData.append("date_of_birth", payload.date_of_birth ?? "");
-  }
-
-  if (payload.photo !== undefined && payload.photo !== null) {
-    formData.append("photo", payload.photo);
-  }
-
-  return put<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", undefined, {
-    body: formData,
-  });
+  return put<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", jsonBody);
 }
 
 export async function changeCustomerPassword(payload: {
@@ -552,6 +567,8 @@ export async function registerCustomer(payload: {
   password: string;
   password_confirmation: string;
   type: string;
+  gender: string;
+  date_of_birth: string;
 }) {
   return post<{ success: boolean }>("/public/auth/register", payload);
 }

@@ -11,6 +11,8 @@ type RegisterPayload = {
   password: string;
   password_confirmation: string;
   type: string;
+  gender: string;
+  date_of_birth: string;
 };
 
 type AuthContextValue = {

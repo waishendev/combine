@@ -802,7 +802,10 @@ class CustomerController extends Controller
             ->latest('id')
             ->first();
 
-        return $customer->toArray() + [
+        $base = $customer->toArray();
+        $base['date_of_birth'] = $customer->date_of_birth?->toDateString();
+
+        return $base + [
             'latest_deposit_waiver_log' => $latestDepositWaiverLog ? [
                 'id' => (int) $latestDepositWaiverLog->id,
                 'action_type' => (string) $latestDepositWaiverLog->action_type,

@@ -19,6 +19,8 @@ interface FormState {
   phone: string
   password: string
   customerTypeId: string
+  gender: string
+  date_of_birth: string
 }
 
 const initialFormState: FormState = {
@@ -27,7 +29,15 @@ const initialFormState: FormState = {
   phone: '',
   password: '',
   customerTypeId: '',
+  gender: '',
+  date_of_birth: '',
 }
+
+const GENDER_OPTIONS = [
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+] as const
 
 export default function CustomerCreateModal({
   onClose,
@@ -105,6 +115,8 @@ export default function CustomerCreateModal({
           password: trimmedPassword,
           customer_type_id: Number(form.customerTypeId),
           is_active: true,
+          ...(form.gender ? { gender: form.gender } : {}),
+          ...(form.date_of_birth ? { date_of_birth: form.date_of_birth } : {}),
         }),
       })
 
@@ -162,21 +174,21 @@ export default function CustomerCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
           if (!submitting) onClose()
         }}
       />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
+      <div className="relative mx-auto flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-lg">
+        <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">{t('customer.createTitle')}</h2>
           <button
             onClick={() => {
               if (!submitting) onClose()
             }}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
+            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
             aria-label={t('common.close')}
             type="button"
           >
@@ -184,7 +196,8 @@ export default function CustomerCreateModal({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+          <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
           <div>
             <label
               htmlFor="name"
@@ -265,6 +278,49 @@ export default function CustomerCreateModal({
 
           <div>
             <label
+              htmlFor="gender"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Gender
+            </label>
+            <select
+              id="gender"
+              name="gender"
+              value={form.gender}
+              onChange={handleChange}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              disabled={submitting}
+            >
+              <option value="">Select gender</option>
+              {GENDER_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label
+              htmlFor="date_of_birth"
+              className="block text-sm font-medium text-gray-700 mb-1"
+            >
+              Date of Birth
+            </label>
+            <input
+              id="date_of_birth"
+              name="date_of_birth"
+              type="date"
+              value={form.date_of_birth}
+              onChange={handleChange}
+              max={new Date().toISOString().split('T')[0]}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+              disabled={submitting}
+            />
+          </div>
+
+          <div>
+            <label
               htmlFor="password"
               className="block text-sm font-medium text-gray-700 mb-1"
             >
@@ -287,11 +343,12 @@ export default function CustomerCreateModal({
               {error}
             </div>
           )}
+          </div>
 
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <div className="flex flex-shrink-0 items-center justify-end gap-3 border-t border-gray-200 px-5 py-4">
             <button
               type="button"
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
               onClick={() => {
                 if (!submitting) onClose()
               }}
@@ -301,7 +358,7 @@ export default function CustomerCreateModal({
             </button>
             <button
               type="submit"
-              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+              className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
               disabled={submitting}
             >
               {submitting ? t('common.creating') : t('common.create')}

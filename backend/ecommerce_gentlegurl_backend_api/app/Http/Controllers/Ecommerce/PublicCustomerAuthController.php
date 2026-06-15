@@ -36,6 +36,8 @@ class PublicCustomerAuthController extends Controller
             'phone' => ['nullable', 'string', 'max:50'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
             'type' => ['required', 'string', 'max:100'],
+            'gender' => ['required', 'in:male,female,other'],
+            'date_of_birth' => ['required', 'date', 'before:today'],
         ]);
 
         $customerType = CustomerType::firstOrCreate([
@@ -48,6 +50,8 @@ class PublicCustomerAuthController extends Controller
             'email' => $validated['email'],
             'phone' => $validated['phone'] ?? null,
             'password' => $validated['password'],
+            'gender' => $validated['gender'],
+            'date_of_birth' => $validated['date_of_birth'],
             'is_active' => true,
         ]);
 
@@ -337,13 +341,12 @@ class PublicCustomerAuthController extends Controller
             'name' => ['sometimes', 'string', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:30', 'unique:customers,phone,' . $customer->id],
             'gender' => ['sometimes', 'nullable', 'in:male,female,other'],
-            'date_of_birth' => ['sometimes', 'nullable', 'date'],
             'avatar' => ['sometimes', 'nullable', 'string', 'max:255'],
             'photo' => ['sometimes', 'nullable', 'image', 'mimes:jpeg,jpg,png,gif,webp', 'max:5120'],
         ]);
 
         DB::transaction(function () use (&$customer, $data, $request) {
-            $customer->fill(collect($data)->only(['name', 'phone', 'gender', 'date_of_birth', 'avatar'])->toArray());
+            $customer->fill(collect($data)->only(['name', 'phone', 'gender', 'avatar'])->toArray());
 
             if ($request->hasFile('photo')) {
                 if ($customer->avatar && str_starts_with($customer->avatar, 'avatars/') && Storage::disk('public')->exists($customer->avatar)) {

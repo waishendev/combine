@@ -415,6 +415,8 @@ export async function registerCustomer(payload: {
   password: string;
   password_confirmation: string;
   type: string;
+  gender: string;
+  date_of_birth: string;
 }) {
   return request<{ success: boolean }>("/public/auth/register", {
     method: "POST",
@@ -650,31 +652,51 @@ export async function getCustomerProfile() {
 }
 
 export async function updateCustomerProfile(payload: UpdateCustomerProfilePayload) {
-  const formData = new FormData();
+  const hasPhoto = payload.photo != null;
+
+  if (hasPhoto) {
+    const formData = new FormData();
+    formData.append("_method", "PUT");
+
+    if (payload.name !== undefined) {
+      formData.append("name", payload.name);
+    }
+
+    if (payload.phone !== undefined) {
+      formData.append("phone", payload.phone ?? "");
+    }
+
+    if (payload.gender !== undefined) {
+      formData.append("gender", payload.gender ?? "");
+    }
+
+    formData.append("photo", payload.photo as File);
+
+    const response = await request<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", {
+      method: "POST",
+      body: formData,
+    });
+
+    return { data: unwrapData<CustomerProfileWithAddresses>(response) };
+  }
+
+  const jsonBody: Record<string, string | null> = {};
 
   if (payload.name !== undefined) {
-    formData.append("name", payload.name);
+    jsonBody.name = payload.name;
   }
 
   if (payload.phone !== undefined) {
-    formData.append("phone", payload.phone ?? "");
+    jsonBody.phone = payload.phone;
   }
 
   if (payload.gender !== undefined) {
-    formData.append("gender", payload.gender ?? "");
-  }
-
-  if (payload.date_of_birth !== undefined) {
-    formData.append("date_of_birth", payload.date_of_birth ?? "");
-  }
-
-  if (payload.photo !== undefined && payload.photo !== null) {
-    formData.append("photo", payload.photo);
+    jsonBody.gender = payload.gender;
   }
 
   const response = await request<{ data: CustomerProfileWithAddresses }>("/public/auth/profile", {
     method: "PUT",
-    body: formData,
+    body: JSON.stringify(jsonBody),
   });
 
   return { data: unwrapData<CustomerProfileWithAddresses>(response) };

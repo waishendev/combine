@@ -14,6 +14,8 @@ export type CustomerApiItem = {
   last_login_at?: string | null
   last_login_ip?: string | null
   allow_booking_without_deposit?: boolean | number | string | null
+  gender?: string | null
+  date_of_birth?: string | null
   created_at?: string | null
   updated_at?: string | null
   available_points?: number | null
@@ -21,6 +23,55 @@ export type CustomerApiItem = {
   next_tier?: string | null
   amount_to_next_tier?: number | null
 }
+
+export function normalizeDateForInput(value: unknown): string {
+  if (value == null) return ''
+
+  if (typeof value === 'string') {
+    const trimmed = value.trim()
+    if (!trimmed) return ''
+
+    const datePart = trimmed.match(/^(\d{4}-\d{2}-\d{2})/)
+    if (datePart) return datePart[1]
+
+    const parsed = new Date(trimmed)
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.toISOString().slice(0, 10)
+    }
+
+    return ''
+  }
+
+  return ''
+}
+
+export type CustomerFormState = {
+  name: string
+  email: string
+  phone: string
+  password: string
+  isActive: 'true' | 'false'
+  customerTypeId: string
+  gender: string
+  date_of_birth: string
+}
+
+export const mapCustomerApiItemToFormState = (customer: CustomerApiItem): CustomerFormState => ({
+  name: typeof customer.name === 'string' ? customer.name : '',
+  email: typeof customer.email === 'string' ? customer.email : '',
+  phone: typeof customer.phone === 'string' ? customer.phone : '',
+  password: '',
+  isActive:
+    customer.is_active === true || customer.is_active === 'true' || customer.is_active === 1
+      ? 'true'
+      : 'false',
+  customerTypeId:
+    customer.customer_type_id === null || customer.customer_type_id === undefined
+      ? ''
+      : String(customer.customer_type_id),
+  gender: typeof customer.gender === 'string' ? customer.gender : '',
+  date_of_birth: normalizeDateForInput(customer.date_of_birth),
+})
 
 export const mapCustomerApiItemToRow = (item: CustomerApiItem): CustomerRowData => {
   const idValue =

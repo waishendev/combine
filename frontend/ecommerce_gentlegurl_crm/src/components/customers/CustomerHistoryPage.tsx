@@ -87,11 +87,31 @@ type CustomerDetailBrief = {
   email?: string | null
   phone?: string | null
   customer_type?: string | null
+  gender?: string | null
+  date_of_birth?: string | null
   tier?: string | null
   is_active?: boolean | null
   loyalty_summary?: {
     available_points: number
   } | null
+}
+
+const GENDER_LABELS: Record<string, string> = {
+  male: 'Male',
+  female: 'Female',
+  other: 'Other',
+}
+
+function formatGenderLabel(gender?: string | null) {
+  if (!gender) return '-'
+  return GENDER_LABELS[gender.toLowerCase()] ?? gender
+}
+
+function formatDateOnly(value?: string | null) {
+  if (!value) return '-'
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return value
+  return parsed.toLocaleDateString()
 }
 
 const tabs: Array<{ key: TabKey; label: string }> = [
@@ -401,6 +421,8 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
         ),
       },
       { label: 'Available Points', value: pointsValue != null ? pointsValue.toLocaleString() : '-' },
+      { label: 'Gender', value: formatGenderLabel(customerDetail?.gender) },
+      { label: 'Date of Birth', value: formatDateOnly(customerDetail?.date_of_birth) },
       { label: 'Phone', value: summary?.phone ?? '-' },
       { label: 'Email', value: summary?.email ?? '-' },
       { label: 'Customer Type', value: summary?.customer_type ?? '-' },
@@ -409,7 +431,7 @@ export default function CustomerHistoryPage({ customerId }: { customerId: string
       { label: 'Last Activity Date', value: formatDate(summary?.last_activity_date) },
     ]
     return cards
-  }, [customerDetail?.is_active, customerDetail?.loyalty_summary, customerDetail?.tier, payload?.customer_summary])
+  }, [customerDetail?.gender, customerDetail?.date_of_birth, customerDetail?.is_active, customerDetail?.loyalty_summary, customerDetail?.tier, payload?.customer_summary])
 
   const dateFrom = dateFromQuery
   const dateTo = dateToQuery

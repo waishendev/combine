@@ -93,7 +93,7 @@ Route::prefix('/public/auth')->middleware('api.session')->group(function () {
     Route::get('/profile', [PublicCustomerAuthController::class, 'profile'])
         ->middleware('auth:customer,sanctum');
 
-    Route::put('/profile', [PublicCustomerAuthController::class, 'updateProfile'])
+    Route::match(['put', 'post'], '/profile', [PublicCustomerAuthController::class, 'updateProfile'])
         ->middleware('auth:customer,sanctum');
 
     Route::put('/password', [PublicCustomerAuthController::class, 'changePassword'])
