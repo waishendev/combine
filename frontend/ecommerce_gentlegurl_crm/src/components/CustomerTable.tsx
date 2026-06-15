@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import CustomerFiltersWrapper from './CustomerFiltersWrapper'
@@ -17,6 +18,7 @@ import CustomerEditModal from './CustomerEditModal'
 import CustomerDeleteModal from './CustomerDeleteModal'
 import CustomerViewPanel from './CustomerViewPanel'
 import CustomerAssignVoucherModal from './CustomerAssignVoucherModal'
+import CustomerAdjustPointsModal from './CustomerAdjustPointsModal'
 import {
   type CustomerApiItem,
   mapCustomerApiItemToRow,
@@ -81,6 +83,8 @@ export default function CustomerTable({
   const [depositWaiverTarget, setDepositWaiverTarget] = useState<CustomerRowData | null>(null)
   const [depositWaiverRemark, setDepositWaiverRemark] = useState('')
   const [isSavingDepositWaiver, setIsSavingDepositWaiver] = useState(false)
+  const [adjustPointsTarget, setAdjustPointsTarget] = useState<CustomerRowData | null>(null)
+  const [adjustPointsAction, setAdjustPointsAction] = useState<'add' | 'reduce'>('add')
   const [toastMessage, setToastMessage] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
   const [isExporting, setIsExporting] = useState(false)
@@ -93,6 +97,7 @@ export default function CustomerTable({
   const canUpdate = permissions.includes('customers.update')
   const canDelete = permissions.includes('customers.delete')
   const canView = permissions.includes('customers.view')
+  const canViewPointsLogs = permissions.includes('customers.points_adjustment_logs.view')
   const canAssignVoucher = permissions.includes('ecommerce.vouchers.assign')
   const showActions = canUpdate || canDelete || canView || canAssignVoucher
 
@@ -383,7 +388,7 @@ export default function CustomerTable({
     }
   }
 
-  const colCount = showActions || canView ? 8 : 7
+  const colCount = showActions || canView ? 9 : 8
 
   const totalPages = meta.last_page || 1
 
@@ -544,6 +549,16 @@ export default function CustomerTable({
     }
   }
 
+  const handlePointsAdjusted = (customerId: number, availablePoints: number) => {
+    setRows((prev) =>
+      prev.map((row) =>
+        row.id === customerId ? { ...row, availablePoints } : row,
+      ),
+    )
+    setToastMessage('Member points updated successfully.')
+    setTimeout(() => setToastMessage(null), 2500)
+  }
+
   return (
     <div>
       {toastMessage && (
@@ -593,6 +608,16 @@ export default function CustomerTable({
             <i className="fa-solid fa-filter" />
             {t('common.filter')}
           </button>
+
+          {canViewPointsLogs && (
+            <Link
+              href="/customers/points-adjustment-logs"
+              className="bg-slate-600 hover:bg-slate-700 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+            >
+              <i className="fa-solid fa-clock-rotate-left" />
+              Points Logs
+            </Link>
+          )}
         </div>
 
         <div className="flex items-center gap-3">
@@ -701,6 +726,7 @@ export default function CustomerTable({
                   { key: 'email', label: t('common.email') },
                   { key: 'phone', label: 'Phone' },
                   { key: 'tier', label: 'Tier' },
+                  { key: 'availablePoints', label: 'Member Points' },
                   { key: 'isActive', label: t('common.status') },
                   { key: 'allowBookingWithoutDeposit', label: 'Required Deposit' },
                   { key: 'createdAt', label: t('common.createdAt') },
@@ -768,6 +794,18 @@ export default function CustomerTable({
                     if (canUpdate) {
                       setDepositWaiverTarget(customer)
                       setDepositWaiverRemark('')
+                    }
+                  }}
+                  onAddPoints={() => {
+                    if (canUpdate) {
+                      setAdjustPointsTarget(customer)
+                      setAdjustPointsAction('add')
+                    }
+                  }}
+                  onReducePoints={() => {
+                    if (canUpdate) {
+                      setAdjustPointsTarget(customer)
+                      setAdjustPointsAction('reduce')
                     }
                   }}
                 />
@@ -872,6 +910,18 @@ export default function CustomerTable({
             </div>
           </div>
         </div>
+      )}
+
+      {adjustPointsTarget && (
+        <CustomerAdjustPointsModal
+          customer={adjustPointsTarget}
+          action={adjustPointsAction}
+          onClose={() => setAdjustPointsTarget(null)}
+          onSuccess={(availablePoints) => {
+            handlePointsAdjusted(adjustPointsTarget.id, availablePoints)
+            setAdjustPointsTarget(null)
+          }}
+        />
       )}
 
       <PaginationControls

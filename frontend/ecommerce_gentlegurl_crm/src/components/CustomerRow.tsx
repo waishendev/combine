@@ -13,6 +13,7 @@ export interface CustomerRowData {
   tier: string
   type?: string
   isActive: boolean
+  availablePoints?: number
   allowBookingWithoutDeposit?: boolean
   createdAt: string
   updatedAt: string
@@ -31,6 +32,8 @@ interface CustomerRowProps {
   onDelete?: (customer: CustomerRowData) => void
   onView?: (customer: CustomerRowData) => void
   onToggleDepositWaiver?: (customer: CustomerRowData) => void
+  onAddPoints?: (customer: CustomerRowData) => void
+  onReducePoints?: (customer: CustomerRowData) => void
 }
 
 export default function CustomerRow({
@@ -46,6 +49,8 @@ export default function CustomerRow({
   onDelete,
   onView,
   onToggleDepositWaiver,
+  onAddPoints,
+  onReducePoints,
 }: CustomerRowProps) {
   const { t } = useI18n()
   const requiredDeposit =
@@ -57,6 +62,9 @@ export default function CustomerRow({
       <td className="px-4 py-2 border border-gray-200">{customer.email}</td>
       <td className="px-4 py-2 border border-gray-200">{customer.phone}</td>
       <td className="px-4 py-2 border border-gray-200">{customer.tier}</td>
+      <td className="px-4 py-2 border border-gray-200 font-medium text-gray-900">
+        {customer.availablePoints != null ? customer.availablePoints.toLocaleString() : '—'}
+      </td>
       <td className="px-4 py-2 border border-gray-200">
         <StatusBadge
           status={customer.isActive ? 'active' : 'inactive'}
@@ -97,6 +105,28 @@ export default function CustomerRow({
                 onClick={() => onAssignVoucher?.(customer)}
               >
                 <i className="fa-solid fa-ticket" />
+              </button>
+            )}
+            {canUpdate && (
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-emerald-600 text-white hover:bg-emerald-700"
+                onClick={() => onAddPoints?.(customer)}
+                title="Add Member Points"
+                aria-label="Add Member Points"
+              >
+                <i className="fa-solid fa-plus" />
+              </button>
+            )}
+            {canUpdate && (
+              <button
+                type="button"
+                className="inline-flex h-8 w-8 items-center justify-center rounded bg-rose-600 text-white hover:bg-rose-700"
+                onClick={() => onReducePoints?.(customer)}
+                title="Reduce Member Points"
+                aria-label="Reduce Member Points"
+              >
+                <i className="fa-solid fa-minus" />
               </button>
             )}
             {canUpdate && (

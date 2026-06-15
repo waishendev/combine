@@ -100,6 +100,10 @@ export const mapCustomerApiItemToRow = (item: CustomerApiItem): CustomerRowData 
       item.allow_booking_without_deposit === 'true' ||
       item.allow_booking_without_deposit === '1' ||
       item.allow_booking_without_deposit === 1,
+    availablePoints:
+      item.available_points === null || item.available_points === undefined
+        ? undefined
+        : Number(item.available_points) || 0,
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
   }

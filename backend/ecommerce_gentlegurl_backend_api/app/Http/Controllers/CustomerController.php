@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\CustomerDepositWaiverLog;
+use App\Models\Ecommerce\CustomerPointsAdjustmentLog;
 use App\Models\Ecommerce\LoyaltySetting;
 use App\Models\Ecommerce\MembershipTierRule;
 use App\Models\Ecommerce\Order;
@@ -21,6 +22,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use App\Services\Loyalty\PointsService;
 
 class CustomerController extends Controller
 {
@@ -172,6 +175,59 @@ class CustomerController extends Controller
             ),
             __('Deposit waiver setting updated successfully.'),
         );
+    }
+
+    public function adjustPoints(Request $request, Customer $customer, PointsService $pointsService)
+    {
+        $validated = $request->validate([
+            'action' => ['required', 'string', Rule::in(['add', 'reduce'])],
+            'points' => ['required', 'integer', 'min:1'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $action = $validated['action'];
+        $points = (int) $validated['points'];
+        $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
+
+        try {
+            $result = DB::transaction(function () use ($customer, $action, $points, $remark, $request, $pointsService) {
+                $beforeBalance = $pointsService->getAvailableBalance($customer);
+
+                if ($action === 'add') {
+                    $pointsService->addPointsByAdmin($customer, $points, $remark);
+                } else {
+                    $pointsService->reducePointsByAdmin($customer, $points, $remark);
+                }
+
+                $afterBalance = $pointsService->getAvailableBalance($customer);
+
+                $log = CustomerPointsAdjustmentLog::query()->create([
+                    'customer_id' => (int) $customer->id,
+                    'action_type' => $action === 'add' ? 'add_points' : 'reduce_points',
+                    'points' => $points,
+                    'before_balance' => $beforeBalance,
+                    'after_balance' => $afterBalance,
+                    'remark' => $remark !== '' ? $remark : null,
+                    'created_by' => $request->user()?->id,
+                ]);
+
+                return [
+                    'log' => $log,
+                    'before_balance' => $beforeBalance,
+                    'after_balance' => $afterBalance,
+                ];
+            });
+        } catch (ValidationException $exception) {
+            throw $exception;
+        }
+
+        return $this->respond([
+            'customer_id' => $customer->id,
+            'available_points' => $result['after_balance'],
+            'before_balance' => $result['before_balance'],
+            'after_balance' => $result['after_balance'],
+            'log_id' => $result['log']->id,
+        ], __('Member points updated successfully.'));
     }
 
     public function exportCsv(Request $request)

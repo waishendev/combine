@@ -875,6 +875,7 @@ class ProductController extends Controller
             'cost_price' => ['nullable', 'numeric'],
             'stock' => ['nullable', 'integer'],
             'low_stock_threshold' => ['nullable', 'integer'],
+            'is_active' => ['nullable', 'boolean'],
             'category_ids' => ['nullable', 'array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
         ]);

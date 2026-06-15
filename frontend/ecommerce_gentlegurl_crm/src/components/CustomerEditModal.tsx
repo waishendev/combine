@@ -255,9 +255,9 @@ export default function CustomerEditModal({
                 type="email"
                 value={form.email}
                 onChange={handleChange}
-                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500 disabled:bg-gray-50"
                 placeholder={t('common.emailPlaceholder')}
-                disabled
+                disabled={disableForm}
               />
             </div>
 

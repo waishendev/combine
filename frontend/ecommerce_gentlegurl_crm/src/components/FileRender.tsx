@@ -9,6 +9,7 @@ import { useI18n } from '@/lib/i18n'
 export type FieldType =
   | 'number'
   | 'boolean'
+  | 'status'
   | 'time'
   | 'select'
   | 'datetime'
@@ -270,6 +271,22 @@ export default function FieldRenderer({
           />
           <span className="text-xs text-gray-500">{value ? 'Yes' : 'No'}</span>
         </label>
+      </div>
+    )
+  }
+
+  if (field.type === 'status') {
+    return (
+      <div>
+        <label className="text-sm font-medium text-gray-700 block mb-1">{field.label}</label>
+        <select
+          value={value === false ? 'false' : 'true'}
+          onChange={(event) => onChange(event.target.value === 'true')}
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+        >
+          <option value="true">Active</option>
+          <option value="false">Inactive</option>
+        </select>
       </div>
     )
   }

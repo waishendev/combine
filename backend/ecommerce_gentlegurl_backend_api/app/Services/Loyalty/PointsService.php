@@ -5,6 +5,7 @@ namespace App\Services\Loyalty;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\LoyaltyRedemption;
 use App\Models\Ecommerce\LoyaltyReward;
+use App\Models\Ecommerce\LoyaltySetting;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Models\Ecommerce\PointsTransaction;
 use App\Models\Ecommerce\CustomerVoucher;
@@ -79,6 +80,99 @@ class PointsService
             ->when(!empty($filters['type']), fn($q) => $q->where('type', $filters['type']))
             ->orderByDesc('created_at')
             ->paginate($perPage);
+    }
+
+    public function getAvailableBalance(Customer $customer, ?Carbon $now = null): int
+    {
+        return $this->getAvailablePoints($customer, $now ?? Carbon::now());
+    }
+
+    public function addPointsByAdmin(Customer $customer, int $points, ?string $remark = null): void
+    {
+        if ($points <= 0) {
+            throw ValidationException::withMessages([
+                'points' => __('Points must be greater than 0.'),
+            ]);
+        }
+
+        $now = Carbon::now();
+        $setting = LoyaltySetting::orderByDesc('created_at')->first();
+        $expiryMonths = $setting?->expiry_months ?? 12;
+
+        $batch = PointsEarnBatch::create([
+            'customer_id' => $customer->id,
+            'points_total' => $points,
+            'points_remaining' => $points,
+            'source_type' => 'admin_adjustment',
+            'source_id' => null,
+            'earned_at' => $now,
+            'expires_at' => $now->copy()->addMonths($expiryMonths),
+            'status' => 'active',
+        ]);
+
+        PointsTransaction::create([
+            'customer_id' => $customer->id,
+            'type' => 'earn',
+            'points_change' => $points,
+            'source_type' => 'admin_adjustment',
+            'source_id' => null,
+            'meta' => [
+                'reason' => $remark,
+                'earn_batch_id' => $batch->id,
+            ],
+        ]);
+    }
+
+    public function reducePointsByAdmin(Customer $customer, int $points, ?string $remark = null): void
+    {
+        if ($points <= 0) {
+            throw ValidationException::withMessages([
+                'points' => __('Points must be greater than 0.'),
+            ]);
+        }
+
+        DB::transaction(function () use ($customer, $points, $remark) {
+            $now = Carbon::now();
+            $available = $this->getAvailablePoints($customer, $now);
+
+            if ($available < $points) {
+                throw ValidationException::withMessages([
+                    'points' => __('Insufficient points. Available: :count', ['count' => $available]),
+                ])->status(422);
+            }
+
+            $remaining = $points;
+
+            $batches = PointsEarnBatch::where('customer_id', $customer->id)
+                ->where('status', 'active')
+                ->where('points_remaining', '>', 0)
+                ->where('expires_at', '>', $now)
+                ->orderBy('earned_at')
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($batches as $batch) {
+                if ($remaining <= 0) {
+                    break;
+                }
+
+                $deduct = min($batch->points_remaining, $remaining);
+                $batch->points_remaining -= $deduct;
+                $batch->save();
+                $remaining -= $deduct;
+            }
+
+            PointsTransaction::create([
+                'customer_id' => $customer->id,
+                'type' => 'adjustment',
+                'points_change' => -1 * $points,
+                'source_type' => 'admin_adjustment',
+                'source_id' => null,
+                'meta' => [
+                    'reason' => $remark,
+                ],
+            ]);
+        });
     }
 
     public function redeemPointsForReward(Customer $customer, LoyaltyReward $reward): LoyaltyRedemption

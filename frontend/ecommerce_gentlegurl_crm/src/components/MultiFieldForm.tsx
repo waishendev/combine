@@ -10,6 +10,7 @@ const FIELD_CONFIG: FieldConfig[] = [
   { key: 'sale_price_start_at', label: 'Start At', type: 'datetime' },
   { key: 'sale_price_end_at', label: 'End At', type: 'datetime' },
   { key: 'low_stock_threshold', label: 'Low Stock Threshold', type: 'number' },
+  { key: 'is_active', label: 'Status', type: 'status' },
   { key: 'category_ids', label: 'Categories', type: 'category_multi' },
 ]
 
@@ -95,6 +96,8 @@ export default function MultiFieldForm({
     switch (type) {
       case 'boolean':
         return false
+      case 'status':
+        return true
       case 'number':
         return 0
       case 'discount':
