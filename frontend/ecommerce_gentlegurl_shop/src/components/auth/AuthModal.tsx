@@ -9,10 +9,18 @@ export type AuthModalProps = {
   defaultTab?: "login" | "register";
 };
 
+const GENDER_OPTIONS = [
+  { value: "male", label: "Male" },
+  { value: "female", label: "Female" },
+  { value: "other", label: "Other" },
+] as const;
+
 const initialRegisterState = {
   name: "",
   email: "",
   phone: "",
+  gender: "",
+  date_of_birth: "",
   password: "",
   password_confirmation: "",
 };
@@ -175,6 +183,35 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
                 className={inputClass}
                 value={registerForm.phone}
                 onChange={(e) => setRegisterForm((prev) => ({ ...prev, phone: e.target.value }))}
+                required
+              />
+            </div>
+            <div>
+              <label className="text-sm text-[var(--foreground)]/80">Gender</label>
+              <select
+                className={inputClass}
+                value={registerForm.gender}
+                onChange={(e) => setRegisterForm((prev) => ({ ...prev, gender: e.target.value }))}
+                required
+              >
+                <option value="">Select gender</option>
+                {GENDER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-sm text-[var(--foreground)]/80">Date of Birth</label>
+              <input
+                type="date"
+                className={inputClass}
+                value={registerForm.date_of_birth}
+                onChange={(e) =>
+                  setRegisterForm((prev) => ({ ...prev, date_of_birth: e.target.value }))
+                }
+                max={new Date().toISOString().split("T")[0]}
                 required
               />
             </div>
