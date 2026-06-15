@@ -22,6 +22,9 @@ export type CustomerApiItem = {
   spent_in_window?: number | null
   next_tier?: string | null
   amount_to_next_tier?: number | null
+  loyalty_summary?: {
+    available_points?: number | null
+  } | null
 }
 
 export function normalizeDateForInput(value: unknown): string {
@@ -100,10 +103,14 @@ export const mapCustomerApiItemToRow = (item: CustomerApiItem): CustomerRowData 
       item.allow_booking_without_deposit === 'true' ||
       item.allow_booking_without_deposit === '1' ||
       item.allow_booking_without_deposit === 1,
-    availablePoints:
-      item.available_points === null || item.available_points === undefined
-        ? undefined
-        : Number(item.available_points) || 0,
+    availablePoints: (() => {
+      const rawPoints =
+        item.available_points ?? item.loyalty_summary?.available_points ?? null
+      if (rawPoints === null || rawPoints === undefined) {
+        return undefined
+      }
+      return Number(rawPoints) || 0
+    })(),
     createdAt: item.created_at ?? '',
     updatedAt: item.updated_at ?? '',
   }

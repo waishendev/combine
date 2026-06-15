@@ -182,6 +182,8 @@ export default function CustomerEditModal({
               loadedCustomer?.type ??
               '-',
             isActive: form.isActive === 'true',
+            availablePoints: loadedCustomer?.availablePoints,
+            allowBookingWithoutDeposit: loadedCustomer?.allowBookingWithoutDeposit,
             createdAt: loadedCustomer?.createdAt ?? '',
             updatedAt: new Date().toISOString(),
           }

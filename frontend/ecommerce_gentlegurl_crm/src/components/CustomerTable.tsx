@@ -481,8 +481,15 @@ export default function CustomerTable({
     setRows((prev) => {
       const index = prev.findIndex((item) => item.id === customer.id)
       if (index === -1) return prev
+      const existing = prev[index]
       const next = [...prev]
-      next[index] = customer
+      next[index] = {
+        ...existing,
+        ...customer,
+        availablePoints: customer.availablePoints ?? existing.availablePoints,
+        allowBookingWithoutDeposit:
+          customer.allowBookingWithoutDeposit ?? existing.allowBookingWithoutDeposit,
+      }
       return next
     })
   }

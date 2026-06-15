@@ -122,7 +122,14 @@ class CustomerController extends Controller
         $customer->fill($validated);
         $customer->save();
 
-        return $this->respond($customer, __('Customer updated successfully.'));
+        $loyaltySetting = $this->getActiveLoyaltySetting();
+        $tierRules = $this->getActiveTierRules();
+        $window = $this->getWindowDates($loyaltySetting?->evaluation_cycle_months ?? 6);
+
+        return $this->respond(
+            $this->formatCustomerWithSummary($customer->fresh(), $loyaltySetting, $tierRules, $window),
+            __('Customer updated successfully.'),
+        );
     }
 
     public function destroy(Customer $customer)
