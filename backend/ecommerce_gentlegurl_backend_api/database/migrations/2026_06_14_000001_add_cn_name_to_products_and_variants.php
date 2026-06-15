@@ -13,11 +13,14 @@ return new class extends Migration {
             }
         });
 
-        Schema::table('product_variants', function (Blueprint $table) {
-            if (! Schema::hasColumn('product_variants', 'cn_name')) {
-                $table->string('cn_name')->nullable()->after('title');
-            }
-        });
+        // product_variants may not exist yet on fresh installs (table is created later).
+        if (Schema::hasTable('product_variants')) {
+            Schema::table('product_variants', function (Blueprint $table) {
+                if (! Schema::hasColumn('product_variants', 'cn_name')) {
+                    $table->string('cn_name')->nullable()->after('title');
+                }
+            });
+        }
     }
 
     public function down(): void
@@ -28,10 +31,12 @@ return new class extends Migration {
             }
         });
 
-        Schema::table('product_variants', function (Blueprint $table) {
-            if (Schema::hasColumn('product_variants', 'cn_name')) {
-                $table->dropColumn('cn_name');
-            }
-        });
+        if (Schema::hasTable('product_variants')) {
+            Schema::table('product_variants', function (Blueprint $table) {
+                if (Schema::hasColumn('product_variants', 'cn_name')) {
+                    $table->dropColumn('cn_name');
+                }
+            });
+        }
     }
 };
