@@ -10,6 +10,7 @@ export type CategoryApiItem = {
   id: number | string
   parent_id?: number | string | null
   name?: string | null
+  cn_name?: string | null
   slug?: string | null
   description?: string | null
   meta_title?: string | null
@@ -48,6 +49,7 @@ export const mapCategoryApiItemToRow = (item: CategoryApiItem): CategoryRowData 
   return {
     id: normalizedId,
     name: item.name ?? '-',
+    cnName: typeof item.cn_name === 'string' ? item.cn_name : '',
     slug: item.slug ?? '-',
     description: item.description ?? '-',
     metaTitle: item.meta_title ?? '-',

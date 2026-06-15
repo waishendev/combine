@@ -20,6 +20,7 @@ interface MenuOption {
 
 interface FormState {
   name: string
+  cnName: string
   slug: string
   description: string
   metaTitle: string
@@ -31,6 +32,7 @@ interface FormState {
 
 const initialFormState: FormState = {
   name: '',
+  cnName: '',
   slug: '',
   description: '',
   metaTitle: '',
@@ -167,6 +169,7 @@ export default function CategoryCreateModal({
     try {
       const fd = new FormData()
       fd.append('name', trimmedName)
+      if (form.cnName.trim()) fd.append('cn_name', form.cnName.trim())
       fd.append('slug', trimmedSlug)
       if (form.description.trim()) fd.append('description', form.description.trim())
       if (form.metaTitle.trim()) fd.append('meta_title', form.metaTitle.trim())
@@ -220,6 +223,7 @@ export default function CategoryCreateModal({
         : {
             id: 0,
             name: trimmedName,
+            cnName: form.cnName.trim(),
             slug: trimmedSlug,
             description: form.description.trim(),
             metaTitle: form.metaTitle.trim(),
@@ -410,7 +414,26 @@ export default function CategoryCreateModal({
                   value={form.name}
                   onChange={handleChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                  placeholder="Category name"
+                  placeholder="English category name"
+                  disabled={submitting}
+                />
+              </div>
+
+              <div>
+                <label
+                  htmlFor="cnName"
+                  className="block text-sm font-medium text-gray-700 mb-1"
+                >
+                  CN Name
+                </label>
+                <input
+                  id="cnName"
+                  name="cnName"
+                  type="text"
+                  value={form.cnName}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="中文分类名称"
                   disabled={submitting}
                 />
               </div>

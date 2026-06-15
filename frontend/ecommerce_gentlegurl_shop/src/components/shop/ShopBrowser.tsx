@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { CategoryNameStack, formatCategoryOptionLabel } from "@/components/shop/CategoryNameStack";
 import ProductGrid from "@/components/products/ProductGrid";
 import { getOrCreateSessionToken } from "@/lib/sessionToken";
 
@@ -59,6 +60,7 @@ type ShopMenuCategory = {
   id: number | string;
   slug: string;
   name: string;
+  cn_name?: string | null;
 };
 
 type ShopMenu = {
@@ -519,14 +521,14 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                     menuSlug ? (
                       menu.categories.map((category) => (
                         <option key={category.slug} value={`${menu.slug}::${category.slug}`}>
-                          {category.name}
+                          {formatCategoryOptionLabel(category.name, category.cn_name)}
                         </option>
                       ))
                     ) : (
                       <optgroup key={menu.slug} label={menu.title}>
                         {menu.categories.map((category) => (
                           <option key={category.slug} value={`${menu.slug}::${category.slug}`}>
-                            {category.name}
+                            {formatCategoryOptionLabel(category.name, category.cn_name)}
                           </option>
                         ))}
                       </optgroup>
@@ -581,13 +583,19 @@ export function ShopBrowser({ menuSlug }: ShopBrowserProps) {
                                   setSelectedCategory(category.slug);
                                   pushParams({ nextCategory: category.slug, nextPage: 1 });
                                 }}
-                                className={`w-full rounded-xl px-3 py-2 text-left text-sm font-medium transition ${
+                                className={`flex min-h-[2.75rem] w-full flex-col items-start justify-start rounded-xl px-3 py-2 text-left transition ${
                                   isActive
                                     ? "bg-gradient-to-r from-[var(--background-soft)] to-[var(--card)] text-[var(--accent-strong)] shadow-sm"
                                     : "text-[color:var(--text-muted)] hover:bg-[var(--background-soft)]"
                                 }`}
                               >
-                                {category.name}
+                                <CategoryNameStack
+                                  name={category.name}
+                                  cnName={category.cn_name}
+                                  reserveSecondaryLine
+                                  primaryClassName={`text-left text-sm font-medium ${isActive ? "text-[var(--accent-strong)]" : "text-[color:var(--text-muted)]"}`}
+                                  secondaryClassName={`mt-0.5 text-left text-xs ${isActive ? "text-[var(--accent-strong)]/80" : "text-[color:var(--text-muted)]"}`}
+                                />
                               </button>
                             );
                           })}

@@ -18,12 +18,14 @@ interface Props {
 export default function BookingProductCategoryEditModal({ category, onClose, onSuccess }: Props) {
   const { t } = useI18n()
   const [name, setName] = useState(category.name)
+  const [cnName, setCnName] = useState(category.cnName)
   const [isActive, setIsActive] = useState(category.isActive)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     setName(category.name)
+    setCnName(category.cnName)
     setIsActive(category.isActive)
   }, [category])
 
@@ -39,6 +41,7 @@ export default function BookingProductCategoryEditModal({ category, onClose, onS
     try {
       const body = {
         name: trimmed,
+        cn_name: cnName.trim() || null,
         is_active: isActive,
       }
 
@@ -91,6 +94,19 @@ export default function BookingProductCategoryEditModal({ category, onClose, onS
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              disabled={submitting}
+            />
+          </div>
+          <div>
+            <label htmlFor="pc-edit-cn-name" className="mb-1 block text-sm font-medium text-gray-700">
+              CN Name
+            </label>
+            <input
+              id="pc-edit-cn-name"
+              value={cnName}
+              onChange={(e) => setCnName(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="中文分类名称"
               disabled={submitting}
             />
           </div>

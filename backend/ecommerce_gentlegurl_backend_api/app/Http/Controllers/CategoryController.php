@@ -35,6 +35,7 @@ class CategoryController extends Controller
         $validated = $request->validate([
             'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
             'name' => ['required', 'string', 'max:150'],
+            'cn_name' => ['nullable', 'string', 'max:150'],
             'slug' => ['required', 'string', 'max:150', 'unique:categories,slug'],
             'description' => ['nullable', 'string'],
             'meta_title' => ['nullable', 'string', 'max:255'],
@@ -154,7 +155,7 @@ class CategoryController extends Controller
         }, $headers);
 
         $allowedFields = [
-            'parent_id', 'name', 'slug', 'description', 'meta_title', 'meta_description',
+            'parent_id', 'name', 'cn_name', 'slug', 'description', 'meta_title', 'meta_description',
             'meta_keywords', 'meta_og_image', 'is_active', 'sort_order', 'menu_ids',
         ];
 
@@ -354,6 +355,7 @@ class CategoryController extends Controller
                 $validator = Validator::make($payload, [
                     'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
                     'name' => ['required', 'string', 'max:150'],
+                    'cn_name' => ['nullable', 'string', 'max:150'],
                     'slug' => ['required', 'string', 'max:150', 'unique:categories,slug'],
                     'description' => ['nullable', 'string'],
                     'meta_title' => ['nullable', 'string', 'max:255'],
@@ -437,6 +439,7 @@ class CategoryController extends Controller
         $validated = $request->validate([
             'parent_id' => ['nullable', 'integer', 'exists:categories,id'],
             'name' => ['sometimes', 'string', 'max:150'],
+            'cn_name' => ['nullable', 'string', 'max:150'],
             'slug' => ['sometimes', 'string', 'max:150', Rule::unique('categories', 'slug')->ignore($category->id)],
             'description' => ['nullable', 'string'],
             'meta_title' => ['nullable', 'string', 'max:255'],
@@ -478,6 +481,7 @@ class CategoryController extends Controller
             'id' => $category->id,
             'parent_id' => $category->parent_id,
             'name' => $category->name,
+            'cn_name' => $category->cn_name,
             'slug' => $category->slug,
             'description' => $category->description,
             'meta_title' => $category->meta_title,

@@ -17,6 +17,7 @@ interface Props {
 export default function BookingProductCategoryCreateModal({ onClose, onSuccess }: Props) {
   const { t } = useI18n()
   const [name, setName] = useState('')
+  const [cnName, setCnName] = useState('')
   const [isActive, setIsActive] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -33,6 +34,7 @@ export default function BookingProductCategoryCreateModal({ onClose, onSuccess }
     try {
       const body = {
         name: trimmed,
+        cn_name: cnName.trim() || null,
         is_active: isActive,
       }
 
@@ -86,7 +88,20 @@ export default function BookingProductCategoryCreateModal({ onClose, onSuccess }
               value={name}
               onChange={(e) => setName(e.target.value)}
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-              placeholder="Category name"
+              placeholder="English category name"
+              disabled={submitting}
+            />
+          </div>
+          <div>
+            <label htmlFor="pc-create-cn-name" className="mb-1 block text-sm font-medium text-gray-700">
+              CN Name
+            </label>
+            <input
+              id="pc-create-cn-name"
+              value={cnName}
+              onChange={(e) => setCnName(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              placeholder="中文分类名称"
               disabled={submitting}
             />
           </div>

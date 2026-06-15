@@ -29,6 +29,7 @@ interface MenuOption {
 
 interface FormState {
   name: string
+  cnName: string
   slug: string
   description: string
   metaTitle: string
@@ -41,6 +42,7 @@ interface FormState {
 
 const initialFormState: FormState = {
   name: '',
+  cnName: '',
   slug: '',
   description: '',
   metaTitle: '',
@@ -126,6 +128,7 @@ export default function CategoryEditModal({
 
         setForm({
           name: typeof category.name === 'string' ? category.name : '',
+          cnName: typeof category.cn_name === 'string' ? category.cn_name : '',
           slug: typeof category.slug === 'string' ? category.slug : '',
           description: typeof category.description === 'string' ? category.description : '',
           metaTitle: typeof category.meta_title === 'string' ? category.meta_title : '',
@@ -281,6 +284,7 @@ export default function CategoryEditModal({
     try {
       const fd = new FormData()
       fd.append('name', trimmedName)
+      fd.append('cn_name', form.cnName.trim())
       fd.append('slug', trimmedSlug)
       if (form.description.trim()) fd.append('description', form.description.trim())
       if (form.metaTitle.trim()) fd.append('meta_title', form.metaTitle.trim())
@@ -571,7 +575,26 @@ export default function CategoryEditModal({
                     value={form.name}
                     onChange={handleChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Category name"
+                    placeholder="English category name"
+                    disabled={disableForm}
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-cnName"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    CN Name
+                  </label>
+                  <input
+                    id="edit-cnName"
+                    name="cnName"
+                    type="text"
+                    value={form.cnName}
+                    onChange={handleChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="中文分类名称"
                     disabled={disableForm}
                   />
                 </div>

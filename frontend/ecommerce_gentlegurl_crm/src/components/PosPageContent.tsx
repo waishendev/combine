@@ -505,16 +505,24 @@ function ServiceNameStack({
   cnName,
   primaryClassName = 'text-sm font-semibold text-gray-900',
   secondaryClassName = 'mt-0.5 text-xs text-gray-500',
+  reserveSecondaryLine = false,
 }: {
   name?: string | null
   cnName?: string | null
   primaryClassName?: string
   secondaryClassName?: string
+  reserveSecondaryLine?: boolean
 }) {
+  const showSecondary = reserveSecondaryLine || Boolean(cnName)
+
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 text-left">
       <p className={primaryClassName}>{name || '—'}</p>
-      {cnName ? <p className={secondaryClassName}>{cnName}</p> : null}
+      {showSecondary ? (
+        <p className={`${secondaryClassName}${cnName ? '' : ' invisible'}`} aria-hidden={!cnName}>
+          {cnName || '\u00a0'}
+        </p>
+      ) : null}
     </div>
   )
 }
@@ -626,7 +634,7 @@ type ServicePackageOption = {
 
 type PosCatalogTab = 'products' | 'booking-products' | 'book-service' | 'service-packages' | 'settlement'
 type BookingProductOption = { id: number; name: string; cn_name?: string | null; barcode?: string | null; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean; questions?: BookingServiceQuestion[] }
-type BookingProductCategoryOption = { id: number; name: string; sort_order?: number; is_active?: boolean }
+type BookingProductCategoryOption = { id: number; name: string; cn_name?: string | null; sort_order?: number; is_active?: boolean }
 
 type ProductOption = {
   id: number
@@ -661,6 +669,7 @@ type ProductSearchMode = 'name' | 'barcode'
 type CategoryOption = {
   id: number
   name: string
+  cn_name?: string | null
 }
 
 type FetchProductOptions = {
@@ -3796,12 +3805,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return
         }
         const json = await res.json()
-        const paged = extractPaged<{ id?: number | string; name?: string }>(json)
+        const paged = extractPaged<{ id?: number | string; name?: string; cn_name?: string | null }>(json)
         const mapped = paged.data
           .map((item) => {
             const id = Number(item?.id)
             if (!Number.isFinite(id) || id <= 0 || !item?.name?.trim()) return null
-            return { id, name: item.name.trim() }
+            return {
+              id,
+              name: item.name.trim(),
+              cn_name: typeof item?.cn_name === 'string' ? item.cn_name.trim() || null : null,
+            }
           })
           .filter((item): item is CategoryOption => Boolean(item))
         setCategories(mapped)
@@ -3829,6 +3842,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           .map((row: any) => ({
             id: Number(row?.id),
             name: String(row?.name ?? '').trim(),
+            cn_name: typeof row?.cn_name === 'string' ? row.cn_name.trim() || null : null,
             sort_order: Number(row?.sort_order ?? 0),
             is_active: Boolean(row?.is_active ?? true),
           }))
@@ -3862,6 +3876,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (!keyword) return bookingProducts
     return bookingProducts.filter((item) => item.name.toLowerCase().includes(keyword))
   }, [bookingProducts, debouncedBookingProductQuery])
+
+  const showProductCategoryCnLine = useMemo(
+    () => categories.some((category) => Boolean(category.cn_name?.trim())),
+    [categories],
+  )
+
+  const showBookingProductCategoryCnLine = useMemo(
+    () => bookingProductCategories.some((category) => Boolean(category.cn_name?.trim())),
+    [bookingProductCategories],
+  )
 
   useEffect(() => {
     const onPageShow = () => { void loadCart() }
@@ -5551,13 +5575,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
 
               <div className="min-w-0 border-b border-gray-200 pb-2">
-                <div className="-mx-1 flex min-w-0 flex-nowrap gap-2 overflow-x-auto overflow-y-hidden whitespace-nowrap px-1 pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
+                <div className="-mx-1 flex min-w-0 flex-nowrap items-start gap-2 overflow-x-auto overflow-y-hidden px-1 pb-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:thin]">
                   <button
                     type="button"
                     onClick={() => setSelectedCategoryId(null)}
-                    className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${selectedCategoryId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                    className={`shrink-0 rounded-full px-3 py-1.5 text-left transition-all ${showProductCategoryCnLine ? 'flex min-h-[2.5rem] flex-col items-start justify-start' : ''} ${selectedCategoryId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                   >
-                    All
+                    <ServiceNameStack
+                      name="All"
+                      cnName={showProductCategoryCnLine ? '全部' : null}
+                      reserveSecondaryLine={showProductCategoryCnLine}
+                      primaryClassName={`text-left text-xs font-semibold leading-tight ${selectedCategoryId === null ? 'text-white' : 'text-gray-700'}`}
+                      secondaryClassName={`mt-0.5 text-left text-[10px] leading-tight ${selectedCategoryId === null ? 'text-white/80' : 'text-gray-500'}`}
+                    />
                   </button>
                   {categories.map((category) => {
                     const isActive = selectedCategoryId === category.id
@@ -5567,9 +5597,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         key={category.id}
                         type="button"
                         onClick={() => setSelectedCategoryId(category.id)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        className={`flex shrink-0 flex-col items-start justify-start rounded-full px-3 py-1.5 text-left transition-all ${showProductCategoryCnLine ? 'min-h-[2.5rem]' : ''} ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                       >
-                        {category.name}
+                        <ServiceNameStack
+                          name={category.name}
+                          cnName={category.cn_name}
+                          reserveSecondaryLine={showProductCategoryCnLine}
+                          primaryClassName={`text-left text-xs font-semibold leading-tight ${isActive ? 'text-white' : 'text-gray-700'}`}
+                          secondaryClassName={`mt-0.5 text-left text-[10px] leading-tight ${isActive ? 'text-white/80' : 'text-gray-500'}`}
+                        />
                       </button>
                     )
                   })}
@@ -5703,24 +5739,39 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     />
                   </div>
                   <div className="border-b border-gray-200 pb-2">
-                    <div className="flex flex-nowrap gap-2 overflow-x-auto whitespace-nowrap pb-1 [scrollbar-width:thin]">
+                    <div className="flex flex-nowrap items-start gap-2 overflow-x-auto pb-1 [scrollbar-width:thin]">
                       <button
                         type="button"
                         onClick={() => setSelectedBookingProductCategoryId(null)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${selectedBookingProductCategoryId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                        className={`flex shrink-0 flex-col items-start justify-start rounded-full px-3 py-1.5 text-left transition-all ${showBookingProductCategoryCnLine ? 'min-h-[2.5rem]' : ''} ${selectedBookingProductCategoryId === null ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                       >
-                        All
+                        <ServiceNameStack
+                          name="All"
+                          cnName={showBookingProductCategoryCnLine ? '全部' : null}
+                          reserveSecondaryLine={showBookingProductCategoryCnLine}
+                          primaryClassName={`text-left text-xs font-semibold leading-tight ${selectedBookingProductCategoryId === null ? 'text-white' : 'text-gray-700'}`}
+                          secondaryClassName={`mt-0.5 text-left text-[10px] leading-tight ${selectedBookingProductCategoryId === null ? 'text-white/80' : 'text-gray-500'}`}
+                        />
                       </button>
-                      {bookingProductCategories.map((category) => (
+                      {bookingProductCategories.map((category) => {
+                        const isSelected = selectedBookingProductCategoryId === category.id
+                        return (
                         <button
                           key={category.id}
                           type="button"
                           onClick={() => setSelectedBookingProductCategoryId(category.id)}
-                          className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-all ${selectedBookingProductCategoryId === category.id ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
+                          className={`flex shrink-0 flex-col items-start justify-start rounded-full px-3 py-1.5 text-left transition-all ${showBookingProductCategoryCnLine ? 'min-h-[2.5rem]' : ''} ${isSelected ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
                         >
-                          {category.name}
+                          <ServiceNameStack
+                            name={category.name}
+                            cnName={category.cn_name}
+                            reserveSecondaryLine={showBookingProductCategoryCnLine}
+                            primaryClassName={`text-left text-xs font-semibold leading-tight ${isSelected ? 'text-white' : 'text-gray-700'}`}
+                            secondaryClassName={`mt-0.5 text-left text-[10px] leading-tight ${isSelected ? 'text-white/80' : 'text-gray-500'}`}
+                          />
                         </button>
-                      ))}
+                        )
+                      })}
                     </div>
                   </div>
                 </div>

@@ -45,6 +45,7 @@ class PublicShopController extends Controller
                     return [
                         'id' => $category->id,
                         'name' => $category->name,
+                        'cn_name' => $category->cn_name,
                         'slug' => $category->slug,
                     ];
                 })->values(),
@@ -73,6 +74,7 @@ class PublicShopController extends Controller
                 return [
                     'id' => $category->id,
                     'name' => $category->name,
+                    'cn_name' => $category->cn_name,
                     'slug' => $category->slug,
                 ];
             })->values(),
@@ -109,6 +111,7 @@ class PublicShopController extends Controller
             return [
                 'id' => $category->id,
                 'name' => $category->name,
+                'cn_name' => $category->cn_name,
                 'slug' => $category->slug,
                 'parent_id' => $category->parent_id,
                 'sort_order' => $category->sort_order,
@@ -135,7 +138,7 @@ class PublicShopController extends Controller
     {
         $productsQuery = Product::with([
             'categories' => function ($query) {
-                $query->select('categories.id', 'categories.name', 'categories.slug');
+                $query->select('categories.id', 'categories.name', 'categories.cn_name', 'categories.slug');
             },
             'images' => function ($query) {
                 $query->orderBy('sort_order')->orderBy('id');
@@ -464,6 +467,7 @@ class PublicShopController extends Controller
             return [
                 'id' => $category->id,
                 'name' => $category->name,
+                'cn_name' => $category->cn_name,
                 'slug' => $category->slug,
             ];
         });

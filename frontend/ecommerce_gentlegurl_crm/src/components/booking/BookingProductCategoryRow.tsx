@@ -27,7 +27,10 @@ export default function BookingProductCategoryRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
-      <td className="border border-gray-200 px-4 py-2">{category.name}</td>
+      <td className="border border-gray-200 px-4 py-2">
+        <div>{category.name}</div>
+        {category.cnName ? <div className="mt-0.5">{category.cnName}</div> : null}
+      </td>
       <td className="border border-gray-200 px-4 py-2">
         <StatusBadge
           status={category.isActive ? 'active' : 'inactive'}

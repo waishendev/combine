@@ -6,6 +6,7 @@ import { useI18n } from '@/lib/i18n'
 export interface CategoryRowData {
   id: number
   name: string
+  cnName: string
   slug: string
   description: string
   metaTitle: string
@@ -42,7 +43,10 @@ export default function CategoryRow({
   const { t } = useI18n()
   return (
     <tr className="text-sm">
-      <td className="px-4 py-2 border border-gray-200">{category.name}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        <div>{category.name}</div>
+        {category.cnName ? <div className="mt-0.5">{category.cnName}</div> : null}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{category.slug}</td>
       <td className="px-4 py-2 border border-gray-200">{category.description}</td>
       <td className="px-4 py-2 border border-gray-200">{category.menuNames}</td>

@@ -15,7 +15,7 @@ class BookingProductCategoryController extends Controller
     public function index(Request $request)
     {
         $query = BookingProductCategory::query()
-            ->select(['id', 'name', 'sort_order', 'is_active'])
+            ->select(['id', 'name', 'cn_name', 'sort_order', 'is_active'])
             ->orderBy('sort_order')
             ->orderBy('id');
 
@@ -34,6 +34,7 @@ class BookingProductCategoryController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'cn_name' => ['nullable', 'string', 'max:255'],
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['nullable', 'boolean'],
         ]);
@@ -50,6 +51,7 @@ class BookingProductCategoryController extends Controller
         $category = BookingProductCategory::query()->findOrFail($id);
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
+            'cn_name' => ['nullable', 'string', 'max:255'],
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
@@ -78,13 +80,14 @@ class BookingProductCategoryController extends Controller
             return response()->json(['message' => 'Unable to build booking product categories CSV export.'], 500);
         }
 
-        $headers = ['id', 'name', 'sort_order', 'is_active'];
+        $headers = ['id', 'name', 'cn_name', 'sort_order', 'is_active'];
         fputcsv($stream, $headers);
 
         foreach ($categories as $category) {
             fputcsv($stream, [
                 $category->id,
                 $category->name,
+                $category->cn_name,
                 $category->sort_order,
                 $category->is_active ? 'true' : 'false',
             ]);
@@ -120,7 +123,7 @@ class BookingProductCategoryController extends Controller
         }
 
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
-        $allowedHeaders = ['id', 'name', 'sort_order', 'is_active'];
+        $allowedHeaders = ['id', 'name', 'cn_name', 'sort_order', 'is_active'];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
 
         if (! empty($unknownHeaders)) {
@@ -155,6 +158,7 @@ class BookingProductCategoryController extends Controller
 
             $raw = [
                 'name' => $payload['name'] ?? null,
+                'cn_name' => $payload['cn_name'] ?? null,
                 'sort_order' => $payload['sort_order'] ?? null,
                 'is_active' => $payload['is_active'] ?? null,
             ];
@@ -173,6 +177,7 @@ class BookingProductCategoryController extends Controller
 
             $validator = Validator::make($raw, [
                 'name' => ['required', 'string', 'max:255'],
+                'cn_name' => ['nullable', 'string', 'max:255'],
                 'is_active' => ['required', 'boolean'],
                 'sort_order' => ['nullable', 'integer', 'min:0'],
             ]);
@@ -210,6 +215,7 @@ class BookingProductCategoryController extends Controller
                 $incoming = $validated;
                 $isUnchanged =
                     ($category->name === $incoming['name']) &&
+                    (($category->cn_name ?? null) === ($incoming['cn_name'] ?? null)) &&
                     ((int) $category->sort_order === (int) ($incoming['sort_order'] ?? $category->sort_order)) &&
                     ((bool) $category->is_active === (bool) $incoming['is_active']);
                 if ($isUnchanged) {
