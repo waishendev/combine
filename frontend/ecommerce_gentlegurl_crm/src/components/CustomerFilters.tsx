@@ -1,7 +1,9 @@
 'use client'
 
 import { ChangeEvent, FormEvent } from 'react'
+import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import { useI18n } from '@/lib/i18n'
+import { normalizeInternationalPhone } from '@/lib/phone'
 
 export interface CustomerFilterValues {
   name: string
@@ -19,6 +21,16 @@ export const emptyCustomerFilters: CustomerFilterValues = {
   phone: '',
   isActive: '',
   tier: '',
+}
+
+export function sanitizeCustomerFilters(values: CustomerFilterValues): CustomerFilterValues {
+  return {
+    name: values.name.trim(),
+    email: values.email.trim(),
+    phone: normalizeInternationalPhone(values.phone),
+    tier: values.tier.trim(),
+    isActive: values.isActive,
+  }
 }
 
 interface CustomerFiltersProps {
@@ -45,7 +57,7 @@ export default function CustomerFilters({
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    onSubmit(values)
+    onSubmit(sanitizeCustomerFilters(values))
   }
 
   const handleReset = (e: FormEvent<HTMLFormElement>) => {
@@ -100,14 +112,10 @@ export default function CustomerFilters({
           >
             Phone
           </label>
-          <input
-            id="phone"
-            name="phone"
-            type="text"
+          <InternationalPhoneInput
             value={values.phone}
-            onChange={handleChange}
-            placeholder="Enter phone"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            onChange={(phone) => onChange({ ...values, phone })}
+            placeholder="Phone"
           />
         </div>
 

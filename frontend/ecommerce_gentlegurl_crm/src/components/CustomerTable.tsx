@@ -10,6 +10,7 @@ import CustomerRow, { CustomerRowData } from './CustomerRow'
 import {
   CustomerFilterValues,
   emptyCustomerFilters,
+  sanitizeCustomerFilters,
 } from './CustomerFilters'
 import CustomerCreateModal from './CustomerCreateModal'
 import CustomerEditModal from './CustomerEditModal'
@@ -275,8 +276,9 @@ export default function CustomerTable({
   }
 
   const handleFilterSubmit = (values: CustomerFilterValues) => {
-    setFilters(values)
-    setInputs(values)
+    const next = sanitizeCustomerFilters(values)
+    setFilters(next)
+    setInputs(next)
     setCurrentPage(1)
   }
 

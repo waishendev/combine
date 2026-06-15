@@ -32,16 +32,28 @@ class CustomerController extends Controller
         $tierRules = $this->getActiveTierRules();
         $window = $this->getWindowDates($loyaltySetting?->evaluation_cycle_months ?? 6);
 
-        $customers = Customer::when($search, function ($query) use ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhereHas('customerType', fn($typeQuery) => $typeQuery->where('name', 'like', "%{$search}%"));
+        $customers = Customer::query()
+            ->when($request->filled('name'), fn ($query) => $query->where('name', 'like', '%' . $request->string('name')->toString() . '%'))
+            ->when($request->filled('email'), fn ($query) => $query->where('email', 'like', '%' . $request->string('email')->toString() . '%'))
+            ->when($request->filled('phone'), function ($query) use ($request) {
+                $phone = ltrim($request->string('phone')->toString(), '+');
+                $query->where('phone', 'like', '%' . $phone . '%');
+            })
+            ->when($request->filled('tier'), fn ($query) => $query->where('tier', $request->string('tier')->toString()))
+            ->when($request->filled('is_active'), fn ($query) => $query->where('is_active', $request->boolean('is_active')))
+            ->when($search, function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                        ->orWhereHas('customerType', fn ($typeQuery) => $typeQuery->where('name', 'like', "%{$search}%"));
+                });
+            })
+            ->orderByDesc('created_at')
+            ->paginate($perPage)
+            ->through(function ($customer) use ($loyaltySetting, $tierRules, $window) {
+                return $this->formatCustomerWithSummary($customer, $loyaltySetting, $tierRules, $window);
             });
-        })->paginate($perPage)->through(function ($customer) use ($loyaltySetting, $tierRules, $window) {
-            return $this->formatCustomerWithSummary($customer, $loyaltySetting, $tierRules, $window);
-        });
 
         return $this->respond($customers);
     }
