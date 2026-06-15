@@ -353,6 +353,7 @@ export default function CategoryEditModal({
         : {
             id: loadedCategory?.id ?? categoryId,
             name: trimmedName,
+            cnName: form.cnName.trim(),
             slug: trimmedSlug,
             description: form.description.trim(),
             metaTitle: form.metaTitle.trim(),

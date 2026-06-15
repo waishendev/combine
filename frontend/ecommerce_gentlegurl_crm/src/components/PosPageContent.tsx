@@ -669,7 +669,7 @@ type ProductSearchMode = 'name' | 'barcode'
 type CategoryOption = {
   id: number
   name: string
-  cn_name?: string | null
+  cn_name: string | null
 }
 
 type FetchProductOptions = {
