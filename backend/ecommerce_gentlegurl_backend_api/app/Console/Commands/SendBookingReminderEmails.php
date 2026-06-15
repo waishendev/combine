@@ -73,6 +73,10 @@ class SendBookingReminderEmails extends Command
                 continue;
             }
 
+            if (str_ends_with(strtolower($email), '@example.com')) {
+                continue;
+            }
+
             $customerName = $booking->billing_name
                 ?: $booking->guest_name
                 ?: $booking->customer?->name
