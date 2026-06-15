@@ -584,6 +584,16 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
         ],
       },
       // ======================
+      // Activity Logs
+      // ======================
+      {
+        key: 'activity-logs',
+        label: 'Activity Logs',
+        icon: 'fa-solid fa-clock-rotate-left',
+        href: '/activity-logs',
+        requiredPermission: 'activity-logs.view',
+      },
+      // ======================
       // Settings
       // ======================
       {

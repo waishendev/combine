@@ -2,6 +2,7 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use DateTimeInterface;
@@ -9,7 +10,7 @@ use DateTimeInterface;
 
 class Voucher extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $fillable = [
         'code',

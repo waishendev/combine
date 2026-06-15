@@ -79,6 +79,7 @@ use App\Http\Controllers\StaffController;
 use App\Http\Controllers\ServicePackageRedeemController;
 use App\Http\Controllers\CustomerServicePackageController;
 use App\Http\Controllers\ServicePackageController;
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\Payments\BillplzCallbackController;
 use App\Http\Controllers\PublicServicesController;
 use Illuminate\Support\Facades\Route;
@@ -249,6 +250,10 @@ $protectedRoutes = function () {
     Route::get('/profile', [AuthController::class, 'profile']);
 
     Route::get('/me', [AuthController::class, 'me']);
+
+    // Activity Logs
+    Route::get('/activity-logs', [ActivityLogController::class, 'index'])
+        ->middleware('permission:activity-logs.view');
 
     Route::get('/admin/daily-bookings', [\App\Http\Controllers\Admin\Booking\AppointmentController::class, 'daily'])
         ->middleware('permission:booking.appointments.view|pos.checkout');

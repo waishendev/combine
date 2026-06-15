@@ -3,6 +3,7 @@
 namespace App\Models\Ecommerce;
 
 use App\Models\BankAccount;
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
@@ -10,7 +11,7 @@ use DateTimeInterface;
 
 class Order extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $fillable = [
         'order_number',

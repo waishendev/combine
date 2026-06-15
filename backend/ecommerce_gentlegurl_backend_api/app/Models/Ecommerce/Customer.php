@@ -7,6 +7,7 @@ use App\Notifications\CustomerResetPassword;
 use App\Notifications\CustomerVerifyEmail;
 use App\Services\MailgunService;
 use App\Support\FrontendUrlResolver;
+use App\Traits\LogsActivity;
 use Illuminate\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail as MustVerifyEmailContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -24,6 +25,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
 {
     use HasApiTokens;
     use HasFactory;
+    use LogsActivity;
     use MustVerifyEmail;
     use Notifiable;
 

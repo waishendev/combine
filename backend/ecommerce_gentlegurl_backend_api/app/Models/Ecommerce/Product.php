@@ -2,6 +2,7 @@
 
 namespace App\Models\Ecommerce;
 
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Ecommerce\ProductReview;
@@ -12,7 +13,7 @@ use DateTimeInterface;
 
 class Product extends Model
 {
-    use HasFactory;
+    use HasFactory, LogsActivity;
 
     protected $appends = [
         'cover_image_url',

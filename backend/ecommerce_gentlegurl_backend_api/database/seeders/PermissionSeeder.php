@@ -57,6 +57,7 @@ class PermissionSeeder extends Seeder
             // Keep these permissions grouped under "Booking"
             'service-packages' => 'Booking',
             'customer-service-packages' => 'Booking',
+            'activity-logs' => 'Activity Logs',
         ];
 
         $groupModels = [];
@@ -114,6 +115,7 @@ class PermissionSeeder extends Seeder
             'ecommerce.settings' => ['view', 'update'],
             'service-packages' => ['view', 'create', 'update', 'delete'],
             'customer-service-packages' => ['view', 'update'],
+            'activity-logs' => ['view'],
             'booking' => [
                 'appointments.view',
                 'appointments.update_status',

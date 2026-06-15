@@ -5,10 +5,13 @@ namespace App\Models\Booking;
 use App\Models\Ecommerce\Customer;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Staff;
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 
 class Booking extends Model
 {
+    use LogsActivity;
+
     protected $fillable = [
         'booking_code', 'source', 'customer_id', 'guest_name', 'guest_phone', 'guest_email',
         'billing_name', 'billing_phone', 'billing_email',

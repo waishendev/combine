@@ -3,11 +3,14 @@
 namespace App\Models\Booking;
 
 use App\Models\Staff;
+use App\Traits\LogsActivity;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
 class BookingService extends Model
 {
+    use LogsActivity;
+
     protected $fillable = [
         'name', 'cn_name', 'service_type', 'description', 'image_path', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
     ];

@@ -1,1 +1,1 @@
-php artisan db:seed --class=CustomerPointsAdjustmentPermissionPatchSeeder
+php artisan db:seed --class=ActivityLogPermissionSeeder
