@@ -8,6 +8,7 @@ import BookingServicePhotosModal from '@/components/booking/BookingServicePhotos
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
+  bookingServiceSettlementSource,
   getSettlementRangeBounds,
   parseSettlementAmountInput,
   settlementNeedsSettledAmount,
@@ -1312,6 +1313,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
   const [cartEditMainServiceQuery, setCartEditMainServiceQuery] = useState('')
   const [cartEditMainServicePickerOpen, setCartEditMainServicePickerOpen] = useState(false)
+  const [cartEditMainServicePickerTargetId, setCartEditMainServicePickerTargetId] = useState<'__new__' | '__original__' | null>(null)
+  const [cartEditOriginalService, setCartEditOriginalService] = useState<BookingServiceOption | null>(null)
   const [cartEditAddedMainBlocks, setCartEditAddedMainBlocks] = useState<Array<{
     tmp_id: string
     service_id: number
@@ -3520,6 +3523,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSettlementBookingId(settlement.booking_id)
     setCartEditSettlementServiceId(settlement.booking_service_id ?? null)
 
+    const originalMainService = (settlement.main_services ?? []).find((service) => service.is_original)
+    setCartEditOriginalService({
+      id: Number(settlement.booking_service_id ?? originalMainService?.linked_booking_service_id ?? originalMainService?.id ?? 0),
+      name: String(originalMainService?.name ?? settlement.service_name ?? 'Service'),
+      cn_name: originalMainService?.cn_name ?? settlement.service_cn_name ?? null,
+      price_mode: settlement.service_price_mode ?? null,
+      price_range_min: settlement.service_price_range_min ?? null,
+      price_range_max: settlement.service_price_range_max ?? null,
+      service_price: Number(originalMainService?.extra_price ?? settlement.service_total ?? 0),
+      price: Number(originalMainService?.extra_price ?? settlement.service_total ?? 0),
+      duration_min: Number(originalMainService?.extra_duration_min ?? 0),
+    })
+
     const currentAddonIds = new Set(
       (settlement.addon_settlement_items ?? [])
         .map((a) => a.id)
@@ -3574,7 +3590,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         const addonJson = await addonRes.json().catch(() => null)
         setCartEditAddonQuestions((addonJson?.data?.questions ?? []) as typeof cartEditAddonQuestions)
         const servicesJson = await servicesRes.json().catch(() => null)
-        setCartEditMainServiceCatalog((Array.isArray(servicesJson?.data) ? servicesJson.data : []) as BookingServiceOption[])
+        const catalog = (Array.isArray(servicesJson?.data) ? servicesJson.data : []) as BookingServiceOption[]
+        setCartEditMainServiceCatalog(catalog)
+        const originalServiceId = Number(settlement.booking_service_id ?? 0)
+        const catalogOriginal = catalog.find((service) => service.id === originalServiceId)
+        if (catalogOriginal) {
+          setCartEditOriginalService((current) => current ? {
+            ...catalogOriginal,
+            service_price: Number(catalogOriginal.service_price ?? catalogOriginal.price ?? current.service_price ?? 0),
+            price: Number(catalogOriginal.service_price ?? catalogOriginal.price ?? current.price ?? 0),
+            duration_min: Number(catalogOriginal.duration_min ?? current.duration_min ?? 0),
+          } : catalogOriginal)
+        }
         if (addedMainBlocksSeed.length > 0) {
           const hydrated = await Promise.all(addedMainBlocksSeed.map(async (block) => {
             try {
@@ -3621,11 +3648,42 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const openCartEditMainServicePicker = () => {
     setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerTargetId('__new__')
     setCartEditMainServicePickerOpen(true)
+  }
+
+  const openCartEditOriginalServicePicker = () => {
+    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerTargetId('__original__')
+    setCartEditMainServicePickerOpen(true)
+  }
+
+  const selectCartEditOriginalService = async (service: BookingServiceOption) => {
+    if (!service?.id) return
+    setCartEditSettlementError(null)
+    setCartEditOriginalService(service)
+    setCartEditSettlementServiceId(service.id)
+    setCartEditSelectedAddonIds(new Set())
+    setCartEditAddedMainBlocks((prev) => prev.filter((block) => block.service_id !== service.id))
+    setCartEditSettledAmount('')
+    setCartEditAddonOptionsLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
+      const json = await res.json().catch(() => null)
+      setCartEditAddonQuestions((json?.data?.questions ?? []) as typeof cartEditAddonQuestions)
+    } catch {
+      setCartEditAddonQuestions([])
+    } finally {
+      setCartEditAddonOptionsLoading(false)
+    }
+    setCartEditMainServicePickerOpen(false)
+    setCartEditMainServicePickerTargetId(null)
+    setCartEditMainServiceQuery('')
   }
 
   const addCartEditMainServiceBlock = async (service: BookingServiceOption) => {
     if (!service?.id) return
+    if (cartEditOriginalService?.id === service.id) return
     if (cartEditAddedMainBlocks.some((block) => block.service_id === service.id)) return
     let questions: typeof cartEditAddonQuestions = []
     try {
@@ -3675,12 +3733,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }))
   }
 
+  const cartEditOriginalSettlementSource = useMemo(
+    () => bookingServiceSettlementSource(cartEditOriginalService),
+    [cartEditOriginalService],
+  )
+
   const saveCartEditSettlement = async () => {
     if (!cartEditSettlementBookingId) return
     setCartEditSettlementError(null)
     setCartEditSettlementLoading(true)
     try {
-      const needsSettledAmount = settlementNeedsSettledAmount(cartEditSettlementItem)
+      const needsSettledAmount = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(cartEditSelectedAddonIds),
         main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
@@ -3693,8 +3756,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           })),
         })),
       }
+      const originalServiceId = Number(cartEditOriginalService?.id ?? cartEditSettlementItem?.booking_service_id ?? 0)
+      if (originalServiceId > 0 && originalServiceId !== Number(cartEditSettlementItem?.booking_service_id ?? 0)) {
+        payload.booking_service_id = originalServiceId
+      }
       if (needsSettledAmount) {
-        const amountCheck = validateSettlementAmountInput(cartEditSettledAmount, cartEditSettlementItem)
+        const amountCheck = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
         if (!amountCheck.ok) {
           setCartEditSettlementError(amountCheck.message)
           return
@@ -7021,7 +7088,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
-                <p className="text-xs text-gray-500">{cartEditSettlementItem.booking_code} · {cartEditSettlementItem.service_name ?? '—'}</p>
+                <p className="text-xs text-gray-500">{cartEditSettlementItem.booking_code} · {cartEditOriginalService?.name ?? cartEditSettlementItem.service_name ?? '—'}</p>
               </div>
               <button
                 type="button"
@@ -7035,12 +7102,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <div className="flex-1 overflow-y-auto px-5 py-4">
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
-              {settlementNeedsSettledAmount(cartEditSettlementItem) ? (
+              {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) ? (
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-1">Service Amount</label>
                   <p className="text-xs text-gray-500 mb-2">
-                    Range: RM {getSettlementRangeBounds(cartEditSettlementItem).min.toFixed(2)} – RM{' '}
-                    {getSettlementRangeBounds(cartEditSettlementItem).max.toFixed(2)}
+                    Range: RM {getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                    {getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}
                   </p>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
@@ -7054,27 +7121,40 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         setCartEditSettledAmount(e.target.value)
                       }}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder={`${getSettlementRangeBounds(cartEditSettlementItem).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditSettlementItem).max.toFixed(2)}`}
+                      placeholder={`${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`}
                     />
                   </div>
                 </div>
               ) : null}
 
-              <div>
-                <p className="text-sm font-bold text-gray-900 mb-2">Main Services</p>
-                <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  {(cartEditSettlementItem.main_services ?? []).filter((service) => service.is_original).map((service) => (
-                    <div key={`cart-main-original-${service.id ?? service.name}`} className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <ServiceNameStack name={service.name} cnName={service.cn_name} />
-                        <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-indigo-800">Original</span>
-                      </div>
+              <div className="space-y-3">
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Service Block · Original</p>
+                      <ServiceNameStack
+                        name={cartEditOriginalService?.name ?? cartEditSettlementItem.service_name ?? 'Service'}
+                        cnName={cartEditOriginalService?.cn_name ?? cartEditSettlementItem.service_cn_name}
+                      />
                       <p className="text-xs text-gray-600">
-                        RM {Number(service.extra_price ?? 0).toFixed(2)}
-                        {(service.extra_duration_min ?? 0) > 0 ? ` · ${service.extra_duration_min}min` : ''}
+                        {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) == null
+                          ? `RM ${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`
+                          : `RM ${Number(
+                              settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) != null
+                                ? parseSettlementAmountInput(cartEditSettledAmount)
+                                : cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? cartEditSettlementItem.service_total ?? 0,
+                            ).toFixed(2)}`}
+                        {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
                       </p>
                     </div>
-                  ))}
+                    <button
+                      type="button"
+                      onClick={() => openCartEditOriginalServicePicker()}
+                      className="shrink-0 rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      change
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -7358,13 +7438,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
                   return sum + Number(service.price ?? 0) + addonTotal
                 }, 0)
-                const isRange = settlementNeedsSettledAmount(cartEditSettlementItem)
+                const isRange = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
                 const settledAmt = parseSettlementAmountInput(cartEditSettledAmount)
                 const originalServiceAmt = isRange && settledAmt != null
                   ? settledAmt
                   : Number(
-                    (cartEditSettlementItem.main_services ?? [])
-                      .find((service) => service.is_original)?.extra_price
+                    cartEditOriginalService?.service_price
+                      ?? cartEditOriginalService?.price
+                      ?? (cartEditSettlementItem.main_services ?? [])
+                        .find((service) => service.is_original)?.extra_price
                       ?? cartEditSettlementItem.service_total
                       ?? 0,
                   )
@@ -7380,7 +7462,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <span className="text-gray-600">Original Service</span>
                         <span className="font-semibold tabular-nums text-gray-900">
                           {isRange && settledAmt == null
-                            ? `RM ${Number(cartEditSettlementItem.service_price_range_min ?? 0).toFixed(2)} - ${Number(cartEditSettlementItem.service_price_range_max ?? 0).toFixed(2)}`
+                            ? `RM ${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`
                             : `RM ${originalServiceAmt.toFixed(2)}`}
                         </span>
                       </div>
@@ -7445,18 +7527,25 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       )}
 
-      {cartEditMainServicePickerOpen && cartEditSettlementItem ? (
+      {cartEditMainServicePickerOpen && cartEditSettlementItem && cartEditMainServicePickerTargetId ? (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
-                <h4 className="text-base font-bold text-gray-900">Choose Main Service</h4>
-                <p className="text-xs text-gray-500">Search and select a booking service.</p>
+                <h4 className="text-base font-bold text-gray-900">
+                  {cartEditMainServicePickerTargetId === '__original__' ? 'Change Original Service' : 'Choose Main Service'}
+                </h4>
+                <p className="text-xs text-gray-500">
+                  {cartEditMainServicePickerTargetId === '__original__'
+                    ? 'Search and select the correct original service.'
+                    : 'Search and select a booking service.'}
+                </p>
               </div>
               <button
                 type="button"
                 onClick={() => {
                   setCartEditMainServicePickerOpen(false)
+                  setCartEditMainServicePickerTargetId(null)
                   setCartEditMainServiceQuery('')
                 }}
                 className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
@@ -7474,18 +7563,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               />
               <div className="mt-3 max-h-[50vh] overflow-y-auto space-y-1 pr-1">
                 {cartEditMainServiceCatalog
-                  .filter((service) => service.id !== cartEditSettlementItem.booking_service_id)
+                  .filter((service) => service.id !== cartEditOriginalService?.id)
                   .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
+                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()) || (service.cn_name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
                   .slice(0, 200)
                   .map((service) => (
                     <button
                       key={`cart-pick-main-modal-${service.id}`}
                       type="button"
                       onClick={async () => {
-                        await addCartEditMainServiceBlock(service)
-                        setCartEditMainServicePickerOpen(false)
-                        setCartEditMainServiceQuery('')
+                        if (cartEditMainServicePickerTargetId === '__original__') {
+                          await selectCartEditOriginalService(service)
+                        } else {
+                          await addCartEditMainServiceBlock(service)
+                          setCartEditMainServicePickerOpen(false)
+                          setCartEditMainServicePickerTargetId(null)
+                          setCartEditMainServiceQuery('')
+                        }
                       }}
                       className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm hover:bg-gray-50"
                     >
@@ -7494,9 +7588,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </button>
                   ))}
                 {cartEditMainServiceCatalog
-                  .filter((service) => service.id !== cartEditSettlementItem.booking_service_id)
+                  .filter((service) => service.id !== cartEditOriginalService?.id)
                   .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
+                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()) || (service.cn_name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
                   .length === 0 ? (
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
                     No services found.
@@ -8261,7 +8355,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           onClick={() => openAssignMemberModal('checkout')}
                           className={`shrink-0 rounded-xl border-2 border-blue-400 bg-white px-4 py-2 text-sm font-semibold text-blue-700 shadow-sm transition-all ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                         >
-                          {selectedMember ? 'Change Member' : 'Assign Member'}
+                          {selectedMember ? 'change member' : 'assign member'}
                         </button>
                       </div>
                       <div className="mt-2 rounded-lg border border-gray-200 bg-white px-4 py-3 text-sm text-gray-800">
@@ -8809,7 +8903,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     onClick={() => openAssignMemberModal('package')}
                     className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${hasCartAppointmentSettlements ? 'cursor-not-allowed opacity-60' : ''}`}
                   >
-                    {packageSelectedMember ? 'Change Member' : 'Assign Member'}
+                    {packageSelectedMember ? 'change member' : 'assign member'}
                   </button>
                 </div>
 
@@ -8866,7 +8960,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
-              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
+              <h4 className="text-xl font-bold text-gray-900">assign member</h4>
               <button
                 type="button"
                 onClick={() => setPackageMemberPickerOpen(false)}
@@ -9224,7 +9318,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         onClick={() => openAssignMemberModal('service')}
                         className={`rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700 ${settlementLockedIdentityMode ? 'cursor-not-allowed opacity-60' : ''}`}
                       >
-                        {selectedMember ? 'Change Member' : 'Assign Member'}
+                        {selectedMember ? 'change member' : 'assign member'}
                       </button>
                     </div>
                     <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">

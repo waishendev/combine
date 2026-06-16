@@ -5,6 +5,7 @@ import BookingPackageItemServicePicker from '@/components/booking/BookingPackage
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import {
+  bookingServiceSettlementSource,
   getSettlementRangeBounds,
   parseSettlementAmountInput,
   settlementNeedsSettledAmount,
@@ -329,6 +330,7 @@ export default function PosAppointmentsWorkspace({
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
   }>>([])
+  const [editOriginalService, setEditOriginalService] = useState<BookingServiceOption | null>(null)
 
   const resolveBookingImageUrl = useCallback((imageUrl?: string | null, imagePath?: string | null) => {
     if (imageUrl && /^https?:\/\//i.test(imageUrl)) return imageUrl
@@ -1260,6 +1262,19 @@ export default function PosAppointmentsWorkspace({
     setEditSettlementError(null)
     setEditSettlementLoading(false)
 
+    const originalMainService = appointmentDisplayMainServices.find((service) => service.is_original)
+    setEditOriginalService({
+      id: Number(appointmentDetail.service.id),
+      name: String(originalMainService?.name ?? appointmentDetail.service.name ?? 'Service'),
+      cn_name: originalMainService?.cn_name ?? appointmentDetail.service.cn_name ?? null,
+      price_mode: appointmentDetail.service.price_mode ?? null,
+      price_range_min: appointmentDetail.service.price_range_min ?? null,
+      price_range_max: appointmentDetail.service.price_range_max ?? null,
+      service_price: Number(originalMainService?.extra_price ?? appointmentDetail.service_total ?? 0),
+      price: Number(originalMainService?.extra_price ?? appointmentDetail.service_total ?? 0),
+      duration_min: Number(originalMainService?.extra_duration_min ?? appointmentDetail.service.duration_min ?? 0),
+    })
+
     const currentAddonIds = new Set(
       (appointmentDetail.add_ons ?? [])
         .map((a) => a.id)
@@ -1317,6 +1332,16 @@ export default function PosAppointmentsWorkspace({
       const servicesJson = await servicesRes.json().catch(() => null)
       const catalog = (Array.isArray(servicesJson?.data) ? servicesJson.data : []) as BookingServiceOption[]
       setEditMainServiceCatalog(catalog)
+      const originalServiceId = Number(appointmentDetail.service?.id ?? 0)
+      const catalogOriginal = catalog.find((service) => service.id === originalServiceId)
+      if (catalogOriginal) {
+        setEditOriginalService((current) => current ? {
+          ...catalogOriginal,
+          service_price: Number(catalogOriginal.service_price ?? catalogOriginal.price ?? current.service_price ?? 0),
+          price: Number(catalogOriginal.service_price ?? catalogOriginal.price ?? current.price ?? 0),
+          duration_min: Number(catalogOriginal.duration_min ?? current.duration_min ?? 0),
+        } : catalogOriginal)
+      }
       if (addedMainBlocksSeed.length > 0) {
         const hydrated = await Promise.all(addedMainBlocksSeed.map(async (block) => {
           try {
@@ -1352,9 +1377,41 @@ export default function PosAppointmentsWorkspace({
     })
   }, [])
 
+  const selectEditOriginalService = useCallback(async (service: BookingServiceOption) => {
+    if (!service?.id) return
+    setEditSettlementError(null)
+    setEditOriginalService(service)
+    setEditSelectedAddonIds(new Set())
+    setEditAddedMainBlocks((prev) => prev.filter((block) => block.service_id !== service.id))
+    if (!settlementNeedsSettledAmount(bookingServiceSettlementSource(service))) {
+      setEditSettledAmount('')
+    } else {
+      setEditSettledAmount('')
+    }
+    setEditAddonOptionsLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
+      const json = await res.json().catch(() => null)
+      setEditAddonQuestions((json?.data?.questions ?? []) as ServiceAddonQuestion[])
+    } catch {
+      setEditAddonQuestions([])
+    } finally {
+      setEditAddonOptionsLoading(false)
+    }
+    setEditMainServicePickerOpen(false)
+    setEditMainServicePickerTargetId(null)
+    setEditMainServiceQuery('')
+  }, [])
+
+  const openEditOriginalServicePicker = useCallback(() => {
+    setEditMainServiceQuery('')
+    setEditMainServicePickerTargetId('__original__')
+    setEditMainServicePickerOpen(true)
+  }, [])
+
   const addEditMainServiceBlock = useCallback(async (service: BookingServiceOption) => {
     if (!service?.id) return
-    if (appointmentDetail?.service?.id === service.id) return
+    if (editOriginalService?.id === service.id) return
     if (editAddedMainBlocks.some((block) => block.service_id === service.id)) return
     let questions: ServiceAddonQuestion[] = []
     try {
@@ -1376,7 +1433,7 @@ export default function PosAppointmentsWorkspace({
       staff_splits: [{ staff_id: null, share_percent: '100' }],
       auto_balance: true,
     }])
-  }, [appointmentDetail?.service?.id, editAddedMainBlocks])
+  }, [editOriginalService?.id, editAddedMainBlocks])
 
   const openEditMainServicePicker = useCallback(() => {
     setEditMainServiceQuery('')
@@ -1412,6 +1469,10 @@ export default function PosAppointmentsWorkspace({
 
   const selectEditMainServiceForBlock = useCallback(async (tmpId: string, service: BookingServiceOption) => {
     if (!service?.id) return
+    if (tmpId === '__original__') {
+      await selectEditOriginalService(service)
+      return
+    }
     // When adding a new block, only create after selection.
     if (tmpId === '__new__') {
       await addEditMainServiceBlock(service)
@@ -1420,7 +1481,7 @@ export default function PosAppointmentsWorkspace({
       setEditMainServiceQuery('')
       return
     }
-  }, [addEditMainServiceBlock])
+  }, [addEditMainServiceBlock, selectEditOriginalService])
 
   const updateEditSettlementSplitShare = useCallback((index: number, value: string) => {
     setEditSettlementError(null)
@@ -1440,19 +1501,17 @@ export default function PosAppointmentsWorkspace({
     })
   }, [editStaffSplitAutoBalance, rebalanceEditSettlementPrimaryShare])
 
+  const editOriginalSettlementSource = useMemo(
+    () => bookingServiceSettlementSource(editOriginalService),
+    [editOriginalService],
+  )
+
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
     setEditSettlementError(null)
     setEditSettlementLoading(true)
     try {
-      const needsSettledAmount = settlementNeedsSettledAmount({
-        is_range_priced: appointmentDetail.is_range_priced,
-        requires_settled_amount: appointmentDetail.requires_settled_amount,
-        service_price_mode: appointmentDetail.service?.price_mode,
-        service_price_range_min: appointmentDetail.service?.price_range_min,
-        service_price_range_max: appointmentDetail.service?.price_range_max,
-        service: appointmentDetail.service,
-      })
+      const needsSettledAmount = settlementNeedsSettledAmount(editOriginalSettlementSource)
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
         main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
@@ -1465,15 +1524,12 @@ export default function PosAppointmentsWorkspace({
           })),
         })),
       }
+      const originalServiceId = Number(editOriginalService?.id ?? appointmentDetail.service?.id ?? 0)
+      if (originalServiceId > 0 && originalServiceId !== Number(appointmentDetail.service?.id ?? 0)) {
+        payload.booking_service_id = originalServiceId
+      }
       if (needsSettledAmount) {
-        const amountCheck = validateSettlementAmountInput(editSettledAmount, {
-          is_range_priced: appointmentDetail.is_range_priced,
-          requires_settled_amount: appointmentDetail.requires_settled_amount,
-          service_price_mode: appointmentDetail.service?.price_mode,
-          service_price_range_min: appointmentDetail.service?.price_range_min,
-          service_price_range_max: appointmentDetail.service?.price_range_max,
-          service: appointmentDetail.service,
-        })
+        const amountCheck = validateSettlementAmountInput(editSettledAmount, editOriginalSettlementSource)
         if (!amountCheck.ok) {
           setEditSettlementError(amountCheck.message)
           return
@@ -1548,7 +1604,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, editAddedMainBlocks, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -1996,9 +2052,11 @@ export default function PosAppointmentsWorkspace({
 
   const editSettlementEstimatedDurationMin = useMemo(() => {
     if (!appointmentDetail) return 0
-    const originalDuration = appointmentDisplayMainServices
-      .filter((service) => service.is_original)
-      .reduce((sum, service) => sum + Number(service.extra_duration_min ?? 0), 0)
+    const originalDuration = Number(editOriginalService?.duration_min ?? 0) > 0
+      ? Number(editOriginalService?.duration_min ?? 0)
+      : appointmentDisplayMainServices
+          .filter((service) => service.is_original)
+          .reduce((sum, service) => sum + Number(service.extra_duration_min ?? 0), 0)
     const fallbackOriginalDuration = Number(appointmentDetail.estimated_duration_min ?? 0) > 0
       ? Number(appointmentDetail.estimated_duration_min ?? 0) - Number(appointmentDetail.addon_total_duration_min ?? 0)
       : appointmentSettlementDurationMin
@@ -2015,7 +2073,7 @@ export default function PosAppointmentsWorkspace({
       return sum + Number(block.duration_min ?? 0) + blockAddonDuration
     }, 0)
     return Math.max(0, baseDuration + originalAddonDuration + addedBlockDuration)
-  }, [appointmentDetail, appointmentDisplayMainServices, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editSelectedAddonIds])
+  }, [appointmentDetail, appointmentDisplayMainServices, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editOriginalService?.duration_min, editSelectedAddonIds])
 
   const editSettlementEstimatedEndAt = useMemo(() => {
     const startAt = appointmentDetail?.appointment_start_at
@@ -3197,7 +3255,7 @@ export default function PosAppointmentsWorkspace({
                           }}
                           className="rounded-md border border-blue-300 bg-white px-2 py-1 text-[11px] font-semibold text-blue-700"
                         >
-                          {createAppointmentMemberSummary ? 'Change Member' : 'Assign Member'}
+                          {createAppointmentMemberSummary ? 'change member' : 'assign member'}
                         </button>
                       </div>
                       <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
@@ -3395,7 +3453,7 @@ export default function PosAppointmentsWorkspace({
           />
           <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
-              <h4 className="text-xl font-bold text-gray-900">Assign Member</h4>
+              <h4 className="text-xl font-bold text-gray-900">assign member</h4>
               <button
                 type="button"
                 onClick={closeCreateAppointmentMemberPicker}
@@ -3798,7 +3856,7 @@ export default function PosAppointmentsWorkspace({
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
-                <p className="text-xs text-gray-500">{appointmentDetail.booking_code} · {appointmentDetail.service?.name ?? '—'}</p>
+                <p className="text-xs text-gray-500">{appointmentDetail.booking_code} · {editOriginalService?.name ?? appointmentDetail.service?.name ?? '—'}</p>
               </div>
               <button
                 type="button"
@@ -3828,21 +3886,14 @@ export default function PosAppointmentsWorkspace({
               </div>
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
-              {settlementNeedsSettledAmount({
-                is_range_priced: appointmentDetail.is_range_priced,
-                requires_settled_amount: appointmentDetail.requires_settled_amount,
-                service_price_mode: appointmentDetail.service?.price_mode,
-                service_price_range_min: appointmentDetail.service?.price_range_min,
-                service_price_range_max: appointmentDetail.service?.price_range_max,
-                service: appointmentDetail.service,
-              }) ? (
+              {settlementNeedsSettledAmount(editOriginalSettlementSource) ? (
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-1">
                     Service Amount
                   </label>
                   <p className="text-xs text-gray-500 mb-2">
-                    Range: RM {getSettlementRangeBounds({ service: appointmentDetail.service }).min.toFixed(2)} – RM{' '}
-                    {getSettlementRangeBounds({ service: appointmentDetail.service }).max.toFixed(2)}
+                    Range: RM {getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                    {getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}
                   </p>
                   <div className="relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
@@ -3856,7 +3907,7 @@ export default function PosAppointmentsWorkspace({
                         setEditSettledAmount(e.target.value)
                       }}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder={`${getSettlementRangeBounds({ service: appointmentDetail.service }).min.toFixed(2)} - ${getSettlementRangeBounds({ service: appointmentDetail.service }).max.toFixed(2)}`}
+                      placeholder={`${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`}
                     />
                   </div>
                 </div>
@@ -3864,14 +3915,34 @@ export default function PosAppointmentsWorkspace({
 
               <div className="space-y-3">
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
-                  <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Service Block · Original</p>
-                  <PosServiceNameStack
-                    name={appointmentDetail.service?.name ?? 'Service'}
-                    cnName={appointmentDetail.service?.cn_name}
-                    primaryClassName="mt-1 text-sm font-semibold text-gray-900"
-                    secondaryClassName="mt-0.5 text-xs text-gray-500"
-                  />
-                  <p className="text-xs text-gray-600">RM {Number(appointmentDetail.service_total ?? 0).toFixed(2)}</p>
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Service Block · Original</p>
+                      <PosServiceNameStack
+                        name={editOriginalService?.name ?? appointmentDetail.service?.name ?? 'Service'}
+                        cnName={editOriginalService?.cn_name ?? appointmentDetail.service?.cn_name}
+                        primaryClassName="mt-1 text-sm font-semibold text-gray-900"
+                        secondaryClassName="mt-0.5 text-xs text-gray-500"
+                      />
+                      <p className="text-xs text-gray-600">
+                        {settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) == null
+                          ? `RM ${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`
+                          : `RM ${Number(
+                              settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) != null
+                                ? parseSettlementAmountInput(editSettledAmount)
+                                : editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0,
+                            ).toFixed(2)}`}
+                        {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => openEditOriginalServicePicker()}
+                      className="shrink-0 rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      change
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -4187,18 +4258,15 @@ export default function PosAppointmentsWorkspace({
                     const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
                     return sum + Number(service.price ?? 0) + addonTotal
                   }, 0)
-                  const isRange = settlementNeedsSettledAmount({
-                    is_range_priced: appointmentDetail.is_range_priced,
-                    requires_settled_amount: appointmentDetail.requires_settled_amount,
-                    service_price_mode: appointmentDetail.service?.price_mode,
-                    service: appointmentDetail.service,
-                  })
+                  const isRange = settlementNeedsSettledAmount(editOriginalSettlementSource)
                   const settledAmt = parseSettlementAmountInput(editSettledAmount)
                   const originalServiceAmt = isRange && settledAmt != null
                     ? settledAmt
                     : Number(
-                      appointmentDisplayMainServices
-                        .find((service) => service.is_original)?.extra_price
+                      editOriginalService?.service_price
+                        ?? editOriginalService?.price
+                        ?? appointmentDisplayMainServices
+                          .find((service) => service.is_original)?.extra_price
                         ?? appointmentDetail.service_total
                         ?? 0,
                     )
@@ -4214,7 +4282,7 @@ export default function PosAppointmentsWorkspace({
                           <span className="text-gray-600">Original Service</span>
                           <span className="font-semibold tabular-nums text-gray-900">
                             {isRange && settledAmt == null
-                              ? `RM ${getSettlementRangeBounds({ service: appointmentDetail.service }).min.toFixed(2)} - ${getSettlementRangeBounds({ service: appointmentDetail.service }).max.toFixed(2)}`
+                              ? `RM ${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`
                               : `RM ${originalServiceAmt.toFixed(2)}`}
                           </span>
                         </div>
@@ -4284,8 +4352,14 @@ export default function PosAppointmentsWorkspace({
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
-                <h4 className="text-base font-bold text-gray-900">Choose Main Service</h4>
-                <p className="text-xs text-gray-500">Search and select a booking service.</p>
+                <h4 className="text-base font-bold text-gray-900">
+                  {editMainServicePickerTargetId === '__original__' ? 'Change Original Service' : 'Choose Main Service'}
+                </h4>
+                <p className="text-xs text-gray-500">
+                  {editMainServicePickerTargetId === '__original__'
+                    ? 'Search and select the correct original service.'
+                    : 'Search and select a booking service.'}
+                </p>
               </div>
               <button
                 type="button"
@@ -4309,7 +4383,7 @@ export default function PosAppointmentsWorkspace({
               />
               <div className="mt-3 max-h-[50vh] overflow-y-auto space-y-1 pr-1">
                 {editMainServiceCatalog
-                  .filter((service) => service.id !== appointmentDetail?.service?.id)
+                  .filter((service) => service.id !== editOriginalService?.id)
                   .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
                   .filter((service) => {
                     const query = editMainServiceQuery.trim().toLowerCase()
@@ -4333,7 +4407,7 @@ export default function PosAppointmentsWorkspace({
                     </button>
                   ))}
                 {editMainServiceCatalog
-                  .filter((service) => service.id !== appointmentDetail?.service?.id)
+                  .filter((service) => service.id !== editOriginalService?.id)
                   .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
                   .filter((service) => {
                     const query = editMainServiceQuery.trim().toLowerCase()

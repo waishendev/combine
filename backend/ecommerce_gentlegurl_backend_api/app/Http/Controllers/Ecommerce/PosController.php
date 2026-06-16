@@ -939,8 +939,23 @@ class PosController extends Controller
             return $this->respondError(__('Appointment must have a service.'), 422);
         }
 
-        $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
+        $requestedServiceId = $request->filled('booking_service_id')
+            ? (int) $request->input('booking_service_id')
+            : (int) ($booking->service_id ?? 0);
+        $effectiveService = $booking->service;
+        if ($requestedServiceId > 0 && $requestedServiceId !== (int) ($booking->service_id ?? 0)) {
+            $effectiveService = BookingService::query()
+                ->with(['questions.options.linkedBookingService'])
+                ->where('is_active', true)
+                ->find($requestedServiceId);
+            if (! $effectiveService) {
+                return $this->respondError(__('Selected service is not active.'), 422);
+            }
+        }
+
+        $isRangePriced = ($effectiveService?->price_mode ?? 'fixed') === 'range';
         $validated = $request->validate([
+            'booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
             'settled_service_amount' => [$isRangePriced ? 'required' : 'nullable', 'numeric', 'min:0'],
             'main_service_ids' => ['nullable', 'array'],
             'main_service_ids.*' => ['integer'],
@@ -962,10 +977,15 @@ class PosController extends Controller
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
         ]);
 
+        if ($effectiveService && (int) ($booking->service_id ?? 0) !== (int) $effectiveService->id) {
+            $booking->service_id = (int) $effectiveService->id;
+            $booking->setRelation('service', $effectiveService);
+        }
+
         if ($isRangePriced && isset($validated['settled_service_amount'])) {
             $amount = (float) $validated['settled_service_amount'];
-            $rangeMin = (float) ($booking->service->price_range_min ?? 0);
-            $rangeMax = (float) ($booking->service->price_range_max ?? 0);
+            $rangeMin = (float) ($effectiveService->price_range_min ?? 0);
+            $rangeMax = (float) ($effectiveService->price_range_max ?? 0);
             if ($amount < $rangeMin - 0.005 || $amount > $rangeMax + 0.005) {
                 return $this->respondError(__('Service amount must be between RM :min and RM :max.', [
                     'min' => number_format($rangeMin, 2),
