@@ -13,6 +13,7 @@ type FieldKey =
   | 'is_active'
   | 'service_type'
   | 'duration_min'
+  | 'buffer_min'
   | 'pricing'
   | 'questions'
 
@@ -21,6 +22,7 @@ const FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
   { key: 'service_type', label: 'Service Type' },
   { key: 'pricing', label: 'Price Mode / Price' },
   { key: 'duration_min', label: 'Duration (min)' },
+  { key: 'buffer_min', label: 'Buffer Time (min)' },
   { key: 'allow_photo_upload', label: 'Allow Photo Upload' },
   { key: 'primary_slots', label: 'Primary slot times' },
   { key: 'allowed_staff_ids', label: 'Allowed Staff' },
@@ -43,6 +45,7 @@ export default function BookingServiceBulkUpdateModal({
   const [selectedFields, setSelectedFields] = useState<FieldKey[]>([])
   const [serviceType, setServiceType] = useState<'standard' | 'premium'>('standard')
   const [durationMin, setDurationMin] = useState('30')
+  const [bufferMin, setBufferMin] = useState('15')
   const [isActive, setIsActive] = useState<'true' | 'false'>('true')
   const [allowPhotoUpload, setAllowPhotoUpload] = useState<'true' | 'false'>('false')
   const [priceMode, setPriceMode] = useState<'fixed' | 'range'>('fixed')
@@ -119,6 +122,14 @@ export default function BookingServiceBulkUpdateModal({
 
   useEffect(() => {
     if (!show) return
+    if (!selectedFields.includes('buffer_min')) return
+    const first = selectedServices[0]
+    if (!first) return
+    setBufferMin(String(first.buffer_min ?? 15))
+  }, [show, selectedFields, selectedServices])
+
+  useEffect(() => {
+    if (!show) return
     if (!selectedFields.includes('questions')) return
     const controller = new AbortController()
     let ignore = false
@@ -182,6 +193,14 @@ export default function BookingServiceBulkUpdateModal({
       const duration = Number(durationMin)
       if (!Number.isFinite(duration) || duration < 1) {
         setError('Duration (min) must be 1 or greater.')
+        return
+      }
+    }
+
+    if (selectedFields.includes('buffer_min')) {
+      const buffer = Number(bufferMin)
+      if (!Number.isFinite(buffer) || buffer < 0) {
+        setError('Buffer Time (min) must be 0 or greater.')
         return
       }
     }
@@ -251,6 +270,9 @@ export default function BookingServiceBulkUpdateModal({
       }
       if (selectedFields.includes('duration_min')) {
         payload.duration_min = Number(durationMin)
+      }
+      if (selectedFields.includes('buffer_min')) {
+        payload.buffer_min = Number(bufferMin)
       }
       if (selectedFields.includes('allow_photo_upload')) {
         payload.allow_photo_upload = allowPhotoUpload === 'true'
@@ -426,6 +448,20 @@ export default function BookingServiceBulkUpdateModal({
                 onChange={(e) => setDurationMin(e.target.value)}
                 className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
               />
+            </div>
+          )}
+
+          {selectedFields.includes('buffer_min') && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Buffer Time (min)</label>
+              <input
+                type="number"
+                min={0}
+                value={bufferMin}
+                onChange={(e) => setBufferMin(e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+              />
+              <p className="mt-1 text-xs text-gray-500">Extra minutes after the service for setup and cleanup.</p>
             </div>
           )}
 

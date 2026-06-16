@@ -309,6 +309,7 @@ class ServiceController extends Controller
 
             'service_type' => ['nullable', 'in:premium,standard'],
             'duration_min' => ['nullable', 'integer', 'min:1'],
+            'buffer_min' => ['nullable', 'integer', 'min:0'],
             'service_price' => ['nullable', 'numeric', 'min:0'],
             'price' => ['nullable', 'numeric', 'min:0'],
             'price_mode' => ['nullable', 'in:fixed,range'],
