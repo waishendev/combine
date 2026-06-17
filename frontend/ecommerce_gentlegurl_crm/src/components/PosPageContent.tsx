@@ -6,6 +6,7 @@ import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
+import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   bookingServiceSettlementSource,
@@ -578,6 +579,8 @@ function PosCartDiscountAmount({
   return <span className={className}>RM {final.toFixed(2)}</span>
 }
 
+type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
+
 type BookingServiceOption = {
   id: number
   name: string
@@ -591,6 +594,8 @@ type BookingServiceOption = {
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
+  category_ids?: number[]
+  categories?: BookingServiceCategoryOption[]
 }
 
 type BookingServiceQuestionOption = {
@@ -1226,6 +1231,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [selectedProductQty, setSelectedProductQty] = useState(1)
   const [fullProductData, setFullProductData] = useState<any>(null)
   const [serviceQuery, setServiceQuery] = useState('')
+  const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
+  const [selectedBookingServiceCategoryId, setSelectedBookingServiceCategoryId] = useState<number | null>(null)
+  const [cartEditMainServicePickerQuery, setCartEditMainServicePickerQuery] = useState('')
   const [services, setServices] = useState<BookingServiceOption[]>([])
   const [bookingProducts, setBookingProducts] = useState<BookingProductOption[]>([])
   const [bookingProductsLoading, setBookingProductsLoading] = useState(false)
@@ -1285,6 +1293,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const bookingRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
   const [bookingExtraServiceBlocks, setBookingExtraServiceBlocks] = useState<BookingExtraServiceBlock[]>([])
+  const [bookingExtraServiceCategoryIds, setBookingExtraServiceCategoryIds] = useState<Record<string, number | null>>({})
+  const [bookingExtraServiceQueries, setBookingExtraServiceQueries] = useState<Record<string, string>>({})
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [bookingIdentityMode, setBookingIdentityMode] = useState<'member' | 'guest'>('member')
@@ -1311,7 +1321,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
-  const [cartEditMainServiceQuery, setCartEditMainServiceQuery] = useState('')
+  const [cartEditMainServiceCategoryId, setCartEditMainServiceCategoryId] = useState<number | null>(null)
   const [cartEditMainServicePickerOpen, setCartEditMainServicePickerOpen] = useState(false)
   const [cartEditMainServicePickerTargetId, setCartEditMainServicePickerTargetId] = useState<'__new__' | '__original__' | null>(null)
   const [cartEditOriginalService, setCartEditOriginalService] = useState<BookingServiceOption | null>(null)
@@ -2668,6 +2678,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 .map((staff) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim() }))
                 .filter((staff) => staff.id > 0 && staff.name)
               : [],
+            category_ids: Array.isArray(maybe.category_ids) ? (maybe.category_ids as unknown[]).map(Number).filter((id) => Number.isFinite(id) && id > 0) : [],
+            categories: Array.isArray(maybe.categories)
+              ? (maybe.categories as Array<Record<string, unknown>>).map((category) => ({ id: Number(category.id), name: String(category.name ?? '').trim(), cn_name: typeof category.cn_name === 'string' ? category.cn_name.trim() || null : null })).filter((category) => category.id > 0 && category.name)
+              : [],
           }
         })
         .filter((item): item is BookingServiceOption => Boolean(item && item.name))
@@ -2677,6 +2691,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setServices([])
     } finally {
       setServicesLoading(false)
+    }
+  }, [])
+
+  const fetchBookingServiceCategories = useCallback(async () => {
+    try {
+      const res = await fetch('/api/proxy/booking/service-categories', { cache: 'no-store' })
+      if (!res.ok) return
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
+      const list = Array.isArray(payload) ? payload : []
+      setBookingServiceCategories(list.map((item): BookingServiceCategoryOption | null => {
+        if (!item || typeof item !== 'object') return null
+        const row = item as Record<string, unknown>
+        const id = Number(row.id)
+        const name = String(row.name ?? '').trim()
+        if (!Number.isFinite(id) || id <= 0 || !name) return null
+        return { id, name, cn_name: typeof row.cn_name === 'string' ? row.cn_name.trim() || null : null }
+      }).filter((item): item is BookingServiceCategoryOption => Boolean(item)))
+    } catch {
+      setBookingServiceCategories([])
     }
   }, [])
 
@@ -2839,6 +2873,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingQuestions([])
     setBookingSelectedOptionIds([])
     setBookingExtraServiceBlocks([])
+    setBookingExtraServiceCategoryIds({})
+    setBookingExtraServiceQueries({})
     setBookingModalError(null)
     setBookingGuestPhoneValue(guestContactCache.phone)
     if (selectedMember?.id) {
@@ -3561,7 +3597,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }))
       .filter((block) => block.service_id > 0)
     setCartEditAddedMainBlocks(addedMainBlocksSeed)
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
+                  setCartEditMainServiceCategoryId(null)
     setCartEditMainServicePickerOpen(false)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
     setCartEditStaffSplitAutoBalance(true)
@@ -3647,13 +3684,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const openCartEditMainServicePicker = () => {
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
     setCartEditMainServicePickerTargetId('__new__')
     setCartEditMainServicePickerOpen(true)
   }
 
   const openCartEditOriginalServicePicker = () => {
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
     setCartEditMainServicePickerTargetId('__original__')
     setCartEditMainServicePickerOpen(true)
   }
@@ -3678,7 +3715,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     setCartEditMainServicePickerOpen(false)
     setCartEditMainServicePickerTargetId(null)
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
   }
 
   const addCartEditMainServiceBlock = async (service: BookingServiceOption) => {
@@ -3893,6 +3930,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void loadCategories()
     void fetchActiveStaffs()
     void fetchServices()
+      void fetchBookingServiceCategories()
     const loadBookingProductCategories = async () => {
       try {
         const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
@@ -3974,14 +4012,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const filteredServices = useMemo(() => {
     const keyword = serviceQuery.trim().toLowerCase()
-    if (!keyword) return services
+    const categoryFiltered = selectedBookingServiceCategoryId
+      ? services.filter((service) => (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(selectedBookingServiceCategoryId))
+      : services
+    if (!keyword) return categoryFiltered
 
-    return services.filter((service) =>
+    return categoryFiltered.filter((service) =>
       service.name.toLowerCase().includes(keyword) ||
       (service.cn_name ?? '').toLowerCase().includes(keyword) ||
       String(service.service_type ?? '').toLowerCase().includes(keyword),
     )
-  }, [serviceQuery, services])
+  }, [selectedBookingServiceCategoryId, serviceQuery, services])
 
 
   const filteredServicePackages = useMemo(() => {
@@ -5864,52 +5905,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 )}
               </div>
             ) : catalogTab === 'book-service' ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="mb-4">
-                  <input
-                    value={serviceQuery}
-                    onChange={(e) => setServiceQuery(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="Search by service name / type"
-                  />
-                </div>
-
-                <div className="flex-1 space-y-3 overflow-y-auto pr-1">
-                  {servicesLoading ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading services...</div>
-                  ) : filteredServices.length === 0 ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
-                  ) : (
-                    filteredServices.map((service) => {
-                      const isRange = service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
-                      const displayPrice = Number.isFinite(service.price) && Number(service.price) > 0
-                        ? Number(service.price)
-                        : Number(service.service_price ?? 0)
-                      const priceLabel = isRange
-                        ? `RM ${Number(service.price_range_min).toFixed(2)} - ${Number(service.price_range_max).toFixed(2)}`
-                        : `RM ${displayPrice.toFixed(2)}`
-
-                      return (
-                        <div key={service.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
-                          <div>
-                            <ServiceNameStack name={service.name} cnName={service.cn_name} />
-                            <p className="text-xs text-gray-500">Type: {(service.service_type ?? 'standard').toUpperCase()}</p>
-                          </div>
-                          <div className="flex flex-col items-end gap-2">
-                            <span className="text-sm font-bold text-gray-900">{priceLabel}</span>
-                            <button
-                              type="button"
-                              onClick={() => void openBookingModal(service)}
-                              className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                            >
-                              Add Service to Cart
-                            </button>
-                          </div>
-                        </div>
-                      )
-                    })
-                  )}
-                </div>
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                <BookingServicePicker
+                  categories={bookingServiceCategories}
+                  services={filteredServices}
+                  selectedCategoryId={selectedBookingServiceCategoryId}
+                  onCategoryChange={setSelectedBookingServiceCategoryId}
+                  searchQuery={serviceQuery}
+                  onSearchQueryChange={setServiceQuery}
+                  onSelectService={(service) => void openBookingModal(service as BookingServiceOption)}
+                  loading={servicesLoading}
+                  emptyMessage="No services found."
+                  searchPlaceholder="Search service name..."
+                />
               </div>
             ) : catalogTab === 'service-packages' ? (
               <div className="flex min-h-0 flex-1 flex-col">
@@ -7546,57 +7554,41 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 onClick={() => {
                   setCartEditMainServicePickerOpen(false)
                   setCartEditMainServicePickerTargetId(null)
-                  setCartEditMainServiceQuery('')
+                  setCartEditMainServicePickerQuery('')
                 }}
                 className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="p-5">
-              <input
-                type="text"
-                value={cartEditMainServiceQuery}
-                onChange={(e) => setCartEditMainServiceQuery(e.target.value)}
-                placeholder="Search service name…"
-                className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            <div className="max-h-[70vh] overflow-y-auto p-5">
+              <BookingServicePicker
+                categories={bookingServiceCategories}
+                services={cartEditMainServiceCatalog}
+                selectedCategoryId={cartEditMainServiceCategoryId}
+                onCategoryChange={setCartEditMainServiceCategoryId}
+                searchQuery={cartEditMainServicePickerQuery}
+                onSearchQueryChange={setCartEditMainServicePickerQuery}
+                selectedServiceId={cartEditMainServicePickerTargetId === '__original__' ? cartEditOriginalService?.id : null}
+                excludeServiceIds={[
+                  ...(cartEditOriginalService?.id ? [cartEditOriginalService.id] : []),
+                  ...cartEditAddedMainBlocks.map((block) => block.service_id),
+                ]}
+                onSelectService={async (service) => {
+                  const selected = service as BookingServiceOption
+                  if (cartEditMainServicePickerTargetId === '__original__') {
+                    await selectCartEditOriginalService(selected)
+                  } else {
+                    await addCartEditMainServiceBlock(selected)
+                    setCartEditMainServicePickerOpen(false)
+                    setCartEditMainServicePickerTargetId(null)
+                    setCartEditMainServicePickerQuery('')
+                    setCartEditMainServiceCategoryId(null)
+                  }
+                }}
+                emptyMessage="No services found."
+                searchPlaceholder="Search service name..."
               />
-              <div className="mt-3 max-h-[50vh] overflow-y-auto space-y-1 pr-1">
-                {cartEditMainServiceCatalog
-                  .filter((service) => service.id !== cartEditOriginalService?.id)
-                  .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()) || (service.cn_name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
-                  .slice(0, 200)
-                  .map((service) => (
-                    <button
-                      key={`cart-pick-main-modal-${service.id}`}
-                      type="button"
-                      onClick={async () => {
-                        if (cartEditMainServicePickerTargetId === '__original__') {
-                          await selectCartEditOriginalService(service)
-                        } else {
-                          await addCartEditMainServiceBlock(service)
-                          setCartEditMainServicePickerOpen(false)
-                          setCartEditMainServicePickerTargetId(null)
-                          setCartEditMainServiceQuery('')
-                        }
-                      }}
-                      className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm hover:bg-gray-50"
-                    >
-                      <span className="font-semibold text-gray-900">{service.name}</span>{service.cn_name ? <span className="block text-xs text-gray-500">{service.cn_name}</span> : null}
-                      <span className="text-xs font-semibold text-indigo-700">Select</span>
-                    </button>
-                  ))}
-                {cartEditMainServiceCatalog
-                  .filter((service) => service.id !== cartEditOriginalService?.id)
-                  .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()) || (service.cn_name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
-                  .length === 0 ? (
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
-                    No services found.
-                  </div>
-                ) : null}
-              </div>
             </div>
           </div>
         </div>
@@ -9150,28 +9142,67 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     No add-ons for this service.
                   </div>
                 )}
-                {bookingExtraServiceBlocks.map((block) => (
-                  <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <BookingPackageItemServicePicker
-                          options={(() => {
-                            const takenByOthers = new Set<number>([
-                              ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
-                              ...bookingExtraServiceBlocks
-                                .filter((row) => row.id !== block.id)
-                                .map((row) => Number(row.service?.id ?? 0))
-                                .filter((id) => id > 0),
-                            ])
-                            return services
-                              .filter((service) => !takenByOthers.has(service.id))
-                              .map((service) => ({ id: service.id, name: service.name, cn_name: service.cn_name }))
-                          })()}
-                          value={block.service?.id ? String(block.service.id) : ''}
-                          onChange={async (next) => {
-                            const nextId = Number(next) || null
-                            const selected = services.find((row) => row.id === nextId) ?? null
-                            const questions = nextId ? await fetchBookingQuestions(nextId) : []
+                {bookingExtraServiceBlocks.map((block, blockIndex) => (
+                  <div key={block.id} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex items-start justify-between gap-3 border-b border-gray-200 pb-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block {blockIndex + 2}</p>
+                        {block.service ? (
+                          <ServiceNameStack
+                            name={block.service.name}
+                            cnName={block.service.cn_name}
+                            primaryClassName="mt-0.5 text-sm font-semibold text-gray-900"
+                            secondaryClassName="mt-0.5 text-xs text-gray-500"
+                          />
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBookingExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))
+                          setBookingExtraServiceCategoryIds((prev) => {
+                            const next = { ...prev }
+                            delete next[block.id]
+                            return next
+                          })
+                          setBookingExtraServiceQueries((prev) => {
+                            const next = { ...prev }
+                            delete next[block.id]
+                            return next
+                          })
+                        }}
+                        className="shrink-0 rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {(() => {
+                      const takenByOthers = [
+                        ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
+                        ...bookingExtraServiceBlocks
+                          .filter((row) => row.id !== block.id)
+                          .map((row) => Number(row.service?.id ?? 0))
+                          .filter((id) => id > 0),
+                      ]
+
+                      return (
+                        <BookingServicePicker
+                          categories={bookingServiceCategories}
+                          services={services}
+                          selectedCategoryId={bookingExtraServiceCategoryIds[block.id] ?? null}
+                          onCategoryChange={(next) => {
+                            setBookingExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
+                            if (next && block.service && !bookingServiceMatchesPickerCategory(block.service, next)) {
+                              setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
+                            }
+                          }}
+                          searchQuery={bookingExtraServiceQueries[block.id] ?? ''}
+                          onSearchQueryChange={(query) => setBookingExtraServiceQueries((prev) => ({ ...prev, [block.id]: query }))}
+                          selectedServiceId={block.service?.id ?? null}
+                          excludeServiceIds={takenByOthers}
+                          onSelectService={async (service) => {
+                            const selected = service as BookingServiceOption
+                            const questions = await fetchBookingQuestions(selected.id)
                             setBookingExtraServiceBlocks((prev) =>
                               prev.map((row) =>
                                 row.id === block.id
@@ -9180,31 +9211,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               ),
                             )
                           }}
-                          disabled={bookingSubmitting}
-                          placeholder="Select main service"
-                          searchPlaceholder="Search services…"
-                          ariaLabel="Select main service"
+                          loading={servicesLoading || bookingSubmitting}
+                          emptyMessage="No services found."
+                          searchPlaceholder="Search service name..."
                         />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setBookingExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))}
-                        className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    {block.service ? (
-                      <div className="text-xs font-semibold text-gray-600">
-                        <ServiceNameStack
-                          name={block.service.name}
-                          cnName={block.service.cn_name}
-                          primaryClassName="text-sm font-medium text-gray-900"
-                          secondaryClassName="mt-0.5 text-xs text-gray-500"
-                        />
-                        <span className="text-xs text-gray-600">{Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}</span>
-                      </div>
-                    ) : null}
+                      )
+                    })()}
                     {block.questions.map((question) => (
                       <div key={`${block.id}-${question.id}`} className="rounded border border-gray-200 bg-white p-2">
                         <p className="text-xs font-semibold text-gray-800">
@@ -9233,11 +9245,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     }}
                                   />
                                   <ServiceNameStack
-                                      name={option.label}
-                                      cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
-                                      primaryClassName="text-xs text-gray-700"
-                                      secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                                    />
+                                    name={option.label}
+                                    cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
+                                    primaryClassName="text-xs text-gray-700"
+                                    secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                  />
                                 </div>
                                 <span className="font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
                               </label>

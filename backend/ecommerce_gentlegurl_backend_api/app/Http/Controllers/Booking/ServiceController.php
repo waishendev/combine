@@ -35,6 +35,7 @@ class ServiceController extends Controller
     public function index(Request $request)
     {
         $services = BookingService::query()
+            ->with(['categories' => fn ($query) => $query->where('is_active', true)->orderBy('sort_order')->orderBy('name')])
             ->where('is_active', true)
             ->when($request->filled('category_id'), function ($query) use ($request) {
                 $query->whereHas('categories', function ($categoryQuery) use ($request) {
@@ -72,6 +73,7 @@ class ServiceController extends Controller
     {
         $service = BookingService::query()->with([
             'primarySlots',
+            'categories' => fn ($query) => $query->where('is_active', true)->orderBy('sort_order')->orderBy('name'),
             'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
         ])->findOrFail($id);
 
@@ -141,6 +143,12 @@ class ServiceController extends Controller
             'allowed_staffs' => $staffs,
             'allowed_staff_count' => count($staffs),
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
+            'category_ids' => $service->categories->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
+            'categories' => $service->categories->map(fn (BookingServiceCategory $category) => [
+                'id' => (int) $category->id,
+                'name' => $category->name,
+                'cn_name' => $category->cn_name,
+            ])->values()->all(),
             'questions' => $service->questions()
                 ->where('is_active', true)
                 ->with(['options' => fn ($q) => $q
