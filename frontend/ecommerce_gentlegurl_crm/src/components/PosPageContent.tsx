@@ -2753,6 +2753,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const formatBookingProductCatalogPrice = (item: BookingProductOption) => item.price_mode === 'range' ? `RM ${Number(item.price_range_min ?? 0).toFixed(2)} - RM ${Number(item.price_range_max ?? 0).toFixed(2)}` : `RM ${Number(item.price ?? 0).toFixed(2)}`
 
+  const validateBookingProductBaseSellingPrice = (item: BookingProductOption, value: string) => {
+    const actualPrice = Number(value)
+    const min = Number(item.price_range_min ?? 0)
+    const max = Number(item.price_range_max ?? 0)
+    if (!Number.isFinite(actualPrice) || actualPrice < min || actualPrice > max) {
+      return { ok: false as const, message: `Enter an actual selling price between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.` }
+    }
+    return { ok: true as const, value: actualPrice }
+  }
+
   const addBookingProductToCart = useCallback(async (row: BookingProductOption, selectedOptionIds: number[] = [], actualSellingPrice?: number) => {
     const res = await fetch('/api/proxy/pos/cart/add-booking-product', {
       method: 'POST',
@@ -9534,6 +9544,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
                   <p className="text-sm font-semibold text-gray-900">Actual Selling Price</p>
                   <p className="mt-0.5 text-xs text-gray-600">Price Range: {formatBookingProductCatalogPrice(bookingProductDraft)}</p>
+                  <p className="mt-1 text-xs text-gray-500">This is the product base price only. Selected options are added separately.</p>
                   <div className="relative mt-2 max-w-xs"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">RM</span><input type="number" min={bookingProductDraft.price_range_min ?? 0} max={bookingProductDraft.price_range_max ?? undefined} step="0.01" value={bookingProductActualPrice} onChange={(e) => setBookingProductActualPrice(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm text-gray-900" /></div>
                 </div>
               ) : null}
@@ -9541,7 +9552,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             {bookingProductOptionError ? <p className="mt-2 text-sm text-red-600">{bookingProductOptionError}</p> : null}
             <div className="flex justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
               <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700" onClick={() => setBookingProductOptionModalOpen(false)}>Cancel</button>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={async () => { for (const q of (bookingProductDraft.questions ?? [])) { if (!q.is_required) continue; const has = q.options.some((o) => bookingProductSelectedOptionIds.includes(o.id)); if (!has) { setBookingProductOptionError('Please answer all required questions.'); return; } } const actualPrice = Number(bookingProductActualPrice); if (bookingProductDraft.price_mode === 'range') { const min = Number(bookingProductDraft.price_range_min ?? 0); const max = Number(bookingProductDraft.price_range_max ?? 0); if (!Number.isFinite(actualPrice) || actualPrice < min || actualPrice > max) { setBookingProductOptionError(`Enter an actual selling price between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.`); return; } } setBookingProductOptionError(null); await addBookingProductToCart(bookingProductDraft, bookingProductSelectedOptionIds, bookingProductDraft.price_mode === 'range' ? actualPrice : undefined); setBookingProductOptionModalOpen(false); }}>Add to Cart</button>
+              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={async () => { for (const q of (bookingProductDraft.questions ?? [])) { if (!q.is_required) continue; const has = q.options.some((o) => bookingProductSelectedOptionIds.includes(o.id)); if (!has) { setBookingProductOptionError('Please answer all required questions.'); return; } } const basePriceValidation = bookingProductDraft.price_mode === 'range' ? validateBookingProductBaseSellingPrice(bookingProductDraft, bookingProductActualPrice) : null; if (basePriceValidation && !basePriceValidation.ok) { setBookingProductOptionError(basePriceValidation.message); return; } setBookingProductOptionError(null); await addBookingProductToCart(bookingProductDraft, bookingProductSelectedOptionIds, basePriceValidation?.ok ? basePriceValidation.value : undefined); setBookingProductOptionModalOpen(false); }}>Add to Cart</button>
             </div>
           </div>
         </div>

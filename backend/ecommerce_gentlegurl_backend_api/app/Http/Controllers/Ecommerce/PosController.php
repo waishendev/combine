@@ -1434,7 +1434,6 @@ class PosController extends Controller
             'qty' => ['nullable', 'integer', 'min:1'],
             'selected_option_ids' => ['nullable', 'array'],
             'selected_option_ids.*' => ['integer'],
-            'actual_selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         if ($validator->fails()) {
@@ -1616,6 +1615,8 @@ class PosController extends Controller
         $selectedSnapshotRows = $selectedSnapshots->all();
         $extraPrice = (float) $selectedSnapshots->flatMap(fn ($q) => $q['options'])->sum('extra_price');
         $basePrice = (float) $bookingProduct->price;
+        // Range validation applies only to the booking product base price.
+        // Selected option extra prices are added after this check and may make the final unit price exceed the range maximum.
         if (($bookingProduct->price_mode ?? 'fixed') === 'range') {
             if (! array_key_exists('actual_selling_price', $validated) || $validated['actual_selling_price'] === null || $validated['actual_selling_price'] === '') {
                 return $this->respondError(__('Actual selling price is required for range booking products.'), 422);
