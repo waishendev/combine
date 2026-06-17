@@ -6,7 +6,7 @@ import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
-import BookingServicePicker from '@/components/pos/BookingServicePicker'
+import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   bookingServiceSettlementSource,
@@ -1293,6 +1293,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const bookingRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
   const [bookingExtraServiceBlocks, setBookingExtraServiceBlocks] = useState<BookingExtraServiceBlock[]>([])
+  const [bookingExtraServiceCategoryIds, setBookingExtraServiceCategoryIds] = useState<Record<string, number | null>>({})
+  const [bookingExtraServiceQueries, setBookingExtraServiceQueries] = useState<Record<string, string>>({})
   const [bookingSlotsLoading, setBookingSlotsLoading] = useState(false)
   const [bookingModalError, setBookingModalError] = useState<string | null>(null)
   const [bookingIdentityMode, setBookingIdentityMode] = useState<'member' | 'guest'>('member')
@@ -2871,6 +2873,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingQuestions([])
     setBookingSelectedOptionIds([])
     setBookingExtraServiceBlocks([])
+    setBookingExtraServiceCategoryIds({})
+    setBookingExtraServiceQueries({})
     setBookingModalError(null)
     setBookingGuestPhoneValue(guestContactCache.phone)
     if (selectedMember?.id) {
@@ -9138,28 +9142,67 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     No add-ons for this service.
                   </div>
                 )}
-                {bookingExtraServiceBlocks.map((block) => (
-                  <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <BookingPackageItemServicePicker
-                          options={(() => {
-                            const takenByOthers = new Set<number>([
-                              ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
-                              ...bookingExtraServiceBlocks
-                                .filter((row) => row.id !== block.id)
-                                .map((row) => Number(row.service?.id ?? 0))
-                                .filter((id) => id > 0),
-                            ])
-                            return services
-                              .filter((service) => !takenByOthers.has(service.id))
-                              .map((service) => ({ id: service.id, name: service.name, cn_name: service.cn_name }))
-                          })()}
-                          value={block.service?.id ? String(block.service.id) : ''}
-                          onChange={async (next) => {
-                            const nextId = Number(next) || null
-                            const selected = services.find((row) => row.id === nextId) ?? null
-                            const questions = nextId ? await fetchBookingQuestions(nextId) : []
+                {bookingExtraServiceBlocks.map((block, blockIndex) => (
+                  <div key={block.id} className="space-y-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+                    <div className="flex items-start justify-between gap-3 border-b border-gray-200 pb-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block {blockIndex + 2}</p>
+                        {block.service ? (
+                          <ServiceNameStack
+                            name={block.service.name}
+                            cnName={block.service.cn_name}
+                            primaryClassName="mt-0.5 text-sm font-semibold text-gray-900"
+                            secondaryClassName="mt-0.5 text-xs text-gray-500"
+                          />
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setBookingExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))
+                          setBookingExtraServiceCategoryIds((prev) => {
+                            const next = { ...prev }
+                            delete next[block.id]
+                            return next
+                          })
+                          setBookingExtraServiceQueries((prev) => {
+                            const next = { ...prev }
+                            delete next[block.id]
+                            return next
+                          })
+                        }}
+                        className="shrink-0 rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    {(() => {
+                      const takenByOthers = [
+                        ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
+                        ...bookingExtraServiceBlocks
+                          .filter((row) => row.id !== block.id)
+                          .map((row) => Number(row.service?.id ?? 0))
+                          .filter((id) => id > 0),
+                      ]
+
+                      return (
+                        <BookingServicePicker
+                          categories={bookingServiceCategories}
+                          services={services}
+                          selectedCategoryId={bookingExtraServiceCategoryIds[block.id] ?? null}
+                          onCategoryChange={(next) => {
+                            setBookingExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
+                            if (next && block.service && !bookingServiceMatchesPickerCategory(block.service, next)) {
+                              setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
+                            }
+                          }}
+                          searchQuery={bookingExtraServiceQueries[block.id] ?? ''}
+                          onSearchQueryChange={(query) => setBookingExtraServiceQueries((prev) => ({ ...prev, [block.id]: query }))}
+                          selectedServiceId={block.service?.id ?? null}
+                          excludeServiceIds={takenByOthers}
+                          onSelectService={async (service) => {
+                            const selected = service as BookingServiceOption
+                            const questions = await fetchBookingQuestions(selected.id)
                             setBookingExtraServiceBlocks((prev) =>
                               prev.map((row) =>
                                 row.id === block.id
@@ -9168,31 +9211,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               ),
                             )
                           }}
-                          disabled={bookingSubmitting}
-                          placeholder="Select main service"
-                          searchPlaceholder="Search services…"
-                          ariaLabel="Select main service"
+                          loading={servicesLoading || bookingSubmitting}
+                          emptyMessage="No services found."
+                          searchPlaceholder="Search service name..."
                         />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setBookingExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))}
-                        className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700"
-                      >
-                        Remove
-                      </button>
-                    </div>
-                    {block.service ? (
-                      <div className="text-xs font-semibold text-gray-600">
-                        <ServiceNameStack
-                          name={block.service.name}
-                          cnName={block.service.cn_name}
-                          primaryClassName="text-sm font-medium text-gray-900"
-                          secondaryClassName="mt-0.5 text-xs text-gray-500"
-                        />
-                        <span className="text-xs text-gray-600">{Number(block.service.duration_min ?? 0)} min · RM{Number(block.service.price ?? block.service.service_price ?? 0).toFixed(2)}</span>
-                      </div>
-                    ) : null}
+                      )
+                    })()}
                     {block.questions.map((question) => (
                       <div key={`${block.id}-${question.id}`} className="rounded border border-gray-200 bg-white p-2">
                         <p className="text-xs font-semibold text-gray-800">
@@ -9221,11 +9245,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     }}
                                   />
                                   <ServiceNameStack
-                                      name={option.label}
-                                      cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
-                                      primaryClassName="text-xs text-gray-700"
-                                      secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                                    />
+                                    name={option.label}
+                                    cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
+                                    primaryClassName="text-xs text-gray-700"
+                                    secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                  />
                                 </div>
                                 <span className="font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
                               </label>
