@@ -43,6 +43,77 @@ const toPaymentCents = (value: number | string | null | undefined) => {
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
 }
 
+function formatBookingServiceCardPrice(service: BookingServiceOption): string {
+  const isRange = service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
+  if (isRange) {
+    return `RM ${Number(service.price_range_min).toFixed(2)} - RM ${Number(service.price_range_max).toFixed(2)}`
+  }
+
+  const amount = Number.isFinite(Number(service.price)) && Number(service.price) > 0
+    ? Number(service.price)
+    : Number(service.service_price ?? 0)
+  return `RM ${amount.toFixed(2)}`
+}
+
+function bookingServiceMatchesCategory(service: BookingServiceOption, categoryId: number | null): boolean {
+  if (!categoryId) return true
+  return (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(categoryId)
+}
+
+function BookingServiceCategoryChips({
+  categories,
+  selectedCategoryId,
+  onSelect,
+}: {
+  categories: BookingServiceCategoryOption[]
+  selectedCategoryId: number | null
+  onSelect: (categoryId: number | null) => void
+}) {
+  const chipClass = (active: boolean) => `whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition ${active ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50'}`
+
+  return (
+    <div className="flex gap-2 overflow-x-auto pb-1">
+      <button type="button" onClick={() => onSelect(null)} className={chipClass(selectedCategoryId == null)}>All</button>
+      {categories.map((category) => (
+        <button key={category.id} type="button" onClick={() => onSelect(category.id)} className={chipClass(selectedCategoryId === category.id)}>
+          {category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function BookingServiceSelectionCard({
+  service,
+  selected,
+  onSelect,
+  disabled = false,
+}: {
+  service: BookingServiceOption
+  selected?: boolean
+  onSelect: () => void
+  disabled?: boolean
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onSelect}
+      className={`min-h-[140px] rounded-2xl border p-4 text-left transition ${
+        selected
+          ? 'border-blue-600 bg-blue-50 shadow-md ring-2 ring-blue-500/20'
+          : 'border-gray-200 bg-white shadow-sm hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-md'
+      } disabled:cursor-not-allowed disabled:opacity-60`}
+    >
+      <PosServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-base font-bold text-gray-900" secondaryClassName="mt-1 text-sm text-gray-500" />
+      <div className="mt-3 space-y-1 text-sm">
+        <p className="font-medium text-gray-600">{Number(service.duration_min ?? 0)} mins</p>
+        <p className="font-bold text-blue-700">{formatBookingServiceCardPrice(service)}</p>
+      </div>
+    </button>
+  )
+}
+
 type StaffOption = {
   id: number
   name: string
@@ -679,6 +750,48 @@ export default function PosAppointmentsWorkspace({
       setCreateAppointmentQuestions(mappedQuestions)
     } catch {
       setCreateAppointmentQuestions([])
+    }
+  }, [])
+
+  const fetchServiceAddonQuestions = useCallback(async (serviceId: number): Promise<ServiceAddonQuestion[]> => {
+    if (!serviceId) return []
+    try {
+      const res = await fetch(`/api/proxy/booking/services/${serviceId}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
+      return questionsRaw
+        .map((raw) => {
+          if (!raw || typeof raw !== 'object') return null
+          const record = raw as Record<string, unknown>
+          const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
+          return {
+            id: Number(record.id ?? 0),
+            title: String(record.title ?? 'Question'),
+            cn_title: typeof record.cn_title === 'string' ? record.cn_title : null,
+            description: typeof record.description === 'string' ? record.description : null,
+            cn_description: typeof record.cn_description === 'string' ? record.cn_description : null,
+            question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
+            is_required: Boolean(record.is_required),
+            options: optionsRaw
+              .map((optionRaw) => {
+                if (!optionRaw || typeof optionRaw !== 'object') return null
+                const option = optionRaw as Record<string, unknown>
+                return {
+                  id: Number(option.id ?? 0),
+                  label: String(option.label ?? 'Add-on'),
+                  cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
+                  cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
+                  linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
+                  extra_duration_min: Number(option.extra_duration_min ?? 0),
+                  extra_price: Number(option.extra_price ?? 0),
+                } as ServiceAddonOption
+              })
+              .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
+          } as ServiceAddonQuestion
+        })
+        .filter((question): question is ServiceAddonQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
+    } catch {
+      return []
     }
   }, [])
 
@@ -3013,54 +3126,48 @@ export default function PosAppointmentsWorkspace({
                     </button>
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-600">Category:</label>
-                    <select
-                      value={createAppointmentServiceCategoryId ?? ''}
-                      onChange={(e) => {
-                        const next = e.target.value ? Number(e.target.value) : null
+                    <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
+                    <BookingServiceCategoryChips
+                      categories={bookingServiceCategories}
+                      selectedCategoryId={createAppointmentServiceCategoryId}
+                      onSelect={(next) => {
                         setCreateAppointmentServiceCategoryId(next)
-                        if (next && createAppointmentServiceDraft && !(createAppointmentServiceDraft.category_ids ?? createAppointmentServiceDraft.categories?.map((category) => category.id) ?? []).includes(next)) {
+                        if (next && createAppointmentServiceDraft && !bookingServiceMatchesCategory(createAppointmentServiceDraft, next)) {
                           setCreateAppointmentServiceDraft(null)
                           setCreateAppointmentQuestions([])
                           setCreateAppointmentSelectedOptionIds([])
                         }
                       }}
-                      className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-                    >
-                      <option value="">All Categories</option>
-                      {bookingServiceCategories.map((category) => <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>)}
-                    </select>
+                    />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold text-gray-600">Primary Service</label>
-                    <div className="mt-1">
-                      <BookingPackageItemServicePicker
-                        options={createAppointmentServices.filter((service) => !createAppointmentServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(createAppointmentServiceCategoryId)).map((service) => ({
-                          id: service.id,
-                          name: service.service_type ? `${service.name} (${service.service_type})` : service.name,
-                          cn_name: service.cn_name,
-                        }))}
-                        value={createAppointmentServiceDraft?.id ? String(createAppointmentServiceDraft.id) : ''}
-                        onChange={(next) => {
-                          const nextId = Number(next) || 0
-                          const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
-                          setCreateAppointmentServiceDraft(service)
-                          setCreateAppointmentSelectedOptionIds([])
-                          setCreateAppointmentAssignedStaffId(null)
-                          setCreateAppointmentSlotValue('')
-                          setCreateAppointmentSlots([])
-                          if (service?.id) {
-                            void loadCreateAppointmentQuestions(service.id)
-                          } else {
-                            setCreateAppointmentQuestions([])
-                          }
-                        }}
-                        disabled={createAppointmentServicesLoading}
-                        placeholder={createAppointmentServicesLoading ? 'Loading services...' : 'Select service'}
-                        searchPlaceholder="Search services…"
-                        ariaLabel="Select primary service"
-                      />
-                    </div>
+                    <p className="mb-2 text-xs font-semibold text-gray-600">Primary Service</p>
+                    {createAppointmentServicesLoading ? (
+                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading services...</div>
+                    ) : (() => {
+                      const options = createAppointmentServices.filter((service) => bookingServiceMatchesCategory(service, createAppointmentServiceCategoryId))
+                      return options.length > 0 ? (
+                        <div className="grid max-h-80 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                          {options.map((service) => (
+                            <BookingServiceSelectionCard
+                              key={`create-primary-${service.id}`}
+                              service={service}
+                              selected={createAppointmentServiceDraft?.id === service.id}
+                              onSelect={() => {
+                                setCreateAppointmentServiceDraft(service)
+                                setCreateAppointmentSelectedOptionIds([])
+                                setCreateAppointmentAssignedStaffId(null)
+                                setCreateAppointmentSlotValue('')
+                                setCreateAppointmentSlots([])
+                                void loadCreateAppointmentQuestions(service.id)
+                              }}
+                            />
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
+                      )
+                    })()}
                   </div>
 
                   {createAppointmentServiceDraft ? (
@@ -3131,89 +3238,61 @@ export default function PosAppointmentsWorkspace({
                   {createAppointmentExtraServiceBlocks.map((block) => (
                     <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
                       <div className="flex items-center gap-2">
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <select
-                            value={createAppointmentExtraServiceCategoryIds[block.id] ?? ''}
-                            onChange={(e) => {
-                              const next = e.target.value ? Number(e.target.value) : null
-                              setCreateAppointmentExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
-                              if (next && block.service && !(block.service.category_ids ?? block.service.categories?.map((category) => category.id) ?? []).includes(next)) {
-                                setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
-                              }
-                            }}
-                            className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
-                          >
-                            <option value="">All Categories</option>
-                            {bookingServiceCategories.map((category) => <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>)}
-                          </select>
-                          <BookingPackageItemServicePicker
-                            options={(() => {
-                              const takenByOthers = new Set<number>([
-                                ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
-                                ...createAppointmentExtraServiceBlocks
-                                  .filter((row) => row.id !== block.id)
-                                  .map((row) => Number(row.service?.id ?? 0))
-                                  .filter((id) => id > 0),
-                              ])
-                              return createAppointmentServices
-                                .filter((service) => !takenByOthers.has(service.id))
-                                .filter((service) => !createAppointmentExtraServiceCategoryIds[block.id] || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(createAppointmentExtraServiceCategoryIds[block.id] as number))
-                                .map((service) => ({ id: service.id, name: service.name, cn_name: service.cn_name }))
-                            })()}
-                            value={block.service?.id ? String(block.service.id) : ''}
-                            onChange={async (next) => {
-                              const nextId = Number(next) || 0
-                              const service = createAppointmentServices.find((row) => row.id === nextId) ?? null
-                              let questions: ServiceAddonQuestion[] = []
-                              if (service?.id) {
-                                const res = await fetch(`/api/proxy/booking/services/${service.id}`, { cache: 'no-store' })
-                                const json = await res.json().catch(() => null)
-                                const questionsRaw: unknown[] = Array.isArray(json?.data?.questions) ? json.data.questions : []
-                                questions = questionsRaw
-                                  .map((raw) => {
-                                    if (!raw || typeof raw !== 'object') return null
-                                    const record = raw as Record<string, unknown>
-                                    const optionsRaw: unknown[] = Array.isArray(record.options) ? record.options : []
-                                    return {
-                                      id: Number(record.id ?? 0),
-                                      title: String(record.title ?? 'Question'),
-                                      cn_title: typeof record.cn_title === 'string' ? record.cn_title : null,
-                                      description: typeof record.description === 'string' ? record.description : null,
-                                      cn_description: typeof record.cn_description === 'string' ? record.cn_description : null,
-                                      question_type: String(record.question_type ?? 'single_choice') === 'multi_choice' ? 'multi_choice' : 'single_choice',
-                                      is_required: Boolean(record.is_required),
-                                      options: optionsRaw
-                                        .map((optionRaw) => {
-                                          if (!optionRaw || typeof optionRaw !== 'object') return null
-                                          const option = optionRaw as Record<string, unknown>
-                                          return {
-                                            id: Number(option.id ?? 0),
-                                            label: String(option.label ?? 'Add-on'),
-                                            cn_label: typeof option.cn_label === 'string' ? option.cn_label : null,
-                                            cn_name: typeof option.cn_label === 'string' ? option.cn_label : (typeof option.cn_name === 'string' ? option.cn_name : (typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null)),
-                                            linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
-                                            extra_duration_min: Number(option.extra_duration_min ?? 0),
-                                            extra_price: Number(option.extra_price ?? 0),
-                                          } as ServiceAddonOption
-                                        })
-                                        .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
-                                    } as ServiceAddonQuestion
-                                  })
-                                  .filter((question): question is ServiceAddonQuestion => Boolean(question && question.id > 0 && question.options.length > 0))
-                              }
-                              setCreateAppointmentExtraServiceBlocks((prev) =>
-                                prev.map((row) =>
-                                  row.id === block.id
-                                    ? { ...row, service, questions, selectedOptionIds: [] }
-                                    : row,
-                                ),
-                              )
-                            }}
-                            disabled={createAppointmentServicesLoading}
-                            placeholder="Select main service"
-                            searchPlaceholder="Search services…"
-                            ariaLabel="Select main service"
-                          />
+                        <div className="min-w-0 flex-1 space-y-3">
+                          <div>
+                            <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
+                            <BookingServiceCategoryChips
+                              categories={bookingServiceCategories}
+                              selectedCategoryId={createAppointmentExtraServiceCategoryIds[block.id] ?? null}
+                              onSelect={(next) => {
+                                setCreateAppointmentExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
+                                if (next && block.service && !bookingServiceMatchesCategory(block.service, next)) {
+                                  setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
+                                }
+                              }}
+                            />
+                          </div>
+                          {(() => {
+                            const takenByOthers = new Set<number>([
+                              ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
+                              ...createAppointmentExtraServiceBlocks
+                                .filter((row) => row.id !== block.id)
+                                .map((row) => Number(row.service?.id ?? 0))
+                                .filter((id) => id > 0),
+                            ])
+                            const categoryId = createAppointmentExtraServiceCategoryIds[block.id] ?? null
+                            const options = createAppointmentServices
+                              .filter((service) => !takenByOthers.has(service.id))
+                              .filter((service) => bookingServiceMatchesCategory(service, categoryId))
+
+                            if (createAppointmentServicesLoading) {
+                              return <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading services...</div>
+                            }
+
+                            return options.length > 0 ? (
+                              <div className="grid max-h-72 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
+                                {options.map((service) => (
+                                  <BookingServiceSelectionCard
+                                    key={`create-extra-${block.id}-${service.id}`}
+                                    service={service}
+                                    selected={block.service?.id === service.id}
+                                    onSelect={async () => {
+                                      const questions = await fetchServiceAddonQuestions(service.id)
+                                      setCreateAppointmentExtraServiceBlocks((prev) =>
+                                        prev.map((row) =>
+                                          row.id === block.id
+                                            ? { ...row, service, questions, selectedOptionIds: [] }
+                                            : row,
+                                        ),
+                                      )
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
+                            )
+                          })()}
                         </div>
                         <button
                           type="button"
@@ -4442,13 +4521,14 @@ export default function PosAppointmentsWorkspace({
               </button>
             </div>
             <div className="p-5">
-              <label className="mb-3 block text-xs font-semibold text-gray-600">
-                Category:
-                <select value={editMainServiceCategoryId ?? ''} onChange={(e) => setEditMainServiceCategoryId(e.target.value ? Number(e.target.value) : null)} className="mt-1 h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
-                  <option value="">All Categories</option>
-                  {bookingServiceCategories.map((category) => <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>)}
-                </select>
-              </label>
+              <div className="mb-3">
+                <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
+                <BookingServiceCategoryChips
+                  categories={bookingServiceCategories}
+                  selectedCategoryId={editMainServiceCategoryId}
+                  onSelect={setEditMainServiceCategoryId}
+                />
+              </div>
               <input
                 type="text"
                 value={editMainServiceQuery}
@@ -4456,45 +4536,34 @@ export default function PosAppointmentsWorkspace({
                 placeholder="Search service name…"
                 className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
               />
-              <div className="mt-3 max-h-[50vh] overflow-y-auto space-y-1 pr-1">
-                {editMainServiceCatalog
-                  .filter((service) => service.id !== editOriginalService?.id)
-                  .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => !editMainServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(editMainServiceCategoryId))
-                  .filter((service) => {
-                    const query = editMainServiceQuery.trim().toLowerCase()
-                    return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
-                  })
-                  .slice(0, 200)
-                  .map((service) => (
-                    <button
-                      key={`pick-main-modal-${service.id}`}
-                      type="button"
-                      onClick={() => void selectEditMainServiceForBlock(editMainServicePickerTargetId, service)}
-                      className="flex w-full items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 text-left text-sm hover:bg-gray-50"
-                    >
-                      <PosServiceNameStack
-                        name={service.name}
-                        cnName={service.cn_name}
-                        primaryClassName="text-sm font-semibold text-gray-900"
-                        secondaryClassName="mt-0.5 text-xs text-gray-500"
-                      />
-                      <span className="text-xs font-semibold text-indigo-700">Select</span>
-                    </button>
-                  ))}
-                {editMainServiceCatalog
-                  .filter((service) => service.id !== editOriginalService?.id)
-                  .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
-                  .filter((service) => !editMainServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(editMainServiceCategoryId))
-                  .filter((service) => {
-                    const query = editMainServiceQuery.trim().toLowerCase()
-                    return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
-                  })
-                  .length === 0 ? (
-                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
-                    No services found.
-                  </div>
-                ) : null}
+              <div className="mt-3 max-h-[50vh] overflow-y-auto pr-1">
+                {(() => {
+                  const filteredCatalog = editMainServiceCatalog
+                    .filter((service) => service.id !== editOriginalService?.id)
+                    .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
+                    .filter((service) => bookingServiceMatchesCategory(service, editMainServiceCategoryId))
+                    .filter((service) => {
+                      const query = editMainServiceQuery.trim().toLowerCase()
+                      return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
+                    })
+                    .slice(0, 200)
+
+                  return filteredCatalog.length > 0 ? (
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                      {filteredCatalog.map((service) => (
+                        <BookingServiceSelectionCard
+                          key={`pick-main-modal-${service.id}`}
+                          service={service}
+                          onSelect={() => void selectEditMainServiceForBlock(editMainServicePickerTargetId, service)}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
+                      No services found.
+                    </div>
+                  )
+                })()}
               </div>
             </div>
           </div>
