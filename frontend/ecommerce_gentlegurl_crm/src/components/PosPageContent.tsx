@@ -6,6 +6,7 @@ import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
+import BookingServicePicker from '@/components/pos/BookingServicePicker'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   bookingServiceSettlementSource,
@@ -38,77 +39,6 @@ const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }
 const toPaymentCents = (value: number | string | null | undefined) => {
   const numeric = Number(value ?? 0)
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
-}
-
-function formatBookingServiceCardPrice(service: BookingServiceOption): string {
-  const isRange = service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
-  if (isRange) {
-    return `RM ${Number(service.price_range_min).toFixed(2)} - RM ${Number(service.price_range_max).toFixed(2)}`
-  }
-
-  const amount = Number.isFinite(Number(service.price)) && Number(service.price) > 0
-    ? Number(service.price)
-    : Number(service.service_price ?? 0)
-  return `RM ${amount.toFixed(2)}`
-}
-
-function bookingServiceMatchesCategory(service: BookingServiceOption, categoryId: number | null): boolean {
-  if (!categoryId) return true
-  return (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(categoryId)
-}
-
-function BookingServiceCategoryChips({
-  categories,
-  selectedCategoryId,
-  onSelect,
-}: {
-  categories: BookingServiceCategoryOption[]
-  selectedCategoryId: number | null
-  onSelect: (categoryId: number | null) => void
-}) {
-  const chipClass = (active: boolean) => `whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition ${active ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50'}`
-
-  return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
-      <button type="button" onClick={() => onSelect(null)} className={chipClass(selectedCategoryId == null)}>All</button>
-      {categories.map((category) => (
-        <button key={category.id} type="button" onClick={() => onSelect(category.id)} className={chipClass(selectedCategoryId === category.id)}>
-          {category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function BookingServiceSelectionCard({
-  service,
-  selected,
-  onSelect,
-  disabled = false,
-}: {
-  service: BookingServiceOption
-  selected?: boolean
-  onSelect: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onSelect}
-      className={`min-h-[140px] rounded-2xl border p-4 text-left transition ${
-        selected
-          ? 'border-blue-600 bg-blue-50 shadow-md ring-2 ring-blue-500/20'
-          : 'border-gray-200 bg-white shadow-sm hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-md'
-      } disabled:cursor-not-allowed disabled:opacity-60`}
-    >
-      <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-base font-bold text-gray-900" secondaryClassName="mt-1 text-sm text-gray-500" />
-      <div className="mt-3 space-y-1 text-sm">
-        <p className="font-medium text-gray-600">{Number(service.duration_min ?? 0)} mins</p>
-        <p className="font-bold text-blue-700">{formatBookingServiceCardPrice(service)}</p>
-      </div>
-    </button>
-  )
 }
 
 type CartItem = {
@@ -1303,6 +1233,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [serviceQuery, setServiceQuery] = useState('')
   const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
   const [selectedBookingServiceCategoryId, setSelectedBookingServiceCategoryId] = useState<number | null>(null)
+  const [cartEditMainServicePickerQuery, setCartEditMainServicePickerQuery] = useState('')
   const [services, setServices] = useState<BookingServiceOption[]>([])
   const [bookingProducts, setBookingProducts] = useState<BookingProductOption[]>([])
   const [bookingProductsLoading, setBookingProductsLoading] = useState(false)
@@ -1388,7 +1319,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
-  const [cartEditMainServiceQuery, setCartEditMainServiceQuery] = useState('')
   const [cartEditMainServiceCategoryId, setCartEditMainServiceCategoryId] = useState<number | null>(null)
   const [cartEditMainServicePickerOpen, setCartEditMainServicePickerOpen] = useState(false)
   const [cartEditMainServicePickerTargetId, setCartEditMainServicePickerTargetId] = useState<'__new__' | '__original__' | null>(null)
@@ -3663,7 +3593,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }))
       .filter((block) => block.service_id > 0)
     setCartEditAddedMainBlocks(addedMainBlocksSeed)
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
                   setCartEditMainServiceCategoryId(null)
     setCartEditMainServicePickerOpen(false)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
@@ -3750,13 +3680,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const openCartEditMainServicePicker = () => {
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
     setCartEditMainServicePickerTargetId('__new__')
     setCartEditMainServicePickerOpen(true)
   }
 
   const openCartEditOriginalServicePicker = () => {
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
     setCartEditMainServicePickerTargetId('__original__')
     setCartEditMainServicePickerOpen(true)
   }
@@ -3781,7 +3711,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     setCartEditMainServicePickerOpen(false)
     setCartEditMainServicePickerTargetId(null)
-    setCartEditMainServiceQuery('')
+    setCartEditMainServicePickerQuery('')
   }
 
   const addCartEditMainServiceBlock = async (service: BookingServiceOption) => {
@@ -5971,41 +5901,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 )}
               </div>
             ) : catalogTab === 'book-service' ? (
-              <div className="flex min-h-0 flex-1 flex-col">
-                <div className="mb-4 space-y-3">
-                  <div>
-                    <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
-                    <BookingServiceCategoryChips
-                      categories={bookingServiceCategories}
-                      selectedCategoryId={selectedBookingServiceCategoryId}
-                      onSelect={setSelectedBookingServiceCategoryId}
-                    />
-                  </div>
-                  <input
-                    value={serviceQuery}
-                    onChange={(e) => setServiceQuery(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-4 py-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                    placeholder="Search by service name / type"
-                  />
-                </div>
-
-                <div className="flex-1 overflow-y-auto pr-1">
-                  {servicesLoading ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading services...</div>
-                  ) : filteredServices.length === 0 ? (
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
-                      {filteredServices.map((service) => (
-                        <BookingServiceSelectionCard
-                          key={service.id}
-                          service={service}
-                          onSelect={() => void openBookingModal(service)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
+              <div className="min-h-0 flex-1 overflow-y-auto pr-1">
+                <BookingServicePicker
+                  categories={bookingServiceCategories}
+                  services={filteredServices}
+                  selectedCategoryId={selectedBookingServiceCategoryId}
+                  onCategoryChange={setSelectedBookingServiceCategoryId}
+                  searchQuery={serviceQuery}
+                  onSearchQueryChange={setServiceQuery}
+                  onSelectService={(service) => void openBookingModal(service as BookingServiceOption)}
+                  loading={servicesLoading}
+                  emptyMessage="No services found."
+                  searchPlaceholder="Search service name..."
+                />
               </div>
             ) : catalogTab === 'service-packages' ? (
               <div className="flex min-h-0 flex-1 flex-col">
@@ -7642,65 +7550,41 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 onClick={() => {
                   setCartEditMainServicePickerOpen(false)
                   setCartEditMainServicePickerTargetId(null)
-                  setCartEditMainServiceQuery('')
+                  setCartEditMainServicePickerQuery('')
                 }}
                 className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-200 hover:text-gray-700"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="p-5">
-              <div className="mb-3">
-                <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
-                <BookingServiceCategoryChips
-                  categories={bookingServiceCategories}
-                  selectedCategoryId={cartEditMainServiceCategoryId}
-                  onSelect={setCartEditMainServiceCategoryId}
-                />
-              </div>
-              <input
-                type="text"
-                value={cartEditMainServiceQuery}
-                onChange={(e) => setCartEditMainServiceQuery(e.target.value)}
-                placeholder="Search service name…"
-                className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            <div className="max-h-[70vh] overflow-y-auto p-5">
+              <BookingServicePicker
+                categories={bookingServiceCategories}
+                services={cartEditMainServiceCatalog}
+                selectedCategoryId={cartEditMainServiceCategoryId}
+                onCategoryChange={setCartEditMainServiceCategoryId}
+                searchQuery={cartEditMainServicePickerQuery}
+                onSearchQueryChange={setCartEditMainServicePickerQuery}
+                selectedServiceId={cartEditMainServicePickerTargetId === '__original__' ? cartEditOriginalService?.id : null}
+                excludeServiceIds={[
+                  ...(cartEditOriginalService?.id ? [cartEditOriginalService.id] : []),
+                  ...cartEditAddedMainBlocks.map((block) => block.service_id),
+                ]}
+                onSelectService={async (service) => {
+                  const selected = service as BookingServiceOption
+                  if (cartEditMainServicePickerTargetId === '__original__') {
+                    await selectCartEditOriginalService(selected)
+                  } else {
+                    await addCartEditMainServiceBlock(selected)
+                    setCartEditMainServicePickerOpen(false)
+                    setCartEditMainServicePickerTargetId(null)
+                    setCartEditMainServicePickerQuery('')
+                    setCartEditMainServiceCategoryId(null)
+                  }
+                }}
+                emptyMessage="No services found."
+                searchPlaceholder="Search service name..."
               />
-              <div className="mt-3 max-h-[50vh] overflow-y-auto pr-1">
-                {(() => {
-                  const filteredCatalog = cartEditMainServiceCatalog
-                    .filter((service) => service.id !== cartEditOriginalService?.id)
-                    .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
-                    .filter((service) => bookingServiceMatchesCategory(service, cartEditMainServiceCategoryId))
-                    .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()) || (service.cn_name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
-                    .slice(0, 200)
-
-                  return filteredCatalog.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {filteredCatalog.map((service) => (
-                        <BookingServiceSelectionCard
-                          key={`cart-pick-main-modal-${service.id}`}
-                          service={service}
-                          onSelect={async () => {
-                            if (cartEditMainServicePickerTargetId === '__original__') {
-                              await selectCartEditOriginalService(service)
-                            } else {
-                              await addCartEditMainServiceBlock(service)
-                              setCartEditMainServicePickerOpen(false)
-                              setCartEditMainServicePickerTargetId(null)
-                              setCartEditMainServiceQuery('')
-                              setCartEditMainServiceCategoryId(null)
-                            }
-                          }}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
-                      No services found.
-                    </div>
-                  )
-                })()}
-              </div>
             </div>
           </div>
         </div>

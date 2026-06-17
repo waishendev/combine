@@ -12,6 +12,7 @@ import {
   validateSettlementAmountInput,
 } from '@/components/pos/settlementAmountUtils'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
+import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { normalizeInternationalPhone } from '@/lib/phone'
@@ -41,77 +42,6 @@ const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }
 const toPaymentCents = (value: number | string | null | undefined) => {
   const numeric = Number(value ?? 0)
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
-}
-
-function formatBookingServiceCardPrice(service: BookingServiceOption): string {
-  const isRange = service.price_mode === 'range' && service.price_range_min != null && service.price_range_max != null
-  if (isRange) {
-    return `RM ${Number(service.price_range_min).toFixed(2)} - RM ${Number(service.price_range_max).toFixed(2)}`
-  }
-
-  const amount = Number.isFinite(Number(service.price)) && Number(service.price) > 0
-    ? Number(service.price)
-    : Number(service.service_price ?? 0)
-  return `RM ${amount.toFixed(2)}`
-}
-
-function bookingServiceMatchesCategory(service: BookingServiceOption, categoryId: number | null): boolean {
-  if (!categoryId) return true
-  return (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(categoryId)
-}
-
-function BookingServiceCategoryChips({
-  categories,
-  selectedCategoryId,
-  onSelect,
-}: {
-  categories: BookingServiceCategoryOption[]
-  selectedCategoryId: number | null
-  onSelect: (categoryId: number | null) => void
-}) {
-  const chipClass = (active: boolean) => `whitespace-nowrap rounded-full border px-4 py-2 text-sm font-semibold transition ${active ? 'border-blue-600 bg-blue-600 text-white shadow-sm' : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50'}`
-
-  return (
-    <div className="flex gap-2 overflow-x-auto pb-1">
-      <button type="button" onClick={() => onSelect(null)} className={chipClass(selectedCategoryId == null)}>All</button>
-      {categories.map((category) => (
-        <button key={category.id} type="button" onClick={() => onSelect(category.id)} className={chipClass(selectedCategoryId === category.id)}>
-          {category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}
-        </button>
-      ))}
-    </div>
-  )
-}
-
-function BookingServiceSelectionCard({
-  service,
-  selected,
-  onSelect,
-  disabled = false,
-}: {
-  service: BookingServiceOption
-  selected?: boolean
-  onSelect: () => void
-  disabled?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      disabled={disabled}
-      onClick={onSelect}
-      className={`min-h-[140px] rounded-2xl border p-4 text-left transition ${
-        selected
-          ? 'border-blue-600 bg-blue-50 shadow-md ring-2 ring-blue-500/20'
-          : 'border-gray-200 bg-white shadow-sm hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-md'
-      } disabled:cursor-not-allowed disabled:opacity-60`}
-    >
-      <PosServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-base font-bold text-gray-900" secondaryClassName="mt-1 text-sm text-gray-500" />
-      <div className="mt-3 space-y-1 text-sm">
-        <p className="font-medium text-gray-600">{Number(service.duration_min ?? 0)} mins</p>
-        <p className="font-bold text-blue-700">{formatBookingServiceCardPrice(service)}</p>
-      </div>
-    </button>
-  )
 }
 
 type StaffOption = {
@@ -307,7 +237,9 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentServices, setCreateAppointmentServices] = useState<BookingServiceOption[]>([])
   const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
   const [createAppointmentServiceCategoryId, setCreateAppointmentServiceCategoryId] = useState<number | null>(null)
+  const [createAppointmentServiceQuery, setCreateAppointmentServiceQuery] = useState('')
   const [createAppointmentExtraServiceCategoryIds, setCreateAppointmentExtraServiceCategoryIds] = useState<Record<string, number | null>>({})
+  const [createAppointmentExtraServiceQueries, setCreateAppointmentExtraServiceQueries] = useState<Record<string, string>>({})
   const [createAppointmentServicesLoading, setCreateAppointmentServicesLoading] = useState(false)
   const [createAppointmentSubmitting, setCreateAppointmentSubmitting] = useState(false)
   const [createAppointmentError, setCreateAppointmentError] = useState<string | null>(null)
@@ -805,6 +737,10 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentServiceDraft(null)
     setCreateAppointmentSelectedOptionIds([])
     setCreateAppointmentExtraServiceBlocks([])
+    setCreateAppointmentServiceCategoryId(null)
+    setCreateAppointmentServiceQuery('')
+    setCreateAppointmentExtraServiceCategoryIds({})
+    setCreateAppointmentExtraServiceQueries({})
     setCreateAppointmentQuestions([])
     setCreateAppointmentAssignedStaffId(null)
     setCreateAppointmentDate(appointmentDateFilter || '')
@@ -3125,50 +3061,34 @@ export default function PosAppointmentsWorkspace({
                       + Add Main Service
                     </button>
                   </div>
-                  <div>
-                    <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
-                    <BookingServiceCategoryChips
-                      categories={bookingServiceCategories}
-                      selectedCategoryId={createAppointmentServiceCategoryId}
-                      onSelect={(next) => {
-                        setCreateAppointmentServiceCategoryId(next)
-                        if (next && createAppointmentServiceDraft && !bookingServiceMatchesCategory(createAppointmentServiceDraft, next)) {
-                          setCreateAppointmentServiceDraft(null)
-                          setCreateAppointmentQuestions([])
-                          setCreateAppointmentSelectedOptionIds([])
-                        }
-                      }}
-                    />
-                  </div>
-                  <div>
-                    <p className="mb-2 text-xs font-semibold text-gray-600">Primary Service</p>
-                    {createAppointmentServicesLoading ? (
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading services...</div>
-                    ) : (() => {
-                      const options = createAppointmentServices.filter((service) => bookingServiceMatchesCategory(service, createAppointmentServiceCategoryId))
-                      return options.length > 0 ? (
-                        <div className="grid max-h-80 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
-                          {options.map((service) => (
-                            <BookingServiceSelectionCard
-                              key={`create-primary-${service.id}`}
-                              service={service}
-                              selected={createAppointmentServiceDraft?.id === service.id}
-                              onSelect={() => {
-                                setCreateAppointmentServiceDraft(service)
-                                setCreateAppointmentSelectedOptionIds([])
-                                setCreateAppointmentAssignedStaffId(null)
-                                setCreateAppointmentSlotValue('')
-                                setCreateAppointmentSlots([])
-                                void loadCreateAppointmentQuestions(service.id)
-                              }}
-                            />
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
-                      )
-                    })()}
-                  </div>
+                  <BookingServicePicker
+                    categories={bookingServiceCategories}
+                    services={createAppointmentServices}
+                    selectedCategoryId={createAppointmentServiceCategoryId}
+                    onCategoryChange={(next) => {
+                      setCreateAppointmentServiceCategoryId(next)
+                      if (next && createAppointmentServiceDraft && !bookingServiceMatchesPickerCategory(createAppointmentServiceDraft, next)) {
+                        setCreateAppointmentServiceDraft(null)
+                        setCreateAppointmentQuestions([])
+                        setCreateAppointmentSelectedOptionIds([])
+                      }
+                    }}
+                    searchQuery={createAppointmentServiceQuery}
+                    onSearchQueryChange={setCreateAppointmentServiceQuery}
+                    selectedServiceId={createAppointmentServiceDraft?.id ?? null}
+                    onSelectService={(service) => {
+                      const selected = service as BookingServiceOption
+                      setCreateAppointmentServiceDraft(selected)
+                      setCreateAppointmentSelectedOptionIds([])
+                      setCreateAppointmentAssignedStaffId(null)
+                      setCreateAppointmentSlotValue('')
+                      setCreateAppointmentSlots([])
+                      void loadCreateAppointmentQuestions(selected.id)
+                    }}
+                    loading={createAppointmentServicesLoading}
+                    emptyMessage="No services found."
+                    searchPlaceholder="Search service name..."
+                  />
 
                   {createAppointmentServiceDraft ? (
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-xs text-blue-900">
@@ -3235,72 +3155,75 @@ export default function PosAppointmentsWorkspace({
                       </p>
                     </div>
                   ) : null}
-                  {createAppointmentExtraServiceBlocks.map((block) => (
-                    <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
-                      <div className="flex items-center gap-2">
-                        <div className="min-w-0 flex-1 space-y-3">
-                          <div>
-                            <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
-                            <BookingServiceCategoryChips
-                              categories={bookingServiceCategories}
-                              selectedCategoryId={createAppointmentExtraServiceCategoryIds[block.id] ?? null}
-                              onSelect={(next) => {
-                                setCreateAppointmentExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
-                                if (next && block.service && !bookingServiceMatchesCategory(block.service, next)) {
-                                  setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
-                                }
-                              }}
-                            />
-                          </div>
+                  {createAppointmentExtraServiceBlocks.map((block, blockIndex) => (
+                    <div key={block.id} className="space-y-3 rounded-xl border border-gray-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-2">
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block {blockIndex + 2}</p>
+                          {block.service ? <PosServiceNameStack name={block.service.name} cnName={block.service.cn_name} primaryClassName="mt-0.5 text-sm font-semibold text-gray-900" secondaryClassName="mt-0.5 text-xs text-gray-500" /> : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCreateAppointmentExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))
+                            setCreateAppointmentExtraServiceCategoryIds((prev) => {
+                              const next = { ...prev }
+                              delete next[block.id]
+                              return next
+                            })
+                            setCreateAppointmentExtraServiceQueries((prev) => {
+                              const next = { ...prev }
+                              delete next[block.id]
+                              return next
+                            })
+                          }}
+                          className="shrink-0 rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50"
+                        >
+                          Remove
+                        </button>
+                      </div>
+                      <div className="min-w-0">
                           {(() => {
-                            const takenByOthers = new Set<number>([
+                            const takenByOthers = [
                               ...(createAppointmentServiceDraft?.id ? [createAppointmentServiceDraft.id] : []),
                               ...createAppointmentExtraServiceBlocks
                                 .filter((row) => row.id !== block.id)
                                 .map((row) => Number(row.service?.id ?? 0))
                                 .filter((id) => id > 0),
-                            ])
-                            const categoryId = createAppointmentExtraServiceCategoryIds[block.id] ?? null
-                            const options = createAppointmentServices
-                              .filter((service) => !takenByOthers.has(service.id))
-                              .filter((service) => bookingServiceMatchesCategory(service, categoryId))
+                            ]
 
-                            if (createAppointmentServicesLoading) {
-                              return <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">Loading services...</div>
-                            }
-
-                            return options.length > 0 ? (
-                              <div className="grid max-h-72 grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2 lg:grid-cols-3">
-                                {options.map((service) => (
-                                  <BookingServiceSelectionCard
-                                    key={`create-extra-${block.id}-${service.id}`}
-                                    service={service}
-                                    selected={block.service?.id === service.id}
-                                    onSelect={async () => {
-                                      const questions = await fetchServiceAddonQuestions(service.id)
-                                      setCreateAppointmentExtraServiceBlocks((prev) =>
-                                        prev.map((row) =>
-                                          row.id === block.id
-                                            ? { ...row, service, questions, selectedOptionIds: [] }
-                                            : row,
-                                        ),
-                                      )
-                                    }}
-                                  />
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No services found.</div>
+                            return (
+                              <BookingServicePicker
+                                categories={bookingServiceCategories}
+                                services={createAppointmentServices}
+                                selectedCategoryId={createAppointmentExtraServiceCategoryIds[block.id] ?? null}
+                                onCategoryChange={(next) => {
+                                  setCreateAppointmentExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
+                                  if (next && block.service && !bookingServiceMatchesPickerCategory(block.service, next)) {
+                                    setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
+                                  }
+                                }}
+                                searchQuery={createAppointmentExtraServiceQueries[block.id] ?? ''}
+                                onSearchQueryChange={(query) => setCreateAppointmentExtraServiceQueries((prev) => ({ ...prev, [block.id]: query }))}
+                                selectedServiceId={block.service?.id ?? null}
+                                excludeServiceIds={takenByOthers}
+                                onSelectService={async (service) => {
+                                  const selected = service as BookingServiceOption
+                                  const questions = await fetchServiceAddonQuestions(selected.id)
+                                  setCreateAppointmentExtraServiceBlocks((prev) =>
+                                    prev.map((row) =>
+                                      row.id === block.id
+                                        ? { ...row, service: selected, questions, selectedOptionIds: [] }
+                                        : row,
+                                    ),
+                                  )
+                                }}
+                                loading={createAppointmentServicesLoading}
+                                emptyMessage="No services found."
+                                searchPlaceholder="Search service name..."
+                              />
                             )
                           })()}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setCreateAppointmentExtraServiceBlocks((prev) => prev.filter((row) => row.id !== block.id))}
-                          className="rounded-md border border-rose-300 bg-white px-2 py-1 text-xs font-semibold text-rose-700"
-                        >
-                          Remove
-                        </button>
                       </div>
                       {block.questions.map((question) => (
                         <div key={`${block.id}-${question.id}`} className="rounded border border-gray-200 p-2">
@@ -4520,51 +4443,23 @@ export default function PosAppointmentsWorkspace({
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="p-5">
-              <div className="mb-3">
-                <p className="mb-2 text-xs font-semibold text-gray-600">Category</p>
-                <BookingServiceCategoryChips
-                  categories={bookingServiceCategories}
-                  selectedCategoryId={editMainServiceCategoryId}
-                  onSelect={setEditMainServiceCategoryId}
-                />
-              </div>
-              <input
-                type="text"
-                value={editMainServiceQuery}
-                onChange={(e) => setEditMainServiceQuery(e.target.value)}
-                placeholder="Search service name…"
-                className="h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+            <div className="max-h-[70vh] overflow-y-auto p-5">
+              <BookingServicePicker
+                categories={bookingServiceCategories}
+                services={editMainServiceCatalog}
+                selectedCategoryId={editMainServiceCategoryId}
+                onCategoryChange={setEditMainServiceCategoryId}
+                searchQuery={editMainServiceQuery}
+                onSearchQueryChange={setEditMainServiceQuery}
+                selectedServiceId={editMainServicePickerTargetId === '__original__' ? editOriginalService?.id : null}
+                excludeServiceIds={[
+                  ...(editOriginalService?.id ? [editOriginalService.id] : []),
+                  ...editAddedMainBlocks.map((block) => block.service_id),
+                ]}
+                onSelectService={(service) => void selectEditMainServiceForBlock(editMainServicePickerTargetId, service as BookingServiceOption)}
+                emptyMessage="No services found."
+                searchPlaceholder="Search service name..."
               />
-              <div className="mt-3 max-h-[50vh] overflow-y-auto pr-1">
-                {(() => {
-                  const filteredCatalog = editMainServiceCatalog
-                    .filter((service) => service.id !== editOriginalService?.id)
-                    .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
-                    .filter((service) => bookingServiceMatchesCategory(service, editMainServiceCategoryId))
-                    .filter((service) => {
-                      const query = editMainServiceQuery.trim().toLowerCase()
-                      return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
-                    })
-                    .slice(0, 200)
-
-                  return filteredCatalog.length > 0 ? (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                      {filteredCatalog.map((service) => (
-                        <BookingServiceSelectionCard
-                          key={`pick-main-modal-${service.id}`}
-                          service={service}
-                          onSelect={() => void selectEditMainServiceForBlock(editMainServicePickerTargetId, service)}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">
-                      No services found.
-                    </div>
-                  )
-                })()}
-              </div>
             </div>
           </div>
         </div>
