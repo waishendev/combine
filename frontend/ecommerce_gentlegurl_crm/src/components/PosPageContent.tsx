@@ -578,6 +578,8 @@ function PosCartDiscountAmount({
   return <span className={className}>RM {final.toFixed(2)}</span>
 }
 
+type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
+
 type BookingServiceOption = {
   id: number
   name: string
@@ -591,6 +593,8 @@ type BookingServiceOption = {
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
+  category_ids?: number[]
+  categories?: BookingServiceCategoryOption[]
 }
 
 type BookingServiceQuestionOption = {
@@ -1226,6 +1230,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [selectedProductQty, setSelectedProductQty] = useState(1)
   const [fullProductData, setFullProductData] = useState<any>(null)
   const [serviceQuery, setServiceQuery] = useState('')
+  const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
+  const [selectedBookingServiceCategoryId, setSelectedBookingServiceCategoryId] = useState<number | null>(null)
   const [services, setServices] = useState<BookingServiceOption[]>([])
   const [bookingProducts, setBookingProducts] = useState<BookingProductOption[]>([])
   const [bookingProductsLoading, setBookingProductsLoading] = useState(false)
@@ -1312,6 +1318,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
   const [cartEditMainServiceQuery, setCartEditMainServiceQuery] = useState('')
+  const [cartEditMainServiceCategoryId, setCartEditMainServiceCategoryId] = useState<number | null>(null)
   const [cartEditMainServicePickerOpen, setCartEditMainServicePickerOpen] = useState(false)
   const [cartEditMainServicePickerTargetId, setCartEditMainServicePickerTargetId] = useState<'__new__' | '__original__' | null>(null)
   const [cartEditOriginalService, setCartEditOriginalService] = useState<BookingServiceOption | null>(null)
@@ -2668,6 +2675,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 .map((staff) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim() }))
                 .filter((staff) => staff.id > 0 && staff.name)
               : [],
+            category_ids: Array.isArray(maybe.category_ids) ? (maybe.category_ids as unknown[]).map(Number).filter((id) => Number.isFinite(id) && id > 0) : [],
+            categories: Array.isArray(maybe.categories)
+              ? (maybe.categories as Array<Record<string, unknown>>).map((category) => ({ id: Number(category.id), name: String(category.name ?? '').trim(), cn_name: typeof category.cn_name === 'string' ? category.cn_name.trim() || null : null })).filter((category) => category.id > 0 && category.name)
+              : [],
           }
         })
         .filter((item): item is BookingServiceOption => Boolean(item && item.name))
@@ -2677,6 +2688,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setServices([])
     } finally {
       setServicesLoading(false)
+    }
+  }, [])
+
+  const fetchBookingServiceCategories = useCallback(async () => {
+    try {
+      const res = await fetch('/api/proxy/booking/service-categories', { cache: 'no-store' })
+      if (!res.ok) return
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
+      const list = Array.isArray(payload) ? payload : []
+      setBookingServiceCategories(list.map((item): BookingServiceCategoryOption | null => {
+        if (!item || typeof item !== 'object') return null
+        const row = item as Record<string, unknown>
+        const id = Number(row.id)
+        const name = String(row.name ?? '').trim()
+        if (!Number.isFinite(id) || id <= 0 || !name) return null
+        return { id, name, cn_name: typeof row.cn_name === 'string' ? row.cn_name.trim() || null : null }
+      }).filter((item): item is BookingServiceCategoryOption => Boolean(item)))
+    } catch {
+      setBookingServiceCategories([])
     }
   }, [])
 
@@ -3562,6 +3593,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       .filter((block) => block.service_id > 0)
     setCartEditAddedMainBlocks(addedMainBlocksSeed)
     setCartEditMainServiceQuery('')
+                  setCartEditMainServiceCategoryId(null)
     setCartEditMainServicePickerOpen(false)
     setCartEditSettledAmount(settlement.settled_service_amount != null ? String(settlement.settled_service_amount) : '')
     setCartEditStaffSplitAutoBalance(true)
@@ -3893,6 +3925,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     void loadCategories()
     void fetchActiveStaffs()
     void fetchServices()
+      void fetchBookingServiceCategories()
     const loadBookingProductCategories = async () => {
       try {
         const res = await fetch('/api/proxy/admin/booking/product-categories', { cache: 'no-store' })
@@ -3974,14 +4007,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const filteredServices = useMemo(() => {
     const keyword = serviceQuery.trim().toLowerCase()
-    if (!keyword) return services
+    const categoryFiltered = selectedBookingServiceCategoryId
+      ? services.filter((service) => (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(selectedBookingServiceCategoryId))
+      : services
+    if (!keyword) return categoryFiltered
 
-    return services.filter((service) =>
+    return categoryFiltered.filter((service) =>
       service.name.toLowerCase().includes(keyword) ||
       (service.cn_name ?? '').toLowerCase().includes(keyword) ||
       String(service.service_type ?? '').toLowerCase().includes(keyword),
     )
-  }, [serviceQuery, services])
+  }, [selectedBookingServiceCategoryId, serviceQuery, services])
 
 
   const filteredServicePackages = useMemo(() => {
@@ -5865,7 +5901,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
             ) : catalogTab === 'book-service' ? (
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="mb-4">
+                <div className="mb-4 space-y-3">
+                  <label className="block text-xs font-semibold text-gray-600">
+                    Category:
+                    <select
+                      value={selectedBookingServiceCategoryId ?? ''}
+                      onChange={(e) => setSelectedBookingServiceCategoryId(e.target.value ? Number(e.target.value) : null)}
+                      className="mt-1 h-11 w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      <option value="">All Categories</option>
+                      {bookingServiceCategories.map((category) => (
+                        <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>
+                      ))}
+                    </select>
+                  </label>
                   <input
                     value={serviceQuery}
                     onChange={(e) => setServiceQuery(e.target.value)}
@@ -7554,6 +7603,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
             <div className="p-5">
+              <label className="mb-3 block text-xs font-semibold text-gray-600">
+                Category:
+                <select
+                  value={cartEditMainServiceCategoryId ?? ''}
+                  onChange={(e) => setCartEditMainServiceCategoryId(e.target.value ? Number(e.target.value) : null)}
+                  className="mt-1 h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                >
+                  <option value="">All Categories</option>
+                  {bookingServiceCategories.map((category) => (
+                    <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>
+                  ))}
+                </select>
+              </label>
               <input
                 type="text"
                 value={cartEditMainServiceQuery}
@@ -7565,6 +7627,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 {cartEditMainServiceCatalog
                   .filter((service) => service.id !== cartEditOriginalService?.id)
                   .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
+                  .filter((service) => !cartEditMainServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(cartEditMainServiceCategoryId))
                   .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()) || (service.cn_name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
                   .slice(0, 200)
                   .map((service) => (
@@ -7590,6 +7653,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 {cartEditMainServiceCatalog
                   .filter((service) => service.id !== cartEditOriginalService?.id)
                   .filter((service) => !cartEditAddedMainBlocks.some((b) => b.service_id === service.id))
+                  .filter((service) => !cartEditMainServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(cartEditMainServiceCategoryId))
                   .filter((service) => (service.name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()) || (service.cn_name ?? '').toLowerCase().includes(cartEditMainServiceQuery.trim().toLowerCase()))
                   .length === 0 ? (
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-6 text-center text-sm text-gray-500">

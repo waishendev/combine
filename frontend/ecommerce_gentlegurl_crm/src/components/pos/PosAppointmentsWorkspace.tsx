@@ -60,6 +60,8 @@ function durationMinutesFromRange(startAt?: string | null, endAt?: string | null
   return Math.round(ms / 60000)
 }
 
+type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
+
 type BookingServiceOption = {
   id: number
   name: string
@@ -73,6 +75,8 @@ type BookingServiceOption = {
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
+  category_ids?: number[]
+  categories?: BookingServiceCategoryOption[]
 }
 
 function PosServiceNameStack({
@@ -230,6 +234,9 @@ export default function PosAppointmentsWorkspace({
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
   const [createAppointmentModalOpen, setCreateAppointmentModalOpen] = useState(false)
   const [createAppointmentServices, setCreateAppointmentServices] = useState<BookingServiceOption[]>([])
+  const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
+  const [createAppointmentServiceCategoryId, setCreateAppointmentServiceCategoryId] = useState<number | null>(null)
+  const [createAppointmentExtraServiceCategoryIds, setCreateAppointmentExtraServiceCategoryIds] = useState<Record<string, number | null>>({})
   const [createAppointmentServicesLoading, setCreateAppointmentServicesLoading] = useState(false)
   const [createAppointmentSubmitting, setCreateAppointmentSubmitting] = useState(false)
   const [createAppointmentError, setCreateAppointmentError] = useState<string | null>(null)
@@ -318,6 +325,7 @@ export default function PosAppointmentsWorkspace({
   const [editMainServiceCatalog, setEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [editMainServiceCatalogLoading, setEditMainServiceCatalogLoading] = useState(false)
   const [editMainServiceQuery, setEditMainServiceQuery] = useState('')
+  const [editMainServiceCategoryId, setEditMainServiceCategoryId] = useState<number | null>(null)
   const [editAddedMainBlocks, setEditAddedMainBlocks] = useState<Array<{
     tmp_id: string
     service_id: number
@@ -593,6 +601,10 @@ export default function PosAppointmentsWorkspace({
                 .map((staff) => ({ id: Number(staff.id), name: String(staff.name ?? '').trim() }))
                 .filter((staff) => staff.id > 0 && staff.name)
               : [],
+            category_ids: Array.isArray(maybe.category_ids) ? (maybe.category_ids as unknown[]).map(Number).filter((id) => Number.isFinite(id) && id > 0) : [],
+            categories: Array.isArray(maybe.categories)
+              ? (maybe.categories as Array<Record<string, unknown>>).map((category) => ({ id: Number(category.id), name: String(category.name ?? '').trim(), cn_name: typeof category.cn_name === 'string' ? category.cn_name.trim() || null : null })).filter((category) => category.id > 0 && category.name)
+              : [],
           }
         })
         .filter((item): item is BookingServiceOption => Boolean(item && item.name))
@@ -601,6 +613,26 @@ export default function PosAppointmentsWorkspace({
       setCreateAppointmentServices([])
     } finally {
       setCreateAppointmentServicesLoading(false)
+    }
+  }, [])
+
+  const fetchBookingServiceCategories = useCallback(async () => {
+    try {
+      const res = await fetch('/api/proxy/booking/service-categories', { cache: 'no-store' })
+      if (!res.ok) return
+      const json = await res.json().catch(() => null)
+      const payload = (json && typeof json === 'object' && 'data' in json) ? (json as { data?: unknown }).data : json
+      const list = Array.isArray(payload) ? payload : []
+      setBookingServiceCategories(list.map((item): BookingServiceCategoryOption | null => {
+        if (!item || typeof item !== 'object') return null
+        const row = item as Record<string, unknown>
+        const id = Number(row.id)
+        const name = String(row.name ?? '').trim()
+        if (!Number.isFinite(id) || id <= 0 || !name) return null
+        return { id, name, cn_name: typeof row.cn_name === 'string' ? row.cn_name.trim() || null : null }
+      }).filter((item): item is BookingServiceCategoryOption => Boolean(item)))
+    } catch {
+      setBookingServiceCategories([])
     }
   }, [])
 
@@ -685,6 +717,7 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentModalOpen(true)
     if (!createAppointmentServices.length) {
       void fetchCreateAppointmentServices()
+    void fetchBookingServiceCategories()
     }
   }, [appointmentDateFilter, appointmentQrProofPreviewUrl, cashShiftActionDisabled, createAppointmentServices.length, fetchCreateAppointmentServices, requireOpenShiftMessage, showMsg])
 
@@ -1301,6 +1334,7 @@ export default function PosAppointmentsWorkspace({
       .filter((block) => block.service_id > 0)
     setEditAddedMainBlocks(addedMainBlocksSeed)
     setEditMainServiceQuery('')
+                  setEditMainServiceCategoryId(null)
     setEditMainServicePickerOpen(false)
     setEditMainServicePickerTargetId(null)
 
@@ -2979,10 +3013,29 @@ export default function PosAppointmentsWorkspace({
                     </button>
                   </div>
                   <div>
+                    <label className="text-xs font-semibold text-gray-600">Category:</label>
+                    <select
+                      value={createAppointmentServiceCategoryId ?? ''}
+                      onChange={(e) => {
+                        const next = e.target.value ? Number(e.target.value) : null
+                        setCreateAppointmentServiceCategoryId(next)
+                        if (next && createAppointmentServiceDraft && !(createAppointmentServiceDraft.category_ids ?? createAppointmentServiceDraft.categories?.map((category) => category.id) ?? []).includes(next)) {
+                          setCreateAppointmentServiceDraft(null)
+                          setCreateAppointmentQuestions([])
+                          setCreateAppointmentSelectedOptionIds([])
+                        }
+                      }}
+                      className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                    >
+                      <option value="">All Categories</option>
+                      {bookingServiceCategories.map((category) => <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>)}
+                    </select>
+                  </div>
+                  <div>
                     <label className="text-xs font-semibold text-gray-600">Primary Service</label>
                     <div className="mt-1">
                       <BookingPackageItemServicePicker
-                        options={createAppointmentServices.map((service) => ({
+                        options={createAppointmentServices.filter((service) => !createAppointmentServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(createAppointmentServiceCategoryId)).map((service) => ({
                           id: service.id,
                           name: service.service_type ? `${service.name} (${service.service_type})` : service.name,
                           cn_name: service.cn_name,
@@ -3078,7 +3131,21 @@ export default function PosAppointmentsWorkspace({
                   {createAppointmentExtraServiceBlocks.map((block) => (
                     <div key={block.id} className="space-y-2 rounded-lg border border-gray-200 bg-white p-3">
                       <div className="flex items-center gap-2">
-                        <div className="min-w-0 flex-1">
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <select
+                            value={createAppointmentExtraServiceCategoryIds[block.id] ?? ''}
+                            onChange={(e) => {
+                              const next = e.target.value ? Number(e.target.value) : null
+                              setCreateAppointmentExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
+                              if (next && block.service && !(block.service.category_ids ?? block.service.categories?.map((category) => category.id) ?? []).includes(next)) {
+                                setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
+                              }
+                            }}
+                            className="h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm"
+                          >
+                            <option value="">All Categories</option>
+                            {bookingServiceCategories.map((category) => <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>)}
+                          </select>
                           <BookingPackageItemServicePicker
                             options={(() => {
                               const takenByOthers = new Set<number>([
@@ -3090,6 +3157,7 @@ export default function PosAppointmentsWorkspace({
                               ])
                               return createAppointmentServices
                                 .filter((service) => !takenByOthers.has(service.id))
+                                .filter((service) => !createAppointmentExtraServiceCategoryIds[block.id] || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(createAppointmentExtraServiceCategoryIds[block.id] as number))
                                 .map((service) => ({ id: service.id, name: service.name, cn_name: service.cn_name }))
                             })()}
                             value={block.service?.id ? String(block.service.id) : ''}
@@ -4374,6 +4442,13 @@ export default function PosAppointmentsWorkspace({
               </button>
             </div>
             <div className="p-5">
+              <label className="mb-3 block text-xs font-semibold text-gray-600">
+                Category:
+                <select value={editMainServiceCategoryId ?? ''} onChange={(e) => setEditMainServiceCategoryId(e.target.value ? Number(e.target.value) : null)} className="mt-1 h-11 w-full rounded-xl border-2 border-gray-300 bg-white px-3 text-sm font-semibold text-gray-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20">
+                  <option value="">All Categories</option>
+                  {bookingServiceCategories.map((category) => <option key={category.id} value={category.id}>{category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}</option>)}
+                </select>
+              </label>
               <input
                 type="text"
                 value={editMainServiceQuery}
@@ -4385,6 +4460,7 @@ export default function PosAppointmentsWorkspace({
                 {editMainServiceCatalog
                   .filter((service) => service.id !== editOriginalService?.id)
                   .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
+                  .filter((service) => !editMainServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(editMainServiceCategoryId))
                   .filter((service) => {
                     const query = editMainServiceQuery.trim().toLowerCase()
                     return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
@@ -4409,6 +4485,7 @@ export default function PosAppointmentsWorkspace({
                 {editMainServiceCatalog
                   .filter((service) => service.id !== editOriginalService?.id)
                   .filter((service) => !editAddedMainBlocks.some((b) => b.service_id === service.id))
+                  .filter((service) => !editMainServiceCategoryId || (service.category_ids ?? service.categories?.map((category) => category.id) ?? []).includes(editMainServiceCategoryId))
                   .filter((service) => {
                     const query = editMainServiceQuery.trim().toLowerCase()
                     return (service.name ?? '').toLowerCase().includes(query) || (service.cn_name ?? '').toLowerCase().includes(query)
