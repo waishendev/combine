@@ -11,6 +11,9 @@ export type BookingProductRowData = {
   name: string
   cn_name?: string | null
   price: number
+  price_mode?: 'fixed' | 'range'
+  price_range_min?: number | null
+  price_range_max?: number | null
   barcode?: string | null
   description?: string | null
   category_ids?: number[]

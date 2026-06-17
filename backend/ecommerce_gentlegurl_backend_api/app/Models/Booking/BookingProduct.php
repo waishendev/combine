@@ -14,6 +14,9 @@ class BookingProduct extends Model
         'name',
         'cn_name',
         'price',
+        'price_mode',
+        'price_range_min',
+        'price_range_max',
         'barcode',
         'description',
         'image_path',
@@ -26,6 +29,8 @@ class BookingProduct extends Model
 
     protected $casts = [
         'price' => 'decimal:2',
+        'price_range_min' => 'decimal:2',
+        'price_range_max' => 'decimal:2',
         'is_active' => 'boolean',
     ];
 

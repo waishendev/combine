@@ -45,7 +45,10 @@ class BookingProductController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'cn_name' => ['nullable', 'string', 'max:255'],
-            'price' => ['required', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+            'price_mode' => ['nullable', 'in:fixed,range'],
+            'price_range_min' => ['nullable', 'numeric', 'min:0', 'required_if:price_mode,range'],
+            'price_range_max' => ['nullable', 'numeric', 'min:0', 'required_if:price_mode,range', 'gte:price_range_min'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category_ids' => ['nullable', 'array'],
@@ -54,6 +57,8 @@ class BookingProductController extends Controller
             'image' => ['nullable', 'image', 'max:5120'],
             'questions' => ['nullable', 'array'],
         ]);
+
+        $data = $this->normalizePricingPayload($data);
 
         if ($request->hasFile('image')) {
             $data['image_path'] = $request->file('image')->storeAs(
@@ -86,7 +91,10 @@ class BookingProductController extends Controller
         $data = $request->validate([
             'name' => ['sometimes', 'string', 'max:255'],
             'cn_name' => ['nullable', 'string', 'max:255'],
-            'price' => ['sometimes', 'numeric', 'min:0'],
+            'price' => ['nullable', 'numeric', 'min:0'],
+            'price_mode' => ['nullable', 'in:fixed,range'],
+            'price_range_min' => ['nullable', 'numeric', 'min:0', 'required_if:price_mode,range'],
+            'price_range_max' => ['nullable', 'numeric', 'min:0', 'required_if:price_mode,range', 'gte:price_range_min'],
             'barcode' => ['nullable', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'category_ids' => ['nullable', 'array'],
@@ -95,6 +103,8 @@ class BookingProductController extends Controller
             'image' => ['nullable', 'image', 'max:5120'],
             'questions' => ['nullable', 'array'],
         ]);
+
+        $data = $this->normalizePricingPayload($data, $product);
 
         $oldImagePath = $product->image_path;
         if ($request->hasFile('image')) {
@@ -122,6 +132,27 @@ class BookingProductController extends Controller
         }
 
         return $this->respond($product->fresh()->load(['categories', 'questions.options']));
+    }
+
+
+    private function normalizePricingPayload(array $data, ?BookingProduct $product = null): array
+    {
+        $mode = $data['price_mode'] ?? $product?->price_mode ?? 'fixed';
+        $data['price_mode'] = $mode === 'range' ? 'range' : 'fixed';
+
+        if ($data['price_mode'] === 'range') {
+            $min = round((float) ($data['price_range_min'] ?? $product?->price_range_min ?? 0), 2);
+            $max = round((float) ($data['price_range_max'] ?? $product?->price_range_max ?? $min), 2);
+            $data['price_range_min'] = $min;
+            $data['price_range_max'] = $max;
+            $data['price'] = $min;
+        } else {
+            $data['price'] = round((float) ($data['price'] ?? $product?->price ?? 0), 2);
+            $data['price_range_min'] = null;
+            $data['price_range_max'] = null;
+        }
+
+        return $data;
     }
 
 
@@ -241,13 +272,16 @@ class BookingProductController extends Controller
             return response()->json(['message' => 'Unable to build booking products CSV export.'], 500);
         }
 
-        fputcsv($stream, ['id', 'name', 'price', 'barcode', 'description', 'category_ids', 'is_active']);
+        fputcsv($stream, ['id', 'name', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'barcode', 'description', 'category_ids', 'is_active']);
 
         foreach ($rows as $p) {
             fputcsv($stream, [
                 $p->id,
                 $p->name,
                 $p->price,
+                $p->price_mode,
+                $p->price_range_min,
+                $p->price_range_max,
                 $p->barcode,
                 $p->description,
                 $p->categories->pluck('id')->implode('|'),
@@ -288,7 +322,7 @@ class BookingProductController extends Controller
         }
 
         $headers = array_map(fn ($h) => strtolower(trim((string) $h)), $headers);
-        $allowed = ['id', 'name', 'price', 'barcode', 'description', 'category_ids', 'is_active'];
+        $allowed = ['id', 'name', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'barcode', 'description', 'category_ids', 'is_active'];
         $unknown = array_values(array_diff(array_filter($headers), $allowed));
         if (! empty($unknown)) {
             fclose($handle);
@@ -309,7 +343,10 @@ class BookingProductController extends Controller
 
             $data = [
                 'name' => trim((string) ($payload['name'] ?? '')),
-                'price' => $payload['price'],
+                'price' => $payload['price'] ?? null,
+                'price_mode' => $payload['price_mode'] ?? 'fixed',
+                'price_range_min' => $payload['price_range_min'] ?? null,
+                'price_range_max' => $payload['price_range_max'] ?? null,
                 'barcode' => isset($payload['barcode']) ? trim((string) $payload['barcode']) : null,
                 'description' => isset($payload['description']) ? trim((string) $payload['description']) : null,
                 'is_active' => isset($payload['is_active']) ? filter_var($payload['is_active'], FILTER_VALIDATE_BOOLEAN) : true,
@@ -319,7 +356,10 @@ class BookingProductController extends Controller
             $validator = Validator::make($data, [
                 'name' => ['required', 'string', 'max:255'],
                 'cn_name' => ['nullable', 'string', 'max:255'],
-            'price' => ['required', 'numeric', 'min:0'],
+                'price' => ['nullable', 'numeric', 'min:0'],
+                'price_mode' => ['nullable', 'in:fixed,range'],
+                'price_range_min' => ['nullable', 'numeric', 'min:0', 'required_if:price_mode,range'],
+                'price_range_max' => ['nullable', 'numeric', 'min:0', 'required_if:price_mode,range', 'gte:price_range_min'],
                 'barcode' => ['nullable', 'string', 'max:255'],
                 'description' => ['nullable', 'string'],
                 'is_active' => ['nullable', 'boolean'],
@@ -331,7 +371,7 @@ class BookingProductController extends Controller
                 continue;
             }
 
-            $valid = $validator->validated();
+            $valid = $this->normalizePricingPayload($validator->validated());
             $syncIds = $valid['category_ids'] ?? [];
             unset($valid['category_ids']);
 

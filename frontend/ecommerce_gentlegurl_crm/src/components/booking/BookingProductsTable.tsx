@@ -15,6 +15,11 @@ import BookingProductCategoriesPanel from './BookingProductCategoriesPanel'
 import type { BookingProductCategory, BookingProductRowData } from './bookingProductTypes'
 import { getApiErrorMessage } from '@/lib/api-errors'
 
+const formatBookingProductPrice = (p: BookingProductRowData) =>
+  p.price_mode === 'range'
+    ? `RM ${Number(p.price_range_min ?? 0).toFixed(2)} - RM ${Number(p.price_range_max ?? 0).toFixed(2)}`
+    : `RM ${Number(p.price ?? 0).toFixed(2)}`
+
 type Meta = {
   current_page: number
   last_page: number
@@ -582,7 +587,7 @@ export default function BookingProductsTable({ permissions = [] as string[] }) {
                     )}
                   </td>
                   <td className="px-4 py-2 border border-gray-200"><p className="font-medium text-gray-900">{p.name}</p>{p.cn_name ? <p className="mt-0.5 text-xs text-gray-500">{p.cn_name}</p> : null}</td>
-                  <td className="px-4 py-2 border border-gray-200">RM {Number(p.price ?? 0).toFixed(2)}</td>
+                  <td className="px-4 py-2 border border-gray-200">{formatBookingProductPrice(p)}</td>
                   <td className="border border-gray-200 px-4 py-2">
                     <BookingProductCategoriesCell
                       product={p}

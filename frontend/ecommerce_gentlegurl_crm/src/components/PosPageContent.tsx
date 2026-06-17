@@ -639,7 +639,7 @@ type ServicePackageOption = {
 }
 
 type PosCatalogTab = 'products' | 'booking-products' | 'book-service' | 'service-packages' | 'settlement'
-type BookingProductOption = { id: number; name: string; cn_name?: string | null; barcode?: string | null; price: number; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean; questions?: BookingServiceQuestion[] }
+type BookingProductOption = { id: number; name: string; cn_name?: string | null; barcode?: string | null; price: number; price_mode?: 'fixed' | 'range'; price_range_min?: number | null; price_range_max?: number | null; image_url?: string | null; category?: { name?: string | null } | null; is_active?: boolean; questions?: BookingServiceQuestion[] }
 type BookingProductCategoryOption = { id: number; name: string; cn_name?: string | null; sort_order?: number; is_active?: boolean }
 
 type ProductOption = {
@@ -1384,6 +1384,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingProductDraft, setBookingProductDraft] = useState<BookingProductOption | null>(null)
   const [bookingProductSelectedOptionIds, setBookingProductSelectedOptionIds] = useState<number[]>([])
   const [bookingProductOptionError, setBookingProductOptionError] = useState<string | null>(null)
+  const [bookingProductActualPrice, setBookingProductActualPrice] = useState('')
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
@@ -2733,6 +2734,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             id: Number(row.id),
             name: String(row.name ?? ''),
             price: Number(row.price ?? 0),
+            price_mode: row.price_mode === 'range' ? 'range' : 'fixed',
+            price_range_min: row.price_range_min == null ? null : Number(row.price_range_min),
+            price_range_max: row.price_range_max == null ? null : Number(row.price_range_max),
             cn_name: typeof row.cn_name === 'string' ? row.cn_name : null,
             barcode: typeof row.barcode === 'string' ? row.barcode : null,
             questions: Array.isArray(row.questions) ? row.questions : [],
@@ -2747,11 +2751,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
-  const addBookingProductToCart = useCallback(async (row: BookingProductOption, selectedOptionIds: number[] = []) => {
+  const formatBookingProductCatalogPrice = (item: BookingProductOption) => item.price_mode === 'range' ? `RM ${Number(item.price_range_min ?? 0).toFixed(2)} - RM ${Number(item.price_range_max ?? 0).toFixed(2)}` : `RM ${Number(item.price ?? 0).toFixed(2)}`
+
+  const addBookingProductToCart = useCallback(async (row: BookingProductOption, selectedOptionIds: number[] = [], actualSellingPrice?: number) => {
     const res = await fetch('/api/proxy/pos/cart/add-booking-product', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT', selected_option_ids: selectedOptionIds }),
+      body: JSON.stringify({ booking_product_id: row.id, qty: 1, item_type: 'BOOKING_PRODUCT', selected_option_ids: selectedOptionIds, ...(actualSellingPrice != null ? { actual_selling_price: actualSellingPrice } : {}) }),
     })
     const json = await res.json().catch(() => null)
     if (!res.ok) {
@@ -5885,14 +5891,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
                 <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
                   {filteredBookingProducts.map((item) => (
-                    <button key={item.id} type="button" onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0) { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductSelectedOptionIds([]); setBookingProductOptionError(null); setBookingProductOptionModalOpen(true); } }} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
+                    <button key={item.id} type="button" onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0 && item.price_mode !== 'range') { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductSelectedOptionIds([]); setBookingProductActualPrice(''); setBookingProductOptionError(null); setBookingProductOptionModalOpen(true); } }} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-gray-900">{item.name}</p>
                           {item.cn_name ? <p className="truncate text-xs text-gray-500">{item.cn_name}</p> : null}
                           <p className="text-xs text-gray-500">{item.barcode ? `SKU: ${item.barcode}` : (item.category?.name ?? '-')}</p>
-                          <p className="mt-1 text-sm font-bold text-blue-700">RM {Number(item.price ?? 0).toFixed(2)}</p>
+                          <p className="mt-1 text-sm font-bold text-blue-700">{formatBookingProductCatalogPrice(item)}</p>
                         </div>
                       </div>
                     </button>
@@ -9524,11 +9530,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 </div>
               ))}
+              {bookingProductDraft.price_mode === 'range' ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+                  <p className="text-sm font-semibold text-gray-900">Actual Selling Price</p>
+                  <p className="mt-0.5 text-xs text-gray-600">Price Range: {formatBookingProductCatalogPrice(bookingProductDraft)}</p>
+                  <div className="relative mt-2 max-w-xs"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">RM</span><input type="number" min={bookingProductDraft.price_range_min ?? 0} max={bookingProductDraft.price_range_max ?? undefined} step="0.01" value={bookingProductActualPrice} onChange={(e) => setBookingProductActualPrice(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm text-gray-900" /></div>
+                </div>
+              ) : null}
             </div>
             {bookingProductOptionError ? <p className="mt-2 text-sm text-red-600">{bookingProductOptionError}</p> : null}
             <div className="flex justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
               <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700" onClick={() => setBookingProductOptionModalOpen(false)}>Cancel</button>
-              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={async () => { for (const q of (bookingProductDraft.questions ?? [])) { if (!q.is_required) continue; const has = q.options.some((o) => bookingProductSelectedOptionIds.includes(o.id)); if (!has) { setBookingProductOptionError('Please answer all required questions.'); return; } } setBookingProductOptionError(null); await addBookingProductToCart(bookingProductDraft, bookingProductSelectedOptionIds); setBookingProductOptionModalOpen(false); }}>Add to Cart</button>
+              <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={async () => { for (const q of (bookingProductDraft.questions ?? [])) { if (!q.is_required) continue; const has = q.options.some((o) => bookingProductSelectedOptionIds.includes(o.id)); if (!has) { setBookingProductOptionError('Please answer all required questions.'); return; } } const actualPrice = Number(bookingProductActualPrice); if (bookingProductDraft.price_mode === 'range') { const min = Number(bookingProductDraft.price_range_min ?? 0); const max = Number(bookingProductDraft.price_range_max ?? 0); if (!Number.isFinite(actualPrice) || actualPrice < min || actualPrice > max) { setBookingProductOptionError(`Enter an actual selling price between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.`); return; } } setBookingProductOptionError(null); await addBookingProductToCart(bookingProductDraft, bookingProductSelectedOptionIds, bookingProductDraft.price_mode === 'range' ? actualPrice : undefined); setBookingProductOptionModalOpen(false); }}>Add to Cart</button>
             </div>
           </div>
         </div>

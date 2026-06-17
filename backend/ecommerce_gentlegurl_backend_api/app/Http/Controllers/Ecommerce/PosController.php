@@ -1434,6 +1434,7 @@ class PosController extends Controller
             'qty' => ['nullable', 'integer', 'min:1'],
             'selected_option_ids' => ['nullable', 'array'],
             'selected_option_ids.*' => ['integer'],
+            'actual_selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         if ($validator->fails()) {
@@ -1569,6 +1570,7 @@ class PosController extends Controller
             'qty' => ['nullable', 'integer', 'min:1'],
             'selected_option_ids' => ['nullable', 'array'],
             'selected_option_ids.*' => ['integer'],
+            'actual_selling_price' => ['nullable', 'numeric', 'min:0'],
         ]);
         $qty = (int) ($validated['qty'] ?? 1);
         $hasItemType = Schema::hasColumn('pos_cart_items', 'item_type');
@@ -1613,7 +1615,20 @@ class PosController extends Controller
         })->filter()->values();
         $selectedSnapshotRows = $selectedSnapshots->all();
         $extraPrice = (float) $selectedSnapshots->flatMap(fn ($q) => $q['options'])->sum('extra_price');
-        $unitPriceSnapshot = round((float) $bookingProduct->price + $extraPrice, 2);
+        $basePrice = (float) $bookingProduct->price;
+        if (($bookingProduct->price_mode ?? 'fixed') === 'range') {
+            if (! array_key_exists('actual_selling_price', $validated) || $validated['actual_selling_price'] === null || $validated['actual_selling_price'] === '') {
+                return $this->respondError(__('Actual selling price is required for range booking products.'), 422);
+            }
+            $actualSellingPrice = round((float) $validated['actual_selling_price'], 2);
+            $minPrice = round((float) ($bookingProduct->price_range_min ?? 0), 2);
+            $maxPrice = round((float) ($bookingProduct->price_range_max ?? 0), 2);
+            if ($actualSellingPrice < $minPrice || $actualSellingPrice > $maxPrice) {
+                return $this->respondError(__('Actual selling price must be within the booking product price range.'), 422);
+            }
+            $basePrice = $actualSellingPrice;
+        }
+        $unitPriceSnapshot = round($basePrice + $extraPrice, 2);
         $targetSignature = $this->bookingProductOptionConfigurationSignature($selectedSnapshotRows);
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = PosCartItem::query()
