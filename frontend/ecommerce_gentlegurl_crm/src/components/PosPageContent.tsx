@@ -9077,7 +9077,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
 
       {priceEditTarget ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 p-4">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
