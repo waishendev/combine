@@ -3964,6 +3964,86 @@ class PosController extends Controller
 
 
 
+
+    protected function posCartRefreshResponse(PosCart $cart)
+    {
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
+    }
+
+    public function updateCartItemPrice(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'unit_price' => ['required', 'numeric', 'min:0'],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->items()->with(['variant.product', 'product'])->findOrFail($itemId);
+        $qty = max(1, (int) $item->qty);
+        $newBaseUnit = round((float) $validated['unit_price'], 2);
+        $snapshots = is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [];
+        $optionUnitTotal = collect($snapshots)->flatMap(fn ($q) => (array) ($q['options'] ?? []))->sum(fn ($o) => (float) ($o['extra_price'] ?? 0));
+        $item->price_snapshot = round($newBaseUnit + (float) $optionUnitTotal, 2);
+        $baseLineTotal = round($newBaseUnit * $qty, 2);
+        if ($item->discount_type && (float) $item->discount_value > 0) {
+            $discount = $this->resolveManualDiscountAmount((string) $item->discount_type, (float) $item->discount_value, $baseLineTotal);
+            $this->applyCartLineDiscountSnapshots($item, $discount, max(0.0, $baseLineTotal - $discount));
+        }
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
+    public function updateBookingProductOptionPrice(Request $request, int $itemId, int $optionId)
+    {
+        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->items()->with(['bookingProduct.categories'])->findOrFail($itemId);
+        $snapshots = is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [];
+        $oldOptionUnitTotal = collect($snapshots)->flatMap(fn ($q) => (array) ($q['options'] ?? []))->sum(fn ($o) => (float) ($o['extra_price'] ?? 0));
+        $baseUnit = max(0.0, (float) $item->price_snapshot - (float) $oldOptionUnitTotal);
+        $found = false;
+        foreach ($snapshots as $questionIndex => $question) {
+            foreach ((array) ($question['options'] ?? []) as $optionIndex => $option) {
+                if ((int) ($option['id'] ?? 0) !== $optionId) continue;
+                $old = (float) ($option['extra_price'] ?? 0);
+                $new = round((float) $validated['unit_price'], 2);
+                $option['original_unit_price_snapshot'] = (float) ($option['original_unit_price_snapshot'] ?? $old);
+                $option['extra_price'] = $new;
+                $option['price_override_amount'] = round($new - (float) $option['original_unit_price_snapshot'], 2);
+                $option['price_override_reason'] = trim((string) ($validated['reason'] ?? '')) ?: null;
+                $option['price_overridden_by'] = (int) $request->user()->id;
+                $option['price_overridden_at'] = now()->toIso8601String();
+                $lineTotal = round($new * max(1, (int) $item->qty), 2);
+                if (($option['discount_type'] ?? null) && (float) ($option['discount_value'] ?? 0) > 0) {
+                    $discount = $this->resolveManualDiscountAmount((string) $option['discount_type'], (float) $option['discount_value'], $lineTotal);
+                    $option['discount_amount'] = $discount;
+                    $option['line_total_after_discount'] = max(0.0, $lineTotal - $discount);
+                } else { unset($option['discount_amount'], $option['line_total_after_discount']); }
+                $snapshots[$questionIndex]['options'][$optionIndex] = $option;
+                $found = true; break 2;
+            }
+        }
+        if (! $found) return $this->respondError(__('Booking product option was not found in this cart item.'), 404);
+        $item->selected_booking_product_options = $snapshots;
+        $item->price_snapshot = round($baseUnit + collect($snapshots)->flatMap(fn ($q) => (array) ($q['options'] ?? []))->sum(fn ($o) => (float) ($o['extra_price'] ?? 0)), 2);
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
+    public function updatePackageCartItemPrice(Request $request, int $itemId)
+    {
+        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->packageItems()->findOrFail($itemId);
+        $item->price_snapshot = round((float) $validated['unit_price'], 2);
+        $lineTotal = round(((float) $item->price_snapshot) * max(1, (int) $item->qty), 2);
+        if ($item->discount_type && (float) $item->discount_value > 0) {
+            $discount = $this->resolveManualDiscountAmount((string) $item->discount_type, (float) $item->discount_value, $lineTotal);
+            $this->applyCartLineDiscountSnapshots($item, $discount, max(0.0, $lineTotal - $discount));
+        }
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
     public function updateCartItemDiscount(Request $request, int $itemId)
     {
         $validated = $request->validate([

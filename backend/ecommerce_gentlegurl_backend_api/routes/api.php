@@ -506,8 +506,11 @@ $protectedRoutes = function () {
         Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
         Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
         Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
+        Route::patch('/cart/items/{itemId}/price', [PosController::class, 'updateCartItemPrice']);
         Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/discount', [PosController::class, 'updateBookingProductOptionDiscount']);
+        Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/price', [PosController::class, 'updateBookingProductOptionPrice']);
         Route::patch('/cart/package-items/{itemId}/discount', [PosController::class, 'updatePackageCartItemDiscount']);
+        Route::patch('/cart/package-items/{itemId}/price', [PosController::class, 'updatePackageCartItemPrice']);
         Route::patch('/cart/appointment-settlements/{itemId}/discount', [PosController::class, 'updateAppointmentSettlementCartItemDiscount']);
         Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
         Route::delete('/cart/service-items/{itemId}', [PosController::class, 'removeServiceCartItem']);
