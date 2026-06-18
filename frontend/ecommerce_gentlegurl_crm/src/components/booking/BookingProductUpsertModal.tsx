@@ -30,6 +30,9 @@ export default function BookingProductUpsertModal({
   const [name, setName] = useState('')
   const [cnName, setCnName] = useState('')
   const [price, setPrice] = useState('0')
+  const [priceMode, setPriceMode] = useState<'fixed' | 'range'>('fixed')
+  const [priceRangeMin, setPriceRangeMin] = useState('')
+  const [priceRangeMax, setPriceRangeMax] = useState('')
   const [barcode, setBarcode] = useState('')
   const [description, setDescription] = useState('')
   const [categoryIds, setCategoryIds] = useState<number[]>([])
@@ -86,6 +89,9 @@ export default function BookingProductUpsertModal({
     setName(product?.name ?? '')
     setCnName(product?.cn_name ?? '')
     setPrice(String(product?.price ?? 0))
+    setPriceMode(product?.price_mode === 'range' ? 'range' : 'fixed')
+    setPriceRangeMin(product?.price_range_min != null ? String(product.price_range_min) : '')
+    setPriceRangeMax(product?.price_range_max != null ? String(product.price_range_max) : '')
     setBarcode(product?.barcode ?? '')
     setDescription(product?.description ?? '')
     setCategoryIds(Array.isArray(product?.categories) ? product.categories.map((c) => Number(c.id)) : [])
@@ -131,8 +137,14 @@ export default function BookingProductUpsertModal({
       return
     }
     const p = Number(price)
-    if (!Number.isFinite(p) || p < 0) {
+    const min = Number(priceRangeMin)
+    const max = Number(priceRangeMax)
+    if (priceMode === 'fixed' && (!Number.isFinite(p) || p < 0)) {
       setError('Price must be 0 or greater.')
+      return
+    }
+    if (priceMode === 'range' && (!Number.isFinite(min) || !Number.isFinite(max) || min < 0 || max < min)) {
+      setError('Range price requires a valid minimum and maximum price.')
       return
     }
 
@@ -141,7 +153,14 @@ export default function BookingProductUpsertModal({
       const fd = new FormData()
       fd.append('name', trimmedName)
       if (cnName.trim()) fd.append('cn_name', cnName.trim())
-      fd.append('price', String(p))
+      fd.append('price_mode', priceMode)
+      if (priceMode === 'range') {
+        fd.append('price', String(min))
+        fd.append('price_range_min', String(min))
+        fd.append('price_range_max', String(max))
+      } else {
+        fd.append('price', String(p))
+      }
       if (barcode.trim()) fd.append('barcode', barcode.trim())
       if (description.trim()) fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
@@ -372,26 +391,29 @@ export default function BookingProductUpsertModal({
           <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm sm:p-5">
             <h3 className="mb-4 text-sm font-semibold uppercase tracking-wide text-gray-500">Pricing & inventory</h3>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="sm:col-span-2 lg:col-span-3">
+                <p className="mb-1.5 block text-sm font-medium text-gray-700">Price Mode</p>
+                <div className="flex flex-wrap gap-4 text-sm text-gray-700">
+                  <label className="inline-flex items-center gap-2"><input type="radio" checked={priceMode === 'fixed'} onChange={() => setPriceMode('fixed')} disabled={submitting} /> Fixed Price</label>
+                  <label className="inline-flex items-center gap-2"><input type="radio" checked={priceMode === 'range'} onChange={() => setPriceMode('range')} disabled={submitting} /> Range Price</label>
+                </div>
+              </div>
+              {priceMode === 'fixed' ? (
               <div>
                 <label htmlFor="booking-product-price" className="mb-1.5 block text-sm font-medium text-gray-700">
                   Price <span className="text-red-500">*</span>
                 </label>
                 <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">
-                    RM
-                  </span>
-                  <input
-                    id="booking-product-price"
-                    type="number"
-                    min={0}
-                    step="0.01"
-                    value={price}
-                    onChange={(e) => setPrice(e.target.value)}
-                    className={`${fieldClass} pl-10`}
-                    disabled={submitting}
-                  />
+                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">RM</span>
+                  <input id="booking-product-price" type="number" min={0} step="0.01" value={price} onChange={(e) => setPrice(e.target.value)} className={`${fieldClass} pl-10`} disabled={submitting} />
                 </div>
               </div>
+              ) : (
+              <>
+                <div><label className="mb-1.5 block text-sm font-medium text-gray-700">Minimum Price <span className="text-red-500">*</span></label><input type="number" min={0} step="0.01" value={priceRangeMin} onChange={(e) => setPriceRangeMin(e.target.value)} className={fieldClass} disabled={submitting} /></div>
+                <div><label className="mb-1.5 block text-sm font-medium text-gray-700">Maximum Price <span className="text-red-500">*</span></label><input type="number" min={0} step="0.01" value={priceRangeMax} onChange={(e) => setPriceRangeMax(e.target.value)} className={fieldClass} disabled={submitting} /></div>
+              </>
+              )}
               <div>
                 <label htmlFor="booking-product-barcode" className="mb-1.5 block text-sm font-medium text-gray-700">
                   Barcode
