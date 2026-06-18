@@ -1482,6 +1482,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
+  const [cartEditOriginalServicePrice, setCartEditOriginalServicePrice] = useState<number | null>(null)
+  const [cartEditAddonPriceOverrides, setCartEditAddonPriceOverrides] = useState<Record<number, number>>({})
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -3601,6 +3603,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         return
       }
       setCart((json?.data?.cart ?? null) as Cart | null)
+      if (priceEditTarget.kind === 'settlementLine' && cartEditSettlementItem?.id === priceEditTarget.id) {
+        const originalLineKey = (cartEditSettlementItem.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)?.line_key
+        if (priceEditTarget.lineKey === originalLineKey) {
+          setCartEditOriginalServicePrice(next)
+        } else {
+          const addon = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
+          if (addon?.id != null) {
+            setCartEditAddonPriceOverrides((prev) => ({ ...prev, [Number(addon.id)]: next }))
+          }
+        }
+      }
       setPriceEditTarget(null)
       showMsg('Price updated.', 'success')
     } finally {
@@ -3746,6 +3759,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSettlementServiceId(settlement.booking_service_id ?? null)
 
     const originalMainService = (settlement.main_services ?? []).find((service) => service.is_original)
+    const originalSettlementLine = (settlement.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)
+    setCartEditOriginalServicePrice(Number(originalSettlementLine?.gross_amount ?? originalSettlementLine?.balance_due ?? originalMainService?.extra_price ?? settlement.service_total ?? 0))
+    setCartEditAddonPriceOverrides(Object.fromEntries((settlement.addon_settlement_items ?? []).filter((addon) => addon.id != null).map((addon) => [Number(addon.id), Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)])))
     setCartEditOriginalService({
       id: Number(settlement.booking_service_id ?? originalMainService?.linked_booking_service_id ?? originalMainService?.id ?? 0),
       name: String(originalMainService?.name ?? settlement.service_name ?? 'Service'),
@@ -3753,8 +3769,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       price_mode: settlement.service_price_mode ?? null,
       price_range_min: settlement.service_price_range_min ?? null,
       price_range_max: settlement.service_price_range_max ?? null,
-      service_price: Number(originalMainService?.extra_price ?? settlement.service_total ?? 0),
-      price: Number(originalMainService?.extra_price ?? settlement.service_total ?? 0),
+      service_price: Number(originalSettlementLine?.gross_amount ?? originalSettlementLine?.balance_due ?? originalMainService?.extra_price ?? settlement.service_total ?? 0),
+      price: Number(originalSettlementLine?.gross_amount ?? originalSettlementLine?.balance_due ?? originalMainService?.extra_price ?? settlement.service_total ?? 0),
       duration_min: Number(originalMainService?.extra_duration_min ?? 0),
     })
 
@@ -3889,6 +3905,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSelectedAddonIds(new Set())
     setCartEditAddedMainBlocks((prev) => prev.filter((block) => block.service_id !== service.id))
     setCartEditSettledAmount('')
+    setCartEditOriginalServicePrice(Number(service.service_price ?? service.price ?? 0))
+    setCartEditAddonPriceOverrides({})
     setCartEditAddonOptionsLoading(true)
     try {
       const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
@@ -3960,6 +3978,43 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     () => bookingServiceSettlementSource(cartEditOriginalService),
     [cartEditOriginalService],
   )
+
+
+  const editCartSettlementOriginalServicePrice = () => {
+    if (!cartEditSettlementItem) return
+    const line = (cartEditSettlementItem.main_service_settlement_items ?? []).find((row, idx) => row.is_original ?? idx === 0)
+    const current = Number(cartEditOriginalServicePrice ?? line?.gross_amount ?? line?.balance_due ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? 0)
+    if (line?.line_key) {
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: line.name ?? cartEditOriginalService?.name ?? 'Service', currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      return
+    }
+    const raw = window.prompt('New service price', current.toFixed(2))
+    if (raw == null) return
+    const next = Number(raw)
+    if (Number.isFinite(next) && next >= 0) setCartEditOriginalServicePrice(next)
+  }
+
+  const editCartSettlementAddonPrice = (optionId: number, label: string, currentPrice: number) => {
+    if (!cartEditSettlementItem) return
+    const line = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => Number(row.id ?? 0) === Number(optionId))
+    const current = Number(cartEditAddonPriceOverrides[optionId] ?? line?.gross_amount ?? line?.balance_due ?? currentPrice ?? 0)
+    if (line?.line_key) {
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: label, currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      return
+    }
+    const raw = window.prompt('New add-on price', current.toFixed(2))
+    if (raw == null) return
+    const next = Number(raw)
+    if (Number.isFinite(next) && next >= 0) setCartEditAddonPriceOverrides((prev) => ({ ...prev, [optionId]: next }))
+  }
+
+  const editCartAddedMainServicePrice = (tmpId: string, currentPrice: number) => {
+    const raw = window.prompt('New service block price', Number(currentPrice ?? 0).toFixed(2))
+    if (raw == null) return
+    const next = Number(raw)
+    if (!Number.isFinite(next) || next < 0) return
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next } : block))
+  }
 
   const saveCartEditSettlement = async () => {
     if (!cartEditSettlementBookingId) return
@@ -7277,7 +7332,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {cartEditSettlementOpen && cartEditSettlementItem && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -7330,16 +7385,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         name={cartEditOriginalService?.name ?? cartEditSettlementItem.service_name ?? 'Service'}
                         cnName={cartEditOriginalService?.cn_name ?? cartEditSettlementItem.service_cn_name}
                       />
-                      <p className="text-xs text-gray-600">
-                        {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) == null
-                          ? `RM ${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`
-                          : `RM ${Number(
-                              settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) != null
-                                ? parseSettlementAmountInput(cartEditSettledAmount)
-                                : cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? cartEditSettlementItem.service_total ?? 0,
-                            ).toFixed(2)}`}
-                        {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-gray-600">
+                          {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) == null
+                            ? `RM ${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`
+                            : `RM ${Number(
+                                settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) != null
+                                  ? parseSettlementAmountInput(cartEditSettledAmount)
+                                  : cartEditOriginalServicePrice ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? cartEditSettlementItem.service_total ?? 0,
+                              ).toFixed(2)}`}
+                          {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
+                        </p>
+                        <button type="button" onClick={editCartSettlementOriginalServicePrice} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -7384,9 +7442,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   />
                                   <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
-                                <span className="text-xs font-semibold tabular-nums text-gray-600">
-                                  +RM {Number(opt.extra_price).toFixed(2)}
-                                  {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
+                                <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
+                                  <span>+RM {Number(cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
+                                  {checked ? <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}
                                 </span>
                               </label>
                             )
@@ -7510,7 +7568,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -7625,7 +7683,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
-                const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
+                const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(cartEditAddonPriceOverrides[o.id] ?? o.extra_price), 0)
                 const selectedMainServices = cartEditAddedMainBlocks
                 const addedMainTotal = selectedMainServices.reduce((sum, service) => {
                   const addonOptions = service.addon_questions.flatMap((q) => q.options)
@@ -7637,7 +7695,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 const originalServiceAmt = isRange && settledAmt != null
                   ? settledAmt
                   : Number(
-                    cartEditOriginalService?.service_price
+                    cartEditOriginalServicePrice
+                      ?? cartEditOriginalService?.service_price
                       ?? cartEditOriginalService?.price
                       ?? (cartEditSettlementItem.main_services ?? [])
                         .find((service) => service.is_original)?.extra_price
@@ -8186,6 +8245,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-500 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-cyan-600 hover:to-cyan-700"
                                 >
                                   Edit Worker
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void openCartEditSettlement(settlement)}
+                                  className="ml-2 inline-flex items-center gap-1.5 rounded-lg border-2 border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-indigo-600 hover:to-indigo-700"
+                                >
+                                  Edit Settlement
                                 </button>
                               </div>
                             </td>
