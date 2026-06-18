@@ -7987,6 +7987,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 >
                                   {(item.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
                                 </button>
+                                <button type="button" onClick={() => openPriceEditModal({ kind: 'product', id: item.id, name: item.product_name ?? 'Product', currentUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price), originalUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : (item.unit_price_snapshot ?? item.unit_price ?? 0)), quantity: Number(item.qty ?? 1), currentLineTotal: Number(isBookingProduct ? bookingProductBaseLineTotal : item.line_total_snapshot ?? item.line_total ?? 0) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button>
                               </div>
                             </div>
                           </td>
@@ -8005,7 +8006,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             ) : (
                               <p className="text-gray-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                             )}
-                              <button type="button" onClick={() => openPriceEditModal({ kind: 'product', id: item.id, name: item.product_name ?? 'Product', currentUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price), originalUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : (item.unit_price_snapshot ?? item.unit_price ?? 0)), quantity: Number(item.qty ?? 1), currentLineTotal: Number(isBookingProduct ? bookingProductBaseLineTotal : item.line_total_snapshot ?? item.line_total ?? 0) })} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
@@ -8062,11 +8062,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               >
                                 {optionDiscount > 0 ? 'Edit Discount' : 'Discount'}
                               </button>
+                              <button type="button" onClick={() => opt.id && openPriceEditModal({ kind: 'bookingProductOption', id: item.id, optionId: Number(opt.id), name: `+ ${opt.label ?? 'Booking Product Option'}`, currentUnitPrice: Number(opt.extra_price ?? 0), originalUnitPrice: Number(opt.original_unit_price_snapshot ?? opt.extra_price ?? 0), quantity: Number(item.qty ?? 1), currentLineTotal: optionGross })} disabled={!opt.id} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 disabled:opacity-50">Edit Price</button>
                             </td>
                             <td className="px-4 py-2.5 text-left tabular-nums text-sm text-gray-700">
                               <div className="space-y-1">
                                 <p>RM {Number(opt.extra_price ?? 0).toFixed(2)}</p>
-                                <button type="button" onClick={() => opt.id && openPriceEditModal({ kind: 'bookingProductOption', id: item.id, optionId: Number(opt.id), name: `+ ${opt.label ?? 'Booking Product Option'}`, currentUnitPrice: Number(opt.extra_price ?? 0), originalUnitPrice: Number(opt.original_unit_price_snapshot ?? opt.extra_price ?? 0), quantity: Number(item.qty ?? 1), currentLineTotal: optionGross })} disabled={!opt.id} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 disabled:opacity-50">Edit Price</button>
                               </div>
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-gray-900 sm:px-5">
@@ -8143,8 +8143,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                                       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                                         <span className="text-gray-500">{idx + 1}.</span>
-                                        <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                        <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                        <div><ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                        <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} /></div>
                                       </div>
                                       {service.package_note ? (
                                         <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
@@ -8153,8 +8153,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                             <span className="text-gray-500">+</span>
-                                            <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                            <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                            <div><ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                            <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} /></div>
                                           </div>
                                           {addon.package_note ? (
                                             <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
@@ -8478,12 +8478,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               >
                                 {(packageItem.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
                               </button>
+                              <button type="button" onClick={() => openPriceEditModal({ kind: 'package', id: packageItem.id, name: packageItem.package_name, currentUnitPrice: Number(packageItem.unit_price ?? 0), originalUnitPrice: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) / Math.max(1, Number(packageItem.qty ?? 1)), quantity: Number(packageItem.qty ?? 1), currentLineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 align-top tabular-nums">
                             <div className="space-y-1">
                               <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
-                              <button type="button" onClick={() => openPriceEditModal({ kind: 'package', id: packageItem.id, name: packageItem.package_name, currentUnitPrice: Number(packageItem.unit_price ?? 0), originalUnitPrice: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) / Math.max(1, Number(packageItem.qty ?? 1)), quantity: Number(packageItem.qty ?? 1), currentLineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) })} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 text-right align-top sm:px-5">
