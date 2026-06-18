@@ -106,6 +106,13 @@ type CreateExtraServiceBlock = {
   selectedOptionIds: number[]
 }
 
+type AppointmentPriceEditTarget =
+  | { kind: 'originalService'; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
+  | { kind: 'originalAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
+  | { kind: 'addedService'; tmpId: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
+  | { kind: 'addedAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
+
+
 /** POS member search row (`/api/proxy/pos/members/search`) */
 type PosMemberSearchRow = {
   id: number
@@ -338,10 +345,18 @@ export default function PosAppointmentsWorkspace({
     duration_min: number
     addon_questions: ServiceAddonQuestion[]
     selected_addon_ids: Set<number>
+    addon_price_overrides: Record<number, number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
   }>>([])
   const [editOriginalService, setEditOriginalService] = useState<BookingServiceOption | null>(null)
+  const [editOriginalServicePriceOverride, setEditOriginalServicePriceOverride] = useState<number | null>(null)
+  const [editAddonPriceOverrides, setEditAddonPriceOverrides] = useState<Record<number, number>>({})
+  const [appointmentPriceEditTarget, setAppointmentPriceEditTarget] = useState<AppointmentPriceEditTarget | null>(null)
+  const [appointmentPriceEditMode, setAppointmentPriceEditMode] = useState<'unit' | 'line'>('unit')
+  const [appointmentPriceEditValueDraft, setAppointmentPriceEditValueDraft] = useState('')
+  const [appointmentPriceEditLineTotalDraft, setAppointmentPriceEditLineTotalDraft] = useState('')
+  const [appointmentPriceEditReasonDraft, setAppointmentPriceEditReasonDraft] = useState('')
 
   const resolveBookingImageUrl = useCallback((imageUrl?: string | null, imagePath?: string | null) => {
     if (imageUrl && /^https?:\/\//i.test(imageUrl)) return imageUrl
@@ -1363,6 +1378,10 @@ export default function PosAppointmentsWorkspace({
         .filter((id): id is number => id != null),
     )
     setEditSelectedAddonIds(currentAddonIds)
+    setEditAddonPriceOverrides(Object.fromEntries((appointmentDetail.add_ons ?? [])
+      .filter((addon) => Number(addon.id ?? 0) > 0)
+      .map((addon) => [Number(addon.id), Number(addon.extra_price ?? 0)])))
+    setEditOriginalServicePriceOverride(Number(originalMainService?.extra_price ?? appointmentDetail.service_total ?? 0))
     const addedMainBlocksSeed = appointmentDisplayMainServices
       .filter((service) => !service.is_original)
       .map((service) => ({
@@ -1374,6 +1393,9 @@ export default function PosAppointmentsWorkspace({
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as ServiceAddonQuestion[],
         selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
+        addon_price_overrides: Object.fromEntries((service.add_ons ?? [])
+          .filter((addon) => Number(addon.id ?? 0) > 0)
+          .map((addon) => [Number(addon.id), Number(addon.extra_price ?? 0)])),
         staff_splits: (service.staff_splits ?? []).map((split) => ({
           staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
           share_percent: String(split.share_percent ?? ''),
@@ -1464,6 +1486,8 @@ export default function PosAppointmentsWorkspace({
     if (!service?.id) return
     setEditSettlementError(null)
     setEditOriginalService(service)
+    setEditOriginalServicePriceOverride(Number(service.service_price ?? service.price ?? 0))
+    setEditAddonPriceOverrides({})
     setEditSelectedAddonIds(new Set())
     setEditAddedMainBlocks((prev) => prev.filter((block) => block.service_id !== service.id))
     if (!settlementNeedsSettledAmount(bookingServiceSettlementSource(service))) {
@@ -1513,6 +1537,7 @@ export default function PosAppointmentsWorkspace({
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
       selected_addon_ids: new Set<number>(),
+      addon_price_overrides: {},
       staff_splits: [{ staff_id: null, share_percent: '100' }],
       auto_balance: true,
     }])
@@ -1597,10 +1622,14 @@ export default function PosAppointmentsWorkspace({
       const needsSettledAmount = settlementNeedsSettledAmount(editOriginalSettlementSource)
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
+        addon_price_overrides: editAddonPriceOverrides,
+        original_service_price: editOriginalServicePriceOverride,
         main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
         main_service_items: editAddedMainBlocks.map((block) => ({
           booking_service_id: block.service_id,
+          price: block.price,
           addon_option_ids: Array.from(block.selected_addon_ids),
+          addon_price_overrides: block.addon_price_overrides,
           staff_splits: block.staff_splits.map((row) => ({
             staff_id: Number(row.staff_id ?? 0),
             share_percent: Number.parseInt(row.share_percent || '0', 10),
@@ -1687,7 +1716,49 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+
+
+  const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
+    const qty = Math.max(1, Number(target.quantity ?? 1))
+    const unit = Math.max(0, Number(target.currentUnitPrice ?? 0))
+    setAppointmentPriceEditTarget({ ...target, quantity: qty })
+    setAppointmentPriceEditMode('unit')
+    setAppointmentPriceEditValueDraft(unit.toFixed(2))
+    setAppointmentPriceEditLineTotalDraft((unit * qty).toFixed(2))
+    setAppointmentPriceEditReasonDraft('')
+  }, [])
+
+  const submitAppointmentPriceEditModal = useCallback(() => {
+    if (!appointmentPriceEditTarget) return
+    const qty = Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))
+    const rawValue = appointmentPriceEditMode === 'line' ? appointmentPriceEditLineTotalDraft : appointmentPriceEditValueDraft
+    const amount = Number(rawValue)
+    if (!Number.isFinite(amount) || amount < 0) {
+      setEditSettlementError('Price cannot be negative.')
+      return
+    }
+    const unitPrice = appointmentPriceEditMode === 'line' ? amount / qty : amount
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
+      setEditSettlementError('Price cannot be negative.')
+      return
+    }
+    const rounded = Number(unitPrice.toFixed(2))
+    if (appointmentPriceEditTarget.kind === 'originalService') {
+      setEditOriginalServicePriceOverride(rounded)
+      if (settlementNeedsSettledAmount(editOriginalSettlementSource)) {
+        setEditSettledAmount(rounded.toFixed(2))
+      }
+    } else if (appointmentPriceEditTarget.kind === 'originalAddon') {
+      setEditAddonPriceOverrides((prev) => ({ ...prev, [appointmentPriceEditTarget.optionId]: rounded }))
+    } else if (appointmentPriceEditTarget.kind === 'addedService') {
+      setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, price: rounded } : block))
+    } else if (appointmentPriceEditTarget.kind === 'addedAddon') {
+      setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded } } : block))
+    }
+    setEditSettlementError(null)
+    setAppointmentPriceEditTarget(null)
+  }, [appointmentPriceEditLineTotalDraft, appointmentPriceEditMode, appointmentPriceEditTarget, appointmentPriceEditValueDraft, editOriginalSettlementSource])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -3921,7 +3992,7 @@ export default function PosAppointmentsWorkspace({
       )}
 
       {editSettlementOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -3994,16 +4065,20 @@ export default function PosAppointmentsWorkspace({
                         primaryClassName="mt-1 text-sm font-semibold text-gray-900"
                         secondaryClassName="mt-0.5 text-xs text-gray-500"
                       />
-                      <p className="text-xs text-gray-600">
-                        {settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) == null
-                          ? `RM ${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`
-                          : `RM ${Number(
-                              settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) != null
-                                ? parseSettlementAmountInput(editSettledAmount)
-                                : editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0,
-                            ).toFixed(2)}`}
-                        {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-gray-600">
+                          {settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) == null
+                            ? `RM ${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`
+                            : `RM ${Number(
+                                editOriginalServicePriceOverride
+                                  ?? (settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) != null
+                                    ? parseSettlementAmountInput(editSettledAmount)
+                                    : editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0),
+                              ).toFixed(2)}`}
+                          {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
+                        </p>
+                        <button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'originalService', name: editOriginalService?.name ?? appointmentDetail.service?.name ?? 'Service', currentUnitPrice: Number(editOriginalServicePriceOverride ?? editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), originalUnitPrice: Number(editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), quantity: 1 })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -4053,10 +4128,13 @@ export default function PosAppointmentsWorkspace({
                                     secondaryClassName="mt-0.5 text-[11px] text-gray-500"
                                   />
                                 </div>
-                                <span className="text-xs font-semibold tabular-nums text-gray-600">
-                                  +RM {Number(opt.extra_price).toFixed(2)}
-                                  {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
-                                </span>
+                                <div className="flex shrink-0 flex-col items-end gap-1">
+                                  <span className="text-xs font-semibold tabular-nums text-gray-600">
+                                    +RM {Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}
+                                    {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
+                                  </span>
+                                  {checked ? <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}
+                                </div>
                               </label>
                             )
                           })}
@@ -4175,7 +4253,7 @@ export default function PosAppointmentsWorkspace({
               {editAddedMainBlocks.map((block) => {
                 const addonOptions = block.addon_questions.flatMap((q) => q.options)
                 const selectedAddons = addonOptions.filter((opt) => block.selected_addon_ids.has(opt.id))
-                const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
+                const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), 0)
                 const blockSubtotal = Number(block.price ?? 0) + addonTotal
                 return (
                   <div key={`added-main-block-${block.tmp_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
@@ -4190,7 +4268,7 @@ export default function PosAppointmentsWorkspace({
                               primaryClassName="text-sm font-semibold text-gray-900"
                               secondaryClassName="mt-0.5 text-xs text-gray-500"
                             />
-                            <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p><button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'addedService', tmpId: block.tmp_id, name: block.service_name, currentUnitPrice: Number(block.price ?? 0), originalUnitPrice: Number(block.price ?? 0), quantity: 1 })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                           </>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">Select a service</p>
@@ -4232,7 +4310,7 @@ export default function PosAppointmentsWorkspace({
                                   />
                                   <PosServiceNameStack name={opt.label} cnName={opt.cn_name ?? opt.cn_label ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
-                                <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
+                                <div className="flex shrink-0 flex-col items-end gap-1"><span className="text-xs font-semibold text-gray-500">+RM {Number(block.addon_price_overrides[opt.id] ?? opt.extra_price).toFixed(2)}</span>{checked ? <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
                               </label>
                             )
                           })}
@@ -4321,11 +4399,11 @@ export default function PosAppointmentsWorkspace({
                 {(() => {
                   const allOptions = editAddonQuestions.flatMap((q) => q.options)
                   const selectedAddons = allOptions.filter((o) => editSelectedAddonIds.has(o.id))
-                  const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
+                  const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(editAddonPriceOverrides[o.id] ?? o.extra_price), 0)
                   const selectedMainServices = editAddedMainBlocks
                   const addedMainTotal = selectedMainServices.reduce((sum, service) => {
                     const addonOptions = service.addon_questions.flatMap((q) => q.options)
-                    const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
+                    const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(service.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), 0)
                     return sum + Number(service.price ?? 0) + addonTotal
                   }, 0)
                   const isRange = settlementNeedsSettledAmount(editOriginalSettlementSource)
@@ -4333,7 +4411,8 @@ export default function PosAppointmentsWorkspace({
                   const originalServiceAmt = isRange && settledAmt != null
                     ? settledAmt
                     : Number(
-                      editOriginalService?.service_price
+                      editOriginalServicePriceOverride
+                        ?? editOriginalService?.service_price
                         ?? editOriginalService?.price
                         ?? appointmentDisplayMainServices
                           .find((service) => service.is_original)?.extra_price
@@ -4417,8 +4496,36 @@ export default function PosAppointmentsWorkspace({
         </div>
       )}
 
+      {appointmentPriceEditTarget ? (
+        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+            <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
+            <p className="mt-1 text-sm text-gray-600">{appointmentPriceEditTarget.name}</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-3 text-sm">
+              <div><p className="text-xs text-gray-500">Original Price</p><p className="font-semibold">RM {Number(appointmentPriceEditTarget.originalUnitPrice ?? 0).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-500">Current Price</p><p className="font-semibold">RM {Number(appointmentPriceEditTarget.currentUnitPrice ?? 0).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-500">Quantity</p><p className="font-semibold">{Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))}</p></div>
+            </div>
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Method</p>
+              <div className="flex flex-wrap gap-4 text-sm font-semibold text-gray-700">
+                <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'unit'} onChange={() => setAppointmentPriceEditMode('unit')} /> Unit Price</label>
+                <label className="inline-flex items-center gap-2"><input type="radio" checked={appointmentPriceEditMode === 'line'} onChange={() => setAppointmentPriceEditMode('line')} /> Line Total</label>
+              </div>
+            </div>
+            {appointmentPriceEditMode === 'unit' ? (
+              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Unit Price</label><input type="number" min={0} step="0.01" value={appointmentPriceEditValueDraft} onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(appointmentPriceEditValueDraft || 0)) * Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))).toFixed(2)}</p></div>
+            ) : (
+              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))).toFixed(2)}</p></div>
+            )}
+            <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Reason / remark</label><textarea value={appointmentPriceEditReasonDraft} onChange={(event) => setAppointmentPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" /></div>
+            <div className="mt-5 flex gap-3"><button type="button" onClick={() => setAppointmentPriceEditTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button><button type="button" onClick={() => submitAppointmentPriceEditModal()} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Save</button></div>
+          </div>
+        </div>
+      ) : null}
+
       {editMainServicePickerOpen && editMainServicePickerTargetId ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
