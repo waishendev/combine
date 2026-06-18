@@ -13,6 +13,7 @@ class PosCartServiceItem extends Model
         'service_name_snapshot', 'price_snapshot',
         'qty', 'assigned_staff_id', 'start_at', 'end_at', 'notes', 'staff_splits', 'commission_rate_used',
         'addon_duration_min', 'addon_price', 'selected_option_ids', 'addon_items_json',
+        'price_override_lines',
     ];
 
     protected function casts(): array
@@ -28,6 +29,7 @@ class PosCartServiceItem extends Model
             'addon_price' => 'decimal:2',
             'selected_option_ids' => 'array',
             'addon_items_json' => 'array',
+            'price_override_lines' => 'array',
         ];
     }
 
