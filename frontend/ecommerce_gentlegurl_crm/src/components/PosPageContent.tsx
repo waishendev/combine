@@ -79,7 +79,7 @@ type CartItem = {
     question_id?: number
     title?: string
     cn_title?: string | null
-    options?: Array<{ id?: number; label?: string; cn_label?: string | null; extra_price?: number; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; original_unit_price_snapshot?: number | null }>
+    options?: Array<{ id?: number; label?: string; cn_label?: string | null; extra_price?: number; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; original_unit_price_snapshot?: number | null; line_total_override?: number | null }>
   }>
 }
 
@@ -563,7 +563,7 @@ function getBookingProductBaseLineTotal(item: CartItem, options = getBookingProd
 }
 
 function getBookingProductOptionGrossLineTotal(item: CartItem, option: BookingProductSelectedOption): number {
-  return Number(option.extra_price ?? 0) * Number(item.qty ?? 1)
+  return Number(option.line_total_override ?? (Number(option.extra_price ?? 0) * Number(item.qty ?? 1)))
 }
 
 function getBookingProductOptionNetLineTotal(item: CartItem, option: BookingProductSelectedOption): number {
@@ -3601,7 +3601,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const res = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unit_price: next, reason: priceEditReasonDraft.trim() || null, ...('lineKey' in priceEditTarget ? { line_key: priceEditTarget.lineKey } : {}) }),
+        body: JSON.stringify({ unit_price: next, ...(priceEditMode === 'line' ? { line_total: nextInput } : {}), reason: priceEditReasonDraft.trim() || null, ...('lineKey' in priceEditTarget ? { line_key: priceEditTarget.lineKey } : {}) }),
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {

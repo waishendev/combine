@@ -3974,16 +3974,18 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'unit_price' => ['required', 'numeric', 'min:0'],
+            'line_total' => ['nullable', 'numeric', 'min:0'],
             'reason' => ['nullable', 'string', 'max:255'],
         ]);
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->items()->with(['variant.product', 'product'])->findOrFail($itemId);
         $qty = max(1, (int) $item->qty);
-        $newBaseUnit = round((float) $validated['unit_price'], 2);
+        $newBaseUnit = round((float) $validated['unit_price'], 6);
         $snapshots = is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [];
         $optionUnitTotal = collect($snapshots)->flatMap(fn ($q) => (array) ($q['options'] ?? []))->sum(fn ($o) => (float) ($o['extra_price'] ?? 0));
         $item->price_snapshot = round($newBaseUnit + (float) $optionUnitTotal, 2);
-        $baseLineTotal = round($newBaseUnit * $qty, 2);
+        $baseLineTotal = isset($validated['line_total']) ? round((float) $validated['line_total'], 2) : round($newBaseUnit * $qty, 2);
+        $item->price_override_line_total = isset($validated['line_total']) ? $baseLineTotal : null;
         if ($item->discount_type && (float) $item->discount_value > 0) {
             $discount = $this->resolveManualDiscountAmount((string) $item->discount_type, (float) $item->discount_value, $baseLineTotal);
             $this->applyCartLineDiscountSnapshots($item, $discount, max(0.0, $baseLineTotal - $discount));
@@ -3994,7 +3996,7 @@ class PosController extends Controller
 
     public function updateBookingProductOptionPrice(Request $request, int $itemId, int $optionId)
     {
-        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
+        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'line_total' => ['nullable', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->items()->with(['bookingProduct.categories'])->findOrFail($itemId);
         $snapshots = is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [];
@@ -4005,14 +4007,19 @@ class PosController extends Controller
             foreach ((array) ($question['options'] ?? []) as $optionIndex => $option) {
                 if ((int) ($option['id'] ?? 0) !== $optionId) continue;
                 $old = (float) ($option['extra_price'] ?? 0);
-                $new = round((float) $validated['unit_price'], 2);
+                $new = round((float) $validated['unit_price'], 6);
                 $option['original_unit_price_snapshot'] = (float) ($option['original_unit_price_snapshot'] ?? $old);
-                $option['extra_price'] = $new;
+                $option['extra_price'] = round($new, 2);
+                if (isset($validated['line_total'])) {
+                    $option['line_total_override'] = round((float) $validated['line_total'], 2);
+                } else {
+                    unset($option['line_total_override']);
+                }
                 $option['price_override_amount'] = round($new - (float) $option['original_unit_price_snapshot'], 2);
                 $option['price_override_reason'] = trim((string) ($validated['reason'] ?? '')) ?: null;
                 $option['price_overridden_by'] = (int) $request->user()->id;
                 $option['price_overridden_at'] = now()->toIso8601String();
-                $lineTotal = round($new * max(1, (int) $item->qty), 2);
+                $lineTotal = isset($validated['line_total']) ? round((float) $validated['line_total'], 2) : round($new * max(1, (int) $item->qty), 2);
                 if (($option['discount_type'] ?? null) && (float) ($option['discount_value'] ?? 0) > 0) {
                     $discount = $this->resolveManualDiscountAmount((string) $option['discount_type'], (float) $option['discount_value'], $lineTotal);
                     $option['discount_amount'] = $discount;
@@ -4031,11 +4038,12 @@ class PosController extends Controller
 
     public function updatePackageCartItemPrice(Request $request, int $itemId)
     {
-        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
+        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'line_total' => ['nullable', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->packageItems()->findOrFail($itemId);
         $item->price_snapshot = round((float) $validated['unit_price'], 2);
-        $lineTotal = round(((float) $item->price_snapshot) * max(1, (int) $item->qty), 2);
+        $lineTotal = isset($validated['line_total']) ? round((float) $validated['line_total'], 2) : round(((float) $item->price_snapshot) * max(1, (int) $item->qty), 2);
+        $item->price_override_line_total = isset($validated['line_total']) ? $lineTotal : null;
         if ($item->discount_type && (float) $item->discount_value > 0) {
             $discount = $this->resolveManualDiscountAmount((string) $item->discount_type, (float) $item->discount_value, $lineTotal);
             $this->applyCartLineDiscountSnapshots($item, $discount, max(0.0, $lineTotal - $discount));
@@ -4361,6 +4369,11 @@ class PosController extends Controller
         ];
     }
 
+    protected function resolvePackageCartItemGross(PosCartPackageItem $item): float
+    {
+        return round((float) ($item->price_override_line_total ?? (((float) $item->price_snapshot) * max(1, (int) $item->qty))), 2);
+    }
+
     public function updatePackageCartItemDiscount(Request $request, int $itemId)
     {
         $validated = $request->validate([
@@ -4372,7 +4385,7 @@ class PosController extends Controller
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->packageItems()->findOrFail($itemId);
 
-        $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+        $lineTotal = $this->resolvePackageCartItemGross($item);
         return $this->saveNonProductLineDiscount($cart, $item, $validated, $lineTotal);
     }
 
@@ -4729,7 +4742,7 @@ class PosController extends Controller
 
             $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
             $packageSubtotal = (float) $cart->packageItems->sum(function (PosCartPackageItem $item) {
-                $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+                $lineTotal = $this->resolvePackageCartItemGross($item);
                 $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
                 return max(0.0, $lineTotal - $discountAmount);
             });
@@ -5261,7 +5274,7 @@ class PosController extends Controller
                     ->with('items')
                     ->where('is_active', true)
                     ->findOrFail((int) $packageItem->service_package_id);
-                $packageLineGross = round(((float) $packageItem->price_snapshot) * (int) $packageItem->qty, 2);
+                $packageLineGross = $this->resolvePackageCartItemGross($packageItem);
                 $packageDiscount = $this->resolveManualDiscountAmount((string) ($packageItem->discount_type ?? ''), (float) ($packageItem->discount_value ?? 0), $packageLineGross);
                 $packageLineNet = max(0.0, $packageLineGross - $packageDiscount);
                 $unitNetAmount = (int) $packageItem->qty > 0 ? round($packageLineNet / (int) $packageItem->qty, 2) : 0.0;
@@ -6312,7 +6325,7 @@ class PosController extends Controller
         })->values();
 
         $packageItems = $cart->packageItems->map(function (PosCartPackageItem $item) {
-            $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+            $lineTotal = $this->resolvePackageCartItemGross($item);
             $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
             $netLineTotal = max(0.0, $lineTotal - $discountAmount);
 
@@ -6698,7 +6711,7 @@ class PosController extends Controller
 
         $unitPriceSnapshot = (float) $item->price_snapshot;
         $qty = max(1, (int) $item->qty);
-        $lineTotalSnapshot = $unitPriceSnapshot * $qty;
+        $lineTotalSnapshot = $item->price_override_line_total !== null ? round((float) $item->price_override_line_total, 2) : round($unitPriceSnapshot * $qty, 2);
 
         $isStaffFreeApplied = $isStaffUser && (bool) ($product?->is_staff_free ?? false);
 
@@ -6707,14 +6720,14 @@ class PosController extends Controller
                 ->flatMap(fn ($question) => is_array($question['options'] ?? null) ? $question['options'] : [])
                 ->sum(fn ($option) => max(0.0, (float) ($option['extra_price'] ?? 0)));
             $baseUnitPrice = max(0.0, $unitPriceSnapshot - $optionUnitTotal);
-            $baseLineTotal = round($baseUnitPrice * $qty, 2);
+            $baseLineTotal = $item->price_override_line_total !== null ? round((float) $item->price_override_line_total, 2) : round($baseUnitPrice * $qty, 2);
             $baseDiscountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $baseLineTotal);
             $optionDiscountAmount = 0.0;
             $optionNetTotal = 0.0;
 
             foreach (($item->selected_booking_product_options ?? []) as $question) {
                 foreach ((array) ($question['options'] ?? []) as $option) {
-                    $optionGross = round(max(0.0, (float) ($option['extra_price'] ?? 0)) * $qty, 2);
+                    $optionGross = isset($option['line_total_override']) ? round(max(0.0, (float) $option['line_total_override']), 2) : round(max(0.0, (float) ($option['extra_price'] ?? 0)) * $qty, 2);
                     $optionDiscount = $this->resolveManualDiscountAmount((string) ($option['discount_type'] ?? ''), (float) ($option['discount_value'] ?? 0), $optionGross);
                     $optionDiscountAmount += $optionDiscount;
                     $optionNetTotal += max(0.0, $optionGross - $optionDiscount);
@@ -6737,7 +6750,7 @@ class PosController extends Controller
             ];
         }
 
-        $effectiveUnitPrice = $isStaffFreeApplied ? 0.0 : $unitPriceSnapshot;
+        $effectiveUnitPrice = $isStaffFreeApplied ? 0.0 : ($qty > 0 ? round($lineTotalSnapshot / $qty, 6) : $unitPriceSnapshot);
         $effectiveLineTotal = $isStaffFreeApplied ? 0.0 : $lineTotalSnapshot;
 
         return [

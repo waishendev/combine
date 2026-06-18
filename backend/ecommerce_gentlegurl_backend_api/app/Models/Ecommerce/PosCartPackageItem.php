@@ -11,6 +11,7 @@ class PosCartPackageItem extends Model
     protected $fillable = [
         'pos_cart_id', 'service_package_id', 'customer_id', 'package_name_snapshot', 'price_snapshot', 'qty', 'staff_splits',
         'discount_type', 'discount_value', 'discount_amount', 'discount_remark', 'line_total_after_discount',
+        'price_override_line_total',
     ];
 
     protected function casts(): array
@@ -23,6 +24,7 @@ class PosCartPackageItem extends Model
             'discount_value' => 'decimal:2',
             'discount_amount' => 'decimal:2',
             'line_total_after_discount' => 'decimal:2',
+            'price_override_line_total' => 'decimal:2',
             'discount_remark' => 'string',
         ];
     }
