@@ -493,11 +493,11 @@ type PackageCartItem = {
 type PriceOverrideSnapshot = { original_unit_price?: number; final_unit_price?: number; price_override_amount?: number; price_override_reason?: string | null; price_overridden_by?: number | null; price_overridden_at?: string | null }
 
 type PriceEditTarget =
-  | { kind: 'product'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number }
-  | { kind: 'bookingProductOption'; id: number; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number }
-  | { kind: 'package'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number }
-  | { kind: 'serviceDeposit'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number }
-  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number }
+  | { kind: 'product'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'bookingProductOption'; id: number; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'package'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'serviceDeposit'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
 
 type DiscountTarget =
   | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
@@ -1534,6 +1534,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [priceEditTarget, setPriceEditTarget] = useState<PriceEditTarget | null>(null)
   const [priceEditValueDraft, setPriceEditValueDraft] = useState('')
   const [priceEditReasonDraft, setPriceEditReasonDraft] = useState('')
+  const [priceEditMode, setPriceEditMode] = useState<'unit' | 'line'>('unit')
+  const [priceEditLineTotalDraft, setPriceEditLineTotalDraft] = useState('')
   const [priceEditSaving, setPriceEditSaving] = useState(false)
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
   const [discountSaving, setDiscountSaving] = useState(false)
@@ -3573,16 +3575,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const openPriceEditModal = (target: PriceEditTarget) => {
     setPriceEditTarget(target)
     setPriceEditValueDraft(Number(target.currentUnitPrice ?? 0).toFixed(2))
+    setPriceEditLineTotalDraft(Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2))
+    setPriceEditMode('unit')
     setPriceEditReasonDraft('')
   }
 
   const submitPriceEditModal = async () => {
     if (!priceEditTarget || priceEditSaving) return
-    const next = Number(priceEditValueDraft)
-    if (!Number.isFinite(next) || next < 0) {
-      showMsg('New price must be 0 or higher.', 'error')
+    const quantity = Math.max(1, Number(priceEditTarget.quantity ?? 1))
+    const nextInput = priceEditMode === 'line' ? Number(priceEditLineTotalDraft) : Number(priceEditValueDraft)
+    if (!Number.isFinite(nextInput) || nextInput < 0) {
+      showMsg(priceEditMode === 'line' ? 'New line total must be 0 or higher.' : 'New price must be 0 or higher.', 'error')
       return
     }
+    const next = priceEditMode === 'line' ? nextInput / quantity : nextInput
     let endpoint = ''
     if (priceEditTarget.kind === 'product') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/price`
     if (priceEditTarget.kind === 'bookingProductOption') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/booking-product-options/${priceEditTarget.optionId}/price`
@@ -7999,7 +8005,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             ) : (
                               <p className="text-gray-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                             )}
-                              <button type="button" onClick={() => openPriceEditModal({ kind: 'product', id: item.id, name: item.product_name ?? 'Product', currentUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price), originalUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : (item.unit_price_snapshot ?? item.unit_price ?? 0)) })} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                              <button type="button" onClick={() => openPriceEditModal({ kind: 'product', id: item.id, name: item.product_name ?? 'Product', currentUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price), originalUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : (item.unit_price_snapshot ?? item.unit_price ?? 0)), quantity: Number(item.qty ?? 1), currentLineTotal: Number(isBookingProduct ? bookingProductBaseLineTotal : item.line_total_snapshot ?? item.line_total ?? 0) })} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
@@ -8060,7 +8066,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <td className="px-4 py-2.5 text-left tabular-nums text-sm text-gray-700">
                               <div className="space-y-1">
                                 <p>RM {Number(opt.extra_price ?? 0).toFixed(2)}</p>
-                                <button type="button" onClick={() => opt.id && openPriceEditModal({ kind: 'bookingProductOption', id: item.id, optionId: Number(opt.id), name: `+ ${opt.label ?? 'Booking Product Option'}`, currentUnitPrice: Number(opt.extra_price ?? 0), originalUnitPrice: Number(opt.original_unit_price_snapshot ?? opt.extra_price ?? 0) })} disabled={!opt.id} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 disabled:opacity-50">Edit Price</button>
+                                <button type="button" onClick={() => opt.id && openPriceEditModal({ kind: 'bookingProductOption', id: item.id, optionId: Number(opt.id), name: `+ ${opt.label ?? 'Booking Product Option'}`, currentUnitPrice: Number(opt.extra_price ?? 0), originalUnitPrice: Number(opt.original_unit_price_snapshot ?? opt.extra_price ?? 0), quantity: Number(item.qty ?? 1), currentLineTotal: optionGross })} disabled={!opt.id} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700 disabled:opacity-50">Edit Price</button>
                               </div>
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-gray-900 sm:px-5">
@@ -8477,7 +8483,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <td className="px-4 py-3.5 align-top tabular-nums">
                             <div className="space-y-1">
                               <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
-                              <button type="button" onClick={() => openPriceEditModal({ kind: 'package', id: packageItem.id, name: packageItem.package_name, currentUnitPrice: Number(packageItem.unit_price ?? 0), originalUnitPrice: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) / Math.max(1, Number(packageItem.qty ?? 1)) })} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                              <button type="button" onClick={() => openPriceEditModal({ kind: 'package', id: packageItem.id, name: packageItem.package_name, currentUnitPrice: Number(packageItem.unit_price ?? 0), originalUnitPrice: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) / Math.max(1, Number(packageItem.qty ?? 1)), quantity: Number(packageItem.qty ?? 1), currentLineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) })} className="inline-flex items-center rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 text-right align-top sm:px-5">
@@ -9085,9 +9091,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <div><p className="text-xs text-gray-500">Original price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}</p></div>
               <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}</p></div>
             </div>
-            <label className="mt-4 block text-sm font-semibold text-gray-700">New price
-              <input type="number" min={0} step="0.01" value={priceEditValueDraft} onChange={(event) => setPriceEditValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
-            </label>
+            <div className="mt-4 rounded-lg border border-gray-200 p-3">
+              <p className="text-sm font-semibold text-gray-700">Edit by</p>
+              <div className="mt-2 flex gap-3 text-sm">
+                <label className="inline-flex items-center gap-2"><input type="radio" checked={priceEditMode === 'unit'} onChange={() => setPriceEditMode('unit')} /> Unit Price</label>
+                <label className="inline-flex items-center gap-2"><input type="radio" checked={priceEditMode === 'line'} onChange={() => setPriceEditMode('line')} /> Line Total</label>
+              </div>
+              {priceEditMode === 'unit' ? (
+                <label className="mt-3 block text-sm font-semibold text-gray-700">New Unit Price
+                  <input type="number" min={0} step="0.01" value={priceEditValueDraft} onChange={(event) => setPriceEditValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(priceEditValueDraft || 0)) * Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(2)}</span>
+                </label>
+              ) : (
+                <label className="mt-3 block text-sm font-semibold text-gray-700">New Line Total
+                  <input type="number" min={0} step="0.01" value={priceEditLineTotalDraft} onChange={(event) => setPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(priceEditLineTotalDraft || 0)) / Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(6)}</span>
+                </label>
+              )}
+            </div>
             <label className="mt-3 block text-sm font-semibold text-gray-700">Reason / remark
               <textarea value={priceEditReasonDraft} onChange={(event) => setPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" />
             </label>
