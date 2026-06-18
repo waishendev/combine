@@ -1619,13 +1619,13 @@ class PosController extends Controller
         // Selected option extra prices are added after this check and may make the final unit price exceed the range maximum.
         if (($bookingProduct->price_mode ?? 'fixed') === 'range') {
             if (! array_key_exists('actual_selling_price', $validated) || $validated['actual_selling_price'] === null || $validated['actual_selling_price'] === '') {
-                return $this->respondError(__('Actual selling price is required for range booking products.'), 422);
+                return $this->respondError(__('Product base price is required for range booking products.'), 422);
             }
             $actualSellingPrice = round((float) $validated['actual_selling_price'], 2);
             $minPrice = round((float) ($bookingProduct->price_range_min ?? 0), 2);
             $maxPrice = round((float) ($bookingProduct->price_range_max ?? 0), 2);
             if ($actualSellingPrice < $minPrice || $actualSellingPrice > $maxPrice) {
-                return $this->respondError(__('Actual selling price must be within the booking product price range.'), 422);
+                return $this->respondError(__('Product base price must be within the booking product price range.'), 422);
             }
             $basePrice = $actualSellingPrice;
         }

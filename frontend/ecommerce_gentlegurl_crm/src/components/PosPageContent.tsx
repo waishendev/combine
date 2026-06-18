@@ -2753,12 +2753,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const formatBookingProductCatalogPrice = (item: BookingProductOption) => item.price_mode === 'range' ? `RM ${Number(item.price_range_min ?? 0).toFixed(2)} - RM ${Number(item.price_range_max ?? 0).toFixed(2)}` : `RM ${Number(item.price ?? 0).toFixed(2)}`
 
+  const getInitialBookingProductBasePrice = (item: BookingProductOption) => (item.price_mode === 'range' ? Number(item.price_range_min ?? 0).toFixed(2) : '')
+
   const validateBookingProductBaseSellingPrice = (item: BookingProductOption, value: string) => {
     const actualPrice = Number(value)
     const min = Number(item.price_range_min ?? 0)
     const max = Number(item.price_range_max ?? 0)
     if (!Number.isFinite(actualPrice) || actualPrice < min || actualPrice > max) {
-      return { ok: false as const, message: `Enter an actual selling price between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.` }
+      return { ok: false as const, message: `Enter a product base price between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.` }
     }
     return { ok: true as const, value: actualPrice }
   }
@@ -5901,7 +5903,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
                 <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
                   {filteredBookingProducts.map((item) => (
-                    <button key={item.id} type="button" onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0 && item.price_mode !== 'range') { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductSelectedOptionIds([]); setBookingProductActualPrice(''); setBookingProductOptionError(null); setBookingProductOptionModalOpen(true); } }} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
+                    <button key={item.id} type="button" onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0 && item.price_mode !== 'range') { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductSelectedOptionIds([]); setBookingProductActualPrice(getInitialBookingProductBasePrice(item)); setBookingProductOptionError(null); setBookingProductOptionModalOpen(true); } }} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
                       <div className="flex items-start gap-3">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
                         <div className="min-w-0 flex-1">
@@ -9500,6 +9502,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <button type="button" onClick={() => setBookingProductOptionModalOpen(false)} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100">×</button>
             </div>
             <div className="max-h-[60vh] space-y-3 overflow-y-auto px-5 py-4">
+              {bookingProductDraft.price_mode === 'range' ? (
+                <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Product Base Price</p>
+                  <p className="mt-1 text-xs text-gray-600">Price Range: {formatBookingProductCatalogPrice(bookingProductDraft)}</p>
+                  <p className="mt-1 text-xs text-gray-500">This base price is validated independently. Selected options are added separately.</p>
+                  <div className="relative mt-2 max-w-xs"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">RM</span><input type="number" min={bookingProductDraft.price_range_min ?? 0} max={bookingProductDraft.price_range_max ?? undefined} step="0.01" value={bookingProductActualPrice} onChange={(e) => setBookingProductActualPrice(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm text-gray-900" /></div>
+                </div>
+              ) : null}
+              {(bookingProductDraft.questions ?? []).length > 0 ? <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Questions / Add-ons</p> : null}
               {(bookingProductDraft.questions ?? []).map((q) => (
                 <div key={`bpq-${q.id}`} className="rounded-xl border border-gray-200 bg-gray-50/60 p-3">
                   <p className="text-sm font-semibold text-gray-900">
@@ -9540,14 +9551,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 </div>
               ))}
-              {bookingProductDraft.price_mode === 'range' ? (
-                <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
-                  <p className="text-sm font-semibold text-gray-900">Actual Selling Price</p>
-                  <p className="mt-0.5 text-xs text-gray-600">Price Range: {formatBookingProductCatalogPrice(bookingProductDraft)}</p>
-                  <p className="mt-1 text-xs text-gray-500">This is the product base price only. Selected options are added separately.</p>
-                  <div className="relative mt-2 max-w-xs"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">RM</span><input type="number" min={bookingProductDraft.price_range_min ?? 0} max={bookingProductDraft.price_range_max ?? undefined} step="0.01" value={bookingProductActualPrice} onChange={(e) => setBookingProductActualPrice(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm text-gray-900" /></div>
-                </div>
-              ) : null}
             </div>
             {bookingProductOptionError ? <p className="mt-2 text-sm text-red-600">{bookingProductOptionError}</p> : null}
             <div className="flex justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
