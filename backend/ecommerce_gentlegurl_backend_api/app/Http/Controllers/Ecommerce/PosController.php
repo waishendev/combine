@@ -5105,13 +5105,21 @@ class PosController extends Controller
                 }
             };
 
-            $resolveLineSplits = function ($linePayloads, string $lineKey, $fallbackSplits = []) {
-                $payload = collect($linePayloads ?? [])->first(function (array $line) use ($lineKey) {
+            $findLineSplitPayload = function ($linePayloads, string $lineKey) {
+                return collect($linePayloads ?? [])->first(function (array $line) use ($lineKey) {
                     $payloadKey = (string) ($line['line_key'] ?? '');
                     return $payloadKey === $lineKey || str_ends_with($payloadKey, ':' . $lineKey);
                 });
+            };
+
+            $resolveLineSplits = function ($linePayloads, string $lineKey, $fallbackSplits = []) use ($findLineSplitPayload) {
+                $payload = $findLineSplitPayload($linePayloads, $lineKey);
 
                 return $payload ? collect($payload['staff_splits'] ?? [])->values()->all() : collect($fallbackSplits ?? [])->values()->all();
+            };
+
+            $lineSplitSource = function ($linePayloads, string $lineKey, string $fallbackSource = 'inherited') use ($findLineSplitPayload): string {
+                return $findLineSplitPayload($linePayloads, $lineKey) ? 'explicit' : $fallbackSource;
             };
 
             $serviceClaimStatuses = $this->resolveServiceItemClaimStatuses($cart);
@@ -5442,6 +5450,7 @@ class PosController extends Controller
                     'cart_service_item_id' => (int) $serviceItem->id,
                     'booking_id' => (int) $booking->id,
                     'line_type' => 'service_deposit',
+                    'staff_split_source' => $lineSplitSource($serviceLinePayloads, 'main', 'parent'),
                 ]);
 
                 foreach (collect($serviceItem->addon_items_json ?? [])->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) === 'main_service' && ! (bool) ($row['is_original'] ?? false))->values() as $extraMainRow) {
@@ -5502,6 +5511,8 @@ class PosController extends Controller
                         'cart_service_item_id' => (int) $serviceItem->id,
                         'booking_id' => (int) $booking->id,
                         'line_type' => 'service_addon_deposit',
+                        'staff_split_source' => $lineSplitSource($serviceLinePayloads, $addonLineKey, 'inherited'),
+                        'inherited_from_line_id' => 'main',
                         'addon' => $addonRow,
                     ]);
                 }
@@ -5701,6 +5712,7 @@ class PosController extends Controller
                                     'booking_id' => (int) $booking->id,
                                     'line_key' => $lineKey,
                                     'line_type' => 'settlement_service',
+                                    'staff_split_source' => $lineSplitSource($lineStaffSplitsBySettlementItemId->get((int) $settlementItem->id, []), $lineKey, 'parent'),
                                     'service' => $mainLine,
                                 ]);
                             }
@@ -5774,6 +5786,8 @@ class PosController extends Controller
                         'booking_id' => (int) $booking->id,
                         'line_key' => $lineKey,
                         'line_type' => 'settlement_addon',
+                        'staff_split_source' => $lineSplitSource($lineStaffSplitsBySettlementItemId->get((int) $settlementItem->id, []), $lineKey, 'inherited'),
+                        'inherited_from_line_id' => 'main',
                         'addon' => $addon,
                     ]);
                 }

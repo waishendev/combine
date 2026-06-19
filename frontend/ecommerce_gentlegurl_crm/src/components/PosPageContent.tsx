@@ -1529,9 +1529,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [checkoutLineSplits, setCheckoutLineSplits] = useState<Record<string, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
-  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement' | 'line'; id: number; lineKey?: string; title?: string } | null>(null)
+  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement' | 'line' | 'bulk'; id: number; lineKey?: string; lineKeys?: string[]; productCartItemIds?: number[]; title?: string } | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
+  const [bulkSplitOverwrite, setBulkSplitOverwrite] = useState(false)
   const [itemSplitError, setItemSplitError] = useState<string | null>(null)
   const [priceEditTarget, setPriceEditTarget] = useState<PriceEditTarget | null>(null)
   const [priceEditValueDraft, setPriceEditValueDraft] = useState('')
@@ -5532,6 +5533,47 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
 
 
+  const formatCheckoutSplitRows = (splits: CheckoutItemStaffSplit[]): string => {
+    const rows = (splits ?? []).filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (!rows.length) return '—'
+
+    return rows.map((split) => {
+      const staff = activeStaffs.find((item) => item.id === Number(split.staff_id))
+      return `${staff?.name ?? `Staff #${split.staff_id}`} (${Number(split.share_percent)}%)`
+    }).join(' · ')
+  }
+
+  const formatLineSplitSummary = (lineKey: string, inheritedSplits: CheckoutItemStaffSplit[], inheritedLabel = 'main service') => {
+    const explicitSplits = checkoutLineSplits[lineKey] ?? []
+    if (explicitSplits.length > 0) return `Staff split: ${formatCheckoutSplitRows(explicitSplits)}`
+    return `Staff split: inherited from ${inheritedLabel} — ${formatCheckoutSplitRows(inheritedSplits)}`
+  }
+
+  const openBulkSplitEditor = async (title: string, lineKeys: string[], inheritedSplits: CheckoutItemStaffSplit[] = [], productCartItemIds: number[] = []) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+
+    const rows = inheritedSplits.map((split) => {
+      const selected = nextStaffs.find((staff) => staff.id === split.staff_id)
+      return createDraftRow({
+        staff_id: split.staff_id,
+        share_percent: split.share_percent,
+        search: selected ? getStaffInputLabel(selected) : '',
+        options: nextStaffs,
+      })
+    })
+
+    setBulkSplitOverwrite(false)
+    setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
+    setItemSplitEditorTarget({ type: 'bulk', id: 0, lineKeys: Array.from(new Set(lineKeys)), productCartItemIds, title })
+    setItemSplitAutoBalance(true)
+    setItemSplitError(null)
+    setItemSplitEditorOpen(true)
+  }
+
 
   const openLineSplitEditor = async (lineKey: string, title: string, inheritedSplits: CheckoutItemStaffSplit[] = []) => {
     let nextStaffs = activeStaffs
@@ -5652,6 +5694,23 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }))
     } else if (itemSplitEditorTarget.type === 'line' && itemSplitEditorTarget.lineKey) {
       setCheckoutLineSplits((prev) => ({ ...prev, [itemSplitEditorTarget.lineKey!]: mappedSplits }))
+    } else if (itemSplitEditorTarget.type === 'bulk') {
+      const lineKeys = itemSplitEditorTarget.lineKeys ?? []
+      setCheckoutLineSplits((prev) => {
+        const next = { ...prev }
+        lineKeys.forEach((key) => {
+          if (bulkSplitOverwrite || !next[key]?.length) next[key] = mappedSplits
+        })
+        return next
+      })
+      if (itemSplitEditorTarget.productCartItemIds?.length) {
+        const productIds = new Set(itemSplitEditorTarget.productCartItemIds)
+        setCheckoutItemAssignments((prev) => prev.map((assignment) => (
+          productIds.has(assignment.cart_item_id) && (bulkSplitOverwrite || !assignment.splits?.length)
+            ? { ...assignment, is_default: false, splits: mappedSplits }
+            : assignment
+        )))
+      }
     } else {
       setCart((prev) => {
         if (!prev) return prev
@@ -8025,6 +8084,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     Clear
                                   </button>
                                 ) : null}
+                                {selectedBookingProductOptions.length > 0 ? (
+                                  <button type="button" onClick={() => void openBulkSplitEditor('Booking product lines', selectedBookingProductOptions.map((opt, idx) => `cart:${item.id}:booking_product_option:${Number(opt.id ?? idx)}`), assignment?.splits ?? [], [item.id])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split to All Lines</button>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => openDiscountModal({
@@ -8094,7 +8156,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           const optionDiscount = Number(opt.discount_amount ?? Math.max(0, optionGross - optionNet))
                           const optionSplitKey = `cart:${item.id}:booking_product_option:${Number(opt.id ?? optIdx)}`
                           const optionSplits = checkoutLineSplits[optionSplitKey] ?? (assignment?.splits ?? [])
-                          const optionSplitSummary = optionSplits.length ? `${optionSplits.length} staff (${optionSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : getSplitSummary(assignment)
+                          const inheritedProductSplits = assignment?.splits ?? []
+                          const optionSplitSummary = formatLineSplitSummary(optionSplitKey, inheritedProductSplits, 'main product')
                           return (
                           <tr key={`checkout-bp-addon-${item.id}-${opt.id ?? optIdx}`} className="bg-blue-50/50 align-top">
                             <td className="px-4 py-2.5 pl-6 sm:px-5 sm:pl-7">
@@ -8108,7 +8171,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p className="text-[11px] font-medium text-gray-600">Staff split: {optionSplitSummary}</p>
                                 <button
                                   type="button"
-                                  onClick={() => void openLineSplitEditor(optionSplitKey, `+ ${opt.label ?? 'Booking Product Option'}`, assignment?.splits ?? [])}
+                                  onClick={() => void openLineSplitEditor(optionSplitKey, `+ ${opt.label ?? 'Booking Product Option'}`, inheritedProductSplits)}
                                   className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
                                 >
                                   {checkoutLineSplits[optionSplitKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}
@@ -8196,7 +8259,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <tr className={`${svcRowClass} align-top`}>
                             <td className="px-4 py-3.5 sm:px-5">{checkoutServiceItemHeader}</td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
-                              <p className="text-xs leading-relaxed text-gray-700">{splitSummary}</p>
+                              <button type="button" onClick={() => void openBulkSplitEditor('Service lines', checkoutDepositBlocks.flatMap((service, idx) => [`service:${serviceItem.id}:main:${service.line_key ?? service.linked_booking_service_id ?? service.id ?? idx}`, ...(service.add_ons ?? []).map((addon, addonIdx) => `service:${serviceItem.id}:addon:${addon.line_key ?? addon.id ?? addonIdx}`)]), serviceItem.staff_splits ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split to All Lines</button>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
                             <td className="px-4 py-3.5 text-right align-top tabular-nums text-xs text-gray-400 sm:px-5">
@@ -8211,7 +8274,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   {checkoutDepositBlocks.map((service, idx) => {
                                     const serviceLineKey = `service:${serviceItem.id}:main:${service.line_key ?? service.linked_booking_service_id ?? service.id ?? idx}`
                                     const serviceLineSplits = checkoutLineSplits[serviceLineKey] ?? (service.staff_splits ?? serviceItem.staff_splits ?? [])
-                                    const serviceLineSummary = serviceLineSplits.length ? `${serviceLineSplits.length} staff (${serviceLineSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : splitSummary
+                                    const serviceLineSummary = formatLineSplitSummary(serviceLineKey, serviceItem.staff_splits ?? [], 'main service')
                                     return (
                                     <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                                       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
@@ -8225,7 +8288,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       {(service.add_ons ?? []).map((addon, addonIdx) => {
                                         const addonLineKey = `service:${serviceItem.id}:addon:${addon.line_key ?? addon.id ?? addonIdx}`
                                         const addonLineSplits = checkoutLineSplits[addonLineKey] ?? (addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [])
-                                        const addonLineSummary = addonLineSplits.length ? `${addonLineSplits.length} staff (${addonLineSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : splitSummary
+                                        const addonLineSummary = formatLineSplitSummary(addonLineKey, service.staff_splits ?? serviceItem.staff_splits ?? [], 'main service')
                                         return (
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
@@ -8309,7 +8372,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 {getGuestContactLines(settlement).map((line) => (
                                   <p key={`checkout-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
                                 ))}
-                                <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                                 {settlement.appointment_start_at ? (
                                   <p>
                                     Appointment: {formatDateTimeRange(settlement.appointment_start_at, getSettlementDisplayEndAt(settlement))}
@@ -8320,15 +8382,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
                               <div className="space-y-2">
-                                <p className="text-xs leading-relaxed text-gray-700">{getSettlementWorkerSummary(settlement)}</p>
-
-                                <button
-                                  type="button"
-                                  onClick={() => void openSettlementSplitEditor(settlement)}
-                                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-cyan-500 bg-gradient-to-r from-cyan-500 to-cyan-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-cyan-600 hover:to-cyan-700"
-                                >
-                                  Edit Worker
-                                </button>
+                                <button type="button" onClick={() => void openBulkSplitEditor('Settlement lines', [...checkoutServiceBlocks.map((service, idx) => `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`), ...addons.map((addon, idx) => `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`)], settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split to All Lines</button>
                                 <button
                                   type="button"
                                   onClick={() => void openCartEditSettlement(settlement)}
@@ -8354,7 +8408,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const displayServiceNet = coveredByPackage ? 0 : serviceNet
                                 const serviceSettlementSplitKey = `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`
                                 const serviceSettlementSplits = checkoutLineSplits[serviceSettlementSplitKey] ?? (service.staff_splits ?? settlement.staff_splits ?? [])
-                                const serviceSettlementSplitSummary = serviceSettlementSplits.length ? `${serviceSettlementSplits.length} staff (${serviceSettlementSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : getSettlementWorkerSummary(settlement)
+                                const serviceSettlementSplitSummary = formatLineSplitSummary(serviceSettlementSplitKey, settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [], 'main service')
                                 const packageOriginalPrice = resolveSettlementLineOriginalPrice(
                                   service,
                                   checkoutOriginalServiceReference,
@@ -8423,7 +8477,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const displayDue = coveredByPackage ? 0 : due
                                 const addonSettlementSplitKey = `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`
                                 const addonSettlementSplits = checkoutLineSplits[addonSettlementSplitKey] ?? (addon.staff_splits ?? settlement.staff_splits ?? [])
-                                const addonSettlementSplitSummary = addonSettlementSplits.length ? `${addonSettlementSplits.length} staff (${addonSettlementSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : getSettlementWorkerSummary(settlement)
+                                const addonSettlementSplitSummary = formatLineSplitSummary(addonSettlementSplitKey, settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [], 'main service')
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</td>
@@ -9035,11 +9089,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
           <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
-              <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : itemSplitEditorTarget.type === 'line' ? `Line Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : 'Item Staff Split'}</h5>
+              <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : itemSplitEditorTarget.type === 'bulk' ? `Apply Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : itemSplitEditorTarget.type === 'line' ? `Line Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : 'Item Staff Split'}</h5>
               <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="text-2xl leading-none text-gray-500">×</button>
             </div>
 
             <div className="space-y-3 p-5">
+              {itemSplitEditorTarget.type === 'bulk' ? (
+                <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  <input type="checkbox" checked={bulkSplitOverwrite} onChange={(event) => setBulkSplitOverwrite(event.target.checked)} className="h-4 w-4" />
+                  Overwrite existing child staff splits
+                </label>
+              ) : null}
               <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
                 <input
                   type="checkbox"
