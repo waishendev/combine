@@ -99,7 +99,7 @@ class SalesChannelReportService
             ->values();
 
         $overrideUserLabels = $order->items
-            ->map(fn (OrderItem $item) => data_get($item->price_override_snapshot, 'price_overridden_by'))
+            ->flatMap(fn (OrderItem $item) => $this->priceOverrideUserIdsForOrderItem($item))
             ->filter()
             ->map(fn ($id) => (int) $id)
             ->unique()
@@ -232,11 +232,114 @@ class SalesChannelReportService
             'discount_value' => (float) ($item->discount_value ?? 0),
             'discount_remark' => $item->discount_remark,
             'price_override' => $this->normalizeOrderItemPriceOverride($item, $overrideUsers),
+            'children' => $this->formatOrderDetailChildren($item, $overrideUsers),
             'staff_name' => $item->staff?->name,
             'staff_splits' => $staffSplits->all(),
         ];
     }
 
+
+    private function priceOverrideUserIdsForOrderItem(OrderItem $item): array
+    {
+        $ids = [];
+        $itemOverrideUser = data_get($item->price_override_snapshot, 'price_overridden_by');
+        if ($itemOverrideUser) {
+            $ids[] = (int) $itemOverrideUser;
+        }
+
+        foreach ((array) ($item->selected_booking_product_options ?? []) as $question) {
+            foreach ((array) ($question['options'] ?? []) as $option) {
+                $optionOverrideUser = data_get($option, 'price_overridden_by');
+                if ($optionOverrideUser) {
+                    $ids[] = (int) $optionOverrideUser;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter($ids)));
+    }
+
+    private function formatOrderDetailChildren(OrderItem $item, array $overrideUsers = []): array
+    {
+        $children = [];
+        $qty = max(1, (int) ($item->quantity ?? 1));
+
+        foreach ((array) ($item->selected_booking_product_options ?? []) as $question) {
+            foreach ((array) ($question['options'] ?? []) as $index => $option) {
+                $unitPrice = (float) ($option['extra_price'] ?? $option['unit_price'] ?? 0);
+                $lineTotal = isset($option['line_total_override'])
+                    ? (float) $option['line_total_override']
+                    : round($unitPrice * $qty, 2);
+                $discount = (float) ($option['discount_amount'] ?? 0);
+                $net = (float) ($option['line_total_after_discount'] ?? max(0.0, $lineTotal - $discount));
+                $name = (string) ($option['label'] ?? $option['name'] ?? $option['option_name'] ?? 'Booking product option');
+                $cnName = (string) ($option['cn_label'] ?? $option['cn_name'] ?? $option['linked_cn_name'] ?? '');
+
+                $children[] = [
+                    'id' => sprintf('%d-option-%d', (int) $item->id, count($children) + $index + 1),
+                    'line_type' => 'booking_product_option',
+                    'type_label' => 'Booking Product Option',
+                    'booking_no' => $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null),
+                    'name' => $name,
+                    'cn_name' => trim($cnName) !== '' ? $cnName : null,
+                    'variant_name' => (string) ($question['label'] ?? $question['name'] ?? '') ?: null,
+                    'variant_cn_name' => (string) ($question['cn_label'] ?? $question['cn_name'] ?? '') ?: null,
+                    'sku' => null,
+                    'qty' => $qty,
+                    'unit_price' => $unitPrice,
+                    'gross_amount' => $lineTotal,
+                    'line_total' => $lineTotal,
+                    'discount_amount' => $discount,
+                    'net_amount' => $net,
+                    'discount_type' => $option['discount_type'] ?? null,
+                    'discount_value' => (float) ($option['discount_value'] ?? 0),
+                    'discount_remark' => $option['discount_remark'] ?? null,
+                    'price_override' => $this->normalizeBookingProductOptionPriceOverride($option, $qty, $overrideUsers),
+                    'staff_name' => null,
+                    'staff_splits' => [],
+                    'children' => [],
+                ];
+            }
+        }
+
+        return $children;
+    }
+
+    private function normalizeBookingProductOptionPriceOverride(array $option, int $quantity, array $overrideUsers = []): ?array
+    {
+        $hasOverride = array_key_exists('original_unit_price_snapshot', $option)
+            || array_key_exists('line_total_override', $option)
+            || ! empty($option['price_override_reason'])
+            || ! empty($option['price_overridden_by'])
+            || ! empty($option['price_overridden_at']);
+
+        if (! $hasOverride) {
+            return null;
+        }
+
+        $qty = max(1, $quantity);
+        $adjusted = (float) ($option['extra_price'] ?? $option['unit_price'] ?? 0);
+        $original = (float) ($option['original_unit_price_snapshot'] ?? $option['original_unit_price'] ?? $adjusted);
+        $adjustedLine = isset($option['line_total_override']) ? (float) $option['line_total_override'] : round($adjusted * $qty, 2);
+        $overriddenBy = isset($option['price_overridden_by']) ? (int) $option['price_overridden_by'] : null;
+
+        return [
+            'original_unit_price' => round(max(0.0, $original), 2),
+            'original_unit_price_snapshot' => round(max(0.0, $original), 2),
+            'adjusted_unit_price' => round(max(0.0, $adjusted), 2),
+            'final_unit_price' => round(max(0.0, $adjusted), 2),
+            'unit_price_snapshot' => round(max(0.0, $adjusted), 2),
+            'original_line_total' => round(max(0.0, $original * $qty), 2),
+            'adjusted_line_total' => round(max(0.0, $adjustedLine), 2),
+            'final_line_total' => round(max(0.0, $adjustedLine), 2),
+            'price_override_amount' => round(max(0.0, $adjusted) - max(0.0, $original), 2),
+            'price_override_reason' => $option['price_override_reason'] ?? null,
+            'price_override_mode' => isset($option['line_total_override']) ? 'line_total' : 'unit_price',
+            'price_overridden_by' => $overriddenBy,
+            'price_overridden_by_label' => $overriddenBy ? ($overrideUsers[$overriddenBy] ?? ('User #' . $overriddenBy)) : null,
+            'price_overridden_at' => $option['price_overridden_at'] ?? null,
+        ];
+    }
 
     private function normalizeOrderItemPriceOverride(OrderItem $item, array $overrideUsers = []): ?array
     {

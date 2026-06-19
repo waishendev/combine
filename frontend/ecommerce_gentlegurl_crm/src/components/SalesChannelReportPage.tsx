@@ -121,7 +121,7 @@ type BookingResponse = {
 }
 
 type OrderDetailLine = {
-  id: number
+  id: number | string
   line_type: string
   type_label: string
   booking_no?: string | null
@@ -132,6 +132,9 @@ type OrderDetailLine = {
   sku?: string | null
   qty: number
   unit_price: number
+  line_total?: number
+  original_line_total?: number | string | null
+  final_line_total?: number | string | null
   gross_amount: number
   discount_amount: number
   net_amount: number
@@ -144,6 +147,9 @@ type OrderDetailLine = {
     original_unit_price_snapshot?: number | string | null
     final_unit_price?: number | string | null
     unit_price_snapshot?: number | string | null
+    original_line_total?: number | string | null
+    adjusted_line_total?: number | string | null
+    final_line_total?: number | string | null
     price_override_reason?: string | null
     price_overridden_by?: number | string | null
     price_overridden_by_label?: string | null
@@ -161,6 +167,7 @@ type OrderDetailLine = {
     share_percent: number
     commission_rate_snapshot?: number
   }>
+  children?: OrderDetailLine[]
 }
 
 type OrderDetail = {
@@ -402,6 +409,7 @@ export default function SalesChannelReportPage({
   const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
   const [detailTab, setDetailTab] = useState<'details' | 'photos'>('details')
   const [detailBookingId, setDetailBookingId] = useState<number | null>(null)
+  const [selectedDetailLine, setSelectedDetailLine] = useState<OrderDetailLine | null>(null)
 
   useEffect(() => {
     setInputs(resolved)
@@ -538,6 +546,7 @@ export default function SalesChannelReportPage({
     setOrderDetail(null)
     setDetailTab('details')
     setDetailBookingId(null)
+    setSelectedDetailLine(null)
   }
 
   const showingRange = `${formatDisplayDate(resolved.dateFrom)} – ${formatDisplayDate(resolved.dateTo)}`
@@ -931,6 +940,7 @@ export default function SalesChannelReportPage({
                           <th className="px-3 py-2 text-left font-semibold">Discount details</th>
                           <th className="px-3 py-2 text-left font-semibold">Price override</th>
                           <th className="px-3 py-2 text-left font-semibold">Staff split</th>
+                          <th className="px-3 py-2 text-left font-semibold">Action</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -962,6 +972,13 @@ export default function SalesChannelReportPage({
                             </td>
                             <td className="px-3 py-3 text-slate-700">{priceOverrideDisplay(line)}</td>
                             <td className="px-3 py-3 text-slate-700">{staffSplitDisplay(line)}</td>
+                            <td className="px-3 py-3">
+                              <ReportViewDetailsButton
+                                onClick={() => setSelectedDetailLine(line)}
+                                title={`View details for ${line.name}`}
+                                className="h-7 min-w-7 px-1.5"
+                              />
+                            </td>
                           </tr>
                         ))}
                       </tbody>
@@ -970,6 +987,84 @@ export default function SalesChannelReportPage({
                 </div>
               ) : null}
             </div>
+        </ReportDetailDrawer>
+      ) : null}
+
+
+      {selectedDetailLine ? (
+        <ReportDetailDrawer
+          open
+          title={selectedDetailLine.name}
+          subtitle={selectedDetailLine.type_label}
+          onClose={() => setSelectedDetailLine(null)}
+          maxWidthClassName="max-w-3xl"
+          zIndexClassName="z-[60]"
+        >
+          <div className="space-y-5">
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Basic</h4>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <DetailMeta label="Line type" value={selectedDetailLine.type_label} />
+                <DetailMeta label="Name" value={selectedDetailLine.name} />
+                <DetailMeta label="Chinese name" value={selectedDetailLine.cn_name || '—'} />
+                <DetailMeta label="Quantity" value={String(selectedDetailLine.qty)} />
+                <DetailMeta label="Original unit price" value={`RM ${formatAmount(Number(selectedDetailLine.price_override?.original_unit_price ?? selectedDetailLine.price_override?.original_unit_price_snapshot ?? selectedDetailLine.unit_price ?? 0))}`} />
+                <DetailMeta label="Final unit price" value={`RM ${formatAmount(Number(selectedDetailLine.price_override?.final_unit_price ?? selectedDetailLine.price_override?.unit_price_snapshot ?? selectedDetailLine.unit_price ?? 0))}`} />
+                <DetailMeta label="Original line total" value={`RM ${formatAmount(Number(selectedDetailLine.price_override?.original_line_total ?? selectedDetailLine.original_line_total ?? selectedDetailLine.gross_amount ?? 0))}`} />
+                <DetailMeta label="Final line total" value={`RM ${formatAmount(Number(selectedDetailLine.price_override?.final_line_total ?? selectedDetailLine.final_line_total ?? selectedDetailLine.gross_amount ?? 0))}`} />
+                <DetailMeta label="Discount" value={`RM ${formatAmount(selectedDetailLine.discount_amount)}`} />
+                <DetailMeta label="Net amount" value={`RM ${formatAmount(selectedDetailLine.net_amount)}`} />
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Price Override Audit</h4>
+              <div className="mt-3 text-sm text-slate-700">{priceOverrideDisplay(selectedDetailLine)}</div>
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Add-ons / Options</h4>
+              {(selectedDetailLine.children ?? []).length > 0 ? (
+                <div className="mt-3 overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold">Line</th>
+                        <th className="px-3 py-2 text-left font-semibold">Qty / unit</th>
+                        <th className="px-3 py-2 text-right font-semibold">Line total</th>
+                        <th className="px-3 py-2 text-right font-semibold">Discount</th>
+                        <th className="px-3 py-2 text-left font-semibold">Price override</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {(selectedDetailLine.children ?? []).map((child) => (
+                        <tr key={child.id} className="align-top">
+                          <td className="px-3 py-3">
+                            <p className="font-semibold text-slate-900">{child.name}</p>
+                            {child.cn_name ? <p className="text-xs text-slate-500">{child.cn_name}</p> : null}
+                          </td>
+                          <td className="px-3 py-3 tabular-nums text-slate-700">
+                            <p>{child.qty}</p>
+                            <p className="text-xs text-slate-500">RM {formatAmount(child.unit_price)}</p>
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums">RM {formatAmount(child.gross_amount)}</td>
+                          <td className="px-3 py-3 text-right tabular-nums text-amber-700">RM {formatAmount(child.discount_amount)}</td>
+                          <td className="px-3 py-3 text-slate-700">{priceOverrideDisplay(child)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">No add-ons/options recorded for this line.</p>
+              )}
+            </section>
+
+            <section className="rounded-xl border border-slate-200 bg-white p-4">
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Staff Split</h4>
+              <p className="mt-3 text-sm text-slate-700">{staffSplitDisplay(selectedDetailLine)}</p>
+            </section>
+          </div>
         </ReportDetailDrawer>
       ) : null}
 

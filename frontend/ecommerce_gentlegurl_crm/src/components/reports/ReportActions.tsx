@@ -44,6 +44,7 @@ type ReportDetailDrawerProps = {
   empty?: ReactNode
   footer?: ReactNode
   maxWidthClassName?: string
+  zIndexClassName?: string
 }
 
 export function ReportDetailDrawer({
@@ -58,11 +59,12 @@ export function ReportDetailDrawer({
   empty,
   footer,
   maxWidthClassName = 'max-w-5xl',
+  zIndexClassName = 'z-50',
 }: ReportDetailDrawerProps) {
   if (!open) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-slate-950/50" role="dialog" aria-modal="true">
+    <div className={`fixed inset-0 ${zIndexClassName} flex justify-end bg-slate-950/50`} role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close details" onClick={onClose} />
       <div className={`relative flex h-full w-full ${maxWidthClassName} flex-col overflow-hidden bg-white shadow-2xl`}>
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">

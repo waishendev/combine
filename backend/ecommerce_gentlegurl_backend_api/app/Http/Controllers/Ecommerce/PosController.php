@@ -5493,6 +5493,12 @@ class PosController extends Controller
                             continue;
                         }
                         $lineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, 0));
+                        $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $mainAmount);
+                        $mainAmount = (float) $priceOverrideResult['amount'];
+                        $mainLinePriceOverride = $priceOverrideResult['override'] ?? ($mainLine['price_override'] ?? null);
+                        if ($mainAmount <= 0.0001) {
+                            continue;
+                        }
                         if ($hasPerLineDiscounts) {
                             $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $mainAmount);
                             $serviceLineDiscount = (float) $lineDiscount['discount_amount'];
@@ -5526,7 +5532,7 @@ class PosController extends Controller
                             'discount_remark' => $serviceLineDiscountRemark,
                             'discount_amount' => $serviceLineDiscount,
                             'line_total_after_discount' => $serviceLineNet,
-                            'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($mainLine['price_override'] ?? null, 1, $serviceLineNet),
+                            'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($mainLinePriceOverride ?? null, 1, $serviceLineNet),
                             'locked' => true,
                             'booking_id' => (int) $booking->id,
                             'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? ($booking->service_id ?? 0)),
@@ -5573,6 +5579,12 @@ class PosController extends Controller
                         ? $addonName
                         : sprintf('%s::%s', $addonServiceRef, $addonName);
                     $lineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, 0));
+                    $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $addonAmount);
+                    $addonAmount = (float) $priceOverrideResult['amount'];
+                    $addonPriceOverride = $priceOverrideResult['override'] ?? ($addon['price_override'] ?? null);
+                    if ($addonAmount <= 0.0001) {
+                        continue;
+                    }
                     if ($hasPerLineDiscounts) {
                         $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $addonAmount);
                         $addonLineDiscount = (float) $lineDiscount['discount_amount'];
@@ -5606,7 +5618,7 @@ class PosController extends Controller
                         'discount_remark' => $addonLineDiscountRemark,
                         'discount_amount' => $addonLineDiscount,
                         'line_total_after_discount' => $addonLineNet,
-                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($addon['price_override'] ?? null, 1, $addonLineNet),
+                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($addonPriceOverride ?? null, 1, $addonLineNet),
                         'locked' => true,
                         'booking_id' => (int) $booking->id,
                         'booking_service_id' => (int) ($booking->service_id ?? 0),
