@@ -162,8 +162,8 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   addon_total_price?: number
   deposit_contribution?: number
   package_offset?: number
@@ -191,6 +191,7 @@ type AppointmentSettlementCartItem = {
     line_total_after_discount?: number
     discount_remark?: string | null
     price_override?: PriceOverrideSnapshot | null
+    staff_splits?: Array<{ staff_id: number; share_percent: number }>
   }>
   package_status?: { status?: 'reserved' | 'consumed' | 'released' | null } | null
   can_apply_package?: boolean
@@ -252,7 +253,7 @@ type ServiceCartItem = {
     extra_price?: number
     linked_booking_service_id?: number | null
     is_original?: boolean
-    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>
+    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
     staff_splits?: Array<{ staff_id: number; share_percent: number }>
   }>
 }
@@ -4994,7 +4995,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           quantity: item.qty,
           assigned_staff_id: item.assigned_staff_id ?? null,
           service_commission_rate_used: item.commission_rate_used ?? 0,
+          line_staff_splits: Object.entries(checkoutLineSplits)
+            .filter(([key]) => key.startsWith(`service:${item.id}:`))
+            .map(([key, splits]) => ({
+              line_key: key,
+              line_type: key.includes(':addon:') ? 'service_addon_deposit' : 'service_deposit',
+              line_ref_id: key.split(':').pop() ?? null,
+              staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+            })),
         })),
+        settlement_line_staff_splits: Object.entries(checkoutLineSplits)
+          .filter(([key]) => key.startsWith('settlement:'))
+          .map(([key, splits]) => ({
+            settlement_cart_item_id: Number(key.split(':')[1] ?? 0) || null,
+            line_key: key.split(':').slice(2).join(':'),
+            line_type: key.includes(':addon:') ? 'settlement_addon' : 'settlement_service',
+            line_ref_id: key.split(':').pop() ?? null,
+            staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+          })),
         package_items: cartPackageItems.map((item) => ({
           type: 'service_package',
           cart_package_item_id: item.id,
@@ -8190,30 +8208,38 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <div className="rounded-lg bg-white/80 p-3 ring-1 ring-emerald-100">
                                 <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposit Service</p>
                                 <div className="mt-2 space-y-2 text-[11px]">
-                                  {checkoutDepositBlocks.map((service, idx) => (
+                                  {checkoutDepositBlocks.map((service, idx) => {
+                                    const serviceLineKey = `service:${serviceItem.id}:main:${service.line_key ?? service.linked_booking_service_id ?? service.id ?? idx}`
+                                    const serviceLineSplits = checkoutLineSplits[serviceLineKey] ?? (service.staff_splits ?? serviceItem.staff_splits ?? [])
+                                    const serviceLineSummary = serviceLineSplits.length ? `${serviceLineSplits.length} staff (${serviceLineSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : splitSummary
+                                    return (
                                     <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                                       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                                         <span className="text-gray-500">{idx + 1}.</span>
-                                        <div><ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                        <div><ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" /><p className="mt-1 text-[10px] font-medium text-gray-600">Staff split: {serviceLineSummary}</p><div className="mt-1 flex flex-wrap gap-1">{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(serviceLineKey, service.name ?? 'Service deposit', serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[serviceLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
                                         <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} /></div>
                                       </div>
                                       {service.package_note ? (
                                         <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
                                       ) : null}
-                                      {(service.add_ons ?? []).map((addon, addonIdx) => (
+                                      {(service.add_ons ?? []).map((addon, addonIdx) => {
+                                        const addonLineKey = `service:${serviceItem.id}:addon:${addon.line_key ?? addon.id ?? addonIdx}`
+                                        const addonLineSplits = checkoutLineSplits[addonLineKey] ?? (addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [])
+                                        const addonLineSummary = addonLineSplits.length ? `${addonLineSplits.length} staff (${addonLineSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : splitSummary
+                                        return (
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                             <span className="text-gray-500">+</span>
-                                            <div><ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                            <div><ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" /><p className="mt-1 text-[10px] font-medium text-gray-600">Staff split: {addonLineSummary}</p><div className="mt-1 flex flex-wrap gap-1">{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonLineKey, addon.name ?? 'Service add-on deposit', serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[addonLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
                                             <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} /></div>
                                           </div>
                                           {addon.package_note ? (
                                             <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
                                           ) : null}
                                         </div>
-                                      ))}
+                                      )})}
                                     </div>
-                                  ))}
+                                  )})}
 
                                   {mainCoveredByPkg && checkoutHasAddons && Number(serviceItem.deposit_addon_total ?? 0) > 0.0001 ? (
                                     <p className="text-[10px] leading-snug text-gray-600">
@@ -8326,6 +8352,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const serviceNet = Number(service.line_total_after_discount ?? Math.max(0, servicePrice - serviceDiscount))
                                 const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
                                 const displayServiceNet = coveredByPackage ? 0 : serviceNet
+                                const serviceSettlementSplitKey = `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`
+                                const serviceSettlementSplits = checkoutLineSplits[serviceSettlementSplitKey] ?? (service.staff_splits ?? settlement.staff_splits ?? [])
+                                const serviceSettlementSplitSummary = serviceSettlementSplits.length ? `${serviceSettlementSplits.length} staff (${serviceSettlementSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : getSettlementWorkerSummary(settlement)
                                 const packageOriginalPrice = resolveSettlementLineOriginalPrice(
                                   service,
                                   checkoutOriginalServiceReference,
@@ -8345,10 +8374,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         ) : null}
                                       </td>
                                       <td className="min-w-[260px] px-4 py-2.5 align-top">
+                                        <p className="mb-1 text-[11px] font-medium text-gray-600">Staff split: {serviceSettlementSplitSummary}</p>
                                         <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
                                         {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                        <button type="button" onClick={() => void openLineSplitEditor(serviceSettlementSplitKey, service.name ?? 'Settlement service', settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="ml-2 inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">{checkoutLineSplits[serviceSettlementSplitKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                       </td>
                                       <td className="px-4 py-2.5 align-top tabular-nums text-xs font-semibold text-gray-700">
                                         {coveredByPackage ? (
@@ -8390,10 +8421,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const coveredByPackage = pkgOffset > checkoutOriginalServiceReference + 0.0001 && due <= 0.0001 && addonReference > 0.0001
                                 const addonOriginalPrice = resolveSettlementLineOriginalPrice(addon, addonReference, gross)
                                 const displayDue = coveredByPackage ? 0 : due
+                                const addonSettlementSplitKey = `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`
+                                const addonSettlementSplits = checkoutLineSplits[addonSettlementSplitKey] ?? (addon.staff_splits ?? settlement.staff_splits ?? [])
+                                const addonSettlementSplitSummary = addonSettlementSplits.length ? `${addonSettlementSplits.length} staff (${addonSettlementSplits.reduce((sum, split) => sum + Number(split.share_percent || 0), 0)}%)` : getSettlementWorkerSummary(settlement)
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</td>
-                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top"><p className="mb-1 text-[11px] font-medium text-gray-600">Staff split: {addonSettlementSplitSummary}</p><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonSettlementSplitKey, addon.name ?? 'Settlement add-on', settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="ml-2 inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">{checkoutLineSplits[addonSettlementSplitKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <>RM {due.toFixed(2)}</>}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
@@ -8412,7 +8446,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     </p>
                                   ) : null}
                                 </td>
-                                <td className="min-w-[260px] px-4 py-2.5" aria-hidden />
+                                <td className="min-w-[260px] px-4 py-2.5"><button type="button" onClick={() => void openLineSplitEditor(`settlement:${settlement.id}:service:original`, settlement.service_name ?? 'Settlement service', settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Assign Staff Split</button></td>
                                 <td className="px-4 py-2.5 align-top tabular-nums text-xs text-gray-700">
                                   {mainCoveredByPkg ? (
                                     <PosPackageIncludedAmount originalAmount={fallbackMainOriginal} inline />

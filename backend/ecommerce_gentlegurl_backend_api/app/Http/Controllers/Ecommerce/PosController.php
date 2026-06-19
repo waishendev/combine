@@ -4634,6 +4634,21 @@ class PosController extends Controller
             'service_items.*.assigned_staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
             'service_items.*.start_at' => ['nullable', 'date'],
             'service_items.*.service_commission_rate_used' => ['nullable', 'numeric', 'min:0'],
+            'service_items.*.line_staff_splits' => ['nullable', 'array'],
+            'service_items.*.line_staff_splits.*.line_key' => ['nullable', 'string', 'max:255'],
+            'service_items.*.line_staff_splits.*.line_type' => ['required_with:service_items.*.line_staff_splits', 'string', 'max:80'],
+            'service_items.*.line_staff_splits.*.line_ref_id' => ['nullable'],
+            'service_items.*.line_staff_splits.*.staff_splits' => ['nullable', 'array'],
+            'service_items.*.line_staff_splits.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'service_items.*.line_staff_splits.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'settlement_line_staff_splits' => ['nullable', 'array'],
+            'settlement_line_staff_splits.*.settlement_cart_item_id' => ['nullable', 'integer'],
+            'settlement_line_staff_splits.*.line_key' => ['nullable', 'string', 'max:255'],
+            'settlement_line_staff_splits.*.line_type' => ['required_with:settlement_line_staff_splits', 'string', 'max:80'],
+            'settlement_line_staff_splits.*.line_ref_id' => ['nullable'],
+            'settlement_line_staff_splits.*.staff_splits' => ['nullable', 'array'],
+            'settlement_line_staff_splits.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'settlement_line_staff_splits.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
             'package_items' => ['nullable', 'array'],
             'package_items.*.type' => ['nullable', 'in:service_package'],
             'package_items.*.cart_package_item_id' => ['nullable', 'integer'],
@@ -5036,9 +5051,19 @@ class PosController extends Controller
                 return $cartItemId > 0 ? [$cartItemId => collect($item['line_staff_splits'] ?? [])->values()->all()] : [];
             });
 
+            $lineStaffSplitsByServiceItemId = collect($validated['service_items'] ?? [])->mapWithKeys(function (array $item) {
+                $cartServiceItemId = isset($item['cart_service_item_id']) ? (int) $item['cart_service_item_id'] : 0;
+                return $cartServiceItemId > 0 ? [$cartServiceItemId => collect($item['line_staff_splits'] ?? [])->values()->all()] : [];
+            });
+
+            $lineStaffSplitsBySettlementItemId = collect($validated['settlement_line_staff_splits'] ?? [])
+                ->groupBy(fn (array $line) => (int) ($line['settlement_cart_item_id'] ?? 0));
+
             $staffIds = $staffSplitsByCartItemId
                 ->flatMap(fn (array $splits) => collect($splits)->pluck('staff_id'))
                 ->merge($lineStaffSplitsByCartItemId->flatMap(fn (array $lines) => collect($lines)->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))))
+                ->merge($lineStaffSplitsByServiceItemId->flatMap(fn (array $lines) => collect($lines)->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))))
+                ->merge($lineStaffSplitsBySettlementItemId->flatMap(fn ($lines) => collect($lines)->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))))
                 ->filter()
                 ->map(fn ($staffId) => (int) $staffId)
                 ->unique()
@@ -5049,6 +5074,45 @@ class PosController extends Controller
                 ->pluck('service_commission_rate', 'id')
                 ->map(fn ($rate) => (float) $rate)
                 ->all();
+
+            $persistOrderItemLineSplits = function (OrderItem $orderItem, $splits, string $lineType, ?string $lineRefId, float $amountBasis, array $snapshot = []) use ($staffCommissionRates): void {
+                $splitRows = collect($splits ?? [])->map(fn ($split) => [
+                    'staff_id' => (int) ($split['staff_id'] ?? 0),
+                    'share_percent' => (int) ($split['share_percent'] ?? 0),
+                ])->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values();
+
+                if ($splitRows->isEmpty()) {
+                    return;
+                }
+
+                $sum = (int) $splitRows->sum('share_percent');
+                $uniqueCount = $splitRows->pluck('staff_id')->unique()->count();
+                if ($sum !== 100 || $uniqueCount !== $splitRows->count()) {
+                    abort(422, __('Invalid line staff split.'));
+                }
+
+                foreach ($splitRows as $split) {
+                    OrderItemStaffSplit::query()->create([
+                        'order_item_id' => (int) $orderItem->id,
+                        'line_type' => $lineType,
+                        'line_ref_id' => $lineRefId,
+                        'staff_id' => (int) $split['staff_id'],
+                        'share_percent' => (int) $split['share_percent'],
+                        'amount_basis' => round(max(0, $amountBasis), 2),
+                        'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                        'snapshot' => $snapshot,
+                    ]);
+                }
+            };
+
+            $resolveLineSplits = function ($linePayloads, string $lineKey, $fallbackSplits = []) {
+                $payload = collect($linePayloads ?? [])->first(function (array $line) use ($lineKey) {
+                    $payloadKey = (string) ($line['line_key'] ?? '');
+                    return $payloadKey === $lineKey || str_ends_with($payloadKey, ':' . $lineKey);
+                });
+
+                return $payload ? collect($payload['staff_splits'] ?? [])->values()->all() : collect($fallbackSplits ?? [])->values()->all();
+            };
 
             $serviceClaimStatuses = $this->resolveServiceItemClaimStatuses($cart);
             $depositBreakdown = $this->resolvePosBookingDepositBreakdown($cart, $serviceClaimStatuses);
@@ -5353,7 +5417,7 @@ class PosController extends Controller
                     $depositPriceOverride = $depositPriceOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
                 }
 
-                OrderItem::create([
+                $depositOrderItem = OrderItem::create([
                     'order_id' => $order->id,
                     'line_type' => 'booking_deposit',
                     'product_id' => null,
@@ -5370,6 +5434,14 @@ class PosController extends Controller
                     'booking_id' => $booking->id,
                     'booking_service_id' => $serviceItem->booking_service_id,
                     'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($depositPriceOverride, 1, $depositContribution),
+                ]);
+
+                $serviceLinePayloads = $lineStaffSplitsByServiceItemId->get((int) $serviceItem->id, []);
+                $mainDepositSplits = $resolveLineSplits($serviceLinePayloads, 'main', $splits->values()->all());
+                $persistOrderItemLineSplits($depositOrderItem, $mainDepositSplits, 'service_deposit', (string) $serviceItem->booking_service_id, (float) $depositContribution, [
+                    'cart_service_item_id' => (int) $serviceItem->id,
+                    'booking_id' => (int) $booking->id,
+                    'line_type' => 'service_deposit',
                 ]);
 
                 foreach (collect($serviceItem->addon_items_json ?? [])->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) === 'main_service' && ! (bool) ($row['is_original'] ?? false))->values() as $extraMainRow) {
@@ -5404,7 +5476,7 @@ class PosController extends Controller
                     $addonDepositPriceOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'addon:' . $addonId, $addonDepositAmount);
                     $addonDepositAmount = (float) $addonDepositPriceOverrideResult['amount'];
                     $addonDepositPriceOverride = $addonDepositPriceOverrideResult['override'] ?? ($addonRow['price_override'] ?? null);
-                    OrderItem::create([
+                    $addonDepositOrderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'line_type' => 'booking_addon',
                         'product_id' => null,
@@ -5422,6 +5494,15 @@ class PosController extends Controller
                         'booking_id' => $booking->id,
                         'booking_service_id' => $serviceItem->booking_service_id,
                         'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($addonDepositPriceOverride, 1, $addonDepositAmount),
+                    ]);
+
+                    $addonLineKey = 'addon:' . $addonId;
+                    $addonDepositSplits = $resolveLineSplits($serviceLinePayloads, $addonLineKey, $splits->values()->all());
+                    $persistOrderItemLineSplits($addonDepositOrderItem, $addonDepositSplits, 'service_addon_deposit', (string) $addonId, (float) $addonDepositAmount, [
+                        'cart_service_item_id' => (int) $serviceItem->id,
+                        'booking_id' => (int) $booking->id,
+                        'line_type' => 'service_addon_deposit',
+                        'addon' => $addonRow,
                     ]);
                 }
 
@@ -5614,14 +5695,14 @@ class PosController extends Controller
                             $splitSum = (int) $lineSplits->sum('share_percent');
                             $uniqueCount = $lineSplits->pluck('staff_id')->unique()->count();
                             if ($splitSum === 100 && $uniqueCount === $lineSplits->count()) {
-                                foreach ($lineSplits as $split) {
-                                    OrderItemStaffSplit::query()->create([
-                                        'order_item_id' => (int) $settlementOrderItem->id,
-                                        'staff_id' => (int) $split['staff_id'],
-                                        'share_percent' => (int) $split['share_percent'],
-                                        'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
-                                    ]);
-                                }
+                                $submittedSettlementSplits = $resolveLineSplits($lineStaffSplitsBySettlementItemId->get((int) $settlementItem->id, []), $lineKey, $lineSplits->values()->all());
+                                $persistOrderItemLineSplits($settlementOrderItem, $submittedSettlementSplits, 'settlement_service', $lineKey, (float) $serviceLineNet, [
+                                    'settlement_cart_item_id' => (int) $settlementItem->id,
+                                    'booking_id' => (int) $booking->id,
+                                    'line_key' => $lineKey,
+                                    'line_type' => 'settlement_service',
+                                    'service' => $mainLine,
+                                ]);
                             }
                         }
                     }
@@ -5658,7 +5739,7 @@ class PosController extends Controller
                         $addonLineDiscountRemark = $settlementItem->discount_remark;
                     }
                     $addonLineNet = max(0.0, $addonAmount - $addonLineDiscount);
-                    OrderItem::query()->create([
+                    $addonSettlementOrderItem = OrderItem::query()->create([
                         'order_id' => (int) $order->id,
                         'line_type' => 'booking_addon',
                         'product_id' => null,
@@ -5681,6 +5762,19 @@ class PosController extends Controller
                         'locked' => true,
                         'booking_id' => (int) $booking->id,
                         'booking_service_id' => (int) ($booking->service_id ?? 0),
+                    ]);
+
+                    $addonSettlementSplits = $resolveLineSplits(
+                        $lineStaffSplitsBySettlementItemId->get((int) $settlementItem->id, []),
+                        $lineKey,
+                        $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all()
+                    );
+                    $persistOrderItemLineSplits($addonSettlementOrderItem, $addonSettlementSplits, 'settlement_addon', $lineKey, (float) $addonLineNet, [
+                        'settlement_cart_item_id' => (int) $settlementItem->id,
+                        'booking_id' => (int) $booking->id,
+                        'line_key' => $lineKey,
+                        'line_type' => 'settlement_addon',
+                        'addon' => $addon,
                     ]);
                 }
 
