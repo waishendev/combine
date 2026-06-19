@@ -9282,7 +9282,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
       {itemSplitEditorOpen && itemSplitEditorTarget ? (
-        <div className="fixed inset-0 z-[60] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
+        <div className="fixed inset-0 z-[220] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
           <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
               <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : itemSplitEditorTarget.type === 'bulk' ? `Apply Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : itemSplitEditorTarget.type === 'line' ? `Line Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : 'Item Staff Split'}</h5>
@@ -9338,7 +9338,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         const availableOptions = row.options.filter(staff => !selectedStaffIds.has(staff.id))
                         
                         return (
-                          <div className="absolute z-[80] mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5">
+                          <div className="absolute z-[230] mt-1 max-h-56 w-full overflow-auto rounded-lg border border-gray-200 bg-white shadow-2xl ring-1 ring-black/5">
                             {row.loading ? (
                               <p className="px-3 py-2 text-xs text-gray-500">Searching...</p>
                             ) : availableOptions.length === 0 ? (
