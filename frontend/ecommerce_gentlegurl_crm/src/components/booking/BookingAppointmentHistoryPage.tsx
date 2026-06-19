@@ -6,6 +6,7 @@ import BookingStatusBadge from './BookingStatusBadge'
 import PaginationControls from '@/components/PaginationControls'
 import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
+import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 
 type StaffOption = { id: number; name: string }
 
@@ -115,24 +116,17 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
   if (!row && !loading && !error) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/40" role="dialog" aria-modal="true">
-      <div className="flex h-full w-full max-w-3xl flex-col overflow-hidden bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-slate-200 px-6 py-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Appointment History</p>
-            <h3 className="mt-1 text-xl font-bold text-slate-900">{row?.booking_code ?? 'Loading…'}</h3>
-          </div>
-          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900" aria-label="Close details">
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {loading ? (
-            <div className="py-16 text-center text-sm text-slate-500">Loading appointment detail…</div>
-          ) : error ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div>
-          ) : row ? (
+    <ReportDetailDrawer
+      open={Boolean(row || loading || error)}
+      title={row?.booking_code ?? 'Loading…'}
+      subtitle="Appointment History"
+      onClose={onClose}
+      loading={loading}
+      loadingText="Loading appointment detail…"
+      error={error}
+      maxWidthClassName="max-w-3xl"
+    >
+      {row ? (
             <div className="space-y-5">
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Booking Info</h4>
@@ -196,10 +190,8 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
                 )}
               </section>
             </div>
-          ) : null}
-        </div>
-      </div>
-    </div>
+      ) : null}
+    </ReportDetailDrawer>
   )
 }
 
@@ -401,7 +393,7 @@ export default function BookingAppointmentHistoryPage() {
                 <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.balance_due)}</td>
                 <td className="px-3 py-3 text-xs tabular-nums">{formatDateTime(row.created_at)}</td>
                 <td className="px-3 py-3">
-                  <button type="button" onClick={() => { setDetail(row); setDetailId(row.id) }} className="rounded bg-slate-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-slate-900">View Details</button>
+                  <ReportViewDetailsButton onClick={() => { setDetail(row); setDetailId(row.id) }} title={`View details for ${row.booking_code}`} />
                 </td>
               </tr>
             )) : (

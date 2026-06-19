@@ -79,7 +79,7 @@ type CartItem = {
     question_id?: number
     title?: string
     cn_title?: string | null
-    options?: Array<{ id?: number; label?: string; cn_label?: string | null; extra_price?: number; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null }>
+    options?: Array<{ id?: number; label?: string; cn_label?: string | null; extra_price?: number; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; original_unit_price_snapshot?: number | null; line_total_override?: number | null }>
   }>
 }
 
@@ -163,7 +163,7 @@ type AppointmentSettlementCartItem = {
   balance_due: number
   service_total?: number
   main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null }>
+  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null }>
   addon_total_price?: number
   deposit_contribution?: number
   package_offset?: number
@@ -190,6 +190,7 @@ type AppointmentSettlementCartItem = {
     discount_amount?: number
     line_total_after_discount?: number
     discount_remark?: string | null
+    price_override?: PriceOverrideSnapshot | null
   }>
   package_status?: { status?: 'reserved' | 'consumed' | 'released' | null } | null
   can_apply_package?: boolean
@@ -224,10 +225,11 @@ type ServiceCartItem = {
   deposit_contribution?: number
   /** When package covers main service: booking service deposit_amount for strikethrough UI */
   deposit_main_reference?: number | null
-  deposit_addon_lines?: Array<{ id?: number | null; name: string; cn_name?: string | null; deposit: number }>
+  deposit_addon_lines?: Array<{ id?: number | null; name: string; cn_name?: string | null; deposit: number; price_override?: PriceOverrideSnapshot | null }>
   deposit_addon_total?: number
   /** Main + add-on deposits due at checkout for this line */
   deposit_payable_total?: number
+  deposit_price_override?: PriceOverrideSnapshot | null
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null
   claimed_by_package?: boolean
   assigned_staff_id?: number | null
@@ -347,6 +349,8 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
     return {
       ...service,
       deposit,
+      line_key: 'main',
+      price_override: item.deposit_price_override ?? null,
       reference_deposit: referenceDeposit,
       covered_by_package: coveredByPackage,
       package_note: coveredByPackage ? 'Included in your package (main service)' : null,
@@ -354,10 +358,13 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
         const addonDeposit = getPosServiceAddonDeposit(item, addon.id)
         const addonReferenceDeposit = getPosServiceAddonDepositReference(item, addon)
         const addonCoveredByPackage = isMainPackageClaimed && addonReferenceDeposit > addonDeposit + 0.0001 && addonDeposit < 0.0001
+        const depositLine = (item.deposit_addon_lines ?? []).find((line) => Number(line.id ?? 0) === Number(addon.id ?? 0))
 
         return {
           ...addon,
           deposit: addonDeposit,
+          line_key: `addon:${Number(addon.id ?? 0)}`,
+          price_override: depositLine?.price_override ?? null,
           reference_deposit: Math.max(addonReferenceDeposit, addonDeposit),
           covered_by_package: addonCoveredByPackage,
           package_note: addonCoveredByPackage ? 'Included in your package (add-on)' : null,
@@ -483,6 +490,15 @@ type PackageCartItem = {
   }>
 }
 
+type PriceOverrideSnapshot = { original_unit_price?: number; final_unit_price?: number; price_override_amount?: number; price_override_reason?: string | null; price_overridden_by?: number | null; price_overridden_at?: string | null }
+
+type PriceEditTarget =
+  | { kind: 'product'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'bookingProductOption'; id: number; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'package'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'serviceDeposit'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+
 type DiscountTarget =
   | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
   | { kind: 'package'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null }
@@ -547,7 +563,7 @@ function getBookingProductBaseLineTotal(item: CartItem, options = getBookingProd
 }
 
 function getBookingProductOptionGrossLineTotal(item: CartItem, option: BookingProductSelectedOption): number {
-  return Number(option.extra_price ?? 0) * Number(item.qty ?? 1)
+  return Number(option.line_total_override ?? (Number(option.extra_price ?? 0) * Number(item.qty ?? 1)))
 }
 
 function getBookingProductOptionNetLineTotal(item: CartItem, option: BookingProductSelectedOption): number {
@@ -1466,6 +1482,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditStaffSplitAutoBalance, setCartEditStaffSplitAutoBalance] = useState(true)
   const [cartEditAddonOptionsLoading, setCartEditAddonOptionsLoading] = useState(false)
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
+  const [cartEditOriginalServicePrice, setCartEditOriginalServicePrice] = useState<number | null>(null)
+  const [cartEditAddonPriceOverrides, setCartEditAddonPriceOverrides] = useState<Record<number, number>>({})
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -1513,6 +1531,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [itemSplitError, setItemSplitError] = useState<string | null>(null)
+  const [priceEditTarget, setPriceEditTarget] = useState<PriceEditTarget | null>(null)
+  const [priceEditValueDraft, setPriceEditValueDraft] = useState('')
+  const [priceEditReasonDraft, setPriceEditReasonDraft] = useState('')
+  const [priceEditMode, setPriceEditMode] = useState<'unit' | 'line'>('unit')
+  const [priceEditLineTotalDraft, setPriceEditLineTotalDraft] = useState('')
+  const [priceEditSaving, setPriceEditSaving] = useState(false)
   const [discountModalOpen, setDiscountModalOpen] = useState(false)
   const [discountSaving, setDiscountSaving] = useState(false)
   const [discountTarget, setDiscountTarget] = useState<DiscountTarget | null>(null)
@@ -3547,6 +3571,62 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
 
+
+  const openPriceEditModal = (target: PriceEditTarget) => {
+    setPriceEditTarget(target)
+    setPriceEditValueDraft(Number(target.currentUnitPrice ?? 0).toFixed(2))
+    setPriceEditLineTotalDraft(Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2))
+    setPriceEditMode('unit')
+    setPriceEditReasonDraft('')
+  }
+
+  const submitPriceEditModal = async () => {
+    if (!priceEditTarget || priceEditSaving) return
+    const quantity = Math.max(1, Number(priceEditTarget.quantity ?? 1))
+    const nextInput = priceEditMode === 'line' ? Number(priceEditLineTotalDraft) : Number(priceEditValueDraft)
+    if (!Number.isFinite(nextInput) || nextInput < 0) {
+      showMsg(priceEditMode === 'line' ? 'New line total must be 0 or higher.' : 'New price must be 0 or higher.', 'error')
+      return
+    }
+    const next = priceEditMode === 'line' ? nextInput / quantity : nextInput
+    let endpoint = ''
+    if (priceEditTarget.kind === 'product') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/price`
+    if (priceEditTarget.kind === 'bookingProductOption') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/booking-product-options/${priceEditTarget.optionId}/price`
+    if (priceEditTarget.kind === 'package') endpoint = `/api/proxy/pos/cart/package-items/${priceEditTarget.id}/price`
+    if (priceEditTarget.kind === 'serviceDeposit') endpoint = `/api/proxy/pos/cart/service-items/${priceEditTarget.id}/price`
+    if (priceEditTarget.kind === 'settlementLine') endpoint = `/api/proxy/pos/cart/appointment-settlements/${priceEditTarget.id}/price`
+    if (!endpoint) return
+    setPriceEditSaving(true)
+    try {
+      const res = await fetch(endpoint, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ unit_price: next, ...(priceEditMode === 'line' ? { line_total: nextInput } : {}), reason: priceEditReasonDraft.trim() || null, ...('lineKey' in priceEditTarget ? { line_key: priceEditTarget.lineKey } : {}) }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to update price.', 'error')
+        return
+      }
+      setCart((json?.data?.cart ?? null) as Cart | null)
+      if (priceEditTarget.kind === 'settlementLine' && cartEditSettlementItem?.id === priceEditTarget.id) {
+        const originalLineKey = (cartEditSettlementItem.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)?.line_key
+        if (priceEditTarget.lineKey === originalLineKey) {
+          setCartEditOriginalServicePrice(next)
+        } else {
+          const addon = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
+          if (addon?.id != null) {
+            setCartEditAddonPriceOverrides((prev) => ({ ...prev, [Number(addon.id)]: next }))
+          }
+        }
+      }
+      setPriceEditTarget(null)
+      showMsg('Price updated.', 'success')
+    } finally {
+      setPriceEditSaving(false)
+    }
+  }
+
   const openDiscountModal = (target: DiscountTarget) => {
     if (target.kind === 'product' && (target.promotionApplied || target.manualDiscountAllowed === false)) {
       showMsg('Manual discount is disabled when promotion is applied.', 'error')
@@ -3685,6 +3765,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSettlementServiceId(settlement.booking_service_id ?? null)
 
     const originalMainService = (settlement.main_services ?? []).find((service) => service.is_original)
+    const originalSettlementLine = (settlement.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)
+    setCartEditOriginalServicePrice(Number(originalSettlementLine?.gross_amount ?? originalSettlementLine?.balance_due ?? originalMainService?.extra_price ?? settlement.service_total ?? 0))
+    setCartEditAddonPriceOverrides(Object.fromEntries((settlement.addon_settlement_items ?? []).filter((addon) => addon.id != null).map((addon) => [Number(addon.id), Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)])))
     setCartEditOriginalService({
       id: Number(settlement.booking_service_id ?? originalMainService?.linked_booking_service_id ?? originalMainService?.id ?? 0),
       name: String(originalMainService?.name ?? settlement.service_name ?? 'Service'),
@@ -3692,8 +3775,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       price_mode: settlement.service_price_mode ?? null,
       price_range_min: settlement.service_price_range_min ?? null,
       price_range_max: settlement.service_price_range_max ?? null,
-      service_price: Number(originalMainService?.extra_price ?? settlement.service_total ?? 0),
-      price: Number(originalMainService?.extra_price ?? settlement.service_total ?? 0),
+      service_price: Number(originalSettlementLine?.gross_amount ?? originalSettlementLine?.balance_due ?? originalMainService?.extra_price ?? settlement.service_total ?? 0),
+      price: Number(originalSettlementLine?.gross_amount ?? originalSettlementLine?.balance_due ?? originalMainService?.extra_price ?? settlement.service_total ?? 0),
       duration_min: Number(originalMainService?.extra_duration_min ?? 0),
     })
 
@@ -3828,6 +3911,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSelectedAddonIds(new Set())
     setCartEditAddedMainBlocks((prev) => prev.filter((block) => block.service_id !== service.id))
     setCartEditSettledAmount('')
+    setCartEditOriginalServicePrice(Number(service.service_price ?? service.price ?? 0))
+    setCartEditAddonPriceOverrides({})
     setCartEditAddonOptionsLoading(true)
     try {
       const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
@@ -3899,6 +3984,43 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     () => bookingServiceSettlementSource(cartEditOriginalService),
     [cartEditOriginalService],
   )
+
+
+  const editCartSettlementOriginalServicePrice = () => {
+    if (!cartEditSettlementItem) return
+    const line = (cartEditSettlementItem.main_service_settlement_items ?? []).find((row, idx) => row.is_original ?? idx === 0)
+    const current = Number(cartEditOriginalServicePrice ?? line?.gross_amount ?? line?.balance_due ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? 0)
+    if (line?.line_key) {
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: line.name ?? cartEditOriginalService?.name ?? 'Service', currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      return
+    }
+    const raw = window.prompt('New service price', current.toFixed(2))
+    if (raw == null) return
+    const next = Number(raw)
+    if (Number.isFinite(next) && next >= 0) setCartEditOriginalServicePrice(next)
+  }
+
+  const editCartSettlementAddonPrice = (optionId: number, label: string, currentPrice: number) => {
+    if (!cartEditSettlementItem) return
+    const line = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => Number(row.id ?? 0) === Number(optionId))
+    const current = Number(cartEditAddonPriceOverrides[optionId] ?? line?.gross_amount ?? line?.balance_due ?? currentPrice ?? 0)
+    if (line?.line_key) {
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: label, currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      return
+    }
+    const raw = window.prompt('New add-on price', current.toFixed(2))
+    if (raw == null) return
+    const next = Number(raw)
+    if (Number.isFinite(next) && next >= 0) setCartEditAddonPriceOverrides((prev) => ({ ...prev, [optionId]: next }))
+  }
+
+  const editCartAddedMainServicePrice = (tmpId: string, currentPrice: number) => {
+    const raw = window.prompt('New service block price', Number(currentPrice ?? 0).toFixed(2))
+    if (raw == null) return
+    const next = Number(raw)
+    if (!Number.isFinite(next) || next < 0) return
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next } : block))
+  }
 
   const saveCartEditSettlement = async () => {
     if (!cartEditSettlementBookingId) return
@@ -6516,7 +6638,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                               <span className="text-gray-500">{idx + 1}.</span>
                               <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                              <PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />
+                              <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
                             </div>
                             {service.package_note ? (
                               <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
@@ -6526,7 +6648,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                   <span className="text-gray-500">+</span>
                                   <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                  <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
+                                  <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
                                 </div>
                                 {addon.package_note ? (
                                   <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
@@ -7216,7 +7338,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {cartEditSettlementOpen && cartEditSettlementItem && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -7269,16 +7391,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         name={cartEditOriginalService?.name ?? cartEditSettlementItem.service_name ?? 'Service'}
                         cnName={cartEditOriginalService?.cn_name ?? cartEditSettlementItem.service_cn_name}
                       />
-                      <p className="text-xs text-gray-600">
-                        {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) == null
-                          ? `RM ${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`
-                          : `RM ${Number(
-                              settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) != null
-                                ? parseSettlementAmountInput(cartEditSettledAmount)
-                                : cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? cartEditSettlementItem.service_total ?? 0,
-                            ).toFixed(2)}`}
-                        {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <p className="text-xs text-gray-600">
+                          {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) == null
+                            ? `RM ${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`
+                            : `RM ${Number(
+                                settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) != null
+                                  ? parseSettlementAmountInput(cartEditSettledAmount)
+                                  : cartEditOriginalServicePrice ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? cartEditSettlementItem.service_total ?? 0,
+                              ).toFixed(2)}`}
+                          {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
+                        </p>
+                        <button type="button" onClick={editCartSettlementOriginalServicePrice} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                      </div>
                     </div>
                     <button
                       type="button"
@@ -7323,9 +7448,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   />
                                   <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
-                                <span className="text-xs font-semibold tabular-nums text-gray-600">
-                                  +RM {Number(opt.extra_price).toFixed(2)}
-                                  {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
+                                <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
+                                  <span>+RM {Number(cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
+                                  {checked ? <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}
                                 </span>
                               </label>
                             )
@@ -7449,7 +7574,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -7564,7 +7689,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
-                const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(o.extra_price), 0)
+                const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(cartEditAddonPriceOverrides[o.id] ?? o.extra_price), 0)
                 const selectedMainServices = cartEditAddedMainBlocks
                 const addedMainTotal = selectedMainServices.reduce((sum, service) => {
                   const addonOptions = service.addon_questions.flatMap((q) => q.options)
@@ -7576,7 +7701,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 const originalServiceAmt = isRange && settledAmt != null
                   ? settledAmt
                   : Number(
-                    cartEditOriginalService?.service_price
+                    cartEditOriginalServicePrice
+                      ?? cartEditOriginalService?.service_price
                       ?? cartEditOriginalService?.price
                       ?? (cartEditSettlementItem.main_services ?? [])
                         .find((service) => service.is_original)?.extra_price
@@ -7661,7 +7787,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {cartEditMainServicePickerOpen && cartEditSettlementItem && cartEditMainServicePickerTargetId ? (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -7861,10 +7987,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 >
                                   {(item.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
                                 </button>
+                                <button type="button" onClick={() => openPriceEditModal({ kind: 'product', id: item.id, name: item.product_name ?? 'Product', currentUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price), originalUnitPrice: Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : (item.unit_price_snapshot ?? item.unit_price ?? 0)), quantity: Number(item.qty ?? 1), currentLineTotal: Number(isBookingProduct ? bookingProductBaseLineTotal : item.line_total_snapshot ?? item.line_total ?? 0) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button>
                               </div>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 text-left align-top tabular-nums">
+                            <div className="space-y-1">
                             {item.promotion_applied && item.unit_price_snapshot ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(item.unit_price_snapshot).toFixed(2)}</p>
@@ -7878,6 +8006,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             ) : (
                               <p className="text-gray-700">RM {Number(selectedBookingProductOptions.length > 0 ? bookingProductBaseUnitPrice : item.unit_price).toFixed(2)}</p>
                             )}
+                            </div>
                           </td>
                           <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
                             {item.promotion_applied && item.line_total_snapshot ? (
@@ -7933,8 +8062,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               >
                                 {optionDiscount > 0 ? 'Edit Discount' : 'Discount'}
                               </button>
+                              <button type="button" onClick={() => opt.id && openPriceEditModal({ kind: 'bookingProductOption', id: item.id, optionId: Number(opt.id), name: `+ ${opt.label ?? 'Booking Product Option'}`, currentUnitPrice: Number(opt.extra_price ?? 0), originalUnitPrice: Number(opt.original_unit_price_snapshot ?? opt.extra_price ?? 0), quantity: Number(item.qty ?? 1), currentLineTotal: optionGross })} disabled={!opt.id} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 disabled:opacity-50">Edit Price</button>
                             </td>
-                            <td className="px-4 py-2.5 text-left tabular-nums text-sm text-gray-700">RM {Number(opt.extra_price ?? 0).toFixed(2)}</td>
+                            <td className="px-4 py-2.5 text-left tabular-nums text-sm text-gray-700">
+                              <div className="space-y-1">
+                                <p>RM {Number(opt.extra_price ?? 0).toFixed(2)}</p>
+                              </div>
+                            </td>
                             <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-gray-900 sm:px-5">
                               {optionDiscount > 0 ? (
                                 <div className="space-y-0.5">
@@ -8009,8 +8143,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                                       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                                         <span className="text-gray-500">{idx + 1}.</span>
-                                        <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                        <PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />
+                                        <div><ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                        <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} /></div>
                                       </div>
                                       {service.package_note ? (
                                         <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
@@ -8019,8 +8153,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                             <span className="text-gray-500">+</span>
-                                            <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                            <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
+                                            <div><ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                            <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} /></div>
                                           </div>
                                           {addon.package_note ? (
                                             <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
@@ -8118,6 +8252,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 >
                                   Edit Worker
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void openCartEditSettlement(settlement)}
+                                  className="ml-2 inline-flex items-center gap-1.5 rounded-lg border-2 border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-indigo-600 hover:to-indigo-700"
+                                >
+                                  Edit Settlement
+                                </button>
                               </div>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
@@ -8156,6 +8297,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
+                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
                                       </td>
                                       <td className="px-4 py-2.5 align-top tabular-nums text-xs font-semibold text-gray-700">
                                         {coveredByPackage ? (
@@ -8200,7 +8342,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</td>
-                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <>RM {due.toFixed(2)}</>}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
@@ -8258,7 +8400,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       <span className="text-gray-500">+</span> {addon.name}
                                       {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                     </td>
-                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button></td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
@@ -8336,10 +8478,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               >
                                 {(packageItem.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
                               </button>
+                              <button type="button" onClick={() => openPriceEditModal({ kind: 'package', id: packageItem.id, name: packageItem.package_name, currentUnitPrice: Number(packageItem.unit_price ?? 0), originalUnitPrice: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) / Math.max(1, Number(packageItem.qty ?? 1)), quantity: Number(packageItem.qty ?? 1), currentLineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 align-top tabular-nums">
-                            <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
+                            <div className="space-y-1">
+                              <p className="text-gray-700">RM {Number(packageItem.unit_price ?? 0).toFixed(2)}</p>
+                            </div>
                           </td>
                           <td className="px-4 py-3.5 text-right align-top sm:px-5">
                             {(packageItem.discount_amount ?? 0) > 0 ? (
@@ -8931,6 +9076,45 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   Save
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+
+      {priceEditTarget ? (
+        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+            <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
+            <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
+            <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-sm">
+              <div><p className="text-xs text-gray-500">Original price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}</p></div>
+            </div>
+            <div className="mt-4 rounded-lg border border-gray-200 p-3">
+              <p className="text-sm font-semibold text-gray-700">Edit by</p>
+              <div className="mt-2 flex gap-3 text-sm">
+                <label className="inline-flex items-center gap-2"><input type="radio" checked={priceEditMode === 'unit'} onChange={() => setPriceEditMode('unit')} /> Unit Price</label>
+                <label className="inline-flex items-center gap-2"><input type="radio" checked={priceEditMode === 'line'} onChange={() => setPriceEditMode('line')} /> Line Total</label>
+              </div>
+              {priceEditMode === 'unit' ? (
+                <label className="mt-3 block text-sm font-semibold text-gray-700">New Unit Price
+                  <input type="number" min={0} step="0.01" value={priceEditValueDraft} onChange={(event) => setPriceEditValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(priceEditValueDraft || 0)) * Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(2)}</span>
+                </label>
+              ) : (
+                <label className="mt-3 block text-sm font-semibold text-gray-700">New Line Total
+                  <input type="number" min={0} step="0.01" value={priceEditLineTotalDraft} onChange={(event) => setPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(priceEditLineTotalDraft || 0)) / Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(6)}</span>
+                </label>
+              )}
+            </div>
+            <label className="mt-3 block text-sm font-semibold text-gray-700">Reason / remark
+              <textarea value={priceEditReasonDraft} onChange={(event) => setPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" />
+            </label>
+            <div className="mt-5 flex gap-3">
+              <button type="button" onClick={() => setPriceEditTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
+              <button type="button" onClick={() => void submitPriceEditModal()} disabled={priceEditSaving} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{priceEditSaving ? 'Saving…' : 'Save'}</button>
             </div>
           </div>
         </div>

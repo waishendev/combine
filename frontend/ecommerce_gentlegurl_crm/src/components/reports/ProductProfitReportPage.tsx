@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import { ReportDetailDrawer, ReportViewDetailsButton } from './ReportActions'
+
 type ProductProfitRow = {
   product_id: number
   product_variant_id: number | null
@@ -260,17 +262,18 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
                 <th className="px-4 py-3 text-right">Gross Profit</th>
                 <th className="px-4 py-3 text-right">Profit Margin %</th>
                 <th className="px-4 py-3 text-right">Orders Count</th>
+                <th className="px-4 py-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={8}>Loading product profit report...</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>Loading product profit report...</td></tr>
               ) : error ? (
-                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={8}>{error}</td></tr>
+                <tr><td className="px-4 py-6 text-center text-red-600" colSpan={9}>{error}</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={8}>No product profit data found.</td></tr>
+                <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={9}>No product profit data found.</td></tr>
               ) : rows.map((row) => (
-                <tr key={`${row.product_id}:${row.product_variant_id ?? 'base'}`} className="cursor-pointer border-t hover:bg-blue-50/40" onClick={() => loadDetails(row)}>
+                <tr key={`${row.product_id}:${row.product_variant_id ?? 'base'}`} className="border-t hover:bg-blue-50/40">
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-900">{row.product_name}</div>
                     {row.product_cn_name ? <div className="text-xs text-slate-500">{row.product_cn_name}</div> : null}
@@ -296,6 +299,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
                   <td className={`px-4 py-3 text-right font-semibold ${row.gross_profit < 0 ? 'text-rose-700' : 'text-emerald-700'}`}>{formatMoney(row.gross_profit)}</td>
                   <td className="px-4 py-3 text-right">{formatNumber(row.profit_margin)}%</td>
                   <td className="px-4 py-3 text-right">{row.orders_count}</td>
+                  <td className="px-4 py-3 text-center"><ReportViewDetailsButton onClick={() => loadDetails(row)} title={`View details for ${row.product_name}`} /></td>
                 </tr>
               ))}
             </tbody>
@@ -315,22 +319,17 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
       </div>
 
       {selectedRow && (
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b px-4 py-3">
-            <div className="font-semibold text-slate-900">Order Item Breakdown</div>
-            <div className="text-sm text-slate-500">
-              {selectedRow.product_name}
-              {selectedRow.product_cn_name ? ` · ${selectedRow.product_cn_name}` : ''}
-              {selectedRow.variant_name ? (
-                <>
-                  {' · Variant: '}
-                  {selectedRow.variant_name}
-                  {selectedRow.variant_cn_name ? ` · ${selectedRow.variant_cn_name}` : ''}
-                </>
-              ) : null}
-            </div>
-          </div>
-          <div className="overflow-x-auto">
+        <ReportDetailDrawer
+          open={Boolean(selectedRow)}
+          title="Order Item Breakdown"
+          subtitle={`${selectedRow.product_name}${selectedRow.product_cn_name ? ` · ${selectedRow.product_cn_name}` : ''}${selectedRow.variant_name ? ` · Variant: ${selectedRow.variant_name}${selectedRow.variant_cn_name ? ` · ${selectedRow.variant_cn_name}` : ''}` : ''}`}
+          onClose={() => setSelectedRow(null)}
+          loading={detailsLoading}
+          loadingText="Loading breakdown..."
+          error={detailsError}
+          empty={!detailsLoading && !detailsError && details.length === 0 ? 'No breakdown rows found.' : undefined}
+        >
+          <div className="overflow-x-auto rounded-xl border border-slate-200">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
@@ -345,13 +344,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
                 </tr>
               </thead>
               <tbody>
-                {detailsLoading ? (
-                  <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={8}>Loading breakdown...</td></tr>
-                ) : detailsError ? (
-                  <tr><td className="px-4 py-6 text-center text-red-600" colSpan={8}>{detailsError}</td></tr>
-                ) : details.length === 0 ? (
-                  <tr><td className="px-4 py-6 text-center text-gray-500" colSpan={8}>No breakdown rows found.</td></tr>
-                ) : details.map((detail) => (
+                {details.map((detail) => (
                   <tr key={detail.order_item_id} className="border-t">
                     <td className="px-4 py-3">{detail.order_number}</td>
                     <td className="px-4 py-3">{formatDate(detail.ordered_at)}</td>
@@ -366,7 +359,7 @@ export default function ProductProfitReportPage({ initialDateFrom = '', initialD
               </tbody>
             </table>
           </div>
-        </div>
+        </ReportDetailDrawer>
       )}
     </div>
   )

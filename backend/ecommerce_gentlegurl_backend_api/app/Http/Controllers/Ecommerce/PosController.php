@@ -963,11 +963,17 @@ class PosController extends Controller
             'main_service_items.*.booking_service_id' => ['required', 'integer', 'exists:booking_services,id'],
             'main_service_items.*.addon_option_ids' => ['nullable', 'array'],
             'main_service_items.*.addon_option_ids.*' => ['integer'],
+            'main_service_items.*.price' => ['nullable', 'numeric', 'min:0'],
+            'main_service_items.*.addon_price_overrides' => ['nullable', 'array'],
+            'main_service_items.*.addon_price_overrides.*' => ['numeric', 'min:0'],
             'main_service_items.*.staff_splits' => ['nullable', 'array', 'min:1'],
             'main_service_items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'main_service_items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'addon_option_ids' => ['nullable', 'array'],
             'addon_option_ids.*' => ['integer'],
+            'original_service_price' => ['nullable', 'numeric', 'min:0'],
+            'addon_price_overrides' => ['nullable', 'array'],
+            'addon_price_overrides.*' => ['numeric', 'min:0'],
             'staff_splits' => ['nullable', 'array', 'min:1'],
             'staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'staff_splits.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
@@ -1005,6 +1011,8 @@ class PosController extends Controller
                     return [
                         'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
                         'addon_option_ids' => collect($item['addon_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->values()->all(),
+                        'price' => array_key_exists('price', $item) ? round(max(0, (float) $item['price']), 2) : null,
+                        'addon_price_overrides' => collect($item['addon_price_overrides'] ?? [])->mapWithKeys(fn ($price, $id) => [(int) $id => round(max(0, (float) $price), 2)])->all(),
                         'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
                             'staff_id' => (int) ($split['staff_id'] ?? 0),
                             'share_percent' => (int) ($split['share_percent'] ?? 0),
@@ -1044,8 +1052,11 @@ class PosController extends Controller
                         return null;
                     }
                     $existing = (array) ($existingMainByServiceId->get($serviceId) ?? []);
-                    $price = round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2);
                     $itemPayload = (array) ($itemsPayload->first(fn (array $item) => (int) ($item['booking_service_id'] ?? 0) === $serviceId) ?? []);
+                    $price = array_key_exists('price', $itemPayload) && $itemPayload['price'] !== null
+                        ? round(max(0, (float) $itemPayload['price']), 2)
+                        : round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2);
+                    $addonPriceOverrides = (array) ($itemPayload['addon_price_overrides'] ?? []);
                     $availableOptions = BookingService::query()
                         ->with(['questions.options.linkedBookingService'])
                         ->find($serviceId)?->questions
@@ -1062,9 +1073,11 @@ class PosController extends Controller
                             'extra_duration_min' => $option->linkedBookingService
                                 ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
                                 : max(0, (int) ($option->extra_duration_min ?? 0)),
-                            'extra_price' => $option->linkedBookingService
-                                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                                : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                            'extra_price' => array_key_exists((int) $option->id, $addonPriceOverrides)
+                                ? round(max(0, (float) $addonPriceOverrides[(int) $option->id]), 2)
+                                : ($option->linkedBookingService
+                                    ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                                    : round(max(0, (float) ($option->extra_price ?? 0)), 2)),
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,
@@ -1112,6 +1125,8 @@ class PosController extends Controller
                 ->filter(fn ($opt) => $opt->is_active)
                 ->keyBy('id');
 
+            $addonPriceOverrides = collect($validated['addon_price_overrides'] ?? [])->mapWithKeys(fn ($price, $id) => [(int) $id => round(max(0, (float) $price), 2)])->all();
+
             $newAddonItems = $optionIds
                 ->map(fn ($optId) => $availableOptions->get($optId))
                 ->filter()
@@ -1122,9 +1137,11 @@ class PosController extends Controller
                     'extra_duration_min' => $option->linkedBookingService
                         ? max(0, (int) ($option->linkedBookingService->duration_min ?? 0))
                         : max(0, (int) ($option->extra_duration_min ?? 0)),
-                    'extra_price' => $option->linkedBookingService
-                        ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                        : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                    'extra_price' => array_key_exists((int) $option->id, $addonPriceOverrides)
+                        ? round(max(0, (float) $addonPriceOverrides[(int) $option->id]), 2)
+                        : ($option->linkedBookingService
+                            ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                            : round(max(0, (float) ($option->extra_price ?? 0)), 2)),
                     'linked_booking_service_id' => $option->linkedBookingService
                         ? (int) $option->linkedBookingService->id
                         : null,
@@ -1146,6 +1163,28 @@ class PosController extends Controller
         } else {
             $booking->addon_items_json = $existingSettlementItems->values()->all();
         }
+
+        if (array_key_exists('original_service_price', $validated) && $validated['original_service_price'] !== null) {
+            $originalServicePrice = round(max(0, (float) $validated['original_service_price']), 2);
+            $existingOriginalRow = collect($booking->addon_items_json ?? [])
+                ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
+            $booking->addon_items_json = collect($booking->addon_items_json ?? [])
+                ->reject(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false))
+                ->prepend([
+                    'item_kind' => 'main_service',
+                    'id' => is_array($existingOriginalRow) && isset($existingOriginalRow['id']) ? (int) $existingOriginalRow['id'] : null,
+                    'name' => (string) ($effectiveService?->name ?? $booking->service?->name ?? 'Service'),
+                    'cn_name' => $effectiveService?->cn_name ?? $booking->service?->cn_name,
+                    'extra_duration_min' => max(0, (int) ($effectiveService?->duration_min ?? $booking->service?->duration_min ?? 0)),
+                    'extra_price' => $originalServicePrice,
+                    'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
+                    'is_original' => true,
+                    'addon_items' => [],
+                ])
+                ->values()
+                ->all();
+        }
+
         $addonRowsForBooking = collect($booking->addon_items_json ?? [])
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service')
             ->values();
@@ -3964,6 +4003,266 @@ class PosController extends Controller
 
 
 
+
+    protected function posCartRefreshResponse(PosCart $cart)
+    {
+        return $this->respond(['cart' => $this->serializeCart($cart->fresh()->load(['items.variant.product', 'items.product', 'items.bookingProduct.categories', 'serviceItems.bookingService', 'serviceItems.assignedStaff', 'serviceItems.customer:id,name', 'packageItems.servicePackage', 'packageItems.customer:id,name', 'appointmentSettlementItems.booking.service', 'appointmentSettlementItems.booking.customer', 'appointmentSettlementItems.booking.staff']))]);
+    }
+
+    public function updateCartItemPrice(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'unit_price' => ['required', 'numeric', 'min:0'],
+            'line_total' => ['nullable', 'numeric', 'min:0'],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->items()->with(['variant.product', 'product'])->findOrFail($itemId);
+        $qty = max(1, (int) $item->qty);
+        $newBaseUnit = round((float) $validated['unit_price'], 6);
+        $snapshots = is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [];
+        $optionUnitTotal = collect($snapshots)->flatMap(fn ($q) => (array) ($q['options'] ?? []))->sum(fn ($o) => (float) ($o['extra_price'] ?? 0));
+        $originalBaseUnit = max(0.0, (float) $item->price_snapshot - (float) $optionUnitTotal);
+        $item->price_snapshot = round($newBaseUnit + (float) $optionUnitTotal, 2);
+        $baseLineTotal = isset($validated['line_total']) ? round((float) $validated['line_total'], 2) : round($newBaseUnit * $qty, 2);
+        $item->price_override_line_total = isset($validated['line_total']) ? $baseLineTotal : null;
+        $item->price_override_snapshot = $this->buildOrderPriceOverrideSnapshot($originalBaseUnit, $newBaseUnit, $qty, trim((string) ($validated['reason'] ?? '')) ?: null, (int) $request->user()->id, isset($validated['line_total']) ? $baseLineTotal : null);
+        if ($item->discount_type && (float) $item->discount_value > 0) {
+            $discount = $this->resolveManualDiscountAmount((string) $item->discount_type, (float) $item->discount_value, $baseLineTotal);
+            $this->applyCartLineDiscountSnapshots($item, $discount, max(0.0, $baseLineTotal - $discount));
+        }
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
+    public function updateBookingProductOptionPrice(Request $request, int $itemId, int $optionId)
+    {
+        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'line_total' => ['nullable', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->items()->with(['bookingProduct.categories'])->findOrFail($itemId);
+        $snapshots = is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [];
+        $oldOptionUnitTotal = collect($snapshots)->flatMap(fn ($q) => (array) ($q['options'] ?? []))->sum(fn ($o) => (float) ($o['extra_price'] ?? 0));
+        $baseUnit = max(0.0, (float) $item->price_snapshot - (float) $oldOptionUnitTotal);
+        $found = false;
+        foreach ($snapshots as $questionIndex => $question) {
+            foreach ((array) ($question['options'] ?? []) as $optionIndex => $option) {
+                if ((int) ($option['id'] ?? 0) !== $optionId) continue;
+                $old = (float) ($option['extra_price'] ?? 0);
+                $new = round((float) $validated['unit_price'], 6);
+                $option['original_unit_price_snapshot'] = (float) ($option['original_unit_price_snapshot'] ?? $old);
+                $option['extra_price'] = round($new, 2);
+                if (isset($validated['line_total'])) {
+                    $option['line_total_override'] = round((float) $validated['line_total'], 2);
+                } else {
+                    unset($option['line_total_override']);
+                }
+                $option['price_override_amount'] = round($new - (float) $option['original_unit_price_snapshot'], 2);
+                $option['price_override_reason'] = trim((string) ($validated['reason'] ?? '')) ?: null;
+                $option['price_overridden_by'] = (int) $request->user()->id;
+                $option['price_overridden_at'] = now()->toIso8601String();
+                $lineTotal = isset($validated['line_total']) ? round((float) $validated['line_total'], 2) : round($new * max(1, (int) $item->qty), 2);
+                if (($option['discount_type'] ?? null) && (float) ($option['discount_value'] ?? 0) > 0) {
+                    $discount = $this->resolveManualDiscountAmount((string) $option['discount_type'], (float) $option['discount_value'], $lineTotal);
+                    $option['discount_amount'] = $discount;
+                    $option['line_total_after_discount'] = max(0.0, $lineTotal - $discount);
+                } else { unset($option['discount_amount'], $option['line_total_after_discount']); }
+                $snapshots[$questionIndex]['options'][$optionIndex] = $option;
+                $found = true; break 2;
+            }
+        }
+        if (! $found) return $this->respondError(__('Booking product option was not found in this cart item.'), 404);
+        $item->selected_booking_product_options = $snapshots;
+        $item->price_snapshot = round($baseUnit + collect($snapshots)->flatMap(fn ($q) => (array) ($q['options'] ?? []))->sum(fn ($o) => (float) ($o['extra_price'] ?? 0)), 2);
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
+    public function updatePackageCartItemPrice(Request $request, int $itemId)
+    {
+        $validated = $request->validate(['unit_price' => ['required', 'numeric', 'min:0'], 'line_total' => ['nullable', 'numeric', 'min:0'], 'reason' => ['nullable', 'string', 'max:255']]);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->packageItems()->findOrFail($itemId);
+        $originalUnit = (float) $item->price_snapshot;
+        $item->price_snapshot = round((float) $validated['unit_price'], 2);
+        $lineTotal = isset($validated['line_total']) ? round((float) $validated['line_total'], 2) : round(((float) $item->price_snapshot) * max(1, (int) $item->qty), 2);
+        $item->price_override_line_total = isset($validated['line_total']) ? $lineTotal : null;
+        $item->price_override_snapshot = $this->buildOrderPriceOverrideSnapshot($originalUnit, (float) $item->price_snapshot, max(1, (int) $item->qty), trim((string) ($validated['reason'] ?? '')) ?: null, (int) $request->user()->id, isset($validated['line_total']) ? $lineTotal : null);
+        if ($item->discount_type && (float) $item->discount_value > 0) {
+            $discount = $this->resolveManualDiscountAmount((string) $item->discount_type, (float) $item->discount_value, $lineTotal);
+            $this->applyCartLineDiscountSnapshots($item, $discount, max(0.0, $lineTotal - $discount));
+        }
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
+
+    protected function normalizePriceOverrideLines(mixed $value): array
+    {
+        if (is_string($value) && $value !== '') {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : [];
+        }
+        if (! is_array($value)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($value as $lineKey => $override) {
+            if (! is_string($lineKey) || ! is_array($override)) {
+                continue;
+            }
+            $final = max(0.0, (float) ($override['final_unit_price'] ?? $override['unit_price_snapshot'] ?? 0));
+            $original = max(0.0, (float) ($override['original_unit_price'] ?? $override['original_unit_price_snapshot'] ?? $final));
+            $normalized[$lineKey] = [
+                'original_unit_price' => round($original, 2),
+                'final_unit_price' => round($final, 2),
+                'price_override_amount' => round($final - $original, 2),
+                'price_override_reason' => $override['price_override_reason'] ?? null,
+                'price_overridden_by' => isset($override['price_overridden_by']) ? (int) $override['price_overridden_by'] : null,
+                'price_overridden_at' => $override['price_overridden_at'] ?? null,
+            ];
+        }
+
+        return $normalized;
+    }
+
+    protected function applyPriceOverrideToAmount(mixed $owner, string $lineKey, float $currentAmount): array
+    {
+        $overrides = $this->normalizePriceOverrideLines($owner->price_override_lines ?? []);
+        $override = $overrides[$lineKey] ?? null;
+        if (! $override) {
+            return ['amount' => round(max(0.0, $currentAmount), 2), 'override' => null];
+        }
+
+        return ['amount' => round(max(0.0, (float) $override['final_unit_price']), 2), 'override' => $override];
+    }
+
+    protected function savePriceOverrideLine(Model $item, string $lineKey, float $originalAmount, float $newAmount, ?string $reason, int $userId): void
+    {
+        $overrides = $this->normalizePriceOverrideLines($item->getAttribute('price_override_lines') ?? []);
+        $existingOriginal = (float) ($overrides[$lineKey]['original_unit_price'] ?? $originalAmount);
+        $overrides[$lineKey] = [
+            'original_unit_price' => round(max(0.0, $existingOriginal), 2),
+            'final_unit_price' => round(max(0.0, $newAmount), 2),
+            'price_override_amount' => round(max(0.0, $newAmount) - max(0.0, $existingOriginal), 2),
+            'price_override_reason' => $reason,
+            'price_overridden_by' => $userId,
+            'price_overridden_at' => now()->toIso8601String(),
+        ];
+        $item->setAttribute('price_override_lines', $overrides);
+    }
+
+
+    protected function buildOrderPriceOverrideSnapshot(float $originalUnit, float $finalUnit, int $quantity, ?string $reason, ?int $userId, ?float $lineTotal = null, ?string $mode = null): array
+    {
+        $qty = max(1, $quantity);
+        $originalUnit = round(max(0.0, $originalUnit), 2);
+        $finalUnit = round(max(0.0, $finalUnit), 2);
+        $originalLineTotal = round($originalUnit * $qty, 2);
+        $adjustedLineTotal = $lineTotal !== null ? round(max(0.0, $lineTotal), 2) : round($finalUnit * $qty, 2);
+
+        return [
+            'original_unit_price' => $originalUnit,
+            'original_unit_price_snapshot' => $originalUnit,
+            'adjusted_unit_price' => $finalUnit,
+            'final_unit_price' => $finalUnit,
+            'unit_price_snapshot' => $finalUnit,
+            'original_line_total' => $originalLineTotal,
+            'adjusted_line_total' => $adjustedLineTotal,
+            'final_line_total' => $adjustedLineTotal,
+            'price_override_amount' => round($finalUnit - $originalUnit, 2),
+            'price_override_reason' => $reason,
+            'price_override_mode' => $mode ?: ($lineTotal !== null ? 'line_total' : 'unit_price'),
+            'price_overridden_by' => $userId,
+            'price_overridden_at' => now()->toIso8601String(),
+        ];
+    }
+
+    protected function normalizeOverrideSnapshotForOrder(mixed $override, int $quantity = 1, ?float $fallbackFinal = null): ?array
+    {
+        if (! is_array($override)) {
+            return null;
+        }
+        $qty = max(1, $quantity);
+        $final = (float) ($override['final_unit_price'] ?? $override['adjusted_unit_price'] ?? $override['unit_price_snapshot'] ?? $fallbackFinal ?? 0);
+        $original = (float) ($override['original_unit_price'] ?? $override['original_unit_price_snapshot'] ?? $final);
+        $adjustedLine = isset($override['adjusted_line_total']) || isset($override['final_line_total'])
+            ? (float) ($override['adjusted_line_total'] ?? $override['final_line_total'])
+            : round($final * $qty, 2);
+
+        return [
+            ...$override,
+            'original_unit_price' => round(max(0.0, $original), 2),
+            'original_unit_price_snapshot' => round(max(0.0, $original), 2),
+            'adjusted_unit_price' => round(max(0.0, $final), 2),
+            'final_unit_price' => round(max(0.0, $final), 2),
+            'unit_price_snapshot' => round(max(0.0, $final), 2),
+            'original_line_total' => round(max(0.0, (float) ($override['original_line_total'] ?? ($original * $qty))), 2),
+            'adjusted_line_total' => round(max(0.0, $adjustedLine), 2),
+            'final_line_total' => round(max(0.0, $adjustedLine), 2),
+            'price_override_mode' => $override['price_override_mode'] ?? 'unit_price',
+        ];
+    }
+
+    public function updateServiceCartItemPrice(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'line_key' => ['required', 'string', 'max:180'],
+            'unit_price' => ['required', 'numeric', 'min:0'],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+        $cart = $this->resolveCart((int) $request->user()->id);
+        $item = $cart->serviceItems()->with(['bookingService'])->findOrFail($itemId);
+        $lineKey = trim((string) $validated['line_key']);
+        $newAmount = round((float) $validated['unit_price'], 2);
+        $original = 0.0;
+        if ($lineKey === 'main') {
+            $original = (float) ($item->bookingService?->deposit_amount ?? 0);
+            if ($original <= 0.0001 && $newAmount <= 0.0001) {
+                return $this->respondError(__('This service deposit line is not chargeable.'), 422);
+            }
+        } elseif (str_starts_with($lineKey, 'addon:')) {
+            $addonId = (int) substr($lineKey, 6);
+            foreach ((array) ($item->addon_items_json ?? []) as $addon) {
+                if ((int) ($addon['id'] ?? 0) === $addonId) {
+                    $original = (float) ($addon['linked_deposit_amount'] ?? 0);
+                    break;
+                }
+            }
+            if ($addonId <= 0 || ($original <= 0.0001 && $newAmount <= 0.0001)) {
+                return $this->respondError(__('This add-on deposit line is not chargeable.'), 422);
+            }
+        } else {
+            return $this->respondError(__('Unknown service deposit line.'), 422);
+        }
+        $this->savePriceOverrideLine($item, $lineKey, $original, $newAmount, trim((string) ($validated['reason'] ?? '')) ?: null, (int) $request->user()->id);
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
+    public function updateAppointmentSettlementCartItemPrice(Request $request, int $itemId)
+    {
+        $validated = $request->validate([
+            'line_key' => ['required', 'string', 'max:180'],
+            'unit_price' => ['required', 'numeric', 'min:0'],
+            'reason' => ['nullable', 'string', 'max:255'],
+        ]);
+        $cart = $this->resolveCart((int) $request->user()->id)->loadMissing('appointmentSettlementItems.booking.service');
+        $item = $cart->appointmentSettlementItems->firstWhere('id', $itemId);
+        if (! $item || ! $item->booking) {
+            return $this->respondError(__('Settlement line was not found.'), 404);
+        }
+        $summary = $this->resolveAppointmentFinancialSummary($item->booking);
+        $lineKey = trim((string) $validated['line_key']);
+        $original = $this->resolveAppointmentSettlementLineGross($summary, $lineKey);
+        if ($original === null) {
+            return $this->respondError(__('Settlement line was not found or is no longer payable.'), 422);
+        }
+        $this->savePriceOverrideLine($item, $lineKey, (float) $original, round((float) $validated['unit_price'], 2), trim((string) ($validated['reason'] ?? '')) ?: null, (int) $request->user()->id);
+        $item->save();
+        return $this->posCartRefreshResponse($cart);
+    }
+
     public function updateCartItemDiscount(Request $request, int $itemId)
     {
         $validated = $request->validate([
@@ -4165,6 +4464,11 @@ class PosController extends Controller
         ];
     }
 
+    protected function resolvePackageCartItemGross(PosCartPackageItem $item): float
+    {
+        return round((float) ($item->price_override_line_total ?? (((float) $item->price_snapshot) * max(1, (int) $item->qty))), 2);
+    }
+
     public function updatePackageCartItemDiscount(Request $request, int $itemId)
     {
         $validated = $request->validate([
@@ -4176,7 +4480,7 @@ class PosController extends Controller
         $cart = $this->resolveCart((int) $request->user()->id);
         $item = $cart->packageItems()->findOrFail($itemId);
 
-        $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+        $lineTotal = $this->resolvePackageCartItemGross($item);
         return $this->saveNonProductLineDiscount($cart, $item, $validated, $lineTotal);
     }
 
@@ -4533,7 +4837,7 @@ class PosController extends Controller
 
             $cartPricing = $this->buildCartPricing($cart, $isStaffUser);
             $packageSubtotal = (float) $cart->packageItems->sum(function (PosCartPackageItem $item) {
-                $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+                $lineTotal = $this->resolvePackageCartItemGross($item);
                 $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
                 return max(0.0, $lineTotal - $discountAmount);
             });
@@ -4778,6 +5082,7 @@ class PosController extends Controller
                         'discount_remark' => $item->discount_remark,
                         'discount_amount' => (float) ($pricing['total_manual_discount_amount'] ?? $pricing['manual_discount_amount'] ?? 0),
                         'line_total_after_discount' => (float) $lineNetTotal,
+                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($item->price_override_snapshot ?? null, (int) $item->qty, $effectiveUnitPrice),
                         'staff_id' => $itemSplits->first()['staff_id'] ?? null,
                         'locked' => true,
                     ]);
@@ -4851,6 +5156,7 @@ class PosController extends Controller
                     'discount_remark' => $item->discount_remark,
                     'discount_amount' => (float) ($pricing['manual_discount_amount'] ?? 0),
                     'line_total_after_discount' => (float) ($pricing['line_total_after_discount'] ?? $pricing['effective_line_total']),
+                    'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($item->price_override_snapshot ?? null, (int) $item->qty, (float) ($pricing['effective_unit_price'] ?? 0)),
                     'promotion_id' => $pricing['promotion_id'] ?? null,
                     'promotion_name_snapshot' => $pricing['promotion_name'] ?? null,
                     'promotion_type_snapshot' => $pricing['promotion_type'] ?? null,
@@ -4990,6 +5296,12 @@ class PosController extends Controller
                 $depositContribution = ! $claimedByPackage
                     ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
                     : 0.0;
+                $depositPriceOverride = null;
+                if (! $claimedByPackage) {
+                    $depositPriceOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'main', $depositContribution);
+                    $depositContribution = (float) $depositPriceOverrideResult['amount'];
+                    $depositPriceOverride = $depositPriceOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
+                }
 
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -5007,6 +5319,7 @@ class PosController extends Controller
                     'locked' => true,
                     'booking_id' => $booking->id,
                     'booking_service_id' => $serviceItem->booking_service_id,
+                    'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($depositPriceOverride, 1, $depositContribution),
                 ]);
 
                 foreach (collect($serviceItem->addon_items_json ?? [])->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) === 'main_service' && ! (bool) ($row['is_original'] ?? false))->values() as $extraMainRow) {
@@ -5038,6 +5351,9 @@ class PosController extends Controller
                         continue;
                     }
                     $addonName = (string) ($addonRow['name'] ?? $addonRow['label'] ?? 'Add-on');
+                    $addonDepositPriceOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'addon:' . $addonId, $addonDepositAmount);
+                    $addonDepositAmount = (float) $addonDepositPriceOverrideResult['amount'];
+                    $addonDepositPriceOverride = $addonDepositPriceOverrideResult['override'] ?? ($addonRow['price_override'] ?? null);
                     OrderItem::create([
                         'order_id' => $order->id,
                         'line_type' => 'booking_addon',
@@ -5055,6 +5371,7 @@ class PosController extends Controller
                         'locked' => true,
                         'booking_id' => $booking->id,
                         'booking_service_id' => $serviceItem->booking_service_id,
+                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($addonDepositPriceOverride, 1, $addonDepositAmount),
                     ]);
                 }
 
@@ -5065,7 +5382,7 @@ class PosController extends Controller
                     ->with('items')
                     ->where('is_active', true)
                     ->findOrFail((int) $packageItem->service_package_id);
-                $packageLineGross = round(((float) $packageItem->price_snapshot) * (int) $packageItem->qty, 2);
+                $packageLineGross = $this->resolvePackageCartItemGross($packageItem);
                 $packageDiscount = $this->resolveManualDiscountAmount((string) ($packageItem->discount_type ?? ''), (float) ($packageItem->discount_value ?? 0), $packageLineGross);
                 $packageLineNet = max(0.0, $packageLineGross - $packageDiscount);
                 $unitNetAmount = (int) $packageItem->qty > 0 ? round($packageLineNet / (int) $packageItem->qty, 2) : 0.0;
@@ -5121,6 +5438,7 @@ class PosController extends Controller
                         'discount_remark' => $packageItem->discount_remark,
                         'discount_amount' => (float) $unitDiscountAmount,
                         'line_total_after_discount' => (float) $unitNetAmount,
+                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($packageItem->price_override_snapshot ?? null, (int) $packageItem->qty, (float) $unitNetAmount),
                         'locked' => true,
                         'service_package_id' => (int) $packageItem->service_package_id,
                         'customer_service_package_id' => (int) $ownedPackage->id,
@@ -5184,6 +5502,12 @@ class PosController extends Controller
                             continue;
                         }
                         $lineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, 0));
+                        $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $mainAmount);
+                        $mainAmount = (float) $priceOverrideResult['amount'];
+                        $mainLinePriceOverride = $priceOverrideResult['override'] ?? ($mainLine['price_override'] ?? null);
+                        if ($mainAmount <= 0.0001) {
+                            continue;
+                        }
                         if ($hasPerLineDiscounts) {
                             $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $mainAmount);
                             $serviceLineDiscount = (float) $lineDiscount['discount_amount'];
@@ -5217,6 +5541,7 @@ class PosController extends Controller
                             'discount_remark' => $serviceLineDiscountRemark,
                             'discount_amount' => $serviceLineDiscount,
                             'line_total_after_discount' => $serviceLineNet,
+                            'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($mainLinePriceOverride ?? null, 1, $serviceLineNet),
                             'locked' => true,
                             'booking_id' => (int) $booking->id,
                             'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? ($booking->service_id ?? 0)),
@@ -5263,6 +5588,12 @@ class PosController extends Controller
                         ? $addonName
                         : sprintf('%s::%s', $addonServiceRef, $addonName);
                     $lineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, 0));
+                    $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $addonAmount);
+                    $addonAmount = (float) $priceOverrideResult['amount'];
+                    $addonPriceOverride = $priceOverrideResult['override'] ?? ($addon['price_override'] ?? null);
+                    if ($addonAmount <= 0.0001) {
+                        continue;
+                    }
                     if ($hasPerLineDiscounts) {
                         $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $addonAmount);
                         $addonLineDiscount = (float) $lineDiscount['discount_amount'];
@@ -5296,6 +5627,7 @@ class PosController extends Controller
                         'discount_remark' => $addonLineDiscountRemark,
                         'discount_amount' => $addonLineDiscount,
                         'line_total_after_discount' => $addonLineNet,
+                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($addonPriceOverride ?? null, 1, $addonLineNet),
                         'locked' => true,
                         'booking_id' => (int) $booking->id,
                         'booking_service_id' => (int) ($booking->service_id ?? 0),
@@ -5986,8 +6318,9 @@ class PosController extends Controller
             ->mapWithKeys(fn ($amount, $id) => [(int) $id => (float) $amount])
             ->all();
         $depositAddonByServiceItemId = (array) ($depositBreakdown['deposit_by_service_item_addons'] ?? []);
+        $depositOverrideByServiceItemId = (array) ($depositBreakdown['deposit_by_service_item_overrides'] ?? []);
 
-        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($depositByServiceItemId, $depositAddonByServiceItemId, $serviceClaimStatuses) {
+        $serviceItems = $cart->serviceItems->map(function (PosCartServiceItem $item) use ($depositByServiceItemId, $depositAddonByServiceItemId, $depositOverrideByServiceItemId, $serviceClaimStatuses) {
             $lineTotal = ((float) $item->price_snapshot) * (int) $item->qty;
             $serviceType = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
             $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
@@ -6001,6 +6334,7 @@ class PosController extends Controller
                     'name' => (string) ($row['name'] ?? 'Add-on'),
                     'cn_name' => $row['cn_name'] ?? $row['cn_label'] ?? $row['linked_cn_name'] ?? null,
                     'deposit' => round((float) ($row['deposit_contribution'] ?? 0), 2),
+                    'price_override' => $row['price_override'] ?? null,
                 ])
                 ->filter(fn (array $row) => (int) ($row['id'] ?? 0) > 0)
                 ->values()
@@ -6089,6 +6423,7 @@ class PosController extends Controller
                     ])->values()->all(),
                 'main_services' => $mainServices->all(),
                 'deposit_contribution' => (float) $depositContribution,
+                'deposit_price_override' => $depositOverrideByServiceItemId[(int) $item->id] ?? null,
                 'deposit_main_reference' => $claimedByPackage
                     ? max(0.0, (float) ($item->bookingService?->deposit_amount ?? 0))
                     : null,
@@ -6113,7 +6448,7 @@ class PosController extends Controller
         })->values();
 
         $packageItems = $cart->packageItems->map(function (PosCartPackageItem $item) {
-            $lineTotal = round(((float) $item->price_snapshot) * (int) $item->qty, 2);
+            $lineTotal = $this->resolvePackageCartItemGross($item);
             $discountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $lineTotal);
             $netLineTotal = max(0.0, $lineTotal - $discountAmount);
 
@@ -6153,11 +6488,15 @@ class PosController extends Controller
             $mainSettlementItems = $rawMainSettlementItems->map(function (array $line) use ($item) {
                 $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
                 $lineKey = (string) ($line['line_key'] ?? '');
+                $priceOverride = $this->applyPriceOverrideToAmount($item, $lineKey, $gross);
+                $gross = (float) $priceOverride['amount'];
                 $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $gross);
 
                 return [
                     ...$line,
                     'gross_amount' => $gross,
+                    'balance_due' => $gross,
+                    'price_override' => $priceOverride['override'],
                     'discount_type' => $discount['discount_type'],
                     'discount_value' => $discount['discount_value'],
                     'discount_amount' => $discount['discount_amount'],
@@ -6168,11 +6507,14 @@ class PosController extends Controller
             $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []))->map(function (array $line) use ($item) {
                 $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
                 $lineKey = (string) ($line['line_key'] ?? '');
+                $priceOverride = $this->applyPriceOverrideToAmount($item, $lineKey, $gross);
+                $gross = (float) $priceOverride['amount'];
                 $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $gross);
 
                 return [
                     ...$line,
                     'gross_amount' => $gross,
+                    'price_override' => $priceOverride['override'],
                     'discount_type' => $discount['discount_type'],
                     'discount_value' => $discount['discount_value'],
                     'discount_amount' => $discount['discount_amount'],
@@ -6181,6 +6523,7 @@ class PosController extends Controller
                     'balance_due' => $discount['line_total_after_discount'],
                 ];
             })->values();
+            $lineTotal = round((float) $mainSettlementItems->sum('gross_amount') + (float) $addonSettlementItems->sum('gross_amount'), 2);
             $hasPerLineDiscounts = ! empty($this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []));
             $discountAmount = $hasPerLineDiscounts
                 ? round((float) $mainSettlementItems->sum('discount_amount') + (float) $addonSettlementItems->sum('discount_amount'), 2)
@@ -6291,6 +6634,7 @@ class PosController extends Controller
         $standardBaseAppliedItemId = null;
         $depositByServiceItem = [];
         $depositByServiceItemAddons = [];
+        $depositByServiceItemOverrides = [];
         $candidates = [];
 
         foreach ($cart->serviceItems as $item) {
@@ -6314,7 +6658,8 @@ class PosController extends Controller
             if (! $claimedByPackage) {
                 $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
                 $mainDeposit = max(0, (float) ($item->bookingService?->deposit_amount ?? 0));
-                $candidates[] = ['service_item_id' => $itemId, 'type' => $type, 'deposit_amount' => $mainDeposit];
+                $mainOverride = $this->applyPriceOverrideToAmount($item, 'main', $mainDeposit);
+                $candidates[] = ['service_item_id' => $itemId, 'type' => $type, 'deposit_amount' => (float) $mainOverride['amount'], 'price_override' => $mainOverride['override']];
             }
 
             foreach ((array) ($item->addon_items_json ?? []) as $addon) {
@@ -6326,10 +6671,13 @@ class PosController extends Controller
                     continue;
                 }
                 $addonDeposit = max(0, (float) ($addon['linked_deposit_amount'] ?? 0));
+                $addonLineKey = 'addon:' . (int) ($addon['id'] ?? 0);
+                $addonOverride = $this->applyPriceOverrideToAmount($item, $addonLineKey, $addonDeposit);
                 $candidates[] = [
                     'service_item_id' => $itemId,
                     'type' => $addonType,
-                    'deposit_amount' => $addonDeposit,
+                    'deposit_amount' => (float) $addonOverride['amount'],
+                    'price_override' => $addonOverride['override'],
                     'scope' => 'addon',
                     'addon_id' => isset($addon['id']) ? (int) $addon['id'] : null,
                 ];
@@ -6354,12 +6702,18 @@ class PosController extends Controller
                     foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
                         if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
                             $addonRow['deposit_contribution'] = round($depositAmount, 2);
+                            if (! empty($row['price_override'])) {
+                                $addonRow['price_override'] = $row['price_override'];
+                            }
                             break;
                         }
                     }
                     unset($addonRow);
                 } else {
                     $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
+                    if (! empty($row['price_override'])) {
+                        $depositByServiceItemOverrides[$itemId] = $row['price_override'];
+                    }
                 }
             }
         } else {
@@ -6376,12 +6730,18 @@ class PosController extends Controller
                     foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
                         if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
                             $addonRow['deposit_contribution'] = round($depositAmount, 2);
+                            if (! empty($row['price_override'])) {
+                                $addonRow['price_override'] = $row['price_override'];
+                            }
                             break;
                         }
                     }
                     unset($addonRow);
                 } else {
                     $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
+                    if (! empty($row['price_override'])) {
+                        $depositByServiceItemOverrides[$itemId] = $row['price_override'];
+                    }
                     if ($standardBaseAppliedItemId === null) {
                         $standardBaseAmount = round($depositAmount, 2);
                         $standardBaseAppliedItemId = $itemId;
@@ -6409,6 +6769,7 @@ class PosController extends Controller
             'standard_base_applied_item_id' => $standardBaseAppliedItemId,
             'deposit_total' => (float) $depositTotal,
             'deposit_by_service_item' => $depositByServiceItem,
+            'deposit_by_service_item_overrides' => $depositByServiceItemOverrides,
             'deposit_by_service_item_addons' => $depositByServiceItemAddons,
         ];
     }
@@ -6473,7 +6834,7 @@ class PosController extends Controller
 
         $unitPriceSnapshot = (float) $item->price_snapshot;
         $qty = max(1, (int) $item->qty);
-        $lineTotalSnapshot = $unitPriceSnapshot * $qty;
+        $lineTotalSnapshot = $item->price_override_line_total !== null ? round((float) $item->price_override_line_total, 2) : round($unitPriceSnapshot * $qty, 2);
 
         $isStaffFreeApplied = $isStaffUser && (bool) ($product?->is_staff_free ?? false);
 
@@ -6482,14 +6843,14 @@ class PosController extends Controller
                 ->flatMap(fn ($question) => is_array($question['options'] ?? null) ? $question['options'] : [])
                 ->sum(fn ($option) => max(0.0, (float) ($option['extra_price'] ?? 0)));
             $baseUnitPrice = max(0.0, $unitPriceSnapshot - $optionUnitTotal);
-            $baseLineTotal = round($baseUnitPrice * $qty, 2);
+            $baseLineTotal = $item->price_override_line_total !== null ? round((float) $item->price_override_line_total, 2) : round($baseUnitPrice * $qty, 2);
             $baseDiscountAmount = $this->resolveManualDiscountAmount((string) ($item->discount_type ?? ''), (float) ($item->discount_value ?? 0), $baseLineTotal);
             $optionDiscountAmount = 0.0;
             $optionNetTotal = 0.0;
 
             foreach (($item->selected_booking_product_options ?? []) as $question) {
                 foreach ((array) ($question['options'] ?? []) as $option) {
-                    $optionGross = round(max(0.0, (float) ($option['extra_price'] ?? 0)) * $qty, 2);
+                    $optionGross = isset($option['line_total_override']) ? round(max(0.0, (float) $option['line_total_override']), 2) : round(max(0.0, (float) ($option['extra_price'] ?? 0)) * $qty, 2);
                     $optionDiscount = $this->resolveManualDiscountAmount((string) ($option['discount_type'] ?? ''), (float) ($option['discount_value'] ?? 0), $optionGross);
                     $optionDiscountAmount += $optionDiscount;
                     $optionNetTotal += max(0.0, $optionGross - $optionDiscount);
@@ -6512,7 +6873,7 @@ class PosController extends Controller
             ];
         }
 
-        $effectiveUnitPrice = $isStaffFreeApplied ? 0.0 : $unitPriceSnapshot;
+        $effectiveUnitPrice = $isStaffFreeApplied ? 0.0 : ($qty > 0 ? round($lineTotalSnapshot / $qty, 6) : $unitPriceSnapshot);
         $effectiveLineTotal = $isStaffFreeApplied ? 0.0 : $lineTotalSnapshot;
 
         return [
@@ -6924,10 +7285,14 @@ class PosController extends Controller
     {
         $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
         $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
+        $settlementItems = collect($booking->addon_items_json ?? []);
+        $originalMainServiceItem = $settlementItems
+            ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
         $originalServiceAmount = $settledServiceAmount !== null
             ? $settledServiceAmount
-            : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
-        $settlementItems = collect($booking->addon_items_json ?? []);
+            : (is_array($originalMainServiceItem) && array_key_exists('extra_price', $originalMainServiceItem)
+                ? (float) $originalMainServiceItem['extra_price']
+                : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0));
         $extraMainServices = $settlementItems
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
             ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
@@ -6966,10 +7331,9 @@ class PosController extends Controller
         ]])->concat($extraMainServices)->values();
 
         $serviceTotal = round((float) $mainServices->sum('extra_price'), 2);
-        $originalMainServiceItem = $settlementItems
-            ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
-        $originalAddonSource = is_array($originalMainServiceItem)
-            ? collect((array) ($originalMainServiceItem['addon_items'] ?? []))
+        $originalMainAddonItems = is_array($originalMainServiceItem) ? collect((array) ($originalMainServiceItem['addon_items'] ?? [])) : collect();
+        $originalAddonSource = $originalMainAddonItems->isNotEmpty()
+            ? $originalMainAddonItems
             : $settlementItems->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service');
         $originalAddonItems = $originalAddonSource
             ->map(fn ($item) => [

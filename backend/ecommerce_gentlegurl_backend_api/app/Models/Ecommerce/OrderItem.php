@@ -53,6 +53,7 @@ class OrderItem extends Model
         'booking_service_id',
         'service_package_id',
         'customer_service_package_id',
+        'price_override_snapshot',
     ];
 
     protected function casts(): array
@@ -84,6 +85,7 @@ class OrderItem extends Model
             'promotion_discount_amount' => 'decimal:2',
             'promotion_applied' => 'boolean',
             'promotion_snapshot' => 'array',
+            'price_override_snapshot' => 'array',
             'locked' => 'boolean',
         ];
     }
