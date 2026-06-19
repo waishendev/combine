@@ -54,6 +54,14 @@ type StaffOption = {
   is_active?: boolean | number | string | null
 }
 
+type AppointmentLineStaffSplit = { staff_id: number; share_percent: number }
+
+type AppointmentLineSplitDraftRow = { staff_id: number | null; share_percent: string }
+
+type AppointmentLineSplitTarget =
+  | { type: 'line'; lineKey: string; title: string; inheritedSplits: AppointmentLineStaffSplit[] }
+  | { type: 'bulk'; lineKeys: string[]; title: string; inheritedSplits: AppointmentLineStaffSplit[] }
+
 function durationMinutesFromRange(startAt?: string | null, endAt?: string | null): number {
   if (!startAt || !endAt) return 0
   const ms = new Date(endAt).getTime() - new Date(startAt).getTime()
@@ -275,6 +283,12 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentQuestions, setCreateAppointmentQuestions] = useState<ServiceAddonQuestion[]>([])
   const [createAppointmentSelectedOptionIds, setCreateAppointmentSelectedOptionIds] = useState<number[]>([])
   const [createAppointmentExtraServiceBlocks, setCreateAppointmentExtraServiceBlocks] = useState<CreateExtraServiceBlock[]>([])
+  const [appointmentLineStaffSplits, setAppointmentLineStaffSplits] = useState<Record<string, AppointmentLineStaffSplit[]>>({})
+  const [appointmentLineSplitTarget, setAppointmentLineSplitTarget] = useState<AppointmentLineSplitTarget | null>(null)
+  const [appointmentLineSplitDraftRows, setAppointmentLineSplitDraftRows] = useState<AppointmentLineSplitDraftRow[]>([])
+  const [appointmentLineSplitAutoBalance, setAppointmentLineSplitAutoBalance] = useState(true)
+  const [appointmentLineSplitOverwrite, setAppointmentLineSplitOverwrite] = useState(false)
+  const [appointmentLineSplitError, setAppointmentLineSplitError] = useState<string | null>(null)
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
@@ -478,6 +492,89 @@ export default function PosAppointmentsWorkspace({
     },
     [mapStaffOptions],
   )
+
+  const formatAppointmentLineSplitRows = useCallback((splits: AppointmentLineStaffSplit[]): string => {
+    const rows = (splits ?? []).filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (!rows.length) return '—'
+    return rows.map((split) => {
+      const staff = activeStaffs.find((item) => item.id === Number(split.staff_id))
+      return `${staff?.name ?? `Staff #${split.staff_id}`} (${Number(split.share_percent)}%)`
+    }).join(' · ')
+  }, [activeStaffs])
+
+  const formatAppointmentLineSplitSummary = useCallback((lineKey: string, inheritedSplits: AppointmentLineStaffSplit[], inheritedLabel = 'main service') => {
+    const explicitSplits = appointmentLineStaffSplits[lineKey] ?? []
+    if (explicitSplits.length > 0) return `Staff split: ${formatAppointmentLineSplitRows(explicitSplits)}`
+    return `Staff split: inherited from ${inheritedLabel} — ${formatAppointmentLineSplitRows(inheritedSplits)}`
+  }, [appointmentLineStaffSplits, formatAppointmentLineSplitRows])
+
+  const assignedStaffDefaultSplit = useCallback((staffId: number | null | undefined): AppointmentLineStaffSplit[] => (
+    staffId ? [{ staff_id: staffId, share_percent: 100 }] : []
+  ), [])
+
+  const editStaffSplitsToLineSplits = useCallback((rows: Array<{ staff_id: number | null; share_percent: string }>): AppointmentLineStaffSplit[] => (
+    rows
+      .map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) }))
+      .filter((row) => row.staff_id > 0 && row.share_percent > 0)
+  ), [])
+
+  const openAppointmentLineSplitEditor = useCallback(async (lineKey: string, title: string, inheritedSplits: AppointmentLineStaffSplit[] = []) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+    const existingSplits = appointmentLineStaffSplits[lineKey] ?? inheritedSplits
+    setAppointmentLineSplitTarget({ type: 'line', lineKey, title, inheritedSplits })
+    setAppointmentLineSplitDraftRows(existingSplits.length ? existingSplits.map((split) => ({ staff_id: split.staff_id, share_percent: String(split.share_percent) })) : [{ staff_id: null, share_percent: '100' }])
+    setAppointmentLineSplitAutoBalance(true)
+    setAppointmentLineSplitOverwrite(false)
+    setAppointmentLineSplitError(null)
+  }, [activeStaffs, appointmentLineStaffSplits, fetchStaffOptions])
+
+  const openAppointmentBulkLineSplitEditor = useCallback(async (title: string, lineKeys: string[], inheritedSplits: AppointmentLineStaffSplit[] = []) => {
+    let nextStaffs = activeStaffs
+    if (!nextStaffs.length) {
+      nextStaffs = await fetchStaffOptions('')
+      setActiveStaffs(nextStaffs)
+    }
+    const uniqueLineKeys = Array.from(new Set(lineKeys)).filter(Boolean)
+    setAppointmentLineSplitTarget({ type: 'bulk', lineKeys: uniqueLineKeys, title, inheritedSplits })
+    setAppointmentLineSplitDraftRows(inheritedSplits.length ? inheritedSplits.map((split) => ({ staff_id: split.staff_id, share_percent: String(split.share_percent) })) : [{ staff_id: null, share_percent: '100' }])
+    setAppointmentLineSplitAutoBalance(true)
+    setAppointmentLineSplitOverwrite(false)
+    setAppointmentLineSplitError(null)
+  }, [activeStaffs, fetchStaffOptions])
+
+  const saveAppointmentLineSplitEditor = useCallback(() => {
+    if (!appointmentLineSplitTarget) return
+    const mappedSplits = appointmentLineSplitDraftRows.map((row) => ({
+      staff_id: Number(row.staff_id ?? 0),
+      share_percent: Number.parseInt(row.share_percent || '0', 10),
+    }))
+    if (mappedSplits.length < 1 || mappedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
+      setAppointmentLineSplitError('Please select staff and enter valid split percentages.')
+      return
+    }
+    const uniqueIds = new Set(mappedSplits.map((row) => row.staff_id))
+    const splitSum = mappedSplits.reduce((sum, row) => sum + row.share_percent, 0)
+    if (uniqueIds.size !== mappedSplits.length || splitSum !== 100) {
+      setAppointmentLineSplitError(`Staff split must use unique staff and total 100% (current: ${splitSum}%).`)
+      return
+    }
+    if (appointmentLineSplitTarget.type === 'line') {
+      setAppointmentLineStaffSplits((prev) => ({ ...prev, [appointmentLineSplitTarget.lineKey]: mappedSplits }))
+    } else {
+      setAppointmentLineStaffSplits((prev) => {
+        const next = { ...prev }
+        appointmentLineSplitTarget.lineKeys.forEach((lineKey) => {
+          if (appointmentLineSplitOverwrite || !next[lineKey]?.length) next[lineKey] = mappedSplits
+        })
+        return next
+      })
+    }
+    setAppointmentLineSplitTarget(null)
+  }, [appointmentLineSplitDraftRows, appointmentLineSplitOverwrite, appointmentLineSplitTarget])
 
   const fetchActiveStaffs = useCallback(async () => {
     const params = new URLSearchParams({ page: '1', per_page: '200', is_active: '1' })
@@ -752,6 +849,8 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentServiceDraft(null)
     setCreateAppointmentSelectedOptionIds([])
     setCreateAppointmentExtraServiceBlocks([])
+    setAppointmentLineStaffSplits({})
+    setAppointmentLineSplitTarget(null)
     setCreateAppointmentServiceCategoryId(null)
     setCreateAppointmentServiceQuery('')
     setCreateAppointmentExtraServiceCategoryIds({})
@@ -950,13 +1049,19 @@ export default function PosAppointmentsWorkspace({
         assigned_staff_id: createAppointmentAssignedStaffId,
         selected_option_ids: createAppointmentSelectedOptionIds,
         main_service_items: [
-          { booking_service_id: createAppointmentServiceDraft.id, selected_option_ids: createAppointmentSelectedOptionIds, staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }] },
+          {
+            booking_service_id: createAppointmentServiceDraft.id,
+            selected_option_ids: createAppointmentSelectedOptionIds,
+            staff_splits: appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
+            addon_staff_splits: Object.fromEntries(createAppointmentSelectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? []])),
+          },
           ...createAppointmentExtraServiceBlocks
             .filter((block) => block.service?.id)
             .map((block) => ({
               booking_service_id: Number(block.service?.id),
               selected_option_ids: block.selectedOptionIds,
-              staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
+              staff_splits: appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
+              addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? []])),
             })),
         ],
         start_at: createAppointmentSlotValue,
@@ -1044,6 +1149,7 @@ export default function PosAppointmentsWorkspace({
   }, [
     createAppointmentAssignedStaffId,
     appointmentQrProofFile,
+    appointmentLineStaffSplits,
     appointmentQrProofPreviewUrl,
     createAppointmentDepositHasQrPay,
     createAppointmentDepositPayments,
@@ -1623,6 +1729,7 @@ export default function PosAppointmentsWorkspace({
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
         addon_price_overrides: editAddonPriceOverrides,
+        addon_staff_splits: Object.fromEntries(Array.from(editSelectedAddonIds).map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:addon:${id}`] ?? []])),
         original_service_price: editOriginalServicePriceOverride,
         main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
         main_service_items: editAddedMainBlocks.map((block) => ({
@@ -1630,6 +1737,7 @@ export default function PosAppointmentsWorkspace({
           price: block.price,
           addon_option_ids: Array.from(block.selected_addon_ids),
           addon_price_overrides: block.addon_price_overrides,
+          addon_staff_splits: Object.fromEntries(Array.from(block.selected_addon_ids).map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
           staff_splits: block.staff_splits.map((row) => ({
             staff_id: Number(row.staff_id ?? 0),
             share_percent: Number.parseInt(row.share_percent || '0', 10),
@@ -1716,7 +1824,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -3118,19 +3226,52 @@ export default function PosAppointmentsWorkspace({
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
                   <div className="flex items-center justify-between">
-                    <label className="text-xs font-semibold text-gray-600">Main Services</label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCreateAppointmentExtraServiceBlocks((prev) => [
-                          ...prev,
-                          { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
-                        ])
-                      }}
-                      className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700"
-                    >
-                      + Add Main Service
-                    </button>
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600">Main Services</label>
+                      {createAppointmentServiceDraft ? (() => {
+                        const lineKey = `appointment-create:main:${createAppointmentServiceDraft.id}`
+                        const inherited = assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
+                        return (
+                          <div className="mt-1 flex flex-wrap items-center gap-1">
+                            <span className="text-[10px] font-medium text-gray-600">{formatAppointmentLineSplitSummary(lineKey, inherited, 'assigned staff')}</span>
+                            <button type="button" onClick={() => void openAppointmentLineSplitEditor(lineKey, createAppointmentServiceDraft.name ?? 'Main service', inherited)} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                          </div>
+                        )
+                      })() : null}
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      {createAppointmentServiceDraft ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const lineKeys = [
+                              `appointment-create:main:${createAppointmentServiceDraft.id}`,
+                              ...createAppointmentSelectedOptionIds.map((id) => `appointment-create:addon:${id}`),
+                              ...createAppointmentExtraServiceBlocks.flatMap((block) => [
+                                ...(block.service ? [`appointment-create:block:${block.id}:main`] : []),
+                                ...block.selectedOptionIds.map((id) => `appointment-create:block:${block.id}:addon:${id}`),
+                              ]),
+                            ]
+                            void openAppointmentBulkLineSplitEditor('Create Appointment Lines', lineKeys, assignedStaffDefaultSplit(createAppointmentAssignedStaffId))
+                          }}
+                          className="rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700"
+                        >
+                          Apply Staff Split to All Lines
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCreateAppointmentExtraServiceBlocks((prev) => [
+                            ...prev,
+                            { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
+                          ])
+                        }}
+                        className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700"
+                      >
+                        + Add Main Service
+                      </button>
+                    </div>
                   </div>
                   <BookingServicePicker
                     categories={bookingServiceCategories}
@@ -3203,8 +3344,18 @@ export default function PosAppointmentsWorkspace({
                                   secondaryClassName="mt-0.5 text-xs text-gray-500"
                                 />
                               </div>
-                              <span className="text-xs font-semibold text-gray-700">
-                                +RM{Number(option.extra_price ?? 0).toFixed(2)}
+                              <span className="flex shrink-0 flex-col items-end gap-1 text-xs font-semibold text-gray-700">
+                                <span>+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                {checked && createAppointmentServiceDraft ? (() => {
+                                  const lineKey = `appointment-create:addon:${option.id}`
+                                  const inherited = appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
+                                  return (
+                                    <>
+                                      <span className="text-[10px] font-medium text-gray-600">{formatAppointmentLineSplitSummary(lineKey, inherited, 'main service')}</span>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); void openAppointmentLineSplitEditor(lineKey, option.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </>
+                                  )
+                                })() : null}
                               </span>
                             </label>
                           )
@@ -3231,7 +3382,21 @@ export default function PosAppointmentsWorkspace({
                       <div className="flex items-center justify-between gap-3 border-b border-gray-100 pb-2">
                         <div className="min-w-0">
                           <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block {blockIndex + 2}</p>
-                          {block.service ? <PosServiceNameStack name={block.service.name} cnName={block.service.cn_name} primaryClassName="mt-0.5 text-sm font-semibold text-gray-900" secondaryClassName="mt-0.5 text-xs text-gray-500" /> : null}
+                          {block.service ? (
+                            <>
+                              <PosServiceNameStack name={block.service.name} cnName={block.service.cn_name} primaryClassName="mt-0.5 text-sm font-semibold text-gray-900" secondaryClassName="mt-0.5 text-xs text-gray-500" />
+                              {(() => {
+                                const lineKey = `appointment-create:block:${block.id}:main`
+                                const inherited = assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
+                                return (
+                                  <div className="mt-1 flex flex-wrap items-center gap-1">
+                                    <span className="text-[10px] font-medium text-gray-600">{formatAppointmentLineSplitSummary(lineKey, inherited, 'assigned staff')}</span>
+                                    <button type="button" onClick={() => void openAppointmentLineSplitEditor(lineKey, block.service?.name ?? 'Service block', inherited)} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                  </div>
+                                )
+                              })()}
+                            </>
+                          ) : null}
                         </div>
                         <button
                           type="button"
@@ -3330,7 +3495,19 @@ export default function PosAppointmentsWorkspace({
                                       secondaryClassName="mt-0.5 text-[11px] text-gray-500"
                                     />
                                   </div>
-                                  <span className="font-semibold text-gray-700">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                  <span className="flex flex-col items-end gap-1 font-semibold text-gray-700">
+                                    <span>+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                    {checked ? (() => {
+                                      const lineKey = `appointment-create:block:${block.id}:addon:${option.id}`
+                                      const inherited = appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
+                                      return (
+                                        <>
+                                          <span className="text-[10px] font-medium text-gray-600">{formatAppointmentLineSplitSummary(lineKey, inherited, 'service block')}</span>
+                                          <button type="button" onClick={(event) => { event.preventDefault(); void openAppointmentLineSplitEditor(lineKey, option.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                        </>
+                                      )
+                                    })() : null}
+                                  </span>
                                 </label>
                               )
                             })}
@@ -4055,6 +4232,29 @@ export default function PosAppointmentsWorkspace({
               ) : null}
 
               <div className="space-y-3">
+                <div className="rounded-lg border border-indigo-100 bg-indigo-50/70 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Staff Split Bulk Setup</p>
+                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply a split to selected settlement add-on lines; service blocks remain the inheritance source.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!appointmentDetail?.id) return
+                        const lineKeys = [
+                          ...Array.from(editSelectedAddonIds).map((id) => `appointment-settlement:${appointmentDetail.id}:addon:${id}`),
+                          ...editAddedMainBlocks.flatMap((block) => Array.from(block.selected_addon_ids).map((id) => `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`)),
+                        ]
+                        void openAppointmentBulkLineSplitEditor('Edit Settlement Lines', lineKeys, editStaffSplitsToLineSplits(editStaffSplits))
+                      }}
+                      className="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      Apply Staff Split to All Lines
+                    </button>
+                  </div>
+                </div>
+
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -4133,7 +4333,17 @@ export default function PosAppointmentsWorkspace({
                                     +RM {Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}
                                     {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
                                   </span>
-                                  {checked ? <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}
+                                  {checked && appointmentDetail?.id ? (() => {
+                                    const lineKey = `appointment-settlement:${appointmentDetail.id}:addon:${opt.id}`
+                                    const inherited = editStaffSplitsToLineSplits(editStaffSplits)
+                                    return (
+                                      <>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        <span className="text-[10px] font-medium text-gray-600">{formatAppointmentLineSplitSummary(lineKey, inherited, 'main service')}</span>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </>
+                                    )
+                                  })() : null}
                                 </div>
                               </label>
                             )
@@ -4310,7 +4520,20 @@ export default function PosAppointmentsWorkspace({
                                   />
                                   <PosServiceNameStack name={opt.label} cnName={opt.cn_name ?? opt.cn_label ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1"><span className="text-xs font-semibold text-gray-500">+RM {Number(block.addon_price_overrides[opt.id] ?? opt.extra_price).toFixed(2)}</span>{checked ? <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                <div className="flex shrink-0 flex-col items-end gap-1">
+                                  <span className="text-xs font-semibold text-gray-500">+RM {Number(block.addon_price_overrides[opt.id] ?? opt.extra_price).toFixed(2)}</span>
+                                  {checked && appointmentDetail?.id ? (() => {
+                                    const lineKey = `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${opt.id}`
+                                    const inherited = editStaffSplitsToLineSplits(block.staff_splits)
+                                    return (
+                                      <>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        <span className="text-[10px] font-medium text-gray-600">{formatAppointmentLineSplitSummary(lineKey, inherited, 'service block')}</span>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </>
+                                    )
+                                  })() : null}
+                                </div>
                               </label>
                             )
                           })}
@@ -4495,6 +4718,99 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
       )}
+
+      {appointmentLineSplitTarget ? (
+        <div className="fixed inset-0 z-[220] flex items-start justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="my-8 w-full max-w-xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+              <h4 className="text-lg font-bold text-gray-900">
+                {appointmentLineSplitTarget.type === 'bulk' ? `Apply Staff Split: ${appointmentLineSplitTarget.title}` : `Line Staff Split: ${appointmentLineSplitTarget.title}`}
+              </h4>
+              <button type="button" onClick={() => setAppointmentLineSplitTarget(null)} className="text-2xl leading-none text-gray-500">×</button>
+            </div>
+            <div className="space-y-3 p-5">
+              {appointmentLineSplitTarget.type === 'bulk' ? (
+                <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                  <input type="checkbox" checked={appointmentLineSplitOverwrite} onChange={(event) => setAppointmentLineSplitOverwrite(event.target.checked)} className="h-4 w-4" />
+                  Overwrite existing explicit staff splits
+                </label>
+              ) : null}
+              <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={appointmentLineSplitAutoBalance}
+                  onChange={(event) => {
+                    const checked = event.target.checked
+                    setAppointmentLineSplitAutoBalance(checked)
+                    if (checked) {
+                      setAppointmentLineSplitDraftRows((prev) => {
+                        if (prev.length <= 1) return prev
+                        const othersTotal = prev.slice(1).reduce((sum, row) => sum + Math.max(0, Number.parseInt(row.share_percent || '0', 10)), 0)
+                        return prev.map((row, idx) => (idx === 0 ? { ...row, share_percent: String(Math.max(0, 100 - othersTotal)) } : row))
+                      })
+                    }
+                  }}
+                  className="h-4 w-4"
+                />
+                Auto Balance
+              </label>
+              <div className="space-y-2">
+                {appointmentLineSplitDraftRows.map((row, index) => (
+                  <div key={`appointment-line-split-${index}`} className="grid grid-cols-[1fr_110px_auto] gap-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                    <BookingPackageItemServicePicker
+                      options={activeStaffs
+                        .filter((staff) => !appointmentLineSplitDraftRows.some((item, itemIndex) => itemIndex !== index && item.staff_id === staff.id))
+                        .map((staff) => ({ id: staff.id, name: staff.name }))}
+                      value={row.staff_id != null ? String(row.staff_id) : ''}
+                      onChange={(next) => setAppointmentLineSplitDraftRows((prev) => prev.map((item, itemIndex) => itemIndex === index ? { ...item, staff_id: next ? Number(next) : null } : item))}
+                      placeholder="Select staff"
+                      searchPlaceholder="Search staff…"
+                      unknownEntityLabel="Staff"
+                      ariaLabel="Select staff"
+                      emptySearchMessage="No staff match your search."
+                      emptyListMessage="No staff available."
+                    />
+                    <div className="relative">
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={row.share_percent}
+                        disabled={appointmentLineSplitAutoBalance && index === 0}
+                        onChange={(event) => {
+                          const value = event.target.value
+                          setAppointmentLineSplitDraftRows((prev) => {
+                            const next = prev.map((item, itemIndex) => itemIndex === index ? { ...item, share_percent: value } : item)
+                            if (!appointmentLineSplitAutoBalance || index === 0) return next
+                            const othersTotal = next.slice(1).reduce((sum, item) => sum + Math.max(0, Number.parseInt(item.share_percent || '0', 10)), 0)
+                            return next.map((item, itemIndex) => itemIndex === 0 ? { ...item, share_percent: String(Math.max(0, 100 - othersTotal)) } : item)
+                          })
+                        }}
+                        className="h-10 w-full rounded-lg border border-gray-300 px-3 pr-7 text-sm"
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-gray-500">%</span>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={appointmentLineSplitDraftRows.length <= 1}
+                      onClick={() => setAppointmentLineSplitDraftRows((prev) => prev.length <= 1 ? prev : prev.filter((_, itemIndex) => itemIndex !== index))}
+                      className="rounded-lg border border-gray-300 px-2 py-2 text-xs font-semibold text-gray-600 disabled:opacity-40"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setAppointmentLineSplitDraftRows((prev) => [...prev, { staff_id: null, share_percent: '' }])} className="rounded-md border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700">+ Add Staff</button>
+              {appointmentLineSplitError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{appointmentLineSplitError}</p> : null}
+            </div>
+            <div className="flex gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4">
+              <button type="button" onClick={() => setAppointmentLineSplitTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Cancel</button>
+              <button type="button" onClick={saveAppointmentLineSplitEditor} className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Save</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {appointmentPriceEditTarget ? (
         <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/50 p-4">
