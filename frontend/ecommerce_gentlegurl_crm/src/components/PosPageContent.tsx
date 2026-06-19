@@ -3245,13 +3245,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       assigned_staff_id: bookingAssignedStaffId,
       selected_option_ids: bookingSelectedOptionIds,
       main_service_items: [
-        { booking_service_id: bookingServiceDraft.id, selected_option_ids: bookingSelectedOptionIds, staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] },
+        {
+          booking_service_id: bookingServiceDraft.id,
+          selected_option_ids: bookingSelectedOptionIds,
+          staff_splits: checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+          addon_staff_splits: Object.fromEntries(bookingSelectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? []])),
+        },
         ...bookingExtraServiceBlocks
           .filter((block) => block.service?.id)
           .map((block) => ({
             booking_service_id: Number(block.service?.id),
             selected_option_ids: block.selectedOptionIds,
-            staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+            staff_splits: checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+            addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? []])),
           })),
       ],
       start_at: bookingSlotValue,
@@ -4035,10 +4041,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const needsSettledAmount = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(cartEditSelectedAddonIds),
+        addon_staff_splits: Object.fromEntries(Array.from(cartEditSelectedAddonIds).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`] ?? []])),
         main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
         main_service_items: cartEditAddedMainBlocks.map((block) => ({
           booking_service_id: block.service_id,
           addon_option_ids: Array.from(block.selected_addon_ids),
+          addon_staff_splits: Object.fromEntries(Array.from(block.selected_addon_ids).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
           staff_splits: block.staff_splits.map((row) => ({
             staff_id: Number(row.staff_id ?? 0),
             share_percent: Number.parseInt(row.share_percent || '0', 10),
@@ -7613,6 +7621,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               ) : null}
 
               <div className="space-y-3">
+                <div className="rounded-lg border border-indigo-100 bg-indigo-50/70 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Staff Split Bulk Setup</p>
+                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply a split to selected settlement add-on lines; main service blocks keep their editable service-block split as the inheritance source.</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lineKeys = [
+                          ...Array.from(cartEditSelectedAddonIds).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`),
+                          ...cartEditAddedMainBlocks.flatMap((block) => Array.from(block.selected_addon_ids).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`)),
+                        ]
+                        const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                        void openBulkSplitEditor('Edit Settlement Lines', lineKeys, inherited)
+                      }}
+                      className="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+                    >
+                      Apply Staff Split to All Lines
+                    </button>
+                  </div>
+                </div>
+
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -7680,7 +7711,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 </div>
                                 <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
                                   <span>+RM {Number(cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
-                                  {checked ? <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}
+                                  {checked ? (() => {
+                                    const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
+                                    const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                                    return (
+                                      <>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        <span className="text-[10px] font-medium text-gray-600">{formatLineSplitSummary(lineKey, inherited, 'main service')}</span>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </>
+                                    )
+                                  })() : null}
                                 </span>
                               </label>
                             )
@@ -7836,7 +7877,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 />
                                 <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                               </div>
-                              <span className="text-xs font-semibold text-gray-500">+RM {Number(opt.extra_price).toFixed(2)}</span>
+                              <span className="flex flex-col items-end gap-1 text-xs font-semibold text-gray-500">
+                                <span>+RM {Number(opt.extra_price).toFixed(2)}</span>
+                                {checked ? (() => {
+                                  const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${opt.id}`
+                                  const inherited = block.staff_splits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                                  return (
+                                    <>
+                                      <span className="text-[10px] font-medium text-gray-600">{formatLineSplitSummary(lineKey, inherited, 'service block')}</span>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </>
+                                  )
+                                })() : null}
+                              </span>
                             </label>
                           )
                         })}
@@ -9653,19 +9706,42 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-semibold text-gray-800">Main Services</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBookingExtraServiceBlocks((prev) => [
-                        ...prev,
-                        { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
-                      ])
-                    }}
-                    className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700"
-                  >
-                    + Add Main Service
-                  </button>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Main Services</p>
+                    <p className="mt-0.5 text-[10px] font-medium text-gray-600">{formatLineSplitSummary(`booking-draft:main:${bookingServiceDraft.id}`, bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [], 'assigned staff')}</p>
+                    <button type="button" onClick={() => void openLineSplitEditor(`booking-draft:main:${bookingServiceDraft.id}`, bookingServiceDraft.name ?? 'Main service', bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])} className="mt-1 rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const lineKeys = [
+                          `booking-draft:main:${bookingServiceDraft.id}`,
+                          ...bookingSelectedOptionIds.map((id) => `booking-draft:addon:${id}`),
+                          ...bookingExtraServiceBlocks.flatMap((block) => [
+                            ...(block.service ? [`booking-draft:block:${block.id}:main`] : []),
+                            ...block.selectedOptionIds.map((id) => `booking-draft:block:${block.id}:addon:${id}`),
+                          ]),
+                        ]
+                        void openBulkSplitEditor('Apply Staff Split to Service Lines', lineKeys, bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
+                      }}
+                      className="rounded-md border border-indigo-300 bg-indigo-50 px-2 py-1 text-xs font-semibold text-indigo-700"
+                    >
+                      Apply Staff Split to All Lines
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBookingExtraServiceBlocks((prev) => [
+                          ...prev,
+                          { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
+                        ])
+                      }}
+                      className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700"
+                    >
+                      + Add Main Service
+                    </button>
+                  </div>
                 </div>
                 {bookingQuestions.length > 0 ? (
                   <div className="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
@@ -9711,9 +9787,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     </span>
                                   </div>
                                 </div>
-                                <span className="shrink-0 tabular-nums font-semibold text-gray-900">
-                                  +RM{Number(option.extra_price ?? 0).toFixed(2)}
-                                </span>
+                                <div className="shrink-0 text-right">
+                                  <span className="block tabular-nums font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                  {checked ? (() => {
+                                    const lineKey = `booking-draft:addon:${option.id}`
+                                    const mainSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
+                                    return (
+                                      <span className="mt-1 block text-[10px] font-medium text-gray-600">
+                                        {formatLineSplitSummary(lineKey, mainSplits, 'main service')}
+                                        <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="ml-1 rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </span>
+                                    )
+                                  })() : null}
+                                </div>
                               </label>
                             )
                           })}
@@ -9745,12 +9831,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div className="min-w-0">
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block {blockIndex + 2}</p>
                         {block.service ? (
-                          <ServiceNameStack
-                            name={block.service.name}
-                            cnName={block.service.cn_name}
-                            primaryClassName="mt-0.5 text-sm font-semibold text-gray-900"
-                            secondaryClassName="mt-0.5 text-xs text-gray-500"
-                          />
+                          <>
+                            <ServiceNameStack
+                              name={block.service.name}
+                              cnName={block.service.cn_name}
+                              primaryClassName="mt-0.5 text-sm font-semibold text-gray-900"
+                              secondaryClassName="mt-0.5 text-xs text-gray-500"
+                            />
+                            {(() => {
+                              const lineKey = `booking-draft:block:${block.id}:main`
+                              const inherited = bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : []
+                              return (
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  <span className="text-[10px] font-medium text-gray-600">{formatLineSplitSummary(lineKey, inherited, 'assigned staff')}</span>
+                                  <button type="button" onClick={() => void openLineSplitEditor(lineKey, block.service?.name ?? 'Service block', inherited)} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                </div>
+                              )
+                            })()}
+                          </>
                         ) : null}
                       </div>
                       <button
@@ -9848,7 +9946,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     secondaryClassName="mt-0.5 text-[11px] text-gray-500"
                                   />
                                 </div>
-                                <span className="font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                <span className="flex flex-col items-end gap-1 font-semibold text-gray-900">
+                                  <span>+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                  {checked ? (() => {
+                                    const lineKey = `booking-draft:block:${block.id}:addon:${option.id}`
+                                    const mainSplits = checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
+                                    return (
+                                      <>
+                                        <span className="text-[10px] font-medium text-gray-600">{formatLineSplitSummary(lineKey, mainSplits, 'service block')}</span>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </>
+                                    )
+                                  })() : null}
+                                </span>
                               </label>
                             )
                           })}
