@@ -5296,6 +5296,12 @@ class PosController extends Controller
                 $depositContribution = ! $claimedByPackage
                     ? (float) ($depositByServiceItemId[(int) $serviceItem->id] ?? 0)
                     : 0.0;
+                $depositPriceOverride = null;
+                if (! $claimedByPackage) {
+                    $depositPriceOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'main', $depositContribution);
+                    $depositContribution = (float) $depositPriceOverrideResult['amount'];
+                    $depositPriceOverride = $depositPriceOverrideResult['override'] ?? ($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null);
+                }
 
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -5313,7 +5319,7 @@ class PosController extends Controller
                     'locked' => true,
                     'booking_id' => $booking->id,
                     'booking_service_id' => $serviceItem->booking_service_id,
-                    'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($depositByServiceItemOverrides[(int) $serviceItem->id] ?? null, 1, $depositContribution),
+                    'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($depositPriceOverride, 1, $depositContribution),
                 ]);
 
                 foreach (collect($serviceItem->addon_items_json ?? [])->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) === 'main_service' && ! (bool) ($row['is_original'] ?? false))->values() as $extraMainRow) {
@@ -5345,6 +5351,9 @@ class PosController extends Controller
                         continue;
                     }
                     $addonName = (string) ($addonRow['name'] ?? $addonRow['label'] ?? 'Add-on');
+                    $addonDepositPriceOverrideResult = $this->applyPriceOverrideToAmount($serviceItem, 'addon:' . $addonId, $addonDepositAmount);
+                    $addonDepositAmount = (float) $addonDepositPriceOverrideResult['amount'];
+                    $addonDepositPriceOverride = $addonDepositPriceOverrideResult['override'] ?? ($addonRow['price_override'] ?? null);
                     OrderItem::create([
                         'order_id' => $order->id,
                         'line_type' => 'booking_addon',
@@ -5362,7 +5371,7 @@ class PosController extends Controller
                         'locked' => true,
                         'booking_id' => $booking->id,
                         'booking_service_id' => $serviceItem->booking_service_id,
-                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($addonRow['price_override'] ?? null, 1, $addonDepositAmount),
+                        'price_override_snapshot' => $this->normalizeOverrideSnapshotForOrder($addonDepositPriceOverride, 1, $addonDepositAmount),
                     ]);
                 }
 
