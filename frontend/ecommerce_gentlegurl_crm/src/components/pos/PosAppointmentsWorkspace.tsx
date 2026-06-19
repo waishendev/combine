@@ -3226,19 +3226,7 @@ export default function PosAppointmentsWorkspace({
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <label className="text-xs font-semibold text-gray-600">Main Services</label>
-                      {createAppointmentServiceDraft ? (() => {
-                        const lineKey = `appointment-create:main:${createAppointmentServiceDraft.id}`
-                        const inherited = assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
-                        return (
-                          <div className="mt-1 flex flex-wrap items-center gap-1">
-                            <span className="text-[10px] font-medium text-gray-600">{formatAppointmentLineSplitSummary(lineKey, inherited, 'assigned staff')}</span>
-                            <button type="button" onClick={() => void openAppointmentLineSplitEditor(lineKey, createAppointmentServiceDraft.name ?? 'Main service', inherited)} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                          </div>
-                        )
-                      })() : null}
-                    </div>
+                    <label className="text-xs font-semibold text-gray-600">Main Services</label>
                     <div className="flex flex-wrap justify-end gap-2">
                       {createAppointmentServiceDraft ? (
                         <button
@@ -3311,6 +3299,16 @@ export default function PosAppointmentsWorkspace({
                         secondaryClassName="mt-0.5 text-xs text-blue-700/80"
                       />
                       <p className="mt-1">Base time: {Number(createAppointmentServiceDraft.duration_min ?? 0)} min</p>
+                      {(() => {
+                        const lineKey = `appointment-create:main:${createAppointmentServiceDraft.id}`
+                        const inherited = assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
+                        return (
+                          <div className="mt-2 flex flex-wrap items-center gap-1">
+                            <span className="text-[10px] font-medium text-blue-900">{formatAppointmentLineSplitSummary(lineKey, inherited, 'assigned staff')}</span>
+                            <button type="button" onClick={() => void openAppointmentLineSplitEditor(lineKey, createAppointmentServiceDraft.name ?? 'Main service', inherited)} className="rounded border border-indigo-300 bg-white px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                          </div>
+                        )
+                      })()}
                     </div>
                   ) : null}
 
