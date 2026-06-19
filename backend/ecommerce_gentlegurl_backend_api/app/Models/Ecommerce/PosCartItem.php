@@ -21,6 +21,7 @@ class PosCartItem extends Model
         'discount_remark',
         'line_total_after_discount',
         'price_override_line_total',
+        'price_override_snapshot',
     ];
 
     protected function casts(): array
@@ -32,6 +33,7 @@ class PosCartItem extends Model
             'discount_amount' => 'decimal:2',
             'line_total_after_discount' => 'decimal:2',
             'price_override_line_total' => 'decimal:2',
+            'price_override_snapshot' => 'array',
             'discount_remark' => 'string',
             'selected_booking_product_options' => 'array',
         ];

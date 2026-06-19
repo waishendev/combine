@@ -146,6 +146,8 @@ type OrderDetailLine = {
     unit_price_snapshot?: number | string | null
     price_override_reason?: string | null
     price_overridden_by?: number | string | null
+    price_overridden_by_label?: string | null
+    price_override_mode?: string | null
     price_overridden_at?: string | null
   } | null
   original_unit_price?: number | string | null
@@ -269,15 +271,17 @@ const priceOverrideDisplay = (line: OrderDetailLine) => {
   const original = Number(snapshot?.original_unit_price ?? snapshot?.original_unit_price_snapshot ?? line.original_unit_price ?? NaN)
   const adjusted = Number(snapshot?.final_unit_price ?? snapshot?.unit_price_snapshot ?? line.final_unit_price ?? NaN)
   const reason = snapshot?.price_override_reason ?? line.price_override_reason ?? null
-  const changedBy = snapshot?.price_overridden_by ?? line.price_overridden_by ?? null
+  const mode = snapshot?.price_override_mode ?? null
+  const changedBy = snapshot?.price_overridden_by_label ?? snapshot?.price_overridden_by ?? line.price_overridden_by ?? null
   const changedAt = snapshot?.price_overridden_at ?? line.price_overridden_at ?? null
 
-  if (!Number.isFinite(original) && !Number.isFinite(adjusted) && !reason && !changedBy && !changedAt) return '—'
+  if (!Number.isFinite(original) && !Number.isFinite(adjusted) && !mode && !reason && !changedBy && !changedAt) return '—'
 
   return (
     <div className="space-y-1 text-xs">
       {Number.isFinite(original) ? <p>Original: RM {formatAmount(original)}</p> : null}
       {Number.isFinite(adjusted) ? <p className="font-semibold text-blue-700">Adjusted: RM {formatAmount(adjusted)}</p> : null}
+      {mode ? <p>Mode: {mode === 'line_total' ? 'Line Total' : 'Unit Price'}</p> : null}
       {reason ? <p className="rounded bg-blue-50 px-2 py-1 text-blue-800">{reason}</p> : null}
       {changedBy ? <p className="text-slate-500">By: {changedBy}</p> : null}
       {changedAt ? <p className="text-slate-500">At: {formatDisplayDateTime(String(changedAt))}</p> : null}
