@@ -6,6 +6,7 @@ import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
+import { ReportViewDetailsButton } from './reports/ReportActions'
 import { VariantNameStack } from './NameStack'
 
 type Summary = {
@@ -654,17 +655,13 @@ export default function MyPosSummaryPage({
                     </td>
                     <td className="px-4 py-2 border border-gray-200 text-center">
                       <div className="inline-flex items-center gap-1">
-                        <button
-                          type="button"
-                          className="inline-flex h-8 w-8 items-center justify-center rounded bg-green-600 text-white hover:bg-green-700"
+                        <ReportViewDetailsButton
                           onClick={() => {
                             setSelectedRow(row)
                             setDetailOpen(true)
                           }}
-                          aria-label={`View details for ${row.order_no ?? row.order_id}`}
-                        >
-                          <i className="fa-solid fa-eye" />
-                        </button>
+                          title={`View details for ${row.order_no ?? row.order_id}`}
+                        />
                         <OfflineOrderActions
                           orderId={row.order_id}
                           channel="offline"

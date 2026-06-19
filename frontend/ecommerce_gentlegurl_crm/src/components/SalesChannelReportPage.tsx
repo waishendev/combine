@@ -8,6 +8,7 @@ import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
+import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 
@@ -138,6 +139,20 @@ type OrderDetailLine = {
   discount_value?: number
   discount_remark?: string | null
   staff_name?: string | null
+  price_override?: {
+    original_unit_price?: number | string | null
+    original_unit_price_snapshot?: number | string | null
+    final_unit_price?: number | string | null
+    unit_price_snapshot?: number | string | null
+    price_override_reason?: string | null
+    price_overridden_by?: number | string | null
+    price_overridden_at?: string | null
+  } | null
+  original_unit_price?: number | string | null
+  final_unit_price?: number | string | null
+  price_override_reason?: string | null
+  price_overridden_by?: number | string | null
+  price_overridden_at?: string | null
   staff_splits?: Array<{
     staff_id: number
     staff_name: string
@@ -247,6 +262,27 @@ const discountValueDisplay = (type?: string | null, value?: number) => {
   const amount = Number(value ?? 0)
   if (!Number.isFinite(amount) || amount <= 0) return '—'
   return type === 'percentage' ? `${formatAmount(amount)}%` : `RM ${formatAmount(amount)}`
+}
+
+const priceOverrideDisplay = (line: OrderDetailLine) => {
+  const snapshot = line.price_override ?? null
+  const original = Number(snapshot?.original_unit_price ?? snapshot?.original_unit_price_snapshot ?? line.original_unit_price ?? NaN)
+  const adjusted = Number(snapshot?.final_unit_price ?? snapshot?.unit_price_snapshot ?? line.final_unit_price ?? NaN)
+  const reason = snapshot?.price_override_reason ?? line.price_override_reason ?? null
+  const changedBy = snapshot?.price_overridden_by ?? line.price_overridden_by ?? null
+  const changedAt = snapshot?.price_overridden_at ?? line.price_overridden_at ?? null
+
+  if (!Number.isFinite(original) && !Number.isFinite(adjusted) && !reason && !changedBy && !changedAt) return '—'
+
+  return (
+    <div className="space-y-1 text-xs">
+      {Number.isFinite(original) ? <p>Original: RM {formatAmount(original)}</p> : null}
+      {Number.isFinite(adjusted) ? <p className="font-semibold text-blue-700">Adjusted: RM {formatAmount(adjusted)}</p> : null}
+      {reason ? <p className="rounded bg-blue-50 px-2 py-1 text-blue-800">{reason}</p> : null}
+      {changedBy ? <p className="text-slate-500">By: {changedBy}</p> : null}
+      {changedAt ? <p className="text-slate-500">At: {formatDisplayDateTime(String(changedAt))}</p> : null}
+    </div>
+  )
 }
 
 const staffSplitDisplay = (line: OrderDetailLine) => {
@@ -712,15 +748,7 @@ export default function SalesChannelReportPage({
                     <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                     <td className="px-4 py-2 border border-gray-200 text-center">
                       <div className="inline-flex items-center justify-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void openOrderDetail(row.order_id)}
-                          className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-blue-300 hover:text-blue-700"
-                          title="View details"
-                          aria-label={`View details for ${row.order_no}`}
-                        >
-                          <i className="fa-solid fa-eye text-xs" />
-                        </button>
+                        <ReportViewDetailsButton onClick={() => void openOrderDetail(row.order_id)} title={`View details for ${row.order_no}`} />
                       <OfflineOrderActions
                         orderId={row.order_id}
                         channel={row.channel}
@@ -758,15 +786,7 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                   <td className="px-4 py-2 border border-gray-200 text-center">
                     <div className="inline-flex items-center justify-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => void openOrderDetail(row.order_id, row.booking_id)}
-                        className="inline-flex h-8 w-8 items-center justify-center rounded border border-slate-200 bg-white text-slate-600 shadow-sm hover:border-blue-300 hover:text-blue-700"
-                        title="View details"
-                        aria-label={`View details for ${row.order_no}`}
-                      >
-                        <i className="fa-solid fa-eye text-xs" />
-                      </button>
+                      <ReportViewDetailsButton onClick={() => void openOrderDetail(row.order_id, row.booking_id)} title={`View details for ${row.order_no}`} />
                     <OfflineOrderActions
                       orderId={row.order_id}
                       channel={row.channel}
@@ -857,23 +877,16 @@ export default function SalesChannelReportPage({
       </div>
 
       {detailOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 px-4 py-6">
-          <div className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Transaction details</p>
-                <h3 className="mt-1 text-lg font-bold text-slate-900">{orderDetail?.order.order_no ?? 'Loading…'}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={closeOrderDetail}
-                className="inline-flex h-8 w-8 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-slate-800"
-                aria-label="Close details"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
+        <ReportDetailDrawer
+          open={detailOpen}
+          title={orderDetail?.order.order_no ?? 'Loading…'}
+          subtitle="Transaction details"
+          onClose={closeOrderDetail}
+          loading={detailLoading}
+          loadingText="Loading order details…"
+          error={detailError}
+          maxWidthClassName="max-w-5xl"
+        >
             {detailBookingId ? (
               <div className="border-b border-slate-200 px-5 pt-3">
                 <div className="inline-flex rounded-lg bg-slate-100 p-1 text-sm font-semibold">
@@ -883,13 +896,9 @@ export default function SalesChannelReportPage({
               </div>
             ) : null}
 
-            <div className="max-h-[calc(90vh-120px)] overflow-y-auto px-5 py-4">
+            <div>
               {detailTab === 'photos' && detailBookingId ? (
                 <BookingServicePhotosPanel bookingId={detailBookingId} />
-              ) : detailLoading ? (
-                <div className="py-10 text-center text-sm text-slate-500">Loading order details…</div>
-              ) : detailError ? (
-                <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{detailError}</div>
               ) : orderDetail ? (
                 <div className="space-y-5">
                   <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
@@ -916,6 +925,7 @@ export default function SalesChannelReportPage({
                           <th className="px-3 py-2 text-right font-semibold">Discount</th>
                           <th className="px-3 py-2 text-right font-semibold">Net</th>
                           <th className="px-3 py-2 text-left font-semibold">Discount details</th>
+                          <th className="px-3 py-2 text-left font-semibold">Price override</th>
                           <th className="px-3 py-2 text-left font-semibold">Staff split</th>
                         </tr>
                       </thead>
@@ -946,6 +956,7 @@ export default function SalesChannelReportPage({
                               <p className="text-xs text-slate-500">{discountValueDisplay(line.discount_type, line.discount_value)}</p>
                               {line.discount_remark ? <p className="mt-1 rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">{line.discount_remark}</p> : null}
                             </td>
+                            <td className="px-3 py-3 text-slate-700">{priceOverrideDisplay(line)}</td>
                             <td className="px-3 py-3 text-slate-700">{staffSplitDisplay(line)}</td>
                           </tr>
                         ))}
@@ -955,8 +966,7 @@ export default function SalesChannelReportPage({
                 </div>
               ) : null}
             </div>
-          </div>
-        </div>
+        </ReportDetailDrawer>
       ) : null}
 
       <PaginationControls
