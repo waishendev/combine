@@ -4618,6 +4618,13 @@ class PosController extends Controller
             'items.*.staff_splits' => ['nullable', 'array'],
             'items.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'items.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'items.*.line_staff_splits' => ['nullable', 'array'],
+            'items.*.line_staff_splits.*.line_key' => ['nullable', 'string', 'max:255'],
+            'items.*.line_staff_splits.*.line_type' => ['required_with:items.*.line_staff_splits', 'string', 'max:80'],
+            'items.*.line_staff_splits.*.line_ref_id' => ['nullable'],
+            'items.*.line_staff_splits.*.staff_splits' => ['nullable', 'array'],
+            'items.*.line_staff_splits.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'items.*.line_staff_splits.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
             'service_items' => ['nullable', 'array'],
             'service_items.*.type' => ['nullable', 'in:service'],
             'service_items.*.cart_service_item_id' => ['nullable', 'integer'],
@@ -5024,8 +5031,14 @@ class PosController extends Controller
                 return $cartItemId > 0 ? [$cartItemId => collect($item['staff_splits'] ?? [])->values()->all()] : [];
             });
 
+            $lineStaffSplitsByCartItemId = collect($validated['items'] ?? [])->mapWithKeys(function (array $item) {
+                $cartItemId = isset($item['cart_item_id']) ? (int) $item['cart_item_id'] : 0;
+                return $cartItemId > 0 ? [$cartItemId => collect($item['line_staff_splits'] ?? [])->values()->all()] : [];
+            });
+
             $staffIds = $staffSplitsByCartItemId
                 ->flatMap(fn (array $splits) => collect($splits)->pluck('staff_id'))
+                ->merge($lineStaffSplitsByCartItemId->flatMap(fn (array $lines) => collect($lines)->flatMap(fn (array $line) => collect($line['staff_splits'] ?? [])->pluck('staff_id'))))
                 ->filter()
                 ->map(fn ($staffId) => (int) $staffId)
                 ->unique()
@@ -5094,12 +5107,49 @@ class PosController extends Controller
                             abort(422, __('Invalid staff split.'));
                         }
 
+                        $baseAmountBasis = max(0, $lineNetTotal - collect($item->selected_booking_product_options ?? [])->sum(fn ($option) => (float) ($option['line_total_after_discount'] ?? (((float) ($option['extra_price'] ?? 0)) * (int) $item->qty))));
                         foreach ($itemSplits as $split) {
                             OrderItemStaffSplit::create([
                                 'order_item_id' => $orderItem->id,
+                                'line_type' => 'booking_product_base',
+                                'line_ref_id' => (string) $item->id,
                                 'staff_id' => (int) $split['staff_id'],
                                 'share_percent' => (int) $split['share_percent'],
+                                'amount_basis' => $baseAmountBasis,
                                 'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                                'snapshot' => ['cart_item_id' => (int) $item->id, 'line_type' => 'booking_product_base'],
+                            ]);
+                        }
+                    }
+
+
+                    foreach (collect($lineStaffSplitsByCartItemId->get((int) $item->id, [])) as $lineSplitPayload) {
+                        $lineType = (string) ($lineSplitPayload['line_type'] ?? '');
+                        if ($lineType !== 'booking_product_option') {
+                            continue;
+                        }
+                        $optionId = (string) ($lineSplitPayload['line_ref_id'] ?? '');
+                        $optionSnapshot = collect($item->selected_booking_product_options ?? [])->first(fn ($option) => (string) ($option['id'] ?? '') === $optionId);
+                        $amountBasis = $optionSnapshot ? (float) ($optionSnapshot['line_total_after_discount'] ?? (((float) ($optionSnapshot['extra_price'] ?? 0)) * (int) $item->qty)) : 0.0;
+                        $splits = collect($lineSplitPayload['staff_splits'] ?? [])->values();
+                        if ($splits->isEmpty()) {
+                            continue;
+                        }
+                        $sum = (int) $splits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
+                        $uniqueCount = $splits->pluck('staff_id')->filter()->unique()->count();
+                        if ($sum !== 100 || $uniqueCount !== $splits->count()) {
+                            abort(422, __('Invalid line staff split.'));
+                        }
+                        foreach ($splits as $split) {
+                            OrderItemStaffSplit::create([
+                                'order_item_id' => $orderItem->id,
+                                'line_type' => 'booking_product_option',
+                                'line_ref_id' => $optionId,
+                                'staff_id' => (int) $split['staff_id'],
+                                'share_percent' => (int) $split['share_percent'],
+                                'amount_basis' => $amountBasis,
+                                'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
+                                'snapshot' => ['cart_item_id' => (int) $item->id, 'line_key' => $lineSplitPayload['line_key'] ?? null, 'option' => $optionSnapshot],
                             ]);
                         }
                     }

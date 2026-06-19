@@ -275,7 +275,7 @@ class StaffCommissionReportController extends Controller
 
     private function effectiveLineTotalExpr(): string
     {
-        return 'COALESCE(order_items.effective_line_total, order_items.line_total)::numeric';
+        return 'COALESCE(order_item_staff_splits.amount_basis, order_items.effective_line_total, order_items.line_total)::numeric';
     }
 
     private function snapshotLineTotalExpr(): string

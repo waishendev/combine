@@ -95,7 +95,7 @@ class MyPosSummaryReportController extends Controller
         $totalStaffCommission = (float) ((clone $baseQuery())
             ->leftJoin('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn (Builder $query) => $query->where('order_item_staff_splits.staff_id', $staffId))
-            ->selectRaw("COALESCE(SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS total_staff_commission")
+            ->selectRaw("COALESCE(SUM((COALESCE(order_item_staff_splits.amount_basis, $effectiveLineTotalExpr)) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS total_staff_commission")
             ->value('total_staff_commission') ?? 0);
         $totalStaffCommission += (float) ((clone $basePackageQuery())
             ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
@@ -108,7 +108,7 @@ class MyPosSummaryReportController extends Controller
             $myCommission = (float) ((clone $baseQuery())
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
                 ->where('order_item_staff_splits.staff_id', (int) $user->staff_id)
-                ->selectRaw("COALESCE(SUM(($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS my_commission")
+                ->selectRaw("COALESCE(SUM((COALESCE(order_item_staff_splits.amount_basis, $effectiveLineTotalExpr)) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS my_commission")
                 ->value('my_commission') ?? 0);
             $myCommission += (float) ((clone $basePackageQuery())
                 ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
@@ -238,7 +238,7 @@ class MyPosSummaryReportController extends Controller
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('order_item_staff_splits.share_percent')
                 ->selectRaw('order_item_staff_splits.commission_rate_snapshot')
-                ->selectRaw("($effectiveLineTotalExpr) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_commission_amount")
+                ->selectRaw("(COALESCE(order_item_staff_splits.amount_basis, $effectiveLineTotalExpr)) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_commission_amount")
                 ->orderBy('order_item_staff_splits.id')
                 ->get()
                 ->map(fn ($row) => [
