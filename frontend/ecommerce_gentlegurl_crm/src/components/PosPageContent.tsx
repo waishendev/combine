@@ -714,7 +714,7 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
 
   return (
     <div className="fixed inset-0 z-[180] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
-      <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+      <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
         <div className="flex shrink-0 items-start justify-between border-b border-gray-200 px-5 py-4">
           <div>
             <h4 className="text-lg font-bold text-gray-900">Booking Product Options</h4>
@@ -7772,7 +7772,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {productSelectModalOpen && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
-          <div className="relative mx-auto flex w-full max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-4xl lg:max-w-6xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             {/* Header */}
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">Product Details</h4>
@@ -8074,7 +8074,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {cartEditSettlementOpen && cartEditSettlementItem && (
         <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
@@ -8568,7 +8568,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {cartEditMainServicePickerOpen && cartEditSettlementItem && cartEditMainServicePickerTargetId ? (
         <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-base font-bold text-gray-900">
@@ -8627,7 +8627,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {checkoutConfirmationOpen && hasCartItems ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-md p-4">
-          <div className="relative mx-auto flex w-full max-w-6xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-6xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
@@ -9772,7 +9772,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {itemSplitEditorOpen && itemSplitEditorTarget ? (
         <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
-          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3">
               <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : itemSplitEditorTarget.type === 'bulk' ? `Apply Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : itemSplitEditorTarget.type === 'line' ? `Line Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : 'Item Staff Split'}</h5>
               <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="text-2xl leading-none text-gray-500">×</button>
@@ -9996,7 +9996,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {packageModalOpen && packageDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
-          <div className="relative mx-auto flex w-full max-w-3xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+          <div className="relative mx-auto flex w-full max-w-3xl lg:max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h3 className="text-xl font-bold text-gray-900">Add Package to Cart</h3>
             <p className="mt-1 text-base text-gray-600">{packageDraft.name}</p>
@@ -10097,7 +10097,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {packageMemberPickerOpen ? (
         <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
-          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
               <button
@@ -10178,7 +10178,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
-          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+          <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
             <div className="shrink-0 border-b border-gray-200 bg-white px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -10695,7 +10695,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       {memberOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>
           <button type="button" className="absolute inset-0 h-full w-full cursor-default" onClick={closeMemberPanel} aria-label="Close member panel" />
-          <div className="absolute right-0 top-0 h-[100dvh] max-h-[100dvh] w-full max-w-3xl border-l border-gray-200 bg-white shadow-2xl">
+          <div className="absolute right-0 top-0 h-[100dvh] max-h-[100dvh] w-full max-w-3xl lg:max-w-5xl border-l border-gray-200 bg-white shadow-2xl">
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
                 <div>
@@ -10932,7 +10932,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {voucherModalOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
-          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">Apply Voucher</h4>
               <button
@@ -11006,7 +11006,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       {/* Checkout Success Modal with QR Code */}
       {checkoutResult && (
         <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
-          <div className={`relative mx-auto flex w-full max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden ${checkoutResultHasCashChange ? 'max-w-4xl' : 'max-w-lg'} rounded-2xl border-2 border-gray-100 bg-white shadow-2xl`}>
+          <div className={`relative mx-auto flex w-full max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden ${checkoutResultHasCashChange ? 'max-w-4xl lg:max-w-6xl' : 'max-w-lg'} rounded-2xl border-2 border-gray-100 bg-white shadow-2xl`}>
             <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">

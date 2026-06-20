@@ -3489,7 +3489,7 @@ export default function PosAppointmentsWorkspace({
 
       {createAppointmentModalOpen ? (
         <div className="fixed inset-0 z-[135] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
-          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Create Appointment</h3>
@@ -4479,7 +4479,7 @@ export default function PosAppointmentsWorkspace({
 
       {editSettlementOpen && appointmentDetail && (
         <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+          <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>

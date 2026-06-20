@@ -2437,6 +2437,8 @@ class PosController extends Controller
                 ]);
             }
 
+            $itemStaffSplits = collect($item['staff_splits'] ?? [])->values()->all();
+            $addonStaffSplits = (array) ($item['addon_staff_splits'] ?? []);
             $selectedOptionIds = collect($item['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values();
 
             $serviceQuestions = $service->questions()
