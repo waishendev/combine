@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Admin\Booking\CancellationRequestController;
 use App\Http\Controllers\Controller;
-use App\Models\ActivityLog;
 use App\Mail\BookingConfirmationMail;
 use App\Mail\BookingRescheduledMail;
 use App\Mail\BookingSettlementReceiptMail;
@@ -7476,19 +7475,6 @@ class PosController extends Controller
             'override_type' => $overrideData['schedule_override_type'] ?? null,
         ];
         $user = $request->user();
-
-        ActivityLog::query()->create([
-            'user_id' => $user?->id,
-            'user_name' => $user?->name ?? $user?->username ?? null,
-            'action' => 'SCHEDULE_OVERRIDE',
-            'model_type' => 'Booking',
-            'model_id' => (int) $booking->id,
-            'model_label' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
-            'old_values' => $oldValueJson,
-            'new_values' => $newValueJson,
-            'ip_address' => $request->ip(),
-            'user_agent' => $request->userAgent(),
-        ]);
 
         BookingLog::query()->create([
             'booking_id' => (int) $booking->id,
