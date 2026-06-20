@@ -159,7 +159,7 @@ class MyPosSummaryReportController extends Controller
             ->selectRaw("($effectiveLineTotalExpr) AS item_total_price")
             ->selectRaw("($snapshotLineTotalExpr) AS item_snapshot_total")
             ->selectRaw('COALESCE(order_items.is_staff_free_applied, false) AS is_staff_free_applied')
-            ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN EXISTS (SELECT 1 FROM booking_service_staff_splits bss WHERE bss.booking_id = order_items.booking_id) ELSE EXISTS (SELECT 1 FROM order_item_staff_splits oiss WHERE oiss.order_item_id = order_items.id) END AS has_staff_assignment");
+            ->selectRaw("CASE WHEN order_items.line_type IN ('booking_settlement', 'booking_deposit') THEN (EXISTS (SELECT 1 FROM order_item_staff_splits oiss WHERE oiss.order_item_id = order_items.id) OR EXISTS (SELECT 1 FROM booking_service_staff_splits bss WHERE bss.booking_id = order_items.booking_id)) ELSE EXISTS (SELECT 1 FROM order_item_staff_splits oiss WHERE oiss.order_item_id = order_items.id) END AS has_staff_assignment");
 
         $packageDetailQuery = (clone $basePackageQuery())
             ->selectRaw('orders.id AS order_id')
@@ -187,8 +187,8 @@ class MyPosSummaryReportController extends Controller
             ->orderByDesc('report_rows.order_item_id')
             ->paginate($perPage);
 
-        $productItemIds = collect($paginator->items())
-            ->filter(fn ($row) => in_array(($row->item_type ?? 'product'), ['product', 'booking_addon'], true))
+        $orderItemIds = collect($paginator->items())
+            ->filter(fn ($row) => ($row->item_type ?? 'product') !== 'service_package')
             ->pluck('order_item_id')
             ->map(fn ($v) => (int) $v)
             ->all();
@@ -227,13 +227,13 @@ class MyPosSummaryReportController extends Controller
             ]);
 
         $splitsGrouped = collect();
-        if (! empty($productItemIds)) {
-            $productSplitsGrouped = DB::table('order_item_staff_splits')
+        if (! empty($orderItemIds)) {
+            $orderItemSplitsGrouped = DB::table('order_item_staff_splits')
                 ->leftJoin('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
                 ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
-                ->whereIn('order_item_staff_splits.order_item_id', $productItemIds)
+                ->whereIn('order_item_staff_splits.order_item_id', $orderItemIds)
                 ->selectRaw('order_item_staff_splits.order_item_id')
-                ->selectRaw("CASE WHEN order_items.line_type = 'booking_addon' THEN 'booking_addon' ELSE 'product' END AS item_type")
+                ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN 'booking_settlement' WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' WHEN order_items.line_type = 'booking_addon' THEN 'booking_addon' ELSE 'product' END AS item_type")
                 ->selectRaw('order_item_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('order_item_staff_splits.share_percent')
@@ -251,7 +251,7 @@ class MyPosSummaryReportController extends Controller
                 ])
                 ->groupBy('split_key');
 
-            $splitsGrouped = $splitsGrouped->merge($productSplitsGrouped);
+            $splitsGrouped = $splitsGrouped->merge($orderItemSplitsGrouped);
         }
 
         if (! empty($bookingWorkerItemIds)) {
@@ -278,7 +278,11 @@ class MyPosSummaryReportController extends Controller
                 ])
                 ->groupBy('split_key');
 
-            $splitsGrouped = $splitsGrouped->merge($bookingSplitsGrouped);
+            $bookingSplitsGrouped->each(function ($splits, $splitKey) use (&$splitsGrouped) {
+                if (! $splitsGrouped->has($splitKey)) {
+                    $splitsGrouped->put($splitKey, $splits);
+                }
+            });
         }
 
         if (! empty($packageItemIds)) {
