@@ -230,12 +230,9 @@ body {
 }
 
 .gg-international-phone__dropdown {
-  position: absolute;
-  top: calc(100% + 4px);
-  left: 0;
-  z-index: 30;
-  width: min(22rem, calc(100vw - 2rem));
-  max-width: 90vw;
+  position: fixed;
+  z-index: 10000;
+  max-width: calc(100vw - 2rem);
   border: 1px solid var(--react-international-phone-border-color, #d1d5db);
   border-radius: 0.75rem;
   background: var(--react-international-phone-dropdown-item-background-color, var(--input-bg, #ffffff));
