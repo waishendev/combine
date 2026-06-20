@@ -17,7 +17,10 @@ class Booking extends Model
         'billing_name', 'billing_phone', 'billing_email',
         'staff_id', 'service_id', 'start_at', 'end_at', 'buffer_min', 'addon_duration_min', 'status', 'deposit_amount', 'addon_price', 'addon_items_json', 'settled_service_amount',
         'payment_status', 'hold_expires_at', 'completed_at', 'commission_counted_at', 'created_by_staff_id', 'cancelled_at', 'cancellation_type', 'notes',
-        'reschedule_count', 'rescheduled_at', 'rescheduled_from_booking_id', 'reschedule_reason', 'notified_cancellation_voucher_id',
+        'reschedule_count', 'rescheduled_at', 'rescheduled_from_booking_id', 'reschedule_reason',
+        'schedule_override_used', 'schedule_override_type', 'scheduled_staff_start_at', 'scheduled_staff_end_at',
+        'actual_booking_start_at', 'actual_booking_end_at', 'schedule_override_by', 'schedule_override_at',
+        'notified_cancellation_voucher_id',
     ];
 
     protected $casts = [
@@ -28,6 +31,12 @@ class Booking extends Model
         'commission_counted_at' => 'datetime',
         'cancelled_at' => 'datetime',
         'rescheduled_at' => 'datetime',
+        'schedule_override_used' => 'boolean',
+        'scheduled_staff_start_at' => 'datetime',
+        'scheduled_staff_end_at' => 'datetime',
+        'actual_booking_start_at' => 'datetime',
+        'actual_booking_end_at' => 'datetime',
+        'schedule_override_at' => 'datetime',
         'addon_items_json' => 'array',
         'addon_price' => 'decimal:2',
         'settled_service_amount' => 'decimal:2',

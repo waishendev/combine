@@ -23,6 +23,16 @@ export type PosAppointmentListItem = {
   service_names: string[]
   appointment_start_at?: string | null
   appointment_end_at?: string | null
+  schedule_override?: {
+    used?: boolean
+    type?: string | null
+    scheduled_staff_start_at?: string | null
+    scheduled_staff_end_at?: string | null
+    actual_booking_start_at?: string | null
+    actual_booking_end_at?: string | null
+    by?: number | null
+    at?: string | null
+  } | null
   staff_id?: number | null
   staff_name?: string | null
   status: string
@@ -61,6 +71,16 @@ export type PosAppointmentDetail = {
   payment_status?: string | null
   appointment_start_at?: string | null
   appointment_end_at?: string | null
+  schedule_override?: {
+    used?: boolean
+    type?: string | null
+    scheduled_staff_start_at?: string | null
+    scheduled_staff_end_at?: string | null
+    actual_booking_start_at?: string | null
+    actual_booking_end_at?: string | null
+    by?: number | null
+    at?: string | null
+  } | null
   /** Present when booked under a member; guest walk-ins use `guest_*` instead. */
   customer?: { id: number; name: string; phone?: string | null; email?: string | null } | null
   guest_name?: string | null

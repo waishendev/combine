@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Admin\Booking\CancellationRequestController;
 use App\Http\Controllers\Controller;
+use App\Models\ActivityLog;
 use App\Mail\BookingConfirmationMail;
 use App\Mail\BookingRescheduledMail;
 use App\Mail\BookingSettlementReceiptMail;
@@ -470,6 +471,7 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+            'schedule_override' => $this->serializeScheduleOverride($booking),
             'customer' => $booking->customer_id
                 ? [
                     'id' => (int) $booking->customer_id,
@@ -1438,6 +1440,8 @@ class PosController extends Controller
             return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
         }
 
+        $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, $scheduleDiagnostics, $request->user()?->id);
+
         $oldStart = $booking->start_at;
         $oldEnd = $booking->end_at;
         $oldStaffId = $booking->staff_id ? (int) $booking->staff_id : null;
@@ -1450,7 +1454,9 @@ class PosController extends Controller
             'rescheduled_at' => now(),
             'rescheduled_from_booking_id' => $booking->rescheduled_from_booking_id ?: $booking->id,
             'reschedule_reason' => $validated['reason'] ?? null,
+            ...$scheduleOverride,
         ]);
+        $this->recordScheduleOverrideAudit($booking->fresh(), $scheduleOverride, $request);
 
         BookingLog::create([
             'booking_id' => $booking->id,
@@ -2119,6 +2125,7 @@ class PosController extends Controller
             return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
         }
 
+
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
         ])->values();
@@ -2541,6 +2548,8 @@ class PosController extends Controller
             return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
         }
 
+        $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
+
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
         ])->values();
@@ -2608,7 +2617,8 @@ class PosController extends Controller
             $normalizedSplits,
             $validated,
             $depositAmount,
-            $depositPayments
+            $depositPayments,
+            $scheduleOverride
         ) {
             $booking = Booking::query()->create([
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -2630,7 +2640,9 @@ class PosController extends Controller
                 'payment_status' => $depositAmount > 0 ? 'PARTIAL' : 'UNPAID',
                 'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
                 'notes' => $validated['notes'] ?? null,
+                ...$scheduleOverride,
             ]);
+            $this->recordScheduleOverrideAudit($booking, $scheduleOverride, $request);
 
             $depositProofPath = $request->hasFile('deposit_qr_payment_proof')
                 ? $request->file('deposit_qr_payment_proof')->store('booking-payment-proofs', 'public')
@@ -5402,10 +5414,19 @@ class PosController extends Controller
                     abort(422, __('Assigned staff is inactive.'));
                 }
 
+                $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
+                $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+                if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                    && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+                    abort(409, __('Selected staff is not available on this day.'));
+                }
+
                 if ($serviceItem->assigned_staff_id
                     && $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin)) {
                     abort(409, __('Selected slot conflicts with another booking, leave, or blocked time.'));
                 }
+
+                $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
 
                 $booking = Booking::query()->create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -5427,7 +5448,9 @@ class PosController extends Controller
                     'payment_status' => 'PAID',
                     'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
                     'notes' => $serviceItem->notes,
+                    ...$scheduleOverride,
                 ]);
+                $this->recordScheduleOverrideAudit($booking, $scheduleOverride, $request);
 
                 $confirmedBookingIds[] = (int) $booking->id;
 
@@ -7400,6 +7423,101 @@ class PosController extends Controller
         return $baseDurationMin + $extraMainDurationMin + $topLevelAddonDurationMin + $nestedAddonDurationMin;
     }
 
+
+    protected function resolvePosScheduleOverride(int $staffId, Carbon $startAt, Carbon $endAt, array $scheduleDiagnostics, ?int $actorUserId = null): array
+    {
+        $failureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        $scheduleStartRaw = $scheduleDiagnostics['schedule_start'] ?? null;
+        $scheduleEndRaw = $scheduleDiagnostics['schedule_end'] ?? null;
+        $scheduleStart = $scheduleStartRaw ? Carbon::parse((string) $scheduleStartRaw) : null;
+        $scheduleEnd = $scheduleEndRaw ? Carbon::parse((string) $scheduleEndRaw) : null;
+        $overrideUsed = $failureReason === 'outside_staff_schedule' && $scheduleStart && $scheduleEnd;
+        $overrideType = null;
+
+        if ($overrideUsed) {
+            if ($startAt->lt($scheduleStart)) {
+                $overrideType = 'before_staff_working_hours';
+            } elseif ($endAt->gt($scheduleEnd)) {
+                $overrideType = 'after_staff_working_hours';
+            } else {
+                $overrideType = 'outside_staff_schedule';
+            }
+        }
+
+        return [
+            'schedule_override_used' => $overrideUsed,
+            'schedule_override_type' => $overrideUsed ? $overrideType : null,
+            'scheduled_staff_start_at' => $overrideUsed ? $scheduleStart : null,
+            'scheduled_staff_end_at' => $overrideUsed ? $scheduleEnd : null,
+            'actual_booking_start_at' => $startAt,
+            'actual_booking_end_at' => $endAt,
+            'schedule_override_by' => $overrideUsed ? $actorUserId : null,
+            'schedule_override_at' => $overrideUsed ? now() : null,
+        ];
+    }
+
+    protected function recordScheduleOverrideAudit(Booking $booking, array $overrideData, Request $request): void
+    {
+        if (! (bool) ($overrideData['schedule_override_used'] ?? false)) {
+            return;
+        }
+
+        $scheduledStart = $overrideData['scheduled_staff_start_at'] ?? null;
+        $scheduledEnd = $overrideData['scheduled_staff_end_at'] ?? null;
+        $actualStart = $overrideData['actual_booking_start_at'] ?? null;
+        $actualEnd = $overrideData['actual_booking_end_at'] ?? null;
+        $oldValueJson = [
+            'staff_schedule_start' => $scheduledStart instanceof Carbon ? $scheduledStart->format('H:i') : null,
+            'staff_schedule_end' => $scheduledEnd instanceof Carbon ? $scheduledEnd->format('H:i') : null,
+        ];
+        $newValueJson = [
+            'booking_start' => $actualStart instanceof Carbon ? $actualStart->format('H:i') : null,
+            'booking_end' => $actualEnd instanceof Carbon ? $actualEnd->format('H:i') : null,
+            'override_type' => $overrideData['schedule_override_type'] ?? null,
+        ];
+        $user = $request->user();
+
+        ActivityLog::query()->create([
+            'user_id' => $user?->id,
+            'user_name' => $user?->name ?? $user?->username ?? null,
+            'action' => 'SCHEDULE_OVERRIDE',
+            'model_type' => 'Booking',
+            'model_id' => (int) $booking->id,
+            'model_label' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+            'old_values' => $oldValueJson,
+            'new_values' => $newValueJson,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        BookingLog::query()->create([
+            'booking_id' => (int) $booking->id,
+            'actor_type' => 'ADMIN',
+            'actor_id' => $user?->id,
+            'action' => 'SCHEDULE_OVERRIDE',
+            'meta' => [
+                'old_value_json' => $oldValueJson,
+                'new_value_json' => $newValueJson,
+                'performed_by' => $user?->id,
+            ],
+            'created_at' => now(),
+        ]);
+    }
+
+    protected function serializeScheduleOverride(Booking $booking): array
+    {
+        return [
+            'used' => (bool) ($booking->schedule_override_used ?? false),
+            'type' => $booking->schedule_override_type,
+            'scheduled_staff_start_at' => optional($booking->scheduled_staff_start_at)?->toIso8601String(),
+            'scheduled_staff_end_at' => optional($booking->scheduled_staff_end_at)?->toIso8601String(),
+            'actual_booking_start_at' => optional($booking->actual_booking_start_at)?->toIso8601String(),
+            'actual_booking_end_at' => optional($booking->actual_booking_end_at)?->toIso8601String(),
+            'by' => $booking->schedule_override_by ? (int) $booking->schedule_override_by : null,
+            'at' => optional($booking->schedule_override_at)?->toIso8601String(),
+        ];
+    }
+
     protected function resolveAppointmentSnapshot(Booking $booking): array
     {
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -7414,6 +7532,7 @@ class PosController extends Controller
             'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+            'schedule_override' => $this->serializeScheduleOverride($booking),
             'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
                 ? 'Walk-in / Unknown'
                 : (($booking->customer?->name ?? '') !== ''

@@ -3068,6 +3068,13 @@ export default function PosAppointmentsWorkspace({
                           {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
                       </div>
+                      {appointmentDetail.schedule_override?.used ? (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                          <p className="font-semibold">Schedule override</p>
+                          <p>Staff schedule: {formatTimeRange(appointmentDetail.schedule_override.scheduled_staff_start_at, appointmentDetail.schedule_override.scheduled_staff_end_at)}</p>
+                          <p>Booking time: {formatTimeRange(appointmentDetail.schedule_override.actual_booking_start_at, appointmentDetail.schedule_override.actual_booking_end_at)}</p>
+                        </div>
+                      ) : null}
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</span>
                         <span className="font-medium tabular-nums text-slate-900">
