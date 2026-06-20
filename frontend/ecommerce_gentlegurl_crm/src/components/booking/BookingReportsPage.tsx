@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+
 import PaginationControls from '../PaginationControls'
 import TableEmptyState from '../TableEmptyState'
 import TableLoadingRow from '../TableLoadingRow'
@@ -346,73 +348,11 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
   return (
     <div className="space-y-6">
       {isFilterOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setIsFilterOpen(false)}
-          />
-          <div
-            className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">
-                Filter
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsFilterOpen(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Date From</label>
-                  <input
-                    type="date"
-                    value={inputs.date_from}
-                    onChange={(event) =>
-                      setInputs((prev) => ({ ...prev, date_from: event.target.value }))
-                    }
-                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Date To</label>
-                  <input
-                    type="date"
-                    value={inputs.date_to}
-                    onChange={(event) =>
-                      setInputs((prev) => ({ ...prev, date_to: event.target.value }))
-                    }
-                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                  />
-                </div>
-                <div className="flex flex-col gap-1 sm:col-span-2">
-                  <label className="text-xs font-semibold text-slate-500">Group By</label>
-                  <select
-                    value={inputs.group_by}
-                    onChange={(event) =>
-                      setInputs((prev) => ({ ...prev, group_by: event.target.value }))
-                    }
-                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                  >
-                    <option value="day">Day</option>
-                    <option value="week">Week</option>
-                    <option value="month">Month</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+        <CrmFilterModalShell
+          title="Filter"
+          onClose={() => setIsFilterOpen(false)}
+          footer={
+            <>
               <button
                 type="button"
                 onClick={handleReset}
@@ -428,9 +368,48 @@ export default function BookingReportsPage({ canExport = false }: { canExport?: 
               >
                 Apply Filter
               </button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Date From</label>
+              <input
+                type="date"
+                value={inputs.date_from}
+                onChange={(event) =>
+                  setInputs((prev) => ({ ...prev, date_from: event.target.value }))
+                }
+                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Date To</label>
+              <input
+                type="date"
+                value={inputs.date_to}
+                onChange={(event) =>
+                  setInputs((prev) => ({ ...prev, date_to: event.target.value }))
+                }
+                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-xs font-semibold text-slate-500">Group By</label>
+              <select
+                value={inputs.group_by}
+                onChange={(event) =>
+                  setInputs((prev) => ({ ...prev, group_by: event.target.value }))
+                }
+                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+              >
+                <option value="day">Day</option>
+                <option value="week">Week</option>
+                <option value="month">Month</option>
+              </select>
             </div>
           </div>
-        </div>
+        </CrmFilterModalShell>
       ) : null}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import CrmFormModalShell from '@/components/CrmFormModalShell'
+
 export type ConsumableVariant = {
   id: number
   name: string
@@ -181,36 +183,36 @@ export default function StaffConsumableProductModal({
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm"
-      role="presentation"
-      onClick={onClose}
-    >
-      <div
-        className="my-4 flex max-h-[min(90dvh,880px)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="staff-consumable-modal-title"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-5 py-4 sm:px-6">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Staff consumable</p>
-            <h4 id="staff-consumable-modal-title" className="text-xl font-bold text-gray-900">
-              Add to claim
-            </h4>
-          </div>
+    <CrmFormModalShell
+      title={
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-600">Staff consumable</p>
+          <span>Add to claim</span>
+        </div>
+      }
+      size="lg"
+      onClose={onClose}
+      footer={
+        <>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-gray-400 transition hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close"
+            className="rounded-lg border-2 border-gray-300 bg-white px-6 py-2.5 text-sm font-semibold text-gray-700 transition hover:bg-gray-50"
           >
-            <span className="text-2xl leading-none">×</span>
+            Cancel
           </button>
-        </div>
-
-        <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto p-5 sm:p-6 md:grid-cols-2">
+          <button
+            type="button"
+            disabled={!canAdd}
+            onClick={handleAdd}
+            className="rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-2.5 text-sm font-bold text-white shadow-lg transition hover:from-emerald-700 hover:to-emerald-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400"
+          >
+            Add to claim
+          </button>
+        </>
+      }
+    >
+      <div className="grid gap-6 p-5 md:grid-cols-2">
           <div>
             {displayImage ? (
               <div className="aspect-square overflow-hidden rounded-xl border-2 border-gray-200 bg-gray-50">
@@ -326,20 +328,8 @@ export default function StaffConsumableProductModal({
                 </button>
               </div>
             </div>
-
-            <div className="mt-auto border-t-2 border-gray-200 pt-4">
-              <button
-                type="button"
-                disabled={!canAdd}
-                onClick={handleAdd}
-                className="w-full rounded-xl bg-gradient-to-r from-emerald-600 to-emerald-700 px-6 py-3.5 text-base font-bold text-white shadow-lg transition hover:from-emerald-700 hover:to-emerald-800 disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400"
-              >
-                Add to claim
-              </button>
-            </div>
           </div>
-        </div>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

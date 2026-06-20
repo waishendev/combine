@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
+
 import TableEmptyState from '../TableEmptyState'
 import TableLoadingRow from '../TableLoadingRow'
 import PaginationControls from '../PaginationControls'
@@ -270,77 +273,11 @@ export default function BookingLeaveBalancesPage() {
   return (
     <div className="space-y-4">
       {isFilterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={closeFilterModal} />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg">
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Filter</h2>
-              <button
-                onClick={closeFilterModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5">
-              <form
-                id="booking-leave-balance-filters-form"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  setFilters(inputs)
-                  setCurrentPage(1)
-                  closeFilterModal()
-                }}
-                onReset={(e) => {
-                  e.preventDefault()
-                  setInputs({ ...emptyLeaveBalanceFilters })
-                  setFilters({ ...emptyLeaveBalanceFilters })
-                  setCurrentPage(1)
-                }}
-              >
-                <div className="space-y-4">
-                  <div>
-                    <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 mb-1">
-                      Staff
-                    </label>
-                    <select
-                      id="staffId"
-                      name="staffId"
-                      value={inputs.staffId}
-                      onChange={(e) => setInputs((p) => ({ ...p, staffId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">All</option>
-                      {rows.map((row) => (
-                        <option key={row.staff_id} value={row.staff_id}>
-                          {row.staff_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="query" className="block text-sm font-medium text-gray-700 mb-1">
-                      Search
-                    </label>
-                    <input
-                      id="query"
-                      name="query"
-                      type="text"
-                      value={inputs.query}
-                      onChange={(e) => setInputs((p) => ({ ...p, query: e.target.value }))}
-                      placeholder="Name / ID"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    />
-                  </div>
-                </div>
-              </form>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+        <CrmFilterModalShell
+          title="Filter"
+          onClose={closeFilterModal}
+          footer={
+            <>
               <button
                 type="reset"
                 form="booking-leave-balance-filters-form"
@@ -356,9 +293,62 @@ export default function BookingLeaveBalancesPage() {
               >
                 Apply filter
               </button>
+            </>
+          }
+        >
+          <form
+            id="booking-leave-balance-filters-form"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setFilters(inputs)
+              setCurrentPage(1)
+              closeFilterModal()
+            }}
+            onReset={(e) => {
+              e.preventDefault()
+              setInputs({ ...emptyLeaveBalanceFilters })
+              setFilters({ ...emptyLeaveBalanceFilters })
+              setCurrentPage(1)
+            }}
+          >
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 mb-1">
+                  Staff
+                </label>
+                <select
+                  id="staffId"
+                  name="staffId"
+                  value={inputs.staffId}
+                  onChange={(e) => setInputs((p) => ({ ...p, staffId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">All</option>
+                  {rows.map((row) => (
+                    <option key={row.staff_id} value={row.staff_id}>
+                      {row.staff_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="query" className="block text-sm font-medium text-gray-700 mb-1">
+                  Search
+                </label>
+                <input
+                  id="query"
+                  name="query"
+                  type="text"
+                  value={inputs.query}
+                  onChange={(e) => setInputs((p) => ({ ...p, query: e.target.value }))}
+                  placeholder="Name / ID"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
             </div>
-          </div>
-        </div>
+          </form>
+        </CrmFilterModalShell>
       )}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
@@ -495,14 +485,28 @@ export default function BookingLeaveBalancesPage() {
       />
 
       {isAdjustOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={closeAdjustModal}>
-          <div className="w-full max-w-lg rounded-lg bg-white p-4 shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h4 className="text-lg font-semibold">{adjustForm.mode === 'add' ? 'ADD' : 'REDUCE'}</h4>
-              <button type="button" className="text-slate-500 hover:text-slate-800" onClick={closeAdjustModal}>✕</button>
-            </div>
-
-            <p className="mt-1 text-xs text-slate-500">
+        <CrmFormModalShell
+          title={adjustForm.mode === 'add' ? 'ADD' : 'REDUCE'}
+          onClose={closeAdjustModal}
+          closeDisabled={isSaving}
+          footer={
+            <>
+              <button type="button" className="rounded border px-3 py-2 text-sm" onClick={closeAdjustModal} disabled={isSaving}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+                onClick={submitAdjustment}
+                disabled={isSaving}
+              >
+                {isSaving ? 'Saving…' : (adjustForm.mode === 'add' ? 'ADD' : 'REDUCE')}
+              </button>
+            </>
+          }
+        >
+          <div className="p-5">
+            <p className="text-xs text-slate-500">
               This will {adjustForm.mode === 'add' ? 'increase' : 'decrease'} the entitled days for the selected leave type.
             </p>
 
@@ -558,20 +562,8 @@ export default function BookingLeaveBalancesPage() {
                 />
               </div>
             </div>
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button type="button" className="rounded border px-3 py-2 text-sm" onClick={closeAdjustModal} disabled={isSaving}>Cancel</button>
-              <button
-                type="button"
-                className="rounded bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-                onClick={submitAdjustment}
-                disabled={isSaving}
-              >
-                {isSaving ? 'Saving…' : (adjustForm.mode === 'add' ? 'ADD' : 'REDUCE')}
-              </button>
-            </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
     </div>
   )

@@ -2,6 +2,8 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
+import PosModalShell from '@/components/pos/PosModalShell'
+
 type PosCashShift = {
   id: number
   opening_amount: number
@@ -292,100 +294,112 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       {children}
 
       {openShiftModalOpen ? (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <PosModalShell
+          onClose={() => setOpenShiftModalOpen(false)}
+          closeDisabled={opening}
+          zIndexClassName="z-[200]"
+          overlayClassName="bg-black/55 backdrop-blur-sm"
+          size="sm"
+          header={(
             <div className="bg-slate-900 px-6 py-5 text-white">
               <h3 className="text-xl font-black">Open Cash Shift</h3>
               <p className="mt-1 text-sm text-slate-200">Open a cash drawer shift before using POS.</p>
             </div>
-            <div className="space-y-4 p-6">
-              {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
-              <label className="block text-sm font-semibold text-gray-700">
-                Staff
-                {staffSelect(openedStaffId, setOpenedStaffId, opening)}
-              </label>
-              <label className="block text-sm font-semibold text-gray-700">
-                Opening Amount
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={openingAmount}
-                  onChange={(event) => setOpeningAmount(event.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                  placeholder="0.00"
-                  autoFocus
-                />
-              </label>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => setOpenShiftModalOpen(false)}
-                  disabled={opening}
-                  className="h-11 flex-1 rounded-xl border border-gray-300 px-4 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void openShift()}
-                  disabled={staffLoading || openStaffMissing || opening}
-                  className="h-11 flex-1 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {opening ? 'Opening…' : 'Confirm Open Shift'}
-                </button>
-              </div>
-              <p className="text-xs text-gray-500">Open a shift when you are ready to perform checkout or operational payment actions.</p>
+          )}
+        >
+          <div className="space-y-4 p-6">
+            {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+            <label className="block text-sm font-semibold text-gray-700">
+              Staff
+              {staffSelect(openedStaffId, setOpenedStaffId, opening)}
+            </label>
+            <label className="block text-sm font-semibold text-gray-700">
+              Opening Amount
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={openingAmount}
+                onChange={(event) => setOpeningAmount(event.target.value)}
+                className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                placeholder="0.00"
+                autoFocus
+              />
+            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setOpenShiftModalOpen(false)}
+                disabled={opening}
+                className="h-11 flex-1 rounded-xl border border-gray-300 px-4 text-sm font-bold text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => void openShift()}
+                disabled={staffLoading || openStaffMissing || opening}
+                className="h-11 flex-1 rounded-xl bg-blue-600 px-4 text-sm font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {opening ? 'Opening…' : 'Confirm Open Shift'}
+              </button>
             </div>
+            <p className="text-xs text-gray-500">Open a shift when you are ready to perform checkout or operational payment actions.</p>
           </div>
-        </div>
+        </PosModalShell>
       ) : null}
 
       {closeModalOpen && shift ? (
-        <div className="fixed inset-0 z-[210] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
+        <PosModalShell
+          onClose={() => setCloseModalOpen(false)}
+          closeDisabled={closing}
+          zIndexClassName="z-[210]"
+          overlayClassName="bg-black/55 backdrop-blur-sm"
+          size="md"
+          header={(
             <div className="bg-red-700 px-6 py-5 text-white">
               <h3 className="text-xl font-black">Close Cash Shift</h3>
               <p className="mt-1 text-sm text-red-100">Count the drawer and enter the close cash amount.</p>
             </div>
-            <div className="space-y-4 p-6">
-              {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opened Staff</p><p className="font-bold">{shift.opened_staff_name ?? '—'}</p></div>
-                <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opening Amount</p><p className="font-bold">{currency(shift.opening_amount)}</p></div>
-                <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Cash Sales</p><p className="font-bold">{currency(shift.cash_sales)}</p></div>
-                <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Expected Cash</p><p className="font-bold">{currency(shift.expected_cash)}</p></div>
-                <div className={`rounded-xl p-3 ${closeDifference < 0 ? 'bg-red-50' : closeDifference > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}><p className="text-gray-500">Difference Preview</p><p className="font-bold">{currency(closeDifference)}</p></div>
-              </div>
-              <label className="block text-sm font-semibold text-gray-700">
-                Closing Staff
-                {staffSelect(closedStaffId, setClosedStaffId, closing)}
-              </label>
-              <label className="block text-sm font-semibold text-gray-700">
-                Closing Amount
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={closingAmountInput}
-                  onChange={(event) => setClosingAmountInput(event.target.value)}
-                  className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-              <label className="block text-sm font-semibold text-gray-700">
-                Remark (optional)
-                <textarea
-                  value={remark}
-                  onChange={(event) => setRemark(event.target.value)}
-                  className="mt-1 min-h-20 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                />
-              </label>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setCloseModalOpen(false)} className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50">Cancel</button>
-                <button type="button" onClick={() => void closeShift()} disabled={staffLoading || closeStaffMissing || closing} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">{closing ? 'Closing…' : 'Confirm Close'}</button>
-              </div>
+          )}
+        >
+          <div className="space-y-4 p-6">
+            {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opened Staff</p><p className="font-bold">{shift.opened_staff_name ?? '—'}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opening Amount</p><p className="font-bold">{currency(shift.opening_amount)}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Cash Sales</p><p className="font-bold">{currency(shift.cash_sales)}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Expected Cash</p><p className="font-bold">{currency(shift.expected_cash)}</p></div>
+              <div className={`rounded-xl p-3 ${closeDifference < 0 ? 'bg-red-50' : closeDifference > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}><p className="text-gray-500">Difference Preview</p><p className="font-bold">{currency(closeDifference)}</p></div>
+            </div>
+            <label className="block text-sm font-semibold text-gray-700">
+              Closing Staff
+              {staffSelect(closedStaffId, setClosedStaffId, closing)}
+            </label>
+            <label className="block text-sm font-semibold text-gray-700">
+              Closing Amount
+              <input
+                type="text"
+                inputMode="decimal"
+                value={closingAmountInput}
+                onChange={(event) => setClosingAmountInput(event.target.value)}
+                className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+            <label className="block text-sm font-semibold text-gray-700">
+              Remark (optional)
+              <textarea
+                value={remark}
+                onChange={(event) => setRemark(event.target.value)}
+                className="mt-1 min-h-20 w-full rounded-xl border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+              />
+            </label>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setCloseModalOpen(false)} disabled={closing} className="rounded-xl border border-gray-300 px-4 py-2 text-sm font-bold text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60">Cancel</button>
+              <button type="button" onClick={() => void closeShift()} disabled={staffLoading || closeStaffMissing || closing} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60">{closing ? 'Closing…' : 'Confirm Close'}</button>
             </div>
           </div>
-        </div>
+        </PosModalShell>
       ) : null}
     </div>
     </PosCashShiftContext.Provider>

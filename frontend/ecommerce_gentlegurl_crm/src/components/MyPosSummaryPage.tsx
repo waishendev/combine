@@ -2,6 +2,7 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -360,118 +361,96 @@ export default function MyPosSummaryPage({
   return (
     <div className="space-y-6">
       {isFilterOpen ? (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center"
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setIsFilterOpen(false)}
-          />
-          <div
-            className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">
-                Filter
-              </h2>
-              <button
-                type="button"
-                onClick={() => setIsFilterOpen(false)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Date From</label>
-                  <input
-                    type="date"
-                    value={filterInputs.date_from}
-                    onChange={(event) =>
-                      setFilterInputs((prev) => ({ ...prev, date_from: event.target.value }))
-                    }
-                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                  />
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Date To</label>
-                  <input
-                    type="date"
-                    value={filterInputs.date_to}
-                    onChange={(event) =>
-                      setFilterInputs((prev) => ({ ...prev, date_to: event.target.value }))
-                    }
-                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                  />
-                </div>
-                <div className="sm:col-span-2 relative flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Handled By (optional)</label>
-                  <input
-                    value={staffLookupQuery}
-                    onFocus={() => setStaffDropdownOpen(true)}
-                    onChange={(event) => {
-                      setStaffLookupQuery(event.target.value)
-                      setStaffDropdownOpen(true)
-                      setFilterInputs((prev) => ({ ...prev, created_by_user_id: '' }))
-                      setHandledByName('')
-                    }}
-                    placeholder="Search name / phone / email"
-                    className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                  />
-                  {staffDropdownOpen && (
-                    <div className="absolute z-20 mt-[68px] max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-xl">
-                      {staffLookupLoading ? (
-                        <p className="px-3 py-2 text-xs text-gray-500">Loading staff...</p>
-                      ) : filteredStaffOptions.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-gray-500">No staff found.</p>
-                      ) : (
-                        filteredStaffOptions.map((staff) => (
-                          <button
-                            key={staff.id}
-                            type="button"
-                            className="block w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50"
-                            onClick={() => {
-                              setFilterInputs((prev) => ({ ...prev, created_by_user_id: String(staff.id) }))
-                              setHandledByName(staff.name)
-                              setStaffLookupQuery(getStaffDropdownPrimary(staff))
-                              setStaffDropdownOpen(false)
-                            }}
-                          >
-                            <p className="text-sm font-semibold text-slate-900">{getStaffDropdownPrimary(staff)}</p>
-                            <p className="text-xs text-slate-600">{staff.email || '—'}</p>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+        <CrmFilterModalShell
+          title="Filter"
+          onClose={() => setIsFilterOpen(false)}
+          closeLabel="Close"
+          footer={
+            <>
               <button
                 type="button"
                 onClick={handleReset}
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+                className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
               >
                 Reset
               </button>
               <button
                 type="button"
                 onClick={handleApply}
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
                 disabled={loading}
               >
                 Apply Filter
               </button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Date From</label>
+              <input
+                type="date"
+                value={filterInputs.date_from}
+                onChange={(event) =>
+                  setFilterInputs((prev) => ({ ...prev, date_from: event.target.value }))
+                }
+                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+              />
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Date To</label>
+              <input
+                type="date"
+                value={filterInputs.date_to}
+                onChange={(event) =>
+                  setFilterInputs((prev) => ({ ...prev, date_to: event.target.value }))
+                }
+                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+              />
+            </div>
+            <div className="relative flex flex-col gap-1 sm:col-span-2">
+              <label className="text-xs font-semibold text-slate-500">Handled By (optional)</label>
+              <input
+                value={staffLookupQuery}
+                onFocus={() => setStaffDropdownOpen(true)}
+                onChange={(event) => {
+                  setStaffLookupQuery(event.target.value)
+                  setStaffDropdownOpen(true)
+                  setFilterInputs((prev) => ({ ...prev, created_by_user_id: '' }))
+                  setHandledByName('')
+                }}
+                placeholder="Search name / phone / email"
+                className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+              />
+              {staffDropdownOpen && (
+                <div className="absolute z-20 mt-[68px] max-h-64 w-full overflow-auto rounded border border-slate-200 bg-white shadow-xl">
+                  {staffLookupLoading ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">Loading staff...</p>
+                  ) : filteredStaffOptions.length === 0 ? (
+                    <p className="px-3 py-2 text-xs text-gray-500">No staff found.</p>
+                  ) : (
+                    filteredStaffOptions.map((staff) => (
+                      <button
+                        key={staff.id}
+                        type="button"
+                        className="block w-full border-b border-slate-100 px-3 py-2 text-left hover:bg-slate-50"
+                        onClick={() => {
+                          setFilterInputs((prev) => ({ ...prev, created_by_user_id: String(staff.id) }))
+                          setHandledByName(staff.name)
+                          setStaffLookupQuery(getStaffDropdownPrimary(staff))
+                          setStaffDropdownOpen(false)
+                        }}
+                      >
+                        <p className="text-sm font-semibold text-slate-900">{getStaffDropdownPrimary(staff)}</p>
+                        <p className="text-xs text-slate-600">{staff.email || '—'}</p>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
-        </div>
+        </CrmFilterModalShell>
       ) : null}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
@@ -703,8 +682,8 @@ export default function MyPosSummaryPage({
             onClick={() => setDetailOpen(false)}
           />
           {/* Drawer - slides in from right, larger width */}
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-6xl bg-white shadow-2xl transition-transform duration-300 ease-out">
-            <div className="flex h-full flex-col">
+          <div className="fixed inset-y-0 right-0 z-50 flex h-[100dvh] max-h-[100dvh] w-full max-w-6xl flex-col overflow-hidden bg-white shadow-2xl transition-transform duration-300 ease-out">
+            <div className="flex min-h-0 flex-1 flex-col">
               {/* Header - Dark background */}
               <div className="flex items-center justify-between border-b border-slate-700 bg-slate-800 px-6 py-4">
                 <div>
@@ -726,7 +705,7 @@ export default function MyPosSummaryPage({
               </div>
 
               {/* Content - Scrollable */}
-              <div className="flex-1 overflow-y-auto px-6 py-4">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-4">
                 {/* Order Information Section */}
                 <div className="mb-6 space-y-4">
                   <div>

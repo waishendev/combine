@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react'
 
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { CustomerTypeRowData } from './customerTypeUtils'
 import { mapCustomerTypeApiItemToRow, type CustomerTypeApiItem } from './customerTypeUtils'
 
@@ -107,47 +108,15 @@ export default function CustomerTypeEditModal({ customerTypeId, onClose, onSucce
   const disableForm = loading || submitting
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={() => !submitting && onClose()} />
-      <form onSubmit={handleSubmit} className="relative w-full max-w-lg rounded-lg bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">Edit Customer Type</h2>
+    <CrmFormModalShell
+      title="Edit Customer Type"
+      onClose={onClose}
+      closeDisabled={submitting}
+      footer={
+        <>
           <button
             type="button"
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            onClick={() => !submitting && onClose()}
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-
-        <div className="space-y-4 px-5 py-4">
-          {loading ? (
-            <div className="py-8 text-center text-sm text-gray-500">Loading...</div>
-          ) : (
-            <div>
-              <label htmlFor="edit-customer-type-name" className="block text-sm font-medium text-gray-700 mb-1">
-                Type Name <span className="text-red-500">*</span>
-              </label>
-              <input
-                id="edit-customer-type-name"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                placeholder="e.g. product"
-                disabled={disableForm}
-              />
-            </div>
-          )}
-
-          {error && <div className="text-sm text-red-600">{error}</div>}
-        </div>
-
-        <div className="flex items-center justify-end gap-3 border-t border-gray-300 px-5 py-4">
-          <button
-            type="button"
-            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100"
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
             onClick={() => !submitting && onClose()}
             disabled={submitting}
           >
@@ -155,13 +124,37 @@ export default function CustomerTypeEditModal({ customerTypeId, onClose, onSucce
           </button>
           <button
             type="submit"
-            className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            form="customer-type-edit-form"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
             disabled={disableForm}
           >
             {submitting ? 'Saving...' : 'Save'}
           </button>
-        </div>
+        </>
+      }
+    >
+      <form id="customer-type-edit-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
+        {loading ? (
+          <div className="py-8 text-center text-sm text-gray-500">Loading...</div>
+        ) : (
+          <div>
+            <label htmlFor="edit-customer-type-name" className="mb-1 block text-sm font-medium text-gray-700">
+              Type Name <span className="text-red-500">*</span>
+            </label>
+            <input
+              id="edit-customer-type-name"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:ring-blue-500"
+              placeholder="e.g. product"
+              disabled={disableForm}
+            />
+          </div>
+        )}
+
+        {error && <div className="text-sm text-red-600">{error}</div>}
       </form>
-    </div>
+    </CrmFormModalShell>
   )
 }

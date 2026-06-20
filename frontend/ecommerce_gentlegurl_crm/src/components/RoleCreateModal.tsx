@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useMemo, useState } from 'react'
 
 import { useI18n } from '@/lib/i18n'
 import type { RoleRowData } from './RoleRow'
+import CrmFormModalShell from './CrmFormModalShell'
 
 export interface PermissionOption {
   id: number | string
@@ -302,29 +303,36 @@ export default function RoleCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting) onClose()
-        }}
-      />
-      <div className="relative mx-auto w-full max-w-4xl max-h-[90vh] rounded-lg bg-white shadow-lg flex flex-col">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4 flex-shrink-0">
-          <h2 className="text-lg font-semibold">{t('role.createTitle')}</h2>
+    <CrmFormModalShell
+      title={t('role.createTitle')}
+      size="lg"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
+            type="button"
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
             onClick={() => {
               if (!submitting) onClose()
             }}
-            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
-            aria-label={t('common.close')}
-            type="button"
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            {t('common.cancel')}
           </button>
-        </div>
-
-        <form id="role-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4 overflow-y-auto flex-1 min-h-0">
+          <button
+            type="submit"
+            form="role-create-form"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={submitting}
+          >
+            {submitting ? t('common.creating') : t('common.create')}
+          </button>
+        </>
+      }
+    >
+      <form id="role-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
           <div className="grid gap-4">
             <div>
               <label
@@ -385,7 +393,7 @@ export default function RoleCreateModal({
                 </span>
               </div>
             </div>
-            <div className="max-h-[60vh] space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
+            <div className="max-h-[min(40dvh,320px)] space-y-3 overflow-y-auto rounded border border-gray-200 p-3">
               {permissionsLoading ? (
                 <p className="text-sm text-gray-500">{t('role.loadingPermissions')}</p>
               ) : permissions.length > 0 ? (
@@ -429,28 +437,6 @@ export default function RoleCreateModal({
 
           {error && <div className="text-sm text-red-600">{error}</div>}
         </form>
-
-        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-gray-300 flex-shrink-0">
-          <button
-            type="button"
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200"
-            onClick={() => {
-              if (!submitting) onClose()
-            }}
-            disabled={submitting}
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            type="submit"
-            form="role-create-form"
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-            disabled={submitting}
-          >
-            {submitting ? t('common.creating') : t('common.create')}
-          </button>
-        </div>
-      </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

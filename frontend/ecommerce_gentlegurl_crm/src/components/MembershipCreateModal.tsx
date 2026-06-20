@@ -4,6 +4,7 @@ import { ChangeEvent, FormEvent, useState } from 'react'
 
 import type { MembershipRowData } from './MembershipRow'
 import { mapMembershipApiItemToRow, type MembershipApiItem } from './membershipUtils'
+import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 
 interface MembershipCreateModalProps {
@@ -139,29 +140,36 @@ export default function MembershipCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting) onClose()
-        }}
-      />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">Create Membership Tier</h2>
+    <CrmFormModalShell
+      title="Create Membership Tier"
+      size="lg"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
+            type="button"
+            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
             onClick={() => {
               if (!submitting) onClose()
             }}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label={t('common.close')}
-            type="button"
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            {t('common.cancel')}
           </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <button
+            type="submit"
+            form="membership-create-form"
+            className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            disabled={submitting}
+          >
+            {submitting ? t('common.creating') : t('common.create')}
+          </button>
+        </>
+      }
+    >
+      <form id="membership-create-form" onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
           <div>
             <label
               htmlFor="tier"
@@ -283,29 +291,8 @@ export default function MembershipCreateModal({
               {error}
             </div>
           )}
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
-              onClick={() => {
-                if (!submitting) onClose()
-              }}
-              disabled={submitting}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              disabled={submitting}
-            >
-              {submitting ? t('common.creating') : t('common.create')}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </CrmFormModalShell>
   )
 }
 

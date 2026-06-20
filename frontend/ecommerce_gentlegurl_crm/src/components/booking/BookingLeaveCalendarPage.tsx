@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import CrmFormModalShell from '@/components/CrmFormModalShell'
+
 type LeaveType = 'annual' | 'mc' | 'emergency' | 'unpaid' | 'off_day'
 type DayType = 'full_day' | 'half_day_am' | 'half_day_pm'
 
@@ -511,78 +513,11 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   return (
     <div className="space-y-4">
       {isOffDayModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeOffDayModal}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Create Off Days</h2>
-              <button
-                onClick={closeOffDayModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <p className="text-xs text-slate-500">
-                Off Day is admin-managed and blocks booking availability without deducting leave balance.
-              </p>
-
-              {error && <p className="text-sm text-rose-600">{error}</p>}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    value={offDayForm.staff_id}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value }))}
-                  >
-                    <option value="">Select Staff</option>
-                    {staffOptions.map((row) => (
-                      <option key={row.staff_id} value={row.staff_id}>
-                        {row.staff_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    type="date"
-                    value={offDayForm.start_date}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">End date</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    type="date"
-                    value={offDayForm.end_date}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="Reason"
-                    value={offDayForm.reason}
-                    onChange={(e) => setOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
+        <CrmFormModalShell
+          title="Create Off Days"
+          onClose={closeOffDayModal}
+          footer={
+            <>
               <button
                 type="button"
                 className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
@@ -597,100 +532,75 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               >
                 Create
               </button>
+            </>
+          }
+        >
+          <div className="space-y-3 p-5">
+            <p className="text-xs text-slate-500">
+              Off Day is admin-managed and blocks booking availability without deducting leave balance.
+            </p>
+
+            {error && <p className="text-sm text-rose-600">{error}</p>}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  value={offDayForm.staff_id}
+                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                >
+                  <option value="">Select Staff</option>
+                  {staffOptions.map((row) => (
+                    <option key={row.staff_id} value={row.staff_id}>
+                      {row.staff_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Start date</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  type="date"
+                  value={offDayForm.start_date}
+                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">End date</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  type="date"
+                  value={offDayForm.end_date}
+                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Reason"
+                  value={offDayForm.reason}
+                  onChange={(e) => setOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
+                />
+              </div>
             </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
 
       {isGenerateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeGenerateModal}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Generate Monthly Off Days by Weekday</h2>
-              <button
-                onClick={closeGenerateModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <p className="text-xs text-slate-500">
-                Mark every selected weekday in the target month as off days for this staff.
-              </p>
-
-              {error && <p className="text-sm text-rose-600">{error}</p>}
-              {generateSummary && <p className="text-sm text-emerald-700">{generateSummary}</p>}
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
-                  <select
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    value={generateForm.staff_id}
-                    onChange={(e) => setGenerateForm((prev) => ({ ...prev, staff_id: e.target.value }))}
-                    disabled={isGenerating}
-                  >
-                    <option value="">Select Staff</option>
-                    {staffOptions.map((row) => (
-                      <option key={row.staff_id} value={row.staff_id}>
-                        {row.staff_name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Target month</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    type="month"
-                    value={generateForm.target_month}
-                    onChange={(e) => setGenerateForm((prev) => ({ ...prev, target_month: e.target.value }))}
-                    disabled={isGenerating}
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Weekday(s)</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {WEEKDAY_OPTIONS.map((day) => {
-                      const checked = generateForm.days_of_week.includes(day.value)
-                      return (
-                        <label
-                          key={day.value}
-                          className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                            checked ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-300'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300 text-emerald-600"
-                            checked={checked}
-                            disabled={isGenerating}
-                            onChange={(e) => {
-                              setGenerateForm((prev) => ({
-                                ...prev,
-                                days_of_week: e.target.checked
-                                  ? [...prev.days_of_week, day.value].sort((a, b) => a - b)
-                                  : prev.days_of_week.filter((value) => value !== day.value),
-                              }))
-                            }}
-                          />
-                          <span>{day.label}</span>
-                        </label>
-                      )
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
+        <CrmFormModalShell
+          title="Generate Monthly Off Days by Weekday"
+          onClose={closeGenerateModal}
+          closeDisabled={isGenerating}
+          size="lg"
+          footer={
+            <>
               <button
                 type="button"
                 className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
@@ -709,9 +619,81 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   {isGenerating ? 'Generating…' : 'Generate'}
                 </button>
               )}
+            </>
+          }
+        >
+          <div className="space-y-3 p-5">
+            <p className="text-xs text-slate-500">
+              Mark every selected weekday in the target month as off days for this staff.
+            </p>
+
+            {error && <p className="text-sm text-rose-600">{error}</p>}
+            {generateSummary && <p className="text-sm text-emerald-700">{generateSummary}</p>}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  value={generateForm.staff_id}
+                  onChange={(e) => setGenerateForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  disabled={isGenerating}
+                >
+                  <option value="">Select Staff</option>
+                  {staffOptions.map((row) => (
+                    <option key={row.staff_id} value={row.staff_id}>
+                      {row.staff_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target month</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  type="month"
+                  value={generateForm.target_month}
+                  onChange={(e) => setGenerateForm((prev) => ({ ...prev, target_month: e.target.value }))}
+                  disabled={isGenerating}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Weekday(s)</label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {WEEKDAY_OPTIONS.map((day) => {
+                    const checked = generateForm.days_of_week.includes(day.value)
+                    return (
+                      <label
+                        key={day.value}
+                        className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                          checked ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-300'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 rounded border-gray-300 text-emerald-600"
+                          checked={checked}
+                          disabled={isGenerating}
+                          onChange={(e) => {
+                            setGenerateForm((prev) => ({
+                              ...prev,
+                              days_of_week: e.target.checked
+                                ? [...prev.days_of_week, day.value].sort((a, b) => a - b)
+                                : prev.days_of_week.filter((value) => value !== day.value),
+                            }))
+                          }}
+                        />
+                        <span>{day.label}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
             </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
 
       <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
@@ -966,87 +948,12 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       )}
 
       {editingOffDay && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeEditOffDay}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Edit Off Day</h2>
-              <button
-                onClick={closeEditOffDay}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <p className="text-xs text-slate-500">
-                Move this off day to another date. Pick a new date to change the weekday (e.g. Thursday → Tuesday).
-              </p>
-
-              {error && <p className="text-sm text-rose-600">{error}</p>}
-
-              <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                <div className="font-medium text-slate-900">{editingOffDay.staff?.name ?? `Staff #${editingOffDay.staff_id}`}</div>
-                <div className="mt-1 text-xs text-slate-600">
-                  Current: {formatDateRange(editingOffDay.start_date, editingOffDay.end_date)}
-                  {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date)
-                    ? ` (${formatWeekdayLabel(editingOffDay.start_date)})`
-                    : ''}
-                </div>
-              </div>
-
-              {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date) ? (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">New date</label>
-                  <input
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                    type="date"
-                    value={editOffDayForm.start_date}
-                    onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value, end_date: e.target.value }))}
-                  />
-                  {editOffDayForm.start_date && (
-                    <p className="mt-1 text-xs text-slate-500">
-                      Weekday: {formatWeekdayLabel(editOffDayForm.start_date)}
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">New start date</label>
-                    <input
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      type="date"
-                      value={editOffDayForm.start_date}
-                      onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">New end date</label>
-                    <input
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                      type="date"
-                      value={editOffDayForm.end_date}
-                      onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
-                <input
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
-                  value={editOffDayForm.reason}
-                  onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
+        <CrmFormModalShell
+          title="Edit Off Day"
+          onClose={closeEditOffDay}
+          closeDisabled={actionLoadingId === editingOffDay.id}
+          footer={
+            <>
               <button
                 type="button"
                 className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
@@ -1063,9 +970,74 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               >
                 {actionLoadingId === editingOffDay.id ? 'Saving…' : 'Save'}
               </button>
+            </>
+          }
+        >
+          <div className="space-y-3 p-5">
+            <p className="text-xs text-slate-500">
+              Move this off day to another date. Pick a new date to change the weekday (e.g. Thursday → Tuesday).
+            </p>
+
+            {error && <p className="text-sm text-rose-600">{error}</p>}
+
+            <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+              <div className="font-medium text-slate-900">{editingOffDay.staff?.name ?? `Staff #${editingOffDay.staff_id}`}</div>
+              <div className="mt-1 text-xs text-slate-600">
+                Current: {formatDateRange(editingOffDay.start_date, editingOffDay.end_date)}
+                {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date)
+                  ? ` (${formatWeekdayLabel(editingOffDay.start_date)})`
+                  : ''}
+              </div>
+            </div>
+
+            {isSingleDayRange(editingOffDay.start_date, editingOffDay.end_date) ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">New date</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                  type="date"
+                  value={editOffDayForm.start_date}
+                  onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value, end_date: e.target.value }))}
+                />
+                {editOffDayForm.start_date && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Weekday: {formatWeekdayLabel(editOffDayForm.start_date)}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New start date</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    type="date"
+                    value={editOffDayForm.start_date}
+                    onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, start_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">New end date</label>
+                  <input
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                    type="date"
+                    value={editOffDayForm.end_date}
+                    onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, end_date: e.target.value }))}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Reason (optional)</label>
+              <input
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm"
+                value={editOffDayForm.reason}
+                onChange={(e) => setEditOffDayForm((prev) => ({ ...prev, reason: e.target.value }))}
+              />
             </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
     </div>
   )

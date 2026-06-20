@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react'
 
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { StaffScheduleRowData } from './StaffScheduleRow'
 
 interface StaffScheduleBulkUpdateModalProps {
@@ -123,22 +124,37 @@ export default function StaffScheduleBulkUpdateModal({
   if (!show) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-xl bg-white p-6 shadow-xl space-y-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900">Bulk Update Staff Schedules</h2>
-            <p className="text-sm text-gray-500">{scheduleCountText}</p>
-          </div>
+    <CrmFormModalShell
+      title={
+        <div>
+          <span>Bulk Update Staff Schedules</span>
+          <p className="text-sm font-normal text-gray-500">{scheduleCountText}</p>
+        </div>
+      }
+      onClose={onClose}
+      closeDisabled={isSubmitting}
+      footer={
+        <>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close bulk update"
+            className="px-4 py-2 text-sm border rounded"
+            disabled={isSubmitting}
           >
-            <i className="fa-solid fa-xmark" />
+            Cancel
           </button>
-        </div>
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="px-4 py-2 text-sm bg-indigo-600 text-white rounded disabled:opacity-50"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Saving...' : 'Confirm'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4 px-5 py-4">
 
         {error && (
           <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
@@ -255,26 +271,7 @@ export default function StaffScheduleBulkUpdateModal({
             </div>
           )}
         </div>
-
-        <div className="flex justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-sm border rounded"
-            disabled={isSubmitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="px-4 py-2 text-sm bg-indigo-600 text-white rounded disabled:opacity-50"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? 'Saving...' : 'Confirm'}
-          </button>
-        </div>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

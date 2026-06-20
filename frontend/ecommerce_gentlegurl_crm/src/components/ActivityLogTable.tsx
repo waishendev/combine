@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import CrmFormModalShell from './CrmFormModalShell'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import PaginationControls from './PaginationControls'
@@ -656,32 +657,22 @@ export default function ActivityLogTable() {
 
       {/* Detail Modal */}
       {detailLog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm px-4"
-          onClick={(e) => { if (e.target === e.currentTarget) setDetailLog(null) }}
-        >
-          <div className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-2xl bg-white shadow-2xl">
-            {/* Modal Header */}
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white/95 backdrop-blur-sm px-6 py-4 rounded-t-2xl">
-              <div className="flex items-center gap-3">
-                <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${(ACTION_CONFIG[detailLog.action] ?? DEFAULT_ACTION_CONFIG).bg} border`}>
-                  <i className={`${(ACTION_CONFIG[detailLog.action] ?? DEFAULT_ACTION_CONFIG).icon} ${(ACTION_CONFIG[detailLog.action] ?? DEFAULT_ACTION_CONFIG).text} text-sm`} />
-                </div>
-                <div>
-                  <h3 className="text-base font-semibold text-slate-900">Activity Detail</h3>
-                  <p className="text-xs text-slate-500">{detailLog.model_type} #{detailLog.model_id}</p>
-                </div>
+        <CrmFormModalShell
+          title={
+            <div className="flex items-center gap-3">
+              <div className={`flex h-9 w-9 items-center justify-center rounded-xl ${(ACTION_CONFIG[detailLog.action] ?? DEFAULT_ACTION_CONFIG).bg} border`}>
+                <i className={`${(ACTION_CONFIG[detailLog.action] ?? DEFAULT_ACTION_CONFIG).icon} ${(ACTION_CONFIG[detailLog.action] ?? DEFAULT_ACTION_CONFIG).text} text-sm`} />
               </div>
-              <button
-                type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                onClick={() => setDetailLog(null)}
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
+              <div>
+                <h3 className="text-base font-semibold text-slate-900">Activity Detail</h3>
+                <p className="text-xs text-slate-500">{detailLog.model_type} #{detailLog.model_id}</p>
+              </div>
             </div>
-
-            <div className="px-6 py-5 space-y-5">
+          }
+          size="lg"
+          onClose={() => setDetailLog(null)}
+        >
+          <div className="space-y-5 px-6 py-5">
               {/* Meta Info Cards */}
               <div className="grid grid-cols-2 gap-3">
                 <InfoCard icon="fa-regular fa-clock" label="Time" value={detailLog.created_at ?? '—'} />
@@ -751,20 +742,8 @@ export default function ActivityLogTable() {
                   </pre>
                 </div>
               )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="sticky bottom-0 flex justify-end border-t border-slate-100 bg-white/95 backdrop-blur-sm px-6 py-3 rounded-b-2xl">
-              <button
-                type="button"
-                className="rounded-lg border border-slate-200 bg-white px-5 py-2 text-sm font-medium text-slate-700 shadow-sm transition hover:bg-slate-50"
-                onClick={() => setDetailLog(null)}
-              >
-                Close
-              </button>
-            </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
     </div>
   )

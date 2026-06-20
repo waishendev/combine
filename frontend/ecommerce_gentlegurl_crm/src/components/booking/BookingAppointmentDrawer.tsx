@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import CrmFormModalShell from '@/components/CrmFormModalShell'
+
 type BookingDetail = {
   id: number
   booking_code: string | null
@@ -320,10 +322,10 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
         <div className="hidden flex-1 bg-black/40 md:block" />
         <aside
-          className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl"
+          className="relative ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col overflow-hidden bg-white shadow-2xl"
           onClick={(event) => event.stopPropagation()}
         >
           <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -358,7 +360,7 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
             </div>
           ) : null} */}
 
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4 pb-28">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4 pb-28">
             {loading && (
               <div className="py-12 text-center text-sm text-slate-500">
                 Loading...
@@ -488,34 +490,12 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
       </div>
 
       {statusOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-lg">
-            <h3 className="text-lg font-semibold">Update Status</h3>
-            <div className="mt-4 space-y-3">
-              <select
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                value={nextStatus}
-                onChange={(e) => setNextStatus(e.target.value as StatusOption)}
-              >
-                {STATUS_OPTIONS.map((item) => (
-                  <option key={item} value={item}>
-                    {item}
-                  </option>
-                ))}
-              </select>
-              {nextStatus === 'NOTIFIED_CANCELLATION' && (
-                <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
-                  Must be &gt;=24h and not NO_SHOW. Voucher will be auto-created if eligible.
-                </p>
-              )}
-              <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Reason (optional)"
-                value={statusReason}
-                onChange={(e) => setStatusReason(e.target.value)}
-              />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
+        <CrmFormModalShell
+          title="Update Status"
+          onClose={() => setStatusOpen(false)}
+          closeDisabled={submitting}
+          footer={
+            <>
               <button
                 type="button"
                 className="rounded border border-slate-300 px-3 py-2 text-sm"
@@ -532,31 +512,43 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
               >
                 {submitting ? 'Saving...' : 'Save'}
               </button>
-            </div>
+            </>
+          }
+        >
+          <div className="space-y-3 px-5 py-4">
+            <select
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={nextStatus}
+              onChange={(e) => setNextStatus(e.target.value as StatusOption)}
+            >
+              {STATUS_OPTIONS.map((item) => (
+                <option key={item} value={item}>
+                  {item}
+                </option>
+              ))}
+            </select>
+            {nextStatus === 'NOTIFIED_CANCELLATION' && (
+              <p className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                Must be &gt;=24h and not NO_SHOW. Voucher will be auto-created if eligible.
+              </p>
+            )}
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Reason (optional)"
+              value={statusReason}
+              onChange={(e) => setStatusReason(e.target.value)}
+            />
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
 
-      {/* Reschedule Modal */}
       {rescheduleOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-lg">
-            <h3 className="text-lg font-semibold">Reschedule (Admin Override)</h3>
-            <div className="mt-4 space-y-3">
-              <input
-                type="datetime-local"
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                value={rescheduleAt}
-                onChange={(e) => setRescheduleAt(e.target.value)}
-              />
-              <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Reason (optional)"
-                value={rescheduleReason}
-                onChange={(e) => setRescheduleReason(e.target.value)}
-              />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
+        <CrmFormModalShell
+          title="Reschedule (Admin Override)"
+          onClose={() => setRescheduleOpen(false)}
+          closeDisabled={submitting}
+          footer={
+            <>
               <button
                 type="button"
                 className="rounded border border-slate-300 px-3 py-2 text-sm"
@@ -573,31 +565,33 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
               >
                 {submitting ? 'Saving...' : 'Save'}
               </button>
-            </div>
+            </>
+          }
+        >
+          <div className="space-y-3 px-5 py-4">
+            <input
+              type="datetime-local"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              value={rescheduleAt}
+              onChange={(e) => setRescheduleAt(e.target.value)}
+            />
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Reason (optional)"
+              value={rescheduleReason}
+              onChange={(e) => setRescheduleReason(e.target.value)}
+            />
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
 
-      {/* Upload Photo Modal */}
       {photoOpen && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/40 px-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-lg">
-            <h3 className="text-lg font-semibold">Upload Completed Photo (URL)</h3>
-            <div className="mt-4 space-y-3">
-              <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Image URL"
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
-              />
-              <input
-                className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                placeholder="Uploaded by staff ID"
-                value={uploadedByStaffId}
-                onChange={(e) => setUploadedByStaffId(e.target.value)}
-              />
-            </div>
-            <div className="mt-4 flex justify-end gap-2">
+        <CrmFormModalShell
+          title="Upload Completed Photo (URL)"
+          onClose={() => setPhotoOpen(false)}
+          closeDisabled={submitting}
+          footer={
+            <>
               <button
                 type="button"
                 className="rounded border border-slate-300 px-3 py-2 text-sm"
@@ -614,9 +608,24 @@ export default function BookingAppointmentDrawer({ bookingId, isOpen, onClose, p
               >
                 {submitting ? 'Saving...' : 'Save'}
               </button>
-            </div>
+            </>
+          }
+        >
+          <div className="space-y-3 px-5 py-4">
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Image URL"
+              value={photoUrl}
+              onChange={(e) => setPhotoUrl(e.target.value)}
+            />
+            <input
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Uploaded by staff ID"
+              value={uploadedByStaffId}
+              onChange={(e) => setUploadedByStaffId(e.target.value)}
+            />
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
     </>
   )

@@ -7,6 +7,7 @@ import {
   mapBookingProductCategoryApiItemToRow,
   type BookingProductCategoryApiItem,
 } from './bookingProductCategoryUtils'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 
 interface Props {
@@ -64,21 +65,33 @@ export default function BookingProductCategoryCreateModal({ onClose, onSuccess }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-lg">
-        <div className="mb-4 flex items-start justify-between">
-          <h2 className="text-lg font-semibold">Create Product Category</h2>
+    <CrmFormModalShell
+      title="Create Product Category"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel="Close"
+      footer={
+        <>
           <button
             type="button"
+            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
             onClick={onClose}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close"
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            Cancel
           </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
+          <button
+            type="submit"
+            form="booking-product-category-create-form"
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={submitting}
+          >
+            {submitting ? 'Saving…' : 'Create'}
+          </button>
+        </>
+      }
+    >
+      <form id="booking-product-category-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
           <div>
             <label htmlFor="pc-create-name" className="mb-1 block text-sm font-medium text-gray-700">
               Name <span className="text-red-500">*</span>
@@ -124,26 +137,7 @@ export default function BookingProductCategoryCreateModal({ onClose, onSuccess }
           {error && (
             <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
-
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-              onClick={onClose}
-              disabled={submitting}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-              disabled={submitting}
-            >
-              {submitting ? 'Saving…' : 'Create'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+      </form>
+    </CrmFormModalShell>
   )
 }

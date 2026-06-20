@@ -5,6 +5,7 @@ import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from 'react'
 import type { AdminRowData } from './AdminRow'
 import { AdminRoleOption } from './AdminFilters'
 import { mapAdminApiItemToRow, type AdminApiItem } from './adminUtils'
+import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 
 interface AdminEditModalProps {
@@ -280,29 +281,35 @@ export default function AdminEditModal({
   }, [currentRole, roles])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting) onClose()
-        }}
-      />
-      <div className="relative w-full max-w-lg mx-auto bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">{t('admin.editTitle')}</h2>
+    <CrmFormModalShell
+      title={t('admin.editTitle')}
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
+            type="button"
+            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
             onClick={() => {
               if (!submitting) onClose()
             }}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label={t('common.close')}
-            type="button"
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            {t('common.cancel')}
           </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <button
+            type="submit"
+            form="admin-edit-form"
+            className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            disabled={disableForm}
+          >
+            {submitting ? t('common.saving') : t('admin.saveChanges')}
+          </button>
+        </>
+      }
+    >
+      <form id="admin-edit-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
           {loading ? (
             <div className="py-8 text-center text-sm text-gray-500">{t('common.loadingDetails')}</div>
           ) : (
@@ -382,28 +389,7 @@ export default function AdminEditModal({
               {error}
             </div>
           )}
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
-              onClick={() => {
-                if (!submitting) onClose()
-              }}
-              disabled={submitting}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              disabled={disableForm}
-            >
-              {submitting ? t('common.saving') : t('admin.saveChanges')}
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

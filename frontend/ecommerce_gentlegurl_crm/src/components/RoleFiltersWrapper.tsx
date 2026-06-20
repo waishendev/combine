@@ -5,6 +5,7 @@ import RoleFilters, {
   emptyRoleFilters,
   roleFiltersFormId,
 } from './RoleFilters'
+import CrmFilterModalShell from './CrmFilterModalShell'
 import { useI18n } from '@/lib/i18n'
 
 interface Props {
@@ -37,31 +38,12 @@ export default function RoleFiltersWrapper({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative mx-auto w-full max-w-xl rounded-lg bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">{t('common.filter')}</h2>
-          <button
-            onClick={onClose}
-            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
-            aria-label={t('common.close')}
-            type="button"
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-
-        <div className="p-5">
-          <RoleFilters
-            values={inputs}
-            onChange={onChange}
-            onSubmit={handleSubmit}
-            onReset={handleReset}
-          />
-        </div>
-
-        <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+    <CrmFilterModalShell
+      title={t('common.filter')}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
             type="reset"
             form={roleFiltersFormId}
@@ -77,8 +59,15 @@ export default function RoleFiltersWrapper({
           >
             {t('common.applyFilter')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <RoleFilters
+        values={inputs}
+        onChange={onChange}
+        onSubmit={handleSubmit}
+        onReset={handleReset}
+      />
+    </CrmFilterModalShell>
   )
 }

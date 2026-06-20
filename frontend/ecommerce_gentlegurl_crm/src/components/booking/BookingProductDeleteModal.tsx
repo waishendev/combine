@@ -1,5 +1,6 @@
 'use client'
 
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { BookingProductRowData } from './bookingProductTypes'
 
 type Props = {
@@ -13,18 +14,11 @@ export default function BookingProductDeleteModal({ show, product, onClose, onDe
   if (!show) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-xl bg-white shadow-xl overflow-hidden">
-        <div className="border-b border-gray-100 px-6 py-4">
-          <h2 className="text-lg font-bold text-gray-900">Delete booking product</h2>
-        </div>
-        <div className="px-6 py-4 text-sm text-gray-700 space-y-3">
-          <p>
-            Delete <span className="font-semibold">{product.name}</span>?
-          </p>
-          <p className="text-xs text-gray-500">This action cannot be undone.</p>
-        </div>
-        <div className="flex items-center justify-end gap-2 border-t border-gray-100 bg-white px-6 py-4">
+    <CrmFormModalShell
+      title="Delete booking product"
+      onClose={onClose}
+      footer={
+        <>
           <button
             type="button"
             onClick={onClose}
@@ -42,9 +36,15 @@ export default function BookingProductDeleteModal({ show, product, onClose, onDe
           >
             Delete
           </button>
-        </div>
+        </>
+      }
+    >
+      <div className="space-y-3 px-5 py-4 text-sm text-gray-700">
+        <p>
+          Delete <span className="font-semibold">{product.name}</span>?
+        </p>
+        <p className="text-xs text-gray-500">This action cannot be undone.</p>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }
-

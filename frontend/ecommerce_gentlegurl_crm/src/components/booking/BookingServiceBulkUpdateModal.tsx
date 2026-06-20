@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, { type BookingStaffOption } from './BookingServiceAllowedStaffPicker'
 import BookingServiceQuestionsBuilder, { emptyQuestion, type QuestionForm } from './BookingServiceQuestionsBuilder'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 
 type FieldKey =
   | 'allowed_staff_ids'
@@ -328,24 +329,38 @@ export default function BookingServiceBulkUpdateModal({
   if (!show) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-4xl max-h-[85vh] overflow-hidden rounded-xl bg-white shadow-xl">
-        <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-6 py-4">
-          <div className="min-w-0">
-            <h2 className="text-lg font-bold text-gray-900">Bulk Update Services</h2>
-            <p className="text-sm text-gray-500">{countText}</p>
-          </div>
+    <CrmFormModalShell
+      title={
+        <div className="min-w-0">
+          <span>Bulk Update Services</span>
+          <p className="text-sm font-normal text-gray-500">{countText}</p>
+        </div>
+      }
+      size="lg"
+      onClose={onClose}
+      closeDisabled={isSubmitting}
+      footer={
+        <>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close bulk update"
+            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            disabled={isSubmitting}
           >
-            <i className="fa-solid fa-xmark" />
+            Cancel
           </button>
-        </div>
-
-        <div className="max-h-[calc(85vh-64px-72px)] overflow-y-auto px-6 py-4 space-y-4">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? 'Saving…' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4 px-5 py-4">
           {error && (
             <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
           )}
@@ -587,28 +602,8 @@ export default function BookingServiceBulkUpdateModal({
             </div>
           )}
         </div>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-gray-100 bg-white px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700"
-            disabled={isSubmitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="rounded bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
-            disabled={isSubmitting}
-          >
-            {isSubmitting ? 'Saving…' : 'Save'}
-          </button>
-        </div>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }
 

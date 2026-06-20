@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 
+import CrmFormModalShell from './CrmFormModalShell'
 import type { CustomerRowData } from './CustomerRow'
 
 type AdjustAction = 'add' | 'reduce'
@@ -75,53 +76,15 @@ export default function CustomerAdjustPointsModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
-        <h3 className="text-lg font-semibold text-gray-900">{title}</h3>
-        <p className="mt-2 text-sm text-gray-600">
-          Customer: <span className="font-medium text-gray-900">{customer.name}</span>
-        </p>
-        <p className="mt-1 text-sm text-gray-600">
-          Current points:{' '}
-          <span className="font-semibold text-indigo-600">
-            {customer.availablePoints != null ? customer.availablePoints.toLocaleString() : '—'}
-          </span>
-        </p>
-
-        {error && (
-          <div className="mt-4 rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        <label className="mt-4 block text-sm font-medium text-gray-700">
-          Points <span className="text-red-500">*</span>
-        </label>
-        <input
-          type="number"
-          min={1}
-          step={1}
-          value={points}
-          onChange={(event) => setPoints(event.target.value)}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-          placeholder={isAdd ? 'e.g. 100' : 'e.g. 50'}
-          disabled={submitting}
-        />
-
-        <label className="mt-4 block text-sm font-medium text-gray-700">Remark (optional)</label>
-        <textarea
-          value={remark}
-          onChange={(event) => setRemark(event.target.value)}
-          rows={3}
-          className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-          placeholder="e.g. Birthday bonus / Manual correction"
-          disabled={submitting}
-        />
-
-        <div className="mt-5 flex justify-end gap-2">
+    <CrmFormModalShell
+      title={title}
+      onClose={onClose}
+      closeDisabled={submitting}
+      footer={
+        <>
           <button
             type="button"
-            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             onClick={onClose}
             disabled={submitting}
           >
@@ -137,8 +100,54 @@ export default function CustomerAdjustPointsModal({
           >
             {submitting ? 'Saving...' : isAdd ? 'Add Points' : 'Reduce Points'}
           </button>
+        </>
+      }
+    >
+      <div className="space-y-4 px-5 py-4">
+        <p className="text-sm text-gray-600">
+          Customer: <span className="font-medium text-gray-900">{customer.name}</span>
+        </p>
+        <p className="text-sm text-gray-600">
+          Current points:{' '}
+          <span className="font-semibold text-indigo-600">
+            {customer.availablePoints != null ? customer.availablePoints.toLocaleString() : '—'}
+          </span>
+        </p>
+
+        {error && (
+          <div className="rounded border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">
+            Points <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={points}
+            onChange={(event) => setPoints(event.target.value)}
+            className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
+            placeholder={isAdd ? 'e.g. 100' : 'e.g. 50'}
+            disabled={submitting}
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700">Remark (optional)</label>
+          <textarea
+            value={remark}
+            onChange={(event) => setRemark(event.target.value)}
+            rows={3}
+            className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
+            placeholder="e.g. Birthday bonus / Manual correction"
+            disabled={submitting}
+          />
         </div>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

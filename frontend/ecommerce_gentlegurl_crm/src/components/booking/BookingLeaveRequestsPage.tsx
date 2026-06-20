@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
+
 import TableEmptyState from '../TableEmptyState'
 import TableLoadingRow from '../TableLoadingRow'
 import PaginationControls from '../PaginationControls'
@@ -242,63 +245,11 @@ export default function BookingLeaveRequestsPage() {
   return (
     <div>
       {isFilterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={closeFilterModal} />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg">
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Filter</h2>
-              <button
-                onClick={closeFilterModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5">
-              <form
-                id="booking-leave-requests-filters-form"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  setFilters(inputs)
-                  setCurrentPage(1)
-                  closeFilterModal()
-                }}
-                onReset={(e) => {
-                  e.preventDefault()
-                  const next = { staffId: '' }
-                  setInputs(next)
-                  setFilters(next)
-                  setCurrentPage(1)
-                }}
-              >
-                <div className="space-y-4">
-                  <div>
-                    <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 mb-1">
-                      Staff
-                    </label>
-                    <select
-                      id="staffId"
-                      name="staffId"
-                      value={inputs.staffId}
-                      onChange={(e) => setInputs((p) => ({ ...p, staffId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">All</option>
-                      {staffOptions.map((row) => (
-                        <option key={row.staff_id} value={row.staff_id}>
-                          {row.staff_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </form>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+        <CrmFilterModalShell
+          title="Filter"
+          onClose={closeFilterModal}
+          footer={
+            <>
               <button
                 type="reset"
                 form="booking-leave-requests-filters-form"
@@ -314,61 +265,57 @@ export default function BookingLeaveRequestsPage() {
               >
                 Apply filter
               </button>
+            </>
+          }
+        >
+          <form
+            id="booking-leave-requests-filters-form"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setFilters(inputs)
+              setCurrentPage(1)
+              closeFilterModal()
+            }}
+            onReset={(e) => {
+              e.preventDefault()
+              const next = { staffId: '' }
+              setInputs(next)
+              setFilters(next)
+              setCurrentPage(1)
+            }}
+          >
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 mb-1">
+                  Staff
+                </label>
+                <select
+                  id="staffId"
+                  name="staffId"
+                  value={inputs.staffId}
+                  onChange={(e) => setInputs((p) => ({ ...p, staffId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">All</option>
+                  {staffOptions.map((row) => (
+                    <option key={row.staff_id} value={row.staff_id}>
+                      {row.staff_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
-        </div>
+          </form>
+        </CrmFilterModalShell>
       )}
 
       {decisionTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeDecisionModal}>
-          <div className="absolute inset-0 bg-black/50" />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">{decisionTarget.action === 'approved' ? 'APPROVE' : 'REJECT'}</h2>
-              <button
-                onClick={closeDecisionModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5 space-y-3">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                <div>
-                  <p className="text-xs text-slate-500">Staff</p>
-                  <p className="font-medium">{decisionTarget.row.staff?.name ?? `Staff #${decisionTarget.row.staff_id}`}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Type</p>
-                  <p className="font-medium">{LEAVE_LABEL[decisionTarget.row.leave_type]}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Date range</p>
-                  <p className="font-medium">{decisionTarget.row.start_date} → {decisionTarget.row.end_date}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Days</p>
-                  <p className="font-medium">{decisionTarget.row.days.toFixed(2)}</p>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Admin remark (optional)</label>
-                <textarea
-                  className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-                  rows={3}
-                  value={decisionRemark}
-                  onChange={(e) => setDecisionRemark(e.target.value)}
-                />
-              </div>
-
-              {error && <p className="text-sm text-rose-600">{error}</p>}
-            </div>
-
-            <div className="flex items-center justify-end gap-2 border-t border-gray-300 px-5 py-3">
+        <CrmFormModalShell
+          title={decisionTarget.action === 'approved' ? 'APPROVE' : 'REJECT'}
+          onClose={closeDecisionModal}
+          closeDisabled={isDeciding}
+          footer={
+            <>
               <button
                 type="button"
                 className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
@@ -396,9 +343,42 @@ export default function BookingLeaveRequestsPage() {
                   APPROVE
                 </button>
               )}
+            </>
+          }
+        >
+          <div className="space-y-3 p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+              <div>
+                <p className="text-xs text-slate-500">Staff</p>
+                <p className="font-medium">{decisionTarget.row.staff?.name ?? `Staff #${decisionTarget.row.staff_id}`}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Type</p>
+                <p className="font-medium">{LEAVE_LABEL[decisionTarget.row.leave_type]}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Date range</p>
+                <p className="font-medium">{decisionTarget.row.start_date} → {decisionTarget.row.end_date}</p>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500">Days</p>
+                <p className="font-medium">{decisionTarget.row.days.toFixed(2)}</p>
+              </div>
             </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Admin remark (optional)</label>
+              <textarea
+                className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                rows={3}
+                value={decisionRemark}
+                onChange={(e) => setDecisionRemark(e.target.value)}
+              />
+            </div>
+
+            {error && <p className="text-sm text-rose-600">{error}</p>}
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">

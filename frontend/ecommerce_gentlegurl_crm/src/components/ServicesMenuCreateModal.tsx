@@ -8,6 +8,7 @@ import {
   type ServicesMenuApiItem,
 } from './servicesMenuUtils'
 import { useI18n } from '@/lib/i18n'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 
 interface ServicesMenuCreateModalProps {
   onClose: () => void
@@ -116,23 +117,33 @@ export default function ServicesMenuCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-lg"
-      >
-        <div className="mb-4 flex items-start justify-between">
-          <h2 className="text-lg font-semibold">Create Services Menu</h2>
+    <CrmFormModalShell
+      title="Create Services Menu"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel="Close"
+      footer={
+        <>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            aria-label="Close"
+            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            Cancel
           </button>
-        </div>
-
+          <button
+            type="submit"
+            form="services-menu-create-form"
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+            disabled={submitting}
+          >
+            {submitting ? 'Saving...' : 'Save'}
+          </button>
+        </>
+      }
+    >
+      <form id="services-menu-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
         <div className="space-y-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">
@@ -164,29 +175,11 @@ export default function ServicesMenuCreateModal({
         </div>
 
         {error && (
-          <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
             {error}
           </div>
         )}
-
-        <div className="mt-6 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            disabled={submitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-            disabled={submitting}
-          >
-            {submitting ? 'Saving...' : 'Save'}
-          </button>
-        </div>
       </form>
-    </div>
+    </CrmFormModalShell>
   )
 }

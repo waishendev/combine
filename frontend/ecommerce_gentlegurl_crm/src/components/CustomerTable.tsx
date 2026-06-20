@@ -19,6 +19,7 @@ import CustomerDeleteModal from './CustomerDeleteModal'
 import CustomerViewPanel from './CustomerViewPanel'
 import CustomerAssignVoucherModal from './CustomerAssignVoucherModal'
 import CustomerAdjustPointsModal from './CustomerAdjustPointsModal'
+import CrmFormModalShell from './CrmFormModalShell'
 import {
   type CustomerApiItem,
   mapCustomerApiItemToRow,
@@ -868,36 +869,24 @@ export default function CustomerTable({
       )}
 
       {depositWaiverTarget && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-semibold text-gray-900">
-              {depositWaiverTarget.allowBookingWithoutDeposit ? 'Disable No Deposit Booking' : 'Enable No Deposit Booking'}
-            </h3>
-            <p className="mt-2 text-sm text-gray-600">
-              Customer: <span className="font-medium text-gray-900">{depositWaiverTarget.name}</span>
-            </p>
-            <p className="mt-1 text-sm text-gray-600">
-              Current status:{' '}
-              <span className={`font-semibold ${depositWaiverTarget.allowBookingWithoutDeposit ? 'text-emerald-600' : 'text-gray-700'}`}>
-                {depositWaiverTarget.allowBookingWithoutDeposit ? 'Enabled' : 'Disabled'}
-              </span>
-            </p>
-
-            <label className="mt-4 block text-sm font-medium text-gray-700">
-              Remark (optional)
-            </label>
-            <textarea
-              value={depositWaiverRemark}
-              onChange={(event) => setDepositWaiverRemark(event.target.value)}
-              rows={3}
-              className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
-              placeholder="e.g. VIP customer approved by manager"
-            />
-
-            <div className="mt-5 flex justify-end gap-2">
+        <CrmFormModalShell
+          title={
+            depositWaiverTarget.allowBookingWithoutDeposit
+              ? 'Disable No Deposit Booking'
+              : 'Enable No Deposit Booking'
+          }
+          onClose={() => {
+            if (!isSavingDepositWaiver) {
+              setDepositWaiverTarget(null)
+              setDepositWaiverRemark('')
+            }
+          }}
+          closeDisabled={isSavingDepositWaiver}
+          footer={
+            <>
               <button
                 type="button"
-                className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 onClick={() => {
                   setDepositWaiverTarget(null)
                   setDepositWaiverRemark('')
@@ -914,9 +903,34 @@ export default function CustomerTable({
               >
                 {isSavingDepositWaiver ? 'Saving...' : 'Confirm'}
               </button>
+            </>
+          }
+        >
+          <div className="space-y-4 px-5 py-4">
+            <p className="text-sm text-gray-600">
+              Customer: <span className="font-medium text-gray-900">{depositWaiverTarget.name}</span>
+            </p>
+            <p className="text-sm text-gray-600">
+              Current status:{' '}
+              <span
+                className={`font-semibold ${depositWaiverTarget.allowBookingWithoutDeposit ? 'text-emerald-600' : 'text-gray-700'}`}
+              >
+                {depositWaiverTarget.allowBookingWithoutDeposit ? 'Enabled' : 'Disabled'}
+              </span>
+            </p>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Remark (optional)</label>
+              <textarea
+                value={depositWaiverRemark}
+                onChange={(event) => setDepositWaiverRemark(event.target.value)}
+                rows={3}
+                className="mt-1 w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none ring-blue-500 focus:ring"
+                placeholder="e.g. VIP customer approved by manager"
+              />
             </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       )}
 
       {adjustPointsTarget && (

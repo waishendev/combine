@@ -6,6 +6,7 @@ import type { CategoryRowData } from './CategoryRow'
 import { mapCategoryApiItemToRow, type CategoryApiItem } from './categoryUtils'
 import MenuSelector from './MenuSelector'
 import { IMAGE_ACCEPT } from './mediaAccept'
+import CrmFormModalShell from './CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 
 interface CategoryCreateModalProps {
@@ -250,29 +251,36 @@ export default function CategoryCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting) onClose()
-        }}
-      />
-      <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">Create Category</h2>
+    <CrmFormModalShell
+      title="Create Category"
+      size="lg"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
+            type="button"
+            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
             onClick={() => {
               if (!submitting) onClose()
             }}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label={t('common.close')}
-            type="button"
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            {t('common.cancel')}
           </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="px-5 py-4 space-y-4">
+          <button
+            type="submit"
+            form="category-create-form"
+            className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            disabled={submitting}
+          >
+            {submitting ? t('common.creating') : t('common.create')}
+          </button>
+        </>
+      }
+    >
+      <form id="category-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-10">
             <div className="space-y-4 md:border-r md:border-gray-100 md:pr-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">SEO</p>
@@ -511,29 +519,8 @@ export default function CategoryCreateModal({
               {error}
             </div>
           )}
-
-          <div className="flex items-center justify-end gap-3 pt-2">
-            <button
-              type="button"
-              className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
-              onClick={() => {
-                if (!submitting) onClose()
-              }}
-              disabled={submitting}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-              disabled={submitting}
-            >
-              {submitting ? t('common.creating') : t('common.create')}
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </CrmFormModalShell>
   )
 }
 

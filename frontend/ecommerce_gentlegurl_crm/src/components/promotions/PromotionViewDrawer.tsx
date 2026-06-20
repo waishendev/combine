@@ -160,14 +160,14 @@ export default function PromotionViewDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex justify-end bg-black/40"
+      className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] justify-end bg-black/40"
       role="dialog"
       aria-modal="true"
       aria-labelledby="promotion-view-drawer-title"
       onClick={onClose}
     >
       <aside
-        className={`flex h-full w-full max-w-xl flex-col bg-gray-50 shadow-2xl transition-transform duration-300 ease-out sm:max-w-2xl ${
+        className={`flex h-full min-h-0 w-full max-w-xl flex-col bg-gray-50 shadow-2xl transition-transform duration-300 ease-out sm:max-w-2xl ${
           panelIn ? 'translate-x-0' : 'translate-x-full'
         }`}
         onClick={(e) => e.stopPropagation()}

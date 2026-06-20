@@ -7,6 +7,7 @@ import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import PaginationControls from './PaginationControls'
 import ReturnViewPanel from './ReturnViewPanel'
+import CrmFilterModalShell from './CrmFilterModalShell'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_PDF_ACCEPT } from './mediaAccept'
 
@@ -598,24 +599,57 @@ export default function ReturnOrdersTable() {
         disabled={loading}
       />
       {isFilterOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setIsFilterOpen(false)}
-          />
-          <div className="relative w-full max-w-md rounded-lg bg-white shadow-lg">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
-              <h2 className="text-lg font-semibold text-gray-800">Filter Returns</h2>
+        <CrmFilterModalShell
+          title="Filter Returns"
+          onClose={() => setIsFilterOpen(false)}
+          closeLabel="Close filter"
+          size="sm"
+          footer={
+            <>
               <button
                 type="button"
-                onClick={() => setIsFilterOpen(false)}
-                className="text-gray-500 hover:text-gray-700"
-                aria-label="Close filter"
+                onClick={() => {
+                  setOrderNoFilter('')
+                  setCustomerNameFilter('')
+                  setCustomerEmailFilter('')
+                  setStatusFilter('')
+                  setDateFromFilter('')
+                  setDateToFilter('')
+                  setFilterDraft({
+                    order_no: '',
+                    customer_name: '',
+                    customer_email: '',
+                    status: '',
+                    date_from: '',
+                    date_to: '',
+                  })
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
               >
-                <i className="fa-solid fa-xmark" />
+                Reset
               </button>
-            </div>
-            <div className="space-y-4 px-5 py-4 text-sm">
+              <button
+                type="button"
+                onClick={() => {
+                  setOrderNoFilter(filterDraft.order_no.trim())
+                  setCustomerNameFilter(filterDraft.customer_name.trim())
+                  setCustomerEmailFilter(filterDraft.customer_email.trim())
+                  setStatusFilter(filterDraft.status)
+                  setDateFromFilter(filterDraft.date_from)
+                  setDateToFilter(filterDraft.date_to)
+                  setCurrentPage(1)
+                  setIsFilterOpen(false)
+                }}
+                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+              >
+                Apply Filters
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 text-sm">
               <div>
                 <label className="mb-1 block text-xs font-semibold uppercase text-gray-500">
                   Order No
@@ -691,50 +725,7 @@ export default function ReturnOrdersTable() {
                 />
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 border-t border-gray-200 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => {
-                  setOrderNoFilter('')
-                  setCustomerNameFilter('')
-                  setCustomerEmailFilter('')
-                  setStatusFilter('')
-                  setDateFromFilter('')
-                  setDateToFilter('')
-                  setFilterDraft({
-                    order_no: '',
-                    customer_name: '',
-                    customer_email: '',
-                    status: '',
-                    date_from: '',
-                    date_to: '',
-                  })
-                  setCurrentPage(1)
-                  setIsFilterOpen(false)
-                }}
-                className="rounded-md border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
-              >
-                Reset
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setOrderNoFilter(filterDraft.order_no.trim())
-                  setCustomerNameFilter(filterDraft.customer_name.trim())
-                  setCustomerEmailFilter(filterDraft.customer_email.trim())
-                  setStatusFilter(filterDraft.status)
-                  setDateFromFilter(filterDraft.date_from)
-                  setDateToFilter(filterDraft.date_to)
-                  setCurrentPage(1)
-                  setIsFilterOpen(false)
-                }}
-                className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-              >
-                Apply Filters
-              </button>
-            </div>
-          </div>
-        </div>
+        </CrmFilterModalShell>
       )}
     </div>
   )

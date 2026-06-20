@@ -2755,7 +2755,7 @@ export default function PosAppointmentsWorkspace({
         <div
           className={[
             'pos-appt-right min-w-0 space-y-5',
-            isCompactLayout === true && 'fixed inset-x-0 bottom-0 z-[130] max-h-[92dvh] transition-transform duration-300 ease-out',
+            isCompactLayout === true && 'fixed inset-x-0 bottom-0 z-[130] h-[100dvh] max-h-[100dvh] transition-transform duration-300 ease-out',
             isCompactLayout === true &&
               (settlementSheetOpen
                 ? 'translate-y-0 pointer-events-auto visible pos-appt-settlement-sheet-open'
@@ -2767,7 +2767,7 @@ export default function PosAppointmentsWorkspace({
           <div
             className={[
               'pos-appt-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5',
-              isCompactLayout === true && 'max-h-[92dvh] rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
+              isCompactLayout === true && 'h-[100dvh] max-h-[100dvh] min-h-0 rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -3412,9 +3412,9 @@ export default function PosAppointmentsWorkspace({
         )}
 
       {createAppointmentModalOpen ? (
-        <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+        <div className="fixed inset-0 z-[135] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
               <div>
                 <h3 className="text-lg font-bold text-gray-900">Create Appointment</h3>
                 <p className="mt-0.5 text-xs text-gray-500">Create directly, with optional split deposit collection.</p>
@@ -3941,12 +3941,12 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             {createAppointmentError ? (
-              <div className="mx-5 mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+              <div className="mx-5 mb-3 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
                 {createAppointmentError}
               </div>
             ) : null}
 
-            <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
               <button
                 type="button"
                 onClick={() => {
@@ -3972,15 +3972,15 @@ export default function PosAppointmentsWorkspace({
       ) : null}
 
       {createAppointmentMemberPickerOpen ? (
-        <div className="fixed inset-0 z-[145] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[145] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
           <button
             type="button"
             className="absolute inset-0 h-full w-full cursor-default"
             onClick={closeCreateAppointmentMemberPicker}
             aria-label="Close assign member"
           />
-          <div className="relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-            <div className="flex items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
+          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
               <button
                 type="button"
@@ -3991,7 +3991,7 @@ export default function PosAppointmentsWorkspace({
               </button>
             </div>
 
-            <div className="border-b-2 border-gray-200 bg-white p-5">
+            <div className="shrink-0 border-b-2 border-gray-200 bg-white p-5">
               <div className="relative">
                 <svg
                   className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400"
@@ -4014,7 +4014,7 @@ export default function PosAppointmentsWorkspace({
               </p>
             </div>
 
-            <div className="max-h-[65vh] overflow-auto">
+            <div className="min-h-0 flex-1 overflow-y-auto">
               {createAppointmentMemberQuery.trim().length < 3 ? (
                 <div className="p-8 text-center text-sm text-gray-500">Type at least 3 characters to search.</div>
               ) : createAppointmentMemberSearchLoading ? (
@@ -4073,9 +4073,9 @@ export default function PosAppointmentsWorkspace({
       ) : null}
 
       {cancellationRequestsModalOpen ? (
-        <div className="fixed inset-0 z-[125] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[125] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
           <div
-            className="flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            className="relative mx-auto flex w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="pos-cancellation-requests-title"
@@ -4197,20 +4197,20 @@ export default function PosAppointmentsWorkspace({
       ) : null}
 
       {cancellationConfirmOpen && cancellationConfirmRow && cancellationConfirmAction ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/55 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
           <div
-            className="flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
             role="dialog"
             aria-modal="true"
             aria-labelledby="pos-cancellation-confirm-title"
           >
-            <div className="border-b border-gray-200 px-5 py-4">
+            <div className="shrink-0 border-b border-gray-200 px-5 py-4">
               <h3 id="pos-cancellation-confirm-title" className="text-lg font-bold text-gray-900">
                 {cancellationConfirmAction === 'approve' ? 'Approve cancellation?' : 'Reject cancellation?'}
               </h3>
               <p className="mt-1 text-xs text-gray-500">Review the details and add an optional note before confirming.</p>
             </div>
-            <div className="max-h-[50vh] space-y-4 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <div className="rounded-lg border border-gray-100 bg-gray-50/90 p-3">
                 <PosCancellationRequestSummary row={cancellationConfirmRow} />
               </div>
@@ -4229,7 +4229,7 @@ export default function PosAppointmentsWorkspace({
                 />
               </div>
             </div>
-            <div className="flex justify-end gap-2 border-t border-gray-200 px-5 py-3">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
               <button
                 type="button"
                 disabled={cancellationReviewSubmitting}
@@ -4271,10 +4271,11 @@ export default function PosAppointmentsWorkspace({
       ) : null}
 
       {appointmentRescheduleOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl">
-            <h3 className="text-lg font-bold text-gray-900">Reschedule Appointment</h3>
-            <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          <div className="relative mx-auto flex w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="shrink-0 px-5 pt-5">
+              <h3 className="text-lg font-bold text-gray-900">Reschedule Appointment</h3>
+              <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
               <p>
                 <span className="font-semibold">Booking:</span> {appointmentDetail.booking_code}
               </p>
@@ -4298,8 +4299,10 @@ export default function PosAppointmentsWorkspace({
                 {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
               </p>
             </div>
+            </div>
 
-            <div className="mt-4 space-y-3">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5">
+            <div className="space-y-3">
               {activeStaffs.length === 0 ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
                   No active staff available. Assign staff in settings before rescheduling.
@@ -4356,8 +4359,9 @@ export default function PosAppointmentsWorkspace({
                 />
               </div>
             </div>
+            </div>
 
-            <div className="mt-5 flex justify-end gap-2">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
               <button
                 type="button"
                 onClick={() => setAppointmentRescheduleOpen(false)}
@@ -4379,9 +4383,9 @@ export default function PosAppointmentsWorkspace({
       )}
 
       {editSettlementOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
                 <p className="text-xs text-gray-500">{appointmentDetail.booking_code} · {editOriginalService?.name ?? appointmentDetail.service?.name ?? '—'}</p>
@@ -4395,7 +4399,7 @@ export default function PosAppointmentsWorkspace({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -4905,7 +4909,7 @@ export default function PosAppointmentsWorkspace({
               </div>
             </div>
 
-            <div className="border-t border-gray-200 bg-gray-50 px-5 py-4">
+            <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-5 py-4">
               {editSettlementError ? (
                 <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">{editSettlementError}</p>
               ) : null}
@@ -4932,15 +4936,15 @@ export default function PosAppointmentsWorkspace({
       )}
 
       {appointmentLineSplitTarget ? (
-        <div className="fixed inset-0 z-[220] flex items-start justify-center overflow-y-auto bg-black/50 p-4">
-          <div className="my-8 w-full max-w-xl rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+        <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative mx-auto flex w-full max-w-xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3">
               <h4 className="text-lg font-bold text-gray-900">
                 {appointmentLineSplitTarget.type === 'bulk' ? `Apply Staff Split: ${appointmentLineSplitTarget.title}` : `Line Staff Split: ${appointmentLineSplitTarget.title}`}
               </h4>
               <button type="button" onClick={() => setAppointmentLineSplitTarget(null)} className="text-2xl leading-none text-gray-500">×</button>
             </div>
-            <div className="space-y-3 p-5">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
               {appointmentLineSplitTarget.type === 'bulk' ? (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                   <input type="checkbox" checked={appointmentLineSplitOverwrite} onChange={(event) => setAppointmentLineSplitOverwrite(event.target.checked)} className="h-4 w-4" />
@@ -5016,7 +5020,7 @@ export default function PosAppointmentsWorkspace({
               <button type="button" onClick={() => setAppointmentLineSplitDraftRows((prev) => [...prev, { staff_id: null, share_percent: '' }])} className="rounded-md border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700">+ Add Staff</button>
               {appointmentLineSplitError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{appointmentLineSplitError}</p> : null}
             </div>
-            <div className="flex gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4">
+            <div className="flex shrink-0 gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4">
               <button type="button" onClick={() => setAppointmentLineSplitTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Cancel</button>
               <button type="button" onClick={saveAppointmentLineSplitEditor} className="flex-1 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white">Save</button>
             </div>
@@ -5025,8 +5029,9 @@ export default function PosAppointmentsWorkspace({
       ) : null}
 
       {appointmentPriceEditTarget ? (
-        <div className="fixed inset-0 z-[180] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-[180] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{appointmentPriceEditTarget.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-3 text-sm">
@@ -5047,15 +5052,18 @@ export default function PosAppointmentsWorkspace({
               <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))).toFixed(2)}</p></div>
             )}
             <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Reason / remark</label><textarea value={appointmentPriceEditReasonDraft} onChange={(event) => setAppointmentPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" /></div>
-            <div className="mt-5 flex gap-3"><button type="button" onClick={() => setAppointmentPriceEditTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button><button type="button" onClick={() => submitAppointmentPriceEditModal()} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Save</button></div>
+            </div>
+            <div className="flex shrink-0 gap-3 border-t border-gray-200 p-5">
+              <button type="button" onClick={() => setAppointmentPriceEditTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button><button type="button" onClick={() => submitAppointmentPriceEditModal()} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white">Save</button>
+            </div>
           </div>
         </div>
       ) : null}
 
       {editMainServicePickerOpen && editMainServicePickerTargetId ? (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-base font-bold text-gray-900">
                   {editMainServicePickerTargetId === '__original__' ? 'Change Original Service' : 'Choose Main Service'}
@@ -5078,7 +5086,7 @@ export default function PosAppointmentsWorkspace({
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto p-5">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <BookingServicePicker
                 categories={bookingServiceCategories}
                 services={editMainServiceCatalog}
@@ -5101,9 +5109,9 @@ export default function PosAppointmentsWorkspace({
       ) : null}
 
       {appointmentCheckoutConfirmationOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-6 py-4">
+        <div className="fixed inset-0 z-[55] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative mx-auto flex w-full max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Checkout Confirmation</h4>
                 <p className="text-xs text-gray-500">
@@ -5125,7 +5133,7 @@ export default function PosAppointmentsWorkspace({
                 </svg>
               </button>
             </div>
-            <div className="space-y-4 overflow-y-auto px-6 py-5">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
               {appointmentCheckoutError ? (
                 <div
                   role="alert"
@@ -5276,7 +5284,8 @@ export default function PosAppointmentsWorkspace({
                     </div>
                   ) : null}
                 </div>
-              <div className="flex justify-end gap-2">
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-6 py-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -5300,16 +5309,15 @@ export default function PosAppointmentsWorkspace({
                 >
                   Confirm Checkout
                 </button>
-              </div>
             </div>
           </div>
         </div>
       )}
 
       {appointmentSettlementResult && (
-        <div className="fixed inset-0 z-[56] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className={`w-full ${appointmentSettlementHasCashChange ? 'max-w-4xl' : 'max-w-lg'} overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl`}>
-            <div className="flex items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
+        <div className="fixed inset-0 z-[56] flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
+          <div className={`relative mx-auto flex w-full max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl ${appointmentSettlementHasCashChange ? 'max-w-4xl' : 'max-w-lg'}`}>
+            <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
               <h4 className="flex items-center gap-2 text-xl font-bold text-white">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -5334,7 +5342,7 @@ export default function PosAppointmentsWorkspace({
                 </svg>
               </button>
             </div>
-            <div className={appointmentSettlementHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}>
+            <div className={`min-h-0 flex-1 overflow-y-auto ${appointmentSettlementHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}`}>
               {appointmentSettlementHasCashChange ? (
                 <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 shadow-inner">
                   <p className="text-sm font-bold uppercase tracking-wide text-emerald-800">Cash Summary</p>
@@ -5439,7 +5447,7 @@ export default function PosAppointmentsWorkspace({
 
       {appointmentQrCodeFullscreen && appointmentSettlementResult?.receipt_public_url ? (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/90 p-4 backdrop-blur-sm"
           onClick={() => setAppointmentQrCodeFullscreen(false)}
         >
           <div className="relative">

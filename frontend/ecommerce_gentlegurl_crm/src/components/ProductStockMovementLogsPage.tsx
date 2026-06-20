@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 
+import CrmFormModalShell from './CrmFormModalShell'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -569,10 +570,10 @@ export default function ProductStockMovementLogsPage({
       />
 
       {viewTarget ? (
-        <div className="fixed inset-0 z-50 flex">
+        <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh]">
           <div className="flex-1 bg-black/40" onClick={() => setViewTarget(null)} />
-          <div className="h-full w-full max-w-lg overflow-y-auto bg-white shadow-2xl">
-            <div className="sticky top-0 border-b border-gray-200 bg-white px-5 py-4">
+          <div className="flex h-full min-h-0 w-full max-w-lg flex-col bg-white shadow-2xl">
+            <div className="shrink-0 border-b border-gray-200 bg-white px-5 py-4">
               <div className="flex items-center justify-between gap-2">
                 <h3 className="text-lg font-semibold text-gray-900">Stock Movement Detail</h3>
                 <button
@@ -586,7 +587,7 @@ export default function ProductStockMovementLogsPage({
               </div>
             </div>
 
-            <div className="space-y-4 p-5 text-sm">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 text-sm">
               <div className="rounded-lg border border-gray-200 p-3">
                 <p><span className="font-semibold">Date / Time:</span> {toDateTime(viewTarget.created_at)}</p>
                 <p><span className="font-semibold">Type:</span> {movementTypeLabel(viewTarget.type)}</p>
@@ -654,24 +655,32 @@ export default function ProductStockMovementLogsPage({
       ) : null}
 
       {revokeTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-xl rounded-lg bg-white shadow-2xl">
-            <div className="border-b border-gray-200 px-5 py-4">
-              <div className="flex items-center justify-between gap-2">
-                <h3 className="text-lg font-semibold text-gray-900">Revoke Stock Movement</h3>
-                <button
-                  type="button"
-                  className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-                  onClick={() => setRevokeTarget(null)}
-                  aria-label="Close revoke modal"
-                  disabled={isRevoking}
-                >
-                  <i className="fa-solid fa-xmark" />
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-4 p-5 text-sm">
+        <CrmFormModalShell
+          title="Revoke Stock Movement"
+          onClose={() => setRevokeTarget(null)}
+          closeDisabled={isRevoking}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => setRevokeTarget(null)}
+                className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                disabled={isRevoking}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmRevoke}
+                className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+                disabled={isRevoking}
+              >
+                {isRevoking ? 'Revoking...' : 'Confirm Revoke'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 px-5 py-4 text-sm">
               <div className="rounded border border-amber-200 bg-amber-50 p-3 text-amber-800">
                 <p className="font-semibold">This will create a reversal record, not delete history.</p>
                 <p className="mt-1">The original movement will stay in the audit log and be marked as revoked.</p>
@@ -714,28 +723,8 @@ export default function ProductStockMovementLogsPage({
                   {revokeError}
                 </div>
               ) : null}
-            </div>
-
-            <div className="flex flex-wrap justify-end gap-2 border-t border-gray-200 px-5 py-4">
-              <button
-                type="button"
-                onClick={() => setRevokeTarget(null)}
-                className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                disabled={isRevoking}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleConfirmRevoke}
-                className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                disabled={isRevoking}
-              >
-                {isRevoking ? 'Revoking...' : 'Confirm Revoke'}
-              </button>
-            </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       ) : null}
     </div>
   )

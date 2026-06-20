@@ -5,6 +5,7 @@ import StaffScheduleFilters, {
   staffScheduleFiltersFormId,
   emptyStaffScheduleFilters,
 } from './StaffScheduleFilters'
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import { useI18n } from '@/lib/i18n'
 
 interface Props {
@@ -39,36 +40,12 @@ export default function StaffScheduleFiltersWrapper({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
-      <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <h2 className="text-lg font-semibold">
-            {t('common.filter')}
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label={t('common.close')}
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-
-        <div className="p-5">
-          <StaffScheduleFilters
-            values={inputs}
-            onChange={onChange}
-            onSubmit={handleSubmit}
-            onReset={handleReset}
-            staffs={staffs}
-          />
-        </div>
-
-        <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+    <CrmFilterModalShell
+      title={t('common.filter')}
+      onClose={onClose}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
             type="reset"
             form={staffScheduleFiltersFormId}
@@ -84,8 +61,16 @@ export default function StaffScheduleFiltersWrapper({
           >
             {t('common.applyFilter')}
           </button>
-        </div>
-      </div>
-    </div>
+        </>
+      }
+    >
+      <StaffScheduleFilters
+        values={inputs}
+        onChange={onChange}
+        onSubmit={handleSubmit}
+        onReset={handleReset}
+        staffs={staffs}
+      />
+    </CrmFilterModalShell>
   )
 }

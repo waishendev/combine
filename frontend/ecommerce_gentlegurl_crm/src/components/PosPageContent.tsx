@@ -713,9 +713,9 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
   }
 
   return (
-    <div className="fixed inset-0 z-[180] bg-black/40">
-      <div className="mx-auto mt-16 w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4">
+    <div className="fixed inset-0 z-[180] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+      <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        <div className="flex shrink-0 items-start justify-between border-b border-gray-200 px-5 py-4">
           <div>
             <h4 className="text-lg font-bold text-gray-900">Booking Product Options</h4>
             <p className="mt-1 text-sm font-semibold text-gray-800">{draft.name}</p>
@@ -723,7 +723,7 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
           </div>
           <button type="button" onClick={onClose} className="rounded-md p-1.5 text-gray-500 hover:bg-gray-100">×</button>
         </div>
-        <div className="max-h-[60vh] space-y-3 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
           {draft.price_mode === 'range' ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
               <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Product Base Price</p>
@@ -774,8 +774,8 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
             </div>
           ))}
         </div>
-        {error ? <p className="mt-2 px-5 text-sm text-red-600">{error}</p> : null}
-        <div className="flex justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
+        {error ? <p className="shrink-0 px-5 pt-2 text-sm text-red-600">{error}</p> : null}
+        <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 bg-white px-5 py-4">
           <button type="button" className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm font-semibold text-gray-700" onClick={onClose}>Cancel</button>
           <button type="button" className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-semibold text-white" onClick={() => { void handleAdd() }}>Add to Cart</button>
         </div>
@@ -997,7 +997,7 @@ function PosCartVariantSelect({
             className="fixed inset-x-0 bottom-0 z-[121] flex max-h-[min(72vh,560px)] flex-col rounded-t-2xl border border-gray-200 bg-white shadow-2xl"
             data-cart-variant-select={itemId}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-gray-200 px-4 py-3">
+            <div className="flex shrink-0 items-start justify-between gap-3 border-b border-gray-200 px-4 py-3">
               <div className="min-w-0">
                 <p className="text-sm font-bold text-gray-900">Select variant</p>
                 {productName ? <p className="mt-0.5 truncate text-xs text-gray-500">{productName}</p> : null}
@@ -1011,7 +1011,7 @@ function PosCartVariantSelect({
                 <span className="text-xl leading-none">×</span>
               </button>
             </div>
-            <div className="overflow-y-auto overscroll-contain px-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
               {variantOptions}
             </div>
           </div>
@@ -7734,10 +7734,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         )}
 
       {productSelectModalOpen && selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
-          <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl border-2 border-gray-100 my-8 overflow-hidden">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
+          <div className="relative mx-auto flex w-full max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             {/* Header */}
-            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+            <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">Product Details</h4>
               <button
                 onClick={() => {
@@ -7754,7 +7754,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
 
-            <div className="grid md:grid-cols-2 gap-6 p-6 max-h-[80vh] overflow-y-auto">
+            <div className="grid min-h-0 flex-1 gap-6 overflow-y-auto p-6 md:grid-cols-2">
               {/* Left: Product Images */}
               <div className="space-y-4">
                 {selectedProductDisplayImage ? (
@@ -8036,9 +8036,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {cartEditSettlementOpen && cartEditSettlementItem && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-5xl max-h-[92vh] flex flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+        <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
                 <p className="text-xs text-gray-500">{cartEditSettlementItem.booking_code} · {cartEditOriginalService?.name ?? cartEditSettlementItem.service_name ?? '—'}</p>
@@ -8052,7 +8052,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
               {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) ? (
@@ -8503,7 +8503,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
             </div>
 
-            <div className="border-t border-gray-200 bg-gray-50 px-5 py-4">
+            <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-5 py-4">
               {cartEditSettlementError ? (
                 <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">{cartEditSettlementError}</p>
               ) : null}
@@ -8530,9 +8530,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {cartEditMainServicePickerOpen && cartEditSettlementItem && cartEditMainServicePickerTargetId ? (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
                 <h4 className="text-base font-bold text-gray-900">
                   {cartEditMainServicePickerTargetId === '__original__' ? 'Change Original Service' : 'Choose Main Service'}
@@ -8555,7 +8555,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
               </button>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto p-5">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <BookingServicePicker
                 categories={bookingServiceCategories}
                 services={cartEditMainServiceCatalog}
@@ -8589,9 +8589,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
       {checkoutConfirmationOpen && hasCartItems ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
-          <div className="w-full max-w-6xl max-h-[92vh] flex flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6 flex-shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-md p-4">
+          <div className="relative mx-auto flex w-full max-w-6xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gradient-to-r from-blue-50 via-white to-indigo-50 px-8 py-6">
               <div className="flex items-center gap-3">
                 <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 shadow-lg">
                   <svg className="h-6 w-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -8614,7 +8614,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+            <div className="min-h-0 flex-1 overflow-y-auto p-6 sm:p-8">
 
               <div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3">
                 {selectedCheckoutBulkKeys.length > 0 ? (
@@ -9734,13 +9734,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
       {itemSplitEditorOpen && itemSplitEditorTarget ? (
-        <div className="fixed inset-0 z-[220] flex items-start justify-center bg-black/50 p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl my-8 rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-gray-200 px-5 py-3">
+        <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3">
               <h5 className="text-lg font-bold text-gray-900">{itemSplitEditorTarget.type === 'settlement' ? 'Edit Worker' : itemSplitEditorTarget.type === 'bulk' ? `Apply Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : itemSplitEditorTarget.type === 'line' ? `Line Staff Split${itemSplitEditorTarget.title ? `: ${itemSplitEditorTarget.title}` : ''}` : 'Item Staff Split'}</h5>
               <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="text-2xl leading-none text-gray-500">×</button>
             </div>
 
+            <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-3 p-5">
               {itemSplitEditorTarget.type === 'bulk' ? (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
@@ -9857,8 +9858,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
 
               {itemSplitError && <p className="text-xs font-medium text-red-600">{itemSplitError}</p>}
+            </div>
+            </div>
 
-              <div className="flex gap-3 pt-1">
+            <div className="flex shrink-0 gap-3 border-t border-gray-200 px-5 py-4">
                 <button type="button" onClick={() => { setItemSplitEditorOpen(false); setItemSplitEditorTarget(null) }} className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700">Cancel</button>
                 <button
                   type="button"
@@ -9868,7 +9871,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 >
                   Save
                 </button>
-              </div>
             </div>
           </div>
         </div>
@@ -9876,8 +9878,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
 
       {priceEditTarget ? (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
+        <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+          <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-sm">
@@ -9905,7 +9908,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <label className="mt-3 block text-sm font-semibold text-gray-700">Reason / remark
               <textarea value={priceEditReasonDraft} onChange={(event) => setPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" />
             </label>
-            <div className="mt-5 flex gap-3">
+            </div>
+            <div className="flex shrink-0 gap-3 border-t border-gray-200 p-5">
               <button type="button" onClick={() => setPriceEditTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
               <button type="button" onClick={() => void submitPriceEditModal()} disabled={priceEditSaving} className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{priceEditSaving ? 'Saving…' : 'Save'}</button>
             </div>
@@ -9914,8 +9918,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
       {discountModalOpen && discountTarget ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/45 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
+        <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/45 p-4">
+          <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h4 className="text-lg font-bold text-gray-900">Line Item Discount</h4>
             <p className="mt-1 text-sm text-gray-600">{discountTarget.name}</p>
             <p className="mt-1 text-xs text-gray-500">Line total: RM {Number(discountTarget.lineTotal ?? 0).toFixed(2)}</p>
@@ -9941,8 +9946,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <textarea value={discountRemarkDraft} onChange={(event) => setDiscountRemarkDraft(event.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="VIP discount / damaged box / promo adjustment" />
               </label>
             </div>
+            </div>
 
-            <div className="mt-5 flex gap-2">
+            <div className="flex shrink-0 gap-2 border-t border-gray-200 p-5">
               <button type="button" onClick={() => setDiscountModalOpen(false)} className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700">Cancel</button>
               {/* <button type="button" onClick={() => { setDiscountValueDraft(''); setDiscountRemarkDraft('') }} className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">Clear</button> */}
               <button type="button" onClick={() => void submitDiscountModal()} disabled={discountSaving} className="flex-1 rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-60">{discountSaving ? 'Saving…' : 'Apply'}</button>
@@ -9952,8 +9958,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
       {packageModalOpen && packageDraft && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-3xl rounded-xl bg-white p-5 shadow-xl">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          <div className="relative mx-auto flex w-full max-w-3xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h3 className="text-xl font-bold text-gray-900">Add Package to Cart</h3>
             <p className="mt-1 text-base text-gray-600">{packageDraft.name}</p>
             {hasCartAppointmentSettlements ? (
@@ -10028,8 +10035,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             {packageModalError ? <p className="mt-3 text-sm font-medium text-red-600">{packageModalError}</p> : null}
+            </div>
 
-            <div className="mt-4 flex justify-end gap-2">
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 p-5 pt-4">
               <button
                 type="button"
                 onClick={() => setPackageModalOpen(false)}
@@ -10051,9 +10059,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {packageMemberPickerOpen ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+        <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
+          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
               <button
                 type="button"
@@ -10064,7 +10072,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
 
-            <div className="border-b-2 border-gray-200 bg-white p-5">
+            <div className="shrink-0 border-b-2 border-gray-200 bg-white p-5">
               <div className="relative">
                 <svg className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -10080,7 +10088,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <p className="mt-2 text-xs text-gray-500">Search member by name or phone. Type at least 3 characters to search.</p>
             </div>
 
-            <div className="max-h-[65vh] overflow-auto">
+            <div className="min-h-0 flex-1 overflow-auto">
               {packageMemberQuery.trim().length < 3 ? (
                 <div className="p-8 text-center text-sm text-gray-500">
                   Type at least 3 characters to search.
@@ -10132,8 +10140,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
       {bookingModalOpen && bookingServiceDraft && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/40 p-4">
-          <div className="flex max-h-[min(90vh,90dvh)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
+        <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+          <div className="relative mx-auto flex w-full max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-xl">
             <div className="shrink-0 border-b border-gray-200 bg-white px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -10643,9 +10651,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       {memberOpen && (
         <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>
           <button type="button" className="absolute inset-0 h-full w-full cursor-default" onClick={closeMemberPanel} aria-label="Close member panel" />
-          <div className="absolute right-0 top-0 h-full w-full max-w-3xl border-l border-gray-200 bg-white shadow-2xl">
-            <div className="flex h-full flex-col">
-              <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
+          <div className="absolute right-0 top-0 h-[100dvh] max-h-[100dvh] w-full max-w-3xl border-l border-gray-200 bg-white shadow-2xl">
+            <div className="flex h-full min-h-0 flex-col">
+              <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
                 <div>
                   <h4 className="text-lg font-bold text-gray-900">Member Quick Lookup</h4>
                   <p className="text-xs text-gray-500">Search member by name or phone</p>
@@ -10656,7 +10664,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
 
               {hasCartAppointmentSettlements ? (
-                <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">
+                <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-5 py-2 text-xs text-amber-800">
                   Settlement is in the cart — member is locked. Remove settlement to change member.
                 </div>
               ) : null}
@@ -10879,9 +10887,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
       {voucherModalOpen && (
-        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
-          <div className="w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4 rounded-t-2xl">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
+          <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">Apply Voucher</h4>
               <button
                 type="button"
@@ -10892,7 +10900,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
             </div>
 
-            <div className="p-5">
+            <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <p className="mb-3 text-xs text-gray-600">
                 {selectedMember ? 'Showing member vouchers.' : 'Showing public vouchers (non-reward).'}
               </p>
@@ -10902,7 +10910,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               ) : availableVouchers.length === 0 ? (
                 <p className="text-sm text-gray-600">No vouchers available.</p>
               ) : (
-                <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
+                <div className="space-y-2 pr-1">
                   {availableVouchers.map((item) => {
                     const key = String(item.customer_voucher_id ?? item.id)
                     const voucher = item.voucher
@@ -10927,7 +10935,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-4">
+            <div className="flex shrink-0 items-center justify-end gap-2 border-t border-gray-200 bg-gray-50 px-5 py-4">
               <button
                 type="button"
                 className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700"
@@ -10953,9 +10961,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {/* Checkout Success Modal with QR Code */}
       {checkoutResult && (
-        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
-          <div className={`w-full ${checkoutResultHasCashChange ? 'max-w-4xl' : 'max-w-lg'} rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden`}>
-            <div className="bg-gradient-to-r from-green-600 to-green-700 px-6 py-5 flex items-center justify-between">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
+          <div className={`relative mx-auto flex w-full max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden ${checkoutResultHasCashChange ? 'max-w-4xl' : 'max-w-lg'} rounded-2xl border-2 border-gray-100 bg-white shadow-2xl`}>
+            <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -10980,7 +10988,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </svg>
               </button>
             </div>
-            <div className={checkoutResultHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}>
+            <div className={`min-h-0 flex-1 overflow-y-auto ${checkoutResultHasCashChange ? 'grid gap-6 p-6 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]' : 'p-6'}`}>
               {checkoutResultHasCashChange ? (
                 <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-5 shadow-inner">
                   <p className="text-sm font-bold uppercase tracking-wide text-emerald-800">Cash Summary</p>
@@ -11077,16 +11085,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 </div>
               )}
+              </div>
             </div>
           </div>
-        </div>
         </div>
       )}
 
       {/* QR Code Fullscreen Modal */}
       {qrCodeFullscreen && checkoutResult?.receipt_public_url && (
         <div 
-          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/90 backdrop-blur-sm p-4"
           onClick={() => setQrCodeFullscreen(false)}
         >
           <div className="relative">
@@ -11114,9 +11122,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {/* Checkout Error Modal */}
       {checkoutError && (
-        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center bg-black/50 backdrop-blur-sm p-4`}>
-          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl border-2 border-gray-100 overflow-hidden">
-            <div className="bg-gradient-to-r from-red-600 to-red-700 px-6 py-5">
+        <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
+          <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
+            <div className="shrink-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5">
               <h4 className="text-xl font-bold text-white flex items-center gap-2">
                 <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -11124,7 +11132,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 Checkout Failed
               </h4>
             </div>
-            <div className="p-6 space-y-4">
+            <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4">
               <p className="text-gray-700">{checkoutError}</p>
               <button
                 onClick={() => {

@@ -174,14 +174,14 @@ export default function CustomerCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
           if (!submitting) onClose()
         }}
       />
-      <div className="relative mx-auto flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-lg">
+      <div className="relative mx-auto flex max-h-[min(90dvh,calc(100vh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-lg bg-white shadow-lg">
         <div className="flex flex-shrink-0 items-center justify-between border-b border-gray-300 px-5 py-4">
           <h2 className="text-lg font-semibold">{t('customer.createTitle')}</h2>
           <button

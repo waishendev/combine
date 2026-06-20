@@ -4,6 +4,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
@@ -574,90 +575,87 @@ export default function SalesChannelReportPage({
 
   return (
     <div className="space-y-6">
-      {isFilterOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setIsFilterOpen(false)} />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Filter</h2>
-              <button type="button" onClick={() => setIsFilterOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none" aria-label="Close">
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div className="p-5 grid gap-4 sm:grid-cols-2">
-              {showDateInputsInFilterModal ? (
-                <>
-                  <input
-                    type="date"
-                    value={inputs.dateFrom}
-                    onChange={(e) => setInputs((p) => ({ ...p, dateFrom: e.target.value }))}
-                    className="h-10 rounded border border-slate-200 px-3 text-sm"
-                  />
-                  <input
-                    type="date"
-                    value={inputs.dateTo}
-                    onChange={(e) => setInputs((p) => ({ ...p, dateTo: e.target.value }))}
-                    className="h-10 rounded border border-slate-200 px-3 text-sm"
-                  />
-                </>
-              ) : null}
-              <select
-                value={inputs.channel}
-                onChange={(e) => setInputs((p) => ({ ...p, channel: e.target.value }))}
-                className="h-10 rounded border border-slate-200 px-3 text-sm"
-              >
-                <option value="all">All Channels</option>
-                <option value="online">Online</option>
-                <option value="offline">Offline</option>
-              </select>
-              <select
-                value={inputs.paymentMethod}
-                onChange={(e) => setInputs((p) => ({ ...p, paymentMethod: e.target.value }))}
-                className="h-10 rounded border border-slate-200 px-3 text-sm"
-              >
-                <option value="all">All Payment Methods</option>
-                <option value="cash">Cash</option>
-                <option value="card">Card</option>
-                <option value="online_banking">Online Banking</option>
-              </select>
-              {mode === 'ecommerce' ? (
-                <select
-                  value={inputs.status}
-                  onChange={(e) => setInputs((p) => ({ ...p, status: e.target.value }))}
-                  className="h-10 rounded border border-slate-200 px-3 text-sm sm:col-span-2"
-                >
-                  <option value="all">All Statuses</option>
-                  <option value="paid">Paid</option>
-                  <option value="packed">Packed</option>
-                  <option value="shipped">Shipped</option>
-                  <option value="completed">Completed</option>
-                </select>
-              ) : (
-                <select
-                  value={inputs.type}
-                  onChange={(e) => setInputs((p) => ({ ...p, type: e.target.value }))}
-                  className="h-10 rounded border border-slate-200 px-3 text-sm sm:col-span-2"
-                >
-                  <option value="all">All Types</option>
-                  <option value="deposit">Deposit</option>
-                  <option value="final_settlement">Final Settlement</option>
-                  <option value="addon">Add-on</option>
-                  <option value="package_purchase">Package Purchase</option>
-                  <option value="booking_product">Booking Product</option>
-                </select>
-              )}
-            </div>
-            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
-              <button type="button" onClick={handleReset} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200">
+      {isFilterOpen ? (
+        <CrmFilterModalShell
+          title="Filter"
+          onClose={() => setIsFilterOpen(false)}
+          closeLabel="Close"
+          footer={(
+            <>
+              <button type="button" onClick={handleReset} className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-200">
                 Reset
               </button>
-              <button type="button" onClick={handleApply} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700">
+              <button type="button" onClick={handleApply} className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
                 Apply Filter
               </button>
-            </div>
+            </>
+          )}
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            {showDateInputsInFilterModal ? (
+              <>
+                <input
+                  type="date"
+                  value={inputs.dateFrom}
+                  onChange={(e) => setInputs((p) => ({ ...p, dateFrom: e.target.value }))}
+                  className="h-10 rounded border border-slate-200 px-3 text-sm"
+                />
+                <input
+                  type="date"
+                  value={inputs.dateTo}
+                  onChange={(e) => setInputs((p) => ({ ...p, dateTo: e.target.value }))}
+                  className="h-10 rounded border border-slate-200 px-3 text-sm"
+                />
+              </>
+            ) : null}
+            <select
+              value={inputs.channel}
+              onChange={(e) => setInputs((p) => ({ ...p, channel: e.target.value }))}
+              className="h-10 rounded border border-slate-200 px-3 text-sm"
+            >
+              <option value="all">All Channels</option>
+              <option value="online">Online</option>
+              <option value="offline">Offline</option>
+            </select>
+            <select
+              value={inputs.paymentMethod}
+              onChange={(e) => setInputs((p) => ({ ...p, paymentMethod: e.target.value }))}
+              className="h-10 rounded border border-slate-200 px-3 text-sm"
+            >
+              <option value="all">All Payment Methods</option>
+              <option value="cash">Cash</option>
+              <option value="card">Card</option>
+              <option value="online_banking">Online Banking</option>
+            </select>
+            {mode === 'ecommerce' ? (
+              <select
+                value={inputs.status}
+                onChange={(e) => setInputs((p) => ({ ...p, status: e.target.value }))}
+                className="h-10 rounded border border-slate-200 px-3 text-sm sm:col-span-2"
+              >
+                <option value="all">All Statuses</option>
+                <option value="paid">Paid</option>
+                <option value="packed">Packed</option>
+                <option value="shipped">Shipped</option>
+                <option value="completed">Completed</option>
+              </select>
+            ) : (
+              <select
+                value={inputs.type}
+                onChange={(e) => setInputs((p) => ({ ...p, type: e.target.value }))}
+                className="h-10 rounded border border-slate-200 px-3 text-sm sm:col-span-2"
+              >
+                <option value="all">All Types</option>
+                <option value="deposit">Deposit</option>
+                <option value="final_settlement">Final Settlement</option>
+                <option value="addon">Add-on</option>
+                <option value="package_purchase">Package Purchase</option>
+                <option value="booking_product">Booking Product</option>
+              </select>
+            )}
           </div>
-        </div>
-      )}
+        </CrmFilterModalShell>
+      ) : null}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
         <button type="button" onClick={() => setIsFilterOpen(true)} className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded text-sm flex items-center gap-2">

@@ -64,9 +64,9 @@ export function ReportDetailDrawer({
   if (!open) return null
 
   return (
-    <div className={`fixed inset-0 ${zIndexClassName} flex justify-end bg-slate-950/50`} role="dialog" aria-modal="true">
+    <div className={`fixed inset-0 ${zIndexClassName} flex h-[100dvh] max-h-[100dvh] justify-end bg-slate-950/50`} role="dialog" aria-modal="true">
       <button type="button" className="absolute inset-0 cursor-default" aria-label="Close details" onClick={onClose} />
-      <div className={`relative flex h-full w-full ${maxWidthClassName} flex-col overflow-hidden bg-white shadow-2xl`}>
+      <div className={`relative flex min-h-0 w-full ${maxWidthClassName} flex-1 flex-col overflow-hidden bg-white shadow-2xl`}>
         <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-6 py-4">
           <div className="min-w-0">
             <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Details</p>

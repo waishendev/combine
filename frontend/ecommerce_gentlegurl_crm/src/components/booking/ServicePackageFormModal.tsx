@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from 'react'
 
 import type { BookingServiceOption, ServicePackage } from './servicePackageTypes'
 import BookingPackageItemServicePicker from './BookingPackageItemServicePicker'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 
 type FormItem = {
@@ -293,31 +294,34 @@ export default function ServicePackageFormModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting) onClose()
-        }}
-      />
-      <div className="relative mx-auto w-full max-w-3xl rounded-lg bg-white shadow-lg max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-300 bg-white px-5 py-4">
-          <h2 className="text-lg font-semibold">
-            {mode === 'edit' ? 'Edit Service Package' : 'Create Service Package'}
-          </h2>
+    <CrmFormModalShell
+      title={mode === 'edit' ? 'Edit Service Package' : 'Create Service Package'}
+      size="lg"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
-            onClick={() => {
-              if (!submitting) onClose()
-            }}
-            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
-            aria-label={t('common.close')}
             type="button"
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            onClick={onClose}
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            {t('common.cancel')}
           </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4 p-5">
+          <button
+            type="submit"
+            form="service-package-form"
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+            disabled={!canSubmit}
+          >
+            {submitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Create'}
+          </button>
+        </>
+      }
+    >
+      <form id="service-package-form" onSubmit={handleSubmit} className="space-y-4 p-5">
           {(loading || loadingServices) && (
             <p className="text-sm text-gray-500">{t('common.loadingDetails')}</p>
           )}
@@ -448,27 +452,8 @@ export default function ServicePackageFormModal({
             ))}
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
-
-          <div className="flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
-            <button
-              type="button"
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-              onClick={onClose}
-              disabled={submitting}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
-              disabled={!canSubmit}
-            >
-              {submitting ? 'Saving...' : mode === 'edit' ? 'Save Changes' : 'Create'}
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+        {error && <p className="text-sm text-red-600">{error}</p>}
+      </form>
+    </CrmFormModalShell>
   )
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import CrmFormModalShell from '@/components/CrmFormModalShell'
+
 type VoucherDetailsModalProps = {
   voucherId: number
   title?: string | null
@@ -102,28 +104,13 @@ export default function VoucherDetailsModal({
   }, [voucher])
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => onClose()}
-      />
-      <div className="relative w-full max-w-2xl mx-auto bg-white rounded-lg shadow-lg">
-        <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-          <div>
-            <h2 className="text-lg font-semibold">Voucher Details</h2>
-            <p className="text-xs text-gray-500">{voucher?.code ?? 'Voucher'}</p>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label="Close"
-            type="button"
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-
-        <div className="px-5 py-4 space-y-4">
+    <CrmFormModalShell
+      title="Voucher Details"
+      size="lg"
+      onClose={onClose}
+      closeLabel="Close"
+    >
+      <div className="px-5 py-4 space-y-4">
           {loading ? (
             <p className="text-sm text-gray-500">Loading voucher details...</p>
           ) : error ? (
@@ -201,8 +188,7 @@ export default function VoucherDetailsModal({
           ) : (
             <p className="text-sm text-gray-500">No voucher details available.</p>
           )}
-        </div>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

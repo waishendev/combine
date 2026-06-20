@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+
 import TableEmptyState from '../TableEmptyState'
 import PaginationControls from '../PaginationControls'
 
@@ -241,109 +243,11 @@ export default function BookingLeaveLogsPage() {
   return (
     <div className="space-y-4">
       {isFilterModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/50" onClick={closeFilterModal} />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg">
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Filter</h2>
-              <button
-                onClick={closeFilterModal}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
-                type="button"
-              >
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-
-            <div className="p-5">
-              <form
-                id="booking-leave-logs-filters-form"
-                onSubmit={(e) => {
-                  e.preventDefault()
-                  setFilters(inputs)
-                  setPage(1)
-                  closeFilterModal()
-                }}
-                onReset={(e) => {
-                  e.preventDefault()
-                  setInputs({ ...emptyLeaveLogFilters })
-                  setFilters({ ...emptyLeaveLogFilters })
-                  setPage(1)
-                }}
-              >
-                <div className="space-y-4">
-                  <div>
-                    <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 mb-1">
-                      Staff
-                    </label>
-                    <select
-                      id="staffId"
-                      name="staffId"
-                      value={inputs.staffId}
-                      onChange={(e) => setInputs((p) => ({ ...p, staffId: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">All</option>
-                      {staffOptions.map((row) => (
-                        <option key={row.staff_id} value={row.staff_id}>
-                          {row.staff_name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label htmlFor="actionType" className="block text-sm font-medium text-gray-700 mb-1">
-                      Action Type
-                    </label>
-                    <select
-                      id="actionType"
-                      name="actionType"
-                      value={inputs.actionType}
-                      onChange={(e) => setInputs((p) => ({ ...p, actionType: e.target.value as ActionType | '' }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">All</option>
-                      {Object.entries(ACTION_LABEL).map(([value, label]) => (
-                        <option key={value} value={value}>
-                          {label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">
-                        From
-                      </label>
-                      <input
-                        id="fromDate"
-                        type="date"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                        value={inputs.fromDate}
-                        onChange={(e) => setInputs((p) => ({ ...p, fromDate: e.target.value }))}
-                      />
-                    </div>
-                    <div>
-                      <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">
-                        To
-                      </label>
-                      <input
-                        id="toDate"
-                        type="date"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
-                        value={inputs.toDate}
-                        onChange={(e) => setInputs((p) => ({ ...p, toDate: e.target.value }))}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </form>
-            </div>
-
-            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
+        <CrmFilterModalShell
+          title="Filter"
+          onClose={closeFilterModal}
+          footer={
+            <>
               <button
                 type="reset"
                 form="booking-leave-logs-filters-form"
@@ -358,9 +262,94 @@ export default function BookingLeaveLogsPage() {
               >
                 Apply filter
               </button>
+            </>
+          }
+        >
+          <form
+            id="booking-leave-logs-filters-form"
+            onSubmit={(e) => {
+              e.preventDefault()
+              setFilters(inputs)
+              setPage(1)
+              closeFilterModal()
+            }}
+            onReset={(e) => {
+              e.preventDefault()
+              setInputs({ ...emptyLeaveLogFilters })
+              setFilters({ ...emptyLeaveLogFilters })
+              setPage(1)
+            }}
+          >
+            <div className="space-y-4">
+              <div>
+                <label htmlFor="staffId" className="block text-sm font-medium text-gray-700 mb-1">
+                  Staff
+                </label>
+                <select
+                  id="staffId"
+                  name="staffId"
+                  value={inputs.staffId}
+                  onChange={(e) => setInputs((p) => ({ ...p, staffId: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">All</option>
+                  {staffOptions.map((row) => (
+                    <option key={row.staff_id} value={row.staff_id}>
+                      {row.staff_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label htmlFor="actionType" className="block text-sm font-medium text-gray-700 mb-1">
+                  Action Type
+                </label>
+                <select
+                  id="actionType"
+                  name="actionType"
+                  value={inputs.actionType}
+                  onChange={(e) => setInputs((p) => ({ ...p, actionType: e.target.value as ActionType | '' }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                >
+                  <option value="">All</option>
+                  {Object.entries(ACTION_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 mb-1">
+                    From
+                  </label>
+                  <input
+                    id="fromDate"
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    value={inputs.fromDate}
+                    onChange={(e) => setInputs((p) => ({ ...p, fromDate: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 mb-1">
+                    To
+                  </label>
+                  <input
+                    id="toDate"
+                    type="date"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                    value={inputs.toDate}
+                    onChange={(e) => setInputs((p) => ({ ...p, toDate: e.target.value }))}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </form>
+        </CrmFilterModalShell>
       )}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
@@ -477,14 +466,14 @@ export default function BookingLeaveLogsPage() {
 
       {detailsRow && (
         <div
-          className="fixed inset-0 z-50 flex bg-black/40 px-0 md:bg-transparent md:px-0"
+          className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40 px-0 md:bg-transparent md:px-0"
           role="dialog"
           aria-modal="true"
           onClick={() => setDetailsRow(null)}
         >
-          <div className="hidden flex-1 bg-black/40 md:block" />
+          <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
           <aside
-            className="mr-auto flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl"
+            className="mr-auto flex h-full min-h-0 w-full max-w-2xl flex-col bg-white shadow-2xl"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
@@ -498,7 +487,7 @@ export default function BookingLeaveLogsPage() {
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
               <div className="space-y-5">
                 <section className="rounded border border-gray-200">
                   <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">

@@ -8,6 +8,7 @@ import {
   formatBookingCategorySubmitError,
   type BookingServiceCategoryApiItem,
 } from './bookingServiceCategoryUtils'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '@/components/mediaAccept'
 import { BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE } from './bookingServiceUtils'
@@ -207,24 +208,35 @@ export default function BookingServiceCategoryEditModal({
   const disableForm = loading || submitting
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <form
-        onSubmit={handleSubmit}
-        className="mx-4 w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-lg"
-      >
-        <div className="mb-4 flex items-start justify-between border-b border-gray-200 pb-4">
-          <h2 className="text-lg font-semibold">Edit Category</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            aria-label={t('common.close')}
-            disabled={submitting}
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
-
+    <CrmFormModalShell
+      title="Edit Category"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        !loading ? (
+          <>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              disabled={submitting}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="submit"
+              form="booking-service-category-edit-form"
+              className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+              disabled={disableForm}
+            >
+              {submitting ? t('common.saving') : 'Save changes'}
+            </button>
+          </>
+        ) : undefined
+      }
+    >
+      <form id="booking-service-category-edit-form" onSubmit={handleSubmit} className="px-5 py-4">
         {loading ? (
           <div className="flex flex-col gap-6 py-6 lg:flex-row lg:items-start">
             <div className="w-full shrink-0 space-y-2 lg:w-[300px]">
@@ -378,27 +390,9 @@ export default function BookingServiceCategoryEditModal({
                 {error}
               </div>
             )}
-
-            <div className="mt-6 flex items-center justify-end gap-2 border-t border-gray-200 pt-4">
-              <button
-                type="button"
-                onClick={onClose}
-                className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                disabled={submitting}
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                type="submit"
-                className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-                disabled={disableForm}
-              >
-                {submitting ? t('common.saving') : 'Save changes'}
-              </button>
-            </div>
           </>
         )}
       </form>
-    </div>
+    </CrmFormModalShell>
   )
 }

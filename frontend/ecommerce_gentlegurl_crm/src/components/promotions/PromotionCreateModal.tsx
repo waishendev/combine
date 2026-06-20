@@ -13,6 +13,7 @@ import {
   type PromotionRowData,
   validatePromotionForm,
 } from './promotionUtils'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 
 interface PromotionCreateModalProps {
@@ -113,32 +114,38 @@ export default function PromotionCreateModal({
     }
   }
 
+  const closeDisabled = submitting || loadingProducts
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting && !loadingProducts) onClose()
-        }}
-      />
-      <div className="relative mx-4 max-h-[90vh] w-full max-w-6xl overflow-y-auto rounded-lg bg-white shadow-lg">
-        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-300 bg-white px-5 py-4">
-          <h2 className="text-lg font-semibold text-gray-900">
-            Create promotion
-          </h2>
+    <CrmFormModalShell
+      title="Create promotion"
+      onClose={onClose}
+      closeDisabled={closeDisabled}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
             type="button"
+            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
             onClick={() => {
-              if (!submitting && !loadingProducts) onClose()
+              if (!closeDisabled) onClose()
             }}
-            className="text-2xl leading-none text-gray-500 hover:text-gray-700"
-            aria-label={t('common.close')}
+            disabled={closeDisabled}
           >
-            <i className="fa-solid fa-xmark" />
+            {t('common.cancel')}
           </button>
-        </div>
-
-        <form onSubmit={(e) => void handleSubmit(e)} className="p-5">
+          <button
+            type="submit"
+            form="promotion-create-form"
+            disabled={closeDisabled}
+            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {submitting ? t('common.creating') : t('common.create')}
+          </button>
+        </>
+      }
+    >
+        <form id="promotion-create-form" onSubmit={(e) => void handleSubmit(e)} className="p-5">
           {error ? (
             <div
               className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
@@ -160,27 +167,7 @@ export default function PromotionCreateModal({
             />
           )}
 
-          <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
-            <button
-              type="button"
-              className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-              onClick={() => {
-                if (!submitting && !loadingProducts) onClose()
-              }}
-              disabled={submitting || loadingProducts}
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="submit"
-              disabled={submitting || loadingProducts}
-              className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-            >
-              {submitting ? t('common.creating') : t('common.create')}
-            </button>
-          </div>
         </form>
-      </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

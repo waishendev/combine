@@ -5,6 +5,7 @@ import { ChangeEvent, useEffect, useRef, useState } from 'react'
 import BookingProductCategoriesPicker from './BookingProductCategoriesPicker'
 import BookingProductQuestionsBuilder from './BookingProductQuestionsBuilder'
 import type { BookingProductCategory, BookingProductQuestion, BookingProductRowData } from './bookingProductTypes'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 import { compressImage } from '@/lib/compressImage'
 
@@ -232,34 +233,43 @@ export default function BookingProductUpsertModal({
   if (!show) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting) close()
-        }}
-      />
-      <div className="relative flex max-h-[100dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-2xl bg-slate-50 shadow-xl sm:max-h-[92vh] sm:rounded-2xl">
-        <div className="sticky top-0 z-10 flex shrink-0 items-center justify-between border-b border-gray-200 bg-white px-4 py-4 sm:px-6">
-          <div>
-            <h2 className="text-lg font-semibold text-gray-900">
-              {isEditing ? 'Edit Booking Product' : 'Create Booking Product'}
-            </h2>
-            <p className="mt-0.5 text-sm text-gray-500">Product details, pricing, and optional add-on questions.</p>
-          </div>
+    <CrmFormModalShell
+      size="lg"
+      title={
+        <>
+          {isEditing ? 'Edit Booking Product' : 'Create Booking Product'}
+          <span className="mt-0.5 block text-sm font-normal text-gray-500">
+            Product details, pricing, and optional add-on questions.
+          </span>
+        </>
+      }
+      onClose={close}
+      closeDisabled={submitting}
+      closeLabel="Close modal"
+      footer={
+        <>
           <button
+            type="button"
             onClick={() => {
               if (!submitting) close()
             }}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label="Close modal"
-            type="button"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            Cancel
           </button>
-        </div>
-
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4 pb-6 sm:p-6">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
+            disabled={submitting}
+          >
+            {submitting ? 'Saving…' : isEditing ? 'Update product' : 'Create product'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-5 bg-slate-50 p-4 pb-6 sm:p-6">
           {error ? (
             <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
               {error}
@@ -452,29 +462,7 @@ export default function BookingProductUpsertModal({
               disabled={submitting}
             />
           </section>
-        </div>
-
-        <div className="sticky bottom-0 flex shrink-0 items-center justify-end gap-2 border-t border-gray-200 bg-white px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6 sm:py-4 sm:pb-4">
-          <button
-            type="button"
-            onClick={() => {
-              if (!submitting) close()
-            }}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-            disabled={submitting}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSubmit}
-            className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
-            disabled={submitting}
-          >
-            {submitting ? 'Saving…' : isEditing ? 'Update product' : 'Create product'}
-          </button>
-        </div>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

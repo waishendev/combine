@@ -5,6 +5,8 @@ import { useEffect, useMemo, useState } from 'react'
 import PaginationControls from '@/components/PaginationControls'
 import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
 type LogAction = 'FREEZE' | 'REOPEN' | 'OVERRIDE' | 'RECALCULATE'
@@ -217,121 +219,111 @@ export default function CommissionLogsPage() {
   return (
     <div className="space-y-6 p-6">
       {isFilterOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setIsFilterOpen(false)} />
-          <div className="relative w-full max-w-3xl mx-auto bg-white rounded-lg shadow-lg" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Filter Commission Logs</h2>
-              <button type="button" onClick={() => setIsFilterOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none" aria-label="Close">
-                <i className="fa-solid fa-xmark" />
+        <CrmFilterModalShell
+          title="Filter Commission Logs"
+          size="lg"
+          onClose={() => setIsFilterOpen(false)}
+          footer={
+            <>
+              <button type="button" onClick={handleFilterReset} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200">
+                Reset
               </button>
+              <button type="submit" form="commission-logs-filter-form" className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={loading}>
+                Search
+              </button>
+            </>
+          }
+        >
+          <form id="commission-logs-filter-form" onSubmit={handleFilterSubmit}>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Type</label>
+                <select value={inputs.type} onChange={(event) => setInputs((prev) => ({ ...prev, type: event.target.value as FilterValues['type'] }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                  <option value="">All Types</option>
+                  <option value="BOOKING">BOOKING</option>
+                  <option value="ECOMMERCE">ECOMMERCE</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Staff</label>
+                <select value={inputs.staff_id} onChange={(event) => setInputs((prev) => ({ ...prev, staff_id: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                  <option value="">All Staff</option>
+                  {staffs.map((staff) => (
+                    <option key={staff.id} value={staff.id}>{staff.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Action</label>
+                <select value={inputs.action} onChange={(event) => setInputs((prev) => ({ ...prev, action: event.target.value as FilterValues['action'] }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                  <option value="">All Actions</option>
+                  <option value="FREEZE">FREEZE</option>
+                  <option value="REOPEN">REOPEN</option>
+                  <option value="OVERRIDE">OVERRIDE</option>
+                  <option value="RECALCULATE">RECALCULATE</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Year</label>
+                <select value={inputs.year} onChange={(event) => setInputs((prev) => ({ ...prev, year: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                  <option value="">All Years</option>
+                  {years.map((year) => (
+                    <option key={year} value={year}>{year}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Month</label>
+                <select value={inputs.month} onChange={(event) => setInputs((prev) => ({ ...prev, month: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                  <option value="">All Months</option>
+                  {months.map((month) => (
+                    <option key={month} value={month}>{monthLabel(month)}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">Keyword / Remarks</label>
+                <input
+                  value={inputs.keyword}
+                  onChange={(event) => setInputs((prev) => ({ ...prev, keyword: event.target.value }))}
+                  placeholder="Search remarks / action / staff"
+                  className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">From</label>
+                <input type="date" value={inputs.from} onChange={(event) => setInputs((prev) => ({ ...prev, from: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-slate-500">To</label>
+                <input type="date" value={inputs.to} onChange={(event) => setInputs((prev) => ({ ...prev, to: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm" />
+              </div>
             </div>
-            <form onSubmit={handleFilterSubmit}>
-              <div className="p-5">
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">Type</label>
-                    <select value={inputs.type} onChange={(event) => setInputs((prev) => ({ ...prev, type: event.target.value as FilterValues['type'] }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                      <option value="">All Types</option>
-                      <option value="BOOKING">BOOKING</option>
-                      <option value="ECOMMERCE">ECOMMERCE</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">Staff</label>
-                    <select value={inputs.staff_id} onChange={(event) => setInputs((prev) => ({ ...prev, staff_id: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                      <option value="">All Staff</option>
-                      {staffs.map((staff) => (
-                        <option key={staff.id} value={staff.id}>{staff.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">Action</label>
-                    <select value={inputs.action} onChange={(event) => setInputs((prev) => ({ ...prev, action: event.target.value as FilterValues['action'] }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                      <option value="">All Actions</option>
-                      <option value="FREEZE">FREEZE</option>
-                      <option value="REOPEN">REOPEN</option>
-                      <option value="OVERRIDE">OVERRIDE</option>
-                      <option value="RECALCULATE">RECALCULATE</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">Year</label>
-                    <select value={inputs.year} onChange={(event) => setInputs((prev) => ({ ...prev, year: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                      <option value="">All Years</option>
-                      {years.map((year) => (
-                        <option key={year} value={year}>{year}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">Month</label>
-                    <select value={inputs.month} onChange={(event) => setInputs((prev) => ({ ...prev, month: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                      <option value="">All Months</option>
-                      {months.map((month) => (
-                        <option key={month} value={month}>{monthLabel(month)}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">Keyword / Remarks</label>
-                    <input
-                      value={inputs.keyword}
-                      onChange={(event) => setInputs((prev) => ({ ...prev, keyword: event.target.value }))}
-                      placeholder="Search remarks / action / staff"
-                      className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm"
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">From</label>
-                    <input type="date" value={inputs.from} onChange={(event) => setInputs((prev) => ({ ...prev, from: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs font-semibold text-slate-500">To</label>
-                    <input type="date" value={inputs.to} onChange={(event) => setInputs((prev) => ({ ...prev, to: event.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm" />
-                  </div>
-                </div>
-              </div>
-              <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
-                <button type="button" onClick={handleFilterReset} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200">
-                  Reset
-                </button>
-                <button type="submit" className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={loading}>
-                  Search
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </CrmFilterModalShell>
       ) : null}
 
       {detailTarget ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setDetailTarget(null)} />
-          <div className="relative w-full max-w-4xl mx-auto bg-white rounded-lg shadow-lg" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Commission Log Details</h2>
-              <button type="button" onClick={() => setDetailTarget(null)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none" aria-label="Close">
-                <i className="fa-solid fa-xmark" />
-              </button>
+        <CrmFormModalShell
+          title="Commission Log Details"
+          size="lg"
+          onClose={() => setDetailTarget(null)}
+        >
+          <div className="grid gap-4 p-5 md:grid-cols-2">
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-2">Old Values</h3>
+              <pre className="max-h-80 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+                {JSON.stringify(detailTarget.old_values ?? {}, null, 2)}
+              </pre>
             </div>
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">Old Values</h3>
-                <pre className="max-h-80 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
-                  {JSON.stringify(detailTarget.old_values ?? {}, null, 2)}
-                </pre>
-              </div>
-              <div>
-                <h3 className="text-sm font-semibold text-slate-700 mb-2">New Values</h3>
-                <pre className="max-h-80 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
-                  {JSON.stringify(detailTarget.new_values ?? {}, null, 2)}
-                </pre>
-              </div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-2">New Values</h3>
+              <pre className="max-h-80 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100">
+                {JSON.stringify(detailTarget.new_values ?? {}, null, 2)}
+              </pre>
             </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       ) : null}
 
       <div className="flex items-center justify-between">

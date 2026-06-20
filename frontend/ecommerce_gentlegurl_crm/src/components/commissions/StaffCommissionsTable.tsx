@@ -7,6 +7,8 @@ import PaginationControls from '@/components/PaginationControls'
 import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
 import BookingCommissionOverrideModal from '@/components/booking/BookingCommissionOverrideModal'
+import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
 type CommissionStatus = 'OPEN' | 'FROZEN'
@@ -528,79 +530,127 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
       ) : null}
 
       {isFilterOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setIsFilterOpen(false)} />
-          <div className="relative w-full max-w-xl mx-auto bg-white rounded-lg shadow-lg" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-gray-300 px-5 py-4">
-              <h2 className="text-lg font-semibold">Filter</h2>
-              <button type="button" onClick={() => setIsFilterOpen(false)} className="text-gray-500 hover:text-gray-700 text-2xl leading-none" aria-label="Close">
-                <i className="fa-solid fa-xmark" />
-              </button>
-            </div>
-            <div className="p-5">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Staff</label>
-                  <select value={inputs.staff_id} onChange={(e) => setInputs((prev) => ({ ...prev, staff_id: e.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                    <option value="">All Staff</option>
-                    {staffs.map((staff) => (
-                      <option key={staff.id} value={staff.id}>{staff.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1">
-                  <label className="text-xs font-semibold text-slate-500">Year</label>
-                  <select value={inputs.year} onChange={(e) => setInputs((prev) => ({ ...prev, year: e.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                    <option value="">All Years</option>
-                    {years.map((year) => (
-                      <option key={year} value={year}>{year}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="flex flex-col gap-1 sm:col-span-2">
-                  <label className="text-xs font-semibold text-slate-500">Month</label>
-                  <select value={inputs.month} onChange={(e) => setInputs((prev) => ({ ...prev, month: e.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
-                    <option value="">All Months</option>
-                    {months.map((month) => (
-                      <option key={month} value={month}>{monthNames[month - 1]}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between border-t border-gray-300 px-5 py-3">
-              <button type="button" onClick={() => { setInputs({ staff_id: '', year: '', month: '' }); updateQuery({ staff_id: '', year: '', month: '', page: String(DEFAULT_PAGE), per_page: String(resolvedParams.perPage) }); setIsFilterOpen(false) }} className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200">
+        <CrmFilterModalShell
+          title="Filter"
+          onClose={() => setIsFilterOpen(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                onClick={() => {
+                  setInputs({ staff_id: '', year: '', month: '' })
+                  updateQuery({
+                    staff_id: '',
+                    year: '',
+                    month: '',
+                    page: String(DEFAULT_PAGE),
+                    per_page: String(resolvedParams.perPage),
+                  })
+                  setIsFilterOpen(false)
+                }}
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+              >
                 Reset
               </button>
-              <button type="button" onClick={() => { updateQuery({ staff_id: inputs.staff_id || '', year: inputs.year || '', month: inputs.month || '', page: String(DEFAULT_PAGE), per_page: String(resolvedParams.perPage) }); setIsFilterOpen(false) }} className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50" disabled={loading}>
+              <button
+                type="button"
+                onClick={() => {
+                  updateQuery({
+                    staff_id: inputs.staff_id || '',
+                    year: inputs.year || '',
+                    month: inputs.month || '',
+                    page: String(DEFAULT_PAGE),
+                    per_page: String(resolvedParams.perPage),
+                  })
+                  setIsFilterOpen(false)
+                }}
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+                disabled={loading}
+              >
                 Apply Filter
               </button>
+            </>
+          }
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Staff</label>
+              <select value={inputs.staff_id} onChange={(e) => setInputs((prev) => ({ ...prev, staff_id: e.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                <option value="">All Staff</option>
+                {staffs.map((staff) => (
+                  <option key={staff.id} value={staff.id}>{staff.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-slate-500">Year</label>
+              <select value={inputs.year} onChange={(e) => setInputs((prev) => ({ ...prev, year: e.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                <option value="">All Years</option>
+                {years.map((year) => (
+                  <option key={year} value={year}>{year}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1 sm:col-span-2">
+              <label className="text-xs font-semibold text-slate-500">Month</label>
+              <select value={inputs.month} onChange={(e) => setInputs((prev) => ({ ...prev, month: e.target.value }))} className="h-10 rounded border border-slate-200 px-3 text-sm text-slate-700 shadow-sm">
+                <option value="">All Months</option>
+                {months.map((month) => (
+                  <option key={month} value={month}>{monthNames[month - 1]}</option>
+                ))}
+              </select>
             </div>
           </div>
-        </div>
+        </CrmFilterModalShell>
       ) : null}
 
       {monthActionType ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setMonthActionType(null)} />
-          <div className="relative w-full max-w-md mx-auto bg-white rounded-lg shadow-lg p-5 space-y-4" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">
-                {monthActionType === 'freeze'
-                  ? 'Freeze Month'
-                  : monthActionType === 'reopen'
-                    ? 'Reopen Month'
-                    : 'Monthly Calculation'}
-              </h2>
+        <CrmFormModalShell
+          title={
+            monthActionType === 'freeze'
+              ? 'Freeze Month'
+              : monthActionType === 'reopen'
+                ? 'Reopen Month'
+                : 'Monthly Calculation'
+          }
+          onClose={() => setMonthActionType(null)}
+          closeDisabled={monthActionLoading}
+          footer={
+            <>
               <button
                 type="button"
                 onClick={() => setMonthActionType(null)}
-                className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Close"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+                disabled={monthActionLoading}
               >
-                <i className="fa-solid fa-xmark" />
+                Cancel
               </button>
-            </div>
+              <button
+                type="button"
+                onClick={() => void handleMonthAction()}
+                className={`px-4 py-2 text-sm text-white rounded-md disabled:opacity-50 ${
+                  monthActionType === 'freeze'
+                    ? 'bg-amber-600 hover:bg-amber-700'
+                    : monthActionType === 'reopen'
+                      ? 'bg-emerald-600 hover:bg-emerald-700'
+                      : 'bg-indigo-600 hover:bg-indigo-700'
+                }`}
+                disabled={monthActionLoading}
+              >
+                {monthActionLoading
+                  ? monthActionType === 'recalculate'
+                    ? 'Calculating...'
+                    : 'Processing...'
+                  : monthActionType === 'freeze'
+                    ? 'Freeze Month'
+                    : monthActionType === 'reopen'
+                      ? 'Reopen Month'
+                      : 'Recalculate'}
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-4 p-5">
             <p className="text-sm text-gray-600">
               {monthActionType === 'recalculate'
                 ? `Recalculate all ${type.toLowerCase()} commission rows for the selected month.`
@@ -632,40 +682,8 @@ export default function StaffCommissionsTable({ type, routeBasePath, countLabel 
                 </select>
               </div>
             </div>
-            <div className="flex justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setMonthActionType(null)}
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
-                disabled={monthActionLoading}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void handleMonthAction()}
-                className={`px-4 py-2 text-sm text-white rounded-md disabled:opacity-50 ${
-                  monthActionType === 'freeze'
-                    ? 'bg-amber-600 hover:bg-amber-700'
-                    : monthActionType === 'reopen'
-                      ? 'bg-emerald-600 hover:bg-emerald-700'
-                      : 'bg-indigo-600 hover:bg-indigo-700'
-                }`}
-                disabled={monthActionLoading}
-              >
-                {monthActionLoading
-                  ? monthActionType === 'recalculate'
-                    ? 'Calculating...'
-                    : 'Processing...'
-                  : monthActionType === 'freeze'
-                    ? 'Freeze Month'
-                    : monthActionType === 'reopen'
-                      ? 'Reopen Month'
-                      : 'Recalculate'}
-              </button>
-            </div>
           </div>
-        </div>
+        </CrmFormModalShell>
       ) : null}
 
       <div className="flex justify-between items-center mb-6 flex-wrap gap-2">

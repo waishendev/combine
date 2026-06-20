@@ -292,9 +292,9 @@ export default function DailyBookingPageClient() {
       </section>
 
       {selected ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/55 p-4">
-          <div className="max-h-[92vh] w-full max-w-5xl overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/55 p-4">
+          <div className="flex max-h-[min(90dvh,calc(100vh-2rem))] w-full max-w-5xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-blue-600">Daily Booking Details</p>
                 <h3 className="mt-1 text-lg font-bold text-slate-900">{selected.booking_code}</h3>
@@ -303,7 +303,7 @@ export default function DailyBookingPageClient() {
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
-            <div className="max-h-[calc(92vh-72px)] space-y-4 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
               <section className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
                 <p><span className="font-semibold text-slate-500">Customer</span><br />{selected.customer_display_name}</p>
                 <p><span className="font-semibold text-slate-500">Staff</span><br />{selected.staff?.name ?? '—'}</p>

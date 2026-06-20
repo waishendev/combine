@@ -57,14 +57,14 @@ export default function BookingLogDetailsDrawer({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex bg-black/40 px-0 md:bg-transparent md:px-0"
+      className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40 px-0 md:bg-transparent md:px-0"
       role="dialog"
       aria-modal="true"
       onClick={onClose}
     >
-      <div className="hidden flex-1 bg-black/40 md:block" />
+      <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
       <aside
-        className="ml-auto flex h-full w-full max-w-md flex-col bg-white shadow-2xl"
+        className="ml-auto flex h-full min-h-0 w-full max-w-md flex-col bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-gray-200 px-5 py-4">
@@ -80,7 +80,7 @@ export default function BookingLogDetailsDrawer({
             <i className="fa-solid fa-xmark" />
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           <div className="space-y-5">
             <section className="rounded border border-gray-200">
               <div className="border-b border-gray-200 bg-gray-50 px-4 py-3">

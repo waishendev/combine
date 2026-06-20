@@ -477,10 +477,10 @@ export default function OrderViewPanel({
 
   if (loading) {
     return (
-      <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`}>
-        <div className="hidden flex-1 bg-black/40 md:block" />
-        <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div className={`fixed inset-0 ${zIndexClassName} flex h-[100dvh] max-h-[100dvh] bg-black/40`}>
+        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
+        <aside className="ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
             <h3 className="text-sm font-semibold text-slate-900">Order Details</h3>
             <button
               type="button"
@@ -491,7 +491,7 @@ export default function OrderViewPanel({
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="py-8 text-center text-sm text-slate-500">Loading...</div>
           </div>
         </aside>
@@ -501,10 +501,10 @@ export default function OrderViewPanel({
 
   if (error || !order) {
     return (
-      <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`}>
-        <div className="hidden flex-1 bg-black/40 md:block" />
-        <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div className={`fixed inset-0 ${zIndexClassName} flex h-[100dvh] max-h-[100dvh] bg-black/40`}>
+        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
+        <aside className="ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
             <h3 className="text-sm font-semibold text-slate-900">Order Details</h3>
             <button
               type="button"
@@ -515,7 +515,7 @@ export default function OrderViewPanel({
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="py-8 text-center text-sm text-red-600">{error || 'Order not found'}</div>
           </div>
         </aside>
@@ -589,13 +589,13 @@ export default function OrderViewPanel({
   })()
   return (
     <>
-      <div className={`fixed inset-0 ${zIndexClassName} flex bg-black/40`} role="dialog" aria-modal="true" onClick={onClose}>
-        <div className="hidden flex-1 bg-black/40 md:block" />
+      <div className={`fixed inset-0 ${zIndexClassName} flex h-[100dvh] max-h-[100dvh] bg-black/40`} role="dialog" aria-modal="true" onClick={onClose}>
+        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
         <aside
-          className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl"
+          className="relative ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
             <div>
               <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-lg font-semibold text-slate-900">{isBookingOrder ? 'Booking Order Details' : 'Order Details'}</h3>
@@ -621,7 +621,7 @@ export default function OrderViewPanel({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4 pb-32 md:pb-24">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="space-y-5">
 
               {/* Order Items */}
@@ -1219,7 +1219,7 @@ export default function OrderViewPanel({
           </div>
 
           {/* Fixed Bottom Action Buttons */}
-          <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg z-10 max-h-32 overflow-y-auto">
+          <div className="shrink-0 border-t border-slate-200 bg-white px-5 py-4 shadow-lg">
             <div className="flex flex-wrap gap-2">
               {completeSuccess && (
                 <div className="w-full rounded-md border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700" role="status">
@@ -1304,9 +1304,9 @@ export default function OrderViewPanel({
       </div>
 
       {viewingBookingDetail && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 px-4" role="dialog" aria-modal="true" onClick={() => setViewingBookingDetail(null)}>
-          <div className="max-h-[90vh] w-full max-w-3xl overflow-y-auto rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/50 p-4" role="dialog" aria-modal="true" onClick={() => setViewingBookingDetail(null)}>
+          <div className="flex max-h-[min(90dvh,calc(100vh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
                 <h3 className="text-lg font-semibold text-slate-900">Booking Details</h3>
                 <p className="text-sm text-slate-500">{viewingBookingDetail.booking_code || `Booking #${viewingBookingDetail.id}`}</p>
@@ -1321,7 +1321,7 @@ export default function OrderViewPanel({
               </button>
             </div>
 
-            <div className="space-y-5 bg-slate-50 p-5 text-sm">
+            <div className="min-h-0 flex-1 overflow-y-auto space-y-5 bg-slate-50 p-5 text-sm">
               <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
                 <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                   <p className="font-semibold text-slate-900">Overview</p>

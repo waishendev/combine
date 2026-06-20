@@ -15,6 +15,9 @@ import {
 import { useI18n } from '@/lib/i18n'
 import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
+
+const bookingServiceEditFormId = 'booking-service-edit-form'
 
 interface BookingServiceEditModalProps {
   serviceId: number
@@ -583,18 +586,47 @@ export default function BookingServiceEditModal({
   const showRetrieveOverlay = loading
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={() => {
-          if (!submitting) onClose()
-        }}
-      />
-      <div
-        className={`relative w-full max-w-6xl mx-auto bg-white rounded-lg shadow-lg max-h-[90vh] overflow-y-auto ${
-          showRetrieveOverlay ? 'min-h-[min(22rem,78vh)]' : ''
-        }`}
-      >
+    <CrmFormModalShell
+      title={
+        <div className="min-w-0 pr-2">
+          <span>Edit Booking Service</span>
+          {showRetrieveOverlay ? (
+            <p className="mt-1 max-w-xl text-xs font-normal text-gray-500">Retrieving service — please wait.</p>
+          ) : loadedService ? (
+            <p className="mt-1 truncate text-xs font-normal text-gray-500" title={loadedService.name}>
+              {loadedService.name}
+            </p>
+          ) : null}
+        </div>
+      }
+      size="lg"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        <>
+          <button
+            type="button"
+            className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
+            onClick={() => {
+              if (!submitting) onClose()
+            }}
+            disabled={submitting}
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="submit"
+            form={bookingServiceEditFormId}
+            className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
+            disabled={disableForm}
+          >
+            {submitting ? t('common.saving') : 'Save Changes'}
+          </button>
+        </>
+      }
+    >
+      <div className={`relative ${showRetrieveOverlay ? 'min-h-[min(22rem,78vh)]' : ''}`}>
         {showRetrieveOverlay ? (
           <div
             className="absolute inset-0 z-[100] flex flex-col items-center justify-center gap-4 bg-white px-6 text-center"
@@ -614,34 +646,13 @@ export default function BookingServiceEditModal({
             </div>
           </div>
         ) : null}
-        <div
-          className={`relative flex items-start justify-between gap-3 border-b border-gray-300 bg-white px-5 py-4 ${
-            showRetrieveOverlay ? 'z-[110]' : 'z-[1]'
-          }`}
-        >
-          <div className="min-w-0 pr-2">
-            <h2 className="text-lg font-semibold">Edit Booking Service</h2>
-            {showRetrieveOverlay ? (
-              <p className="mt-1 max-w-xl text-xs text-gray-500">Retrieving service — please wait.</p>
-            ) : loadedService ? (
-              <p className="mt-1 truncate text-xs text-gray-500" title={loadedService.name}>
-                {loadedService.name}
-              </p>
-            ) : null}
-          </div>
-          <button
-            onClick={() => {
-              if (!submitting) onClose()
-            }}
-            className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
-            aria-label={t('common.close')}
-            type="button"
-          >
-            <i className="fa-solid fa-xmark" />
-          </button>
-        </div>
 
-        <form onSubmit={handleSubmit} className="relative z-[1] p-5" aria-busy={showRetrieveOverlay}>
+        <form
+          id={bookingServiceEditFormId}
+          onSubmit={handleSubmit}
+          className="relative z-[1] p-5"
+          aria-busy={showRetrieveOverlay}
+        >
           {showEditFields ? (
             <>
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
@@ -1010,30 +1021,10 @@ export default function BookingServiceEditModal({
                 {error}
               </div>
             )}
-
-            <div className="mt-6 flex items-center justify-end gap-3 border-t border-gray-200 pt-4">
-              <button
-                type="button"
-                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-100 disabled:opacity-50"
-                onClick={() => {
-                  if (!submitting) onClose()
-                }}
-                disabled={submitting}
-              >
-                {t('common.cancel')}
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
-                disabled={disableForm}
-              >
-                {submitting ? t('common.saving') : 'Save Changes'}
-              </button>
-            </div>
             </>
           ) : null}
         </form>
       </div>
-    </div>
+    </CrmFormModalShell>
   )
 }

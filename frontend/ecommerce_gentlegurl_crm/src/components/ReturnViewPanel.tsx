@@ -340,10 +340,10 @@ export default function ReturnViewPanel({
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-50 flex bg-black/40">
-        <div className="hidden flex-1 bg-black/40 md:block" />
-        <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40">
+        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
+        <aside className="ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
             <h3 className="text-sm font-semibold text-slate-900">Return Details</h3>
             <button
               type="button"
@@ -354,7 +354,7 @@ export default function ReturnViewPanel({
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="py-8 text-center text-sm text-slate-500">Loading...</div>
           </div>
         </aside>
@@ -364,10 +364,10 @@ export default function ReturnViewPanel({
 
   if (error || !detail) {
     return (
-      <div className="fixed inset-0 z-50 flex bg-black/40">
-        <div className="hidden flex-1 bg-black/40 md:block" />
-        <aside className="ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+      <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40">
+        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
+        <aside className="ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
             <h3 className="text-sm font-semibold text-slate-900">Return Details</h3>
             <button
               type="button"
@@ -378,7 +378,7 @@ export default function ReturnViewPanel({
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="py-8 text-center text-sm text-red-600">{error || 'Return not found'}</div>
           </div>
         </aside>
@@ -388,13 +388,13 @@ export default function ReturnViewPanel({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
-        <div className="hidden flex-1 bg-black/40 md:block" />
+      <div className="fixed inset-0 z-50 flex h-[100dvh] max-h-[100dvh] bg-black/40" role="dialog" aria-modal="true" onClick={onClose}>
+        <div className="hidden min-h-0 flex-1 bg-black/40 md:block" />
         <aside
-          className="relative ml-auto flex h-full w-full max-w-4xl flex-col bg-white shadow-2xl"
+          className="relative ml-auto flex h-full min-h-0 w-full max-w-4xl flex-col bg-white shadow-2xl"
           onClick={(event) => event.stopPropagation()}
         >
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
             <div>
               <h3 className="text-sm font-semibold text-slate-900">Return Details</h3>
               <p className="text-xs text-slate-500">Order No: {detail.order?.order_number ?? '—'}</p>
@@ -408,7 +408,7 @@ export default function ReturnViewPanel({
               <i className="fa-solid fa-xmark" />
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-5 py-4">
             <div className="space-y-5 text-sm">
               <div className="flex flex-wrap gap-5">
                 <div className="w-full rounded border border-slate-200 bg-white lg:flex-1">

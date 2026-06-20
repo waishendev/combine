@@ -3,6 +3,7 @@
 import { FormEvent, useState } from 'react'
 
 import { useI18n } from '@/lib/i18n'
+import CrmFormModalShell from '@/components/CrmFormModalShell'
 
 export type CommissionTierRow = {
   id: number
@@ -82,25 +83,33 @@ export default function BookingCommissionTierCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-      <form
-        onSubmit={handleSubmit}
-        className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-lg bg-white p-6 shadow-lg"
-      >
-        <div className="mb-4 flex items-start justify-between">
-          <h2 className="text-lg font-semibold">Create Commission Tier</h2>
+    <CrmFormModalShell
+      title="Create Commission Tier"
+      onClose={onClose}
+      closeDisabled={submitting}
+      closeLabel={t('common.close')}
+      footer={
+        <>
           <button
             type="button"
             onClick={onClose}
-            className="rounded p-1 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
-            aria-label={t('common.close')}
+            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
             disabled={submitting}
           >
-            <i className="fa-solid fa-xmark" />
+            {t('common.cancel')}
           </button>
-        </div>
-
-        <div className="space-y-4">
+          <button
+            type="submit"
+            form="commission-tier-create-form"
+            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+            disabled={submitting}
+          >
+            {submitting ? t('common.creating') : t('common.create')}
+          </button>
+        </>
+      }
+    >
+      <form id="commission-tier-create-form" onSubmit={handleSubmit} className="space-y-4 px-5 py-4">
           <div>
             <label className="mb-1 block text-sm font-medium text-gray-700">Min Sales</label>
             <input
@@ -123,33 +132,14 @@ export default function BookingCommissionTierCreateModal({
               placeholder="0"
             />
           </div>
-        </div>
 
         {error && (
-          <div className="mt-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
+          <div className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">
             {error}
           </div>
         )}
-
-        <div className="mt-6 flex items-center justify-end gap-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
-            disabled={submitting}
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            type="submit"
-            className="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-            disabled={submitting}
-          >
-            {submitting ? t('common.creating') : t('common.create')}
-          </button>
-        </div>
       </form>
-    </div>
+    </CrmFormModalShell>
   )
 }
 
