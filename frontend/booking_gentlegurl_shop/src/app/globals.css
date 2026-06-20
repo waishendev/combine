@@ -208,3 +208,61 @@ body {
     filter: drop-shadow(0 12px 20px rgba(var(--accent-rgb), 0.2));
   }
 }
+
+.gg-international-phone__country-selector {
+  position: relative;
+  display: flex;
+}
+
+.gg-international-phone__dropdown {
+  position: fixed;
+  z-index: 10000;
+  max-width: calc(100vw - 2rem);
+  border: 1px solid var(--react-international-phone-border-color, #d1d5db);
+  border-radius: 0.75rem;
+  background: var(--react-international-phone-dropdown-item-background-color, var(--input-bg, #ffffff));
+  box-shadow: 0 16px 40px -24px rgba(15, 23, 42, 0.45);
+  overflow: hidden;
+}
+
+.gg-international-phone__dropdown .react-international-phone-country-selector-dropdown {
+  position: static;
+  display: block !important;
+  width: 100%;
+  max-height: min(18rem, 50vh);
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+
+.gg-international-phone__search-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 0.5rem;
+  border-bottom: 1px solid var(--react-international-phone-border-color, #d1d5db);
+  background: var(--react-international-phone-dropdown-item-background-color, var(--input-bg, #ffffff));
+}
+
+.gg-international-phone__search {
+  width: 100%;
+  border: 1px solid var(--input-border, #d1d5db);
+  border-radius: 0.5rem;
+  background: var(--input-bg, #ffffff);
+  color: var(--foreground, #111827);
+  font-size: 0.875rem;
+  padding: 0.5rem 0.75rem;
+  outline: none;
+}
+
+.gg-international-phone__search:focus {
+  border-color: var(--accent-strong, var(--ring, #3b82f6));
+  box-shadow: 0 0 0 2px rgb(var(--accent-rgb, 59 130 246) / 0.15);
+}
+
+.gg-international-phone__no-results {
+  padding: 0.75rem;
+  color: var(--text-muted, #6b7280);
+  font-size: 0.875rem;
+}
