@@ -220,9 +220,20 @@ class MyPosSummaryReportController extends Controller
             ->get()
             ->mapWithKeys(fn (OrderItem $item) => [
                 (int) $item->id => [
+                    'line_type' => (string) ($item->line_type ?? ''),
                     'product_cn_name' => $item->displayCnName(),
                     'variant_name' => ($name = trim((string) ($item->variant_name_snapshot ?? $item->productVariant?->title ?? ''))) !== '' ? $name : null,
                     'variant_cn_name' => $item->displayVariantCnName(),
+                    'selected_booking_product_options' => collect($item->selected_booking_product_options ?? [])
+                        ->flatMap(fn ($question) => collect($question['options'] ?? [])->map(fn ($option) => [
+                            'id' => (string) ($option['id'] ?? ''),
+                            'label' => (string) ($option['label'] ?? 'Booking Product Option'),
+                            'cn_label' => $option['cn_label'] ?? null,
+                            'extra_price' => (float) ($option['extra_price'] ?? 0),
+                            'line_total_after_discount' => array_key_exists('line_total_after_discount', $option) ? (float) $option['line_total_after_discount'] : null,
+                            'original_unit_price_snapshot' => array_key_exists('original_unit_price_snapshot', $option) ? (float) $option['original_unit_price_snapshot'] : null,
+                        ]))
+                        ->values(),
                 ],
             ]);
 
@@ -234,18 +245,27 @@ class MyPosSummaryReportController extends Controller
                 ->whereIn('order_item_staff_splits.order_item_id', $orderItemIds)
                 ->selectRaw('order_item_staff_splits.order_item_id')
                 ->selectRaw("CASE WHEN order_items.line_type = 'booking_settlement' THEN 'booking_settlement' WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' WHEN order_items.line_type = 'booking_addon' THEN 'booking_addon' ELSE 'product' END AS item_type")
+                ->selectRaw('order_items.line_type AS order_line_type')
+                ->selectRaw('order_item_staff_splits.line_type AS split_line_type')
+                ->selectRaw('order_item_staff_splits.line_ref_id AS split_line_ref_id')
                 ->selectRaw('order_item_staff_splits.staff_id')
                 ->selectRaw('staffs.name AS staff_name')
                 ->selectRaw('order_item_staff_splits.share_percent')
+                ->selectRaw('order_item_staff_splits.amount_basis')
                 ->selectRaw('order_item_staff_splits.commission_rate_snapshot')
                 ->selectRaw("(COALESCE(order_item_staff_splits.amount_basis, $effectiveLineTotalExpr)) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_commission_amount")
                 ->orderBy('order_item_staff_splits.id')
                 ->get()
                 ->map(fn ($row) => [
-                    'split_key' => sprintf('%s:%d', (string) ($row->item_type ?? 'product'), (int) $row->order_item_id),
+                    'split_key' => (string) ($row->order_line_type ?? '') === 'booking_product' && (string) ($row->split_line_type ?? '') === 'booking_product_base'
+                        ? sprintf('booking_product_base:%d', (int) $row->order_item_id)
+                        : ((string) ($row->order_line_type ?? '') === 'booking_product' && (string) ($row->split_line_type ?? '') === 'booking_product_option'
+                            ? sprintf('booking_product_option:%d:%s', (int) $row->order_item_id, (string) ($row->split_line_ref_id ?? ''))
+                            : sprintf('%s:%d', (string) ($row->item_type ?? 'product'), (int) $row->order_item_id)),
                     'staff_id' => $row->staff_id ? (int) $row->staff_id : null,
                     'staff_name' => $row->staff_name,
                     'share_percent' => (int) $row->share_percent,
+                    'amount_basis' => $row->amount_basis !== null ? round((float) $row->amount_basis, 2) : null,
                     'commission_rate_snapshot' => (float) ($row->commission_rate_snapshot ?? 0),
                     'staff_commission_amount' => round((float) $row->staff_commission_amount, 2),
                 ])
@@ -311,36 +331,116 @@ class MyPosSummaryReportController extends Controller
         }
 
         $details = collect($paginator->items())
-            ->map(function ($row) use ($orderItemDisplay, $splitsGrouped) {
+            ->flatMap(function ($row) use ($orderItemDisplay, $splitsGrouped) {
                 $itemDisplay = ($row->item_type ?? 'product') !== 'service_package'
                     ? $orderItemDisplay->get((int) $row->order_item_id)
                     : null;
                 $variantName = trim((string) ($row->variant_name ?? ''));
                 $variantName = $variantName !== '' ? $variantName : ($itemDisplay['variant_name'] ?? null);
+                $baseRow = [
+                    'report_line_key' => sprintf('%s:%d', (string) ($row->item_type ?? 'product'), (int) $row->order_item_id),
+                    'order_no' => $row->order_no,
+                    'order_id' => (int) $row->order_id,
+                    'order_date' => $row->order_date,
+                    'created_by_user_id' => $row->created_by_user_id ? (int) $row->created_by_user_id : null,
+                    'created_by_name' => $row->created_by_name,
+                    'created_by_phone' => $row->created_by_phone,
+                    'created_by_email' => $row->created_by_email,
+                    'order_item_id' => (int) $row->order_item_id,
+                    'item_type' => $row->item_type,
+                    'product_name' => $row->product_name,
+                    'product_cn_name' => $itemDisplay['product_cn_name'] ?? null,
+                    'variant_name' => $variantName,
+                    'variant_cn_name' => $itemDisplay['variant_cn_name'] ?? null,
+                    'qty' => (int) $row->qty,
+                    'item_total_price' => round((float) $row->item_total_price, 2),
+                    'item_snapshot_total' => round((float) ($row->item_snapshot_total ?? 0), 2),
+                    'is_staff_free_applied' => (bool) $row->is_staff_free_applied,
+                    'has_staff_assignment' => (bool) $row->has_staff_assignment,
+                    'staff_splits' => ($splitsGrouped->get(sprintf('%s:%d', $row->item_type, (int) $row->order_item_id)) ?? collect())
+                        ->map(fn ($split) => collect($split)->except('split_key')->all())
+                        ->values(),
+                ];
 
-                return [
-                'order_no' => $row->order_no,
-                'order_id' => (int) $row->order_id,
-                'order_date' => $row->order_date,
-                'created_by_user_id' => $row->created_by_user_id ? (int) $row->created_by_user_id : null,
-                'created_by_name' => $row->created_by_name,
-                'created_by_phone' => $row->created_by_phone,
-                'created_by_email' => $row->created_by_email,
-                'order_item_id' => (int) $row->order_item_id,
-                'item_type' => $row->item_type,
-                'product_name' => $row->product_name,
-                'product_cn_name' => $itemDisplay['product_cn_name'] ?? null,
-                'variant_name' => $variantName,
-                'variant_cn_name' => $itemDisplay['variant_cn_name'] ?? null,
-                'qty' => (int) $row->qty,
-                'item_total_price' => round((float) $row->item_total_price, 2),
-                'item_snapshot_total' => round((float) ($row->item_snapshot_total ?? 0), 2),
-                'is_staff_free_applied' => (bool) $row->is_staff_free_applied,
-                'has_staff_assignment' => (bool) $row->has_staff_assignment,
-                'staff_splits' => ($splitsGrouped->get(sprintf('%s:%d', $row->item_type, (int) $row->order_item_id)) ?? collect())
-                    ->map(fn ($split) => collect($split)->except('split_key')->all())
-                    ->values(),
-            ];
+                if (($itemDisplay['line_type'] ?? '') !== 'booking_product') {
+                    return [$baseRow];
+                }
+
+                $options = collect($itemDisplay['selected_booking_product_options'] ?? [])
+                    ->filter(fn ($option) => (string) ($option['id'] ?? '') !== '')
+                    ->values();
+                if ($options->isEmpty()) {
+                    return [$baseRow];
+                }
+
+                $qty = max(1, (int) $row->qty);
+                $optionRows = $options->map(function ($option) use ($row, $baseRow, $splitsGrouped, $qty) {
+                    $optionId = (string) ($option['id'] ?? '');
+                    $optionEffective = round((float) ($option['line_total_after_discount'] ?? ((float) ($option['extra_price'] ?? 0) * $qty)), 2);
+                    $optionSnapshot = round((float) ($option['original_unit_price_snapshot'] ?? $option['extra_price'] ?? 0) * $qty, 2);
+                    $optionSplits = ($splitsGrouped->get(sprintf('booking_product_option:%d:%s', (int) $row->order_item_id, $optionId)) ?? collect());
+                    if ($optionSplits->isEmpty()) {
+                        $optionSplits = ($splitsGrouped->get(sprintf('booking_product_base:%d', (int) $row->order_item_id)) ?? collect());
+                    }
+                    if ($optionSplits->isEmpty()) {
+                        $optionSplits = ($splitsGrouped->get(sprintf('%s:%d', $row->item_type, (int) $row->order_item_id)) ?? collect());
+                    }
+
+                    $optionStaffSplits = $optionSplits->map(function ($split) use ($optionEffective) {
+                        $rate = (float) ($split['commission_rate_snapshot'] ?? 0);
+                        $rateFactor = $rate > 1 ? $rate / 100 : $rate;
+
+                        return collect($split)
+                            ->except('split_key', 'amount_basis')
+                            ->merge([
+                                'staff_commission_amount' => round($optionEffective * ((int) ($split['share_percent'] ?? 0) / 100) * $rateFactor, 2),
+                            ])
+                            ->all();
+                    })->values();
+
+                    return array_merge($baseRow, [
+                        'report_line_key' => sprintf('booking_product_option:%d:%s', (int) $row->order_item_id, $optionId),
+                        'item_type' => 'booking_product_option',
+                        'product_name' => (string) ($option['label'] ?? 'Booking Product Option'),
+                        'product_cn_name' => $option['cn_label'] ?? null,
+                        'variant_name' => null,
+                        'variant_cn_name' => null,
+                        'item_total_price' => $optionEffective,
+                        'item_snapshot_total' => $optionSnapshot,
+                        'has_staff_assignment' => $optionSplits->isNotEmpty(),
+                        'staff_splits' => $optionStaffSplits,
+                    ]);
+                });
+
+                $optionEffectiveTotal = (float) $optionRows->sum('item_total_price');
+                $optionSnapshotTotal = (float) $optionRows->sum('item_snapshot_total');
+                $baseSplits = ($splitsGrouped->get(sprintf('booking_product_base:%d', (int) $row->order_item_id)) ?? collect());
+                if ($baseSplits->isEmpty()) {
+                    $baseSplits = ($splitsGrouped->get(sprintf('%s:%d', $row->item_type, (int) $row->order_item_id)) ?? collect());
+                }
+                $baseAmountFromSplit = $baseSplits->pluck('amount_basis')->filter(fn ($amount) => $amount !== null)->max();
+                $bookingProductBaseAmount = round($baseAmountFromSplit !== null ? (float) $baseAmountFromSplit : max(0, (float) $row->item_total_price - $optionEffectiveTotal), 2);
+                $baseStaffSplits = $baseSplits->map(function ($split) use ($bookingProductBaseAmount) {
+                    $rate = (float) ($split['commission_rate_snapshot'] ?? 0);
+                    $rateFactor = $rate > 1 ? $rate / 100 : $rate;
+
+                    return collect($split)
+                        ->except('split_key', 'amount_basis')
+                        ->merge([
+                            'staff_commission_amount' => round($bookingProductBaseAmount * ((int) ($split['share_percent'] ?? 0) / 100) * $rateFactor, 2),
+                        ])
+                        ->all();
+                })->values();
+                $bookingProductBaseRow = array_merge($baseRow, [
+                    'report_line_key' => sprintf('booking_product_base:%d', (int) $row->order_item_id),
+                    'item_type' => 'booking_product_base',
+                    'item_total_price' => $bookingProductBaseAmount,
+                    'item_snapshot_total' => round(max(0, (float) ($row->item_snapshot_total ?? 0) - $optionSnapshotTotal), 2),
+                    'has_staff_assignment' => $baseSplits->isNotEmpty(),
+                    'staff_splits' => $baseStaffSplits,
+                ]);
+
+                return collect([$bookingProductBaseRow])->merge($optionRows)->all();
             })
             ->values();
 

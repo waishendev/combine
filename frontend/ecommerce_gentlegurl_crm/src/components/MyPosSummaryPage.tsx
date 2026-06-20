@@ -37,7 +37,7 @@ type StaffSplit = {
   staff_commission_amount: number
 }
 
-type ReportItemType = 'product' | 'service_package' | 'booking_settlement' | 'booking_deposit' | 'booking_addon'
+type ReportItemType = 'product' | 'service_package' | 'booking_settlement' | 'booking_deposit' | 'booking_addon' | 'booking_product_base' | 'booking_product_option'
 
 type DetailRow = {
   order_no: string | null
@@ -59,6 +59,7 @@ type DetailRow = {
   is_staff_free_applied: boolean
   has_staff_assignment: boolean
   staff_splits: StaffSplit[]
+  report_line_key?: string
 }
 
 
@@ -78,6 +79,8 @@ const getItemTypeLabel = (itemType?: ReportItemType) => {
   if (itemType === 'booking_settlement') return 'Final Settlement'
   if (itemType === 'booking_deposit') return 'Booking Deposit'
   if (itemType === 'booking_addon') return 'Booking Add-on'
+  if (itemType === 'booking_product_base') return 'Booking Product'
+  if (itemType === 'booking_product_option') return 'Booking Product Option'
   return 'Product'
 }
 
@@ -601,7 +604,7 @@ export default function MyPosSummaryPage({
               <TableEmptyState colSpan={10} />
             ) : (
               rows.map((row) => (
-                <Fragment key={`${row.item_type ?? 'product'}-${row.order_item_id}`}>
+                <Fragment key={row.report_line_key ?? `${row.item_type ?? 'product'}-${row.order_item_id}`}>
                   <tr>
                     <td className="px-4 py-2 border border-gray-200 font-medium">
                       {row.order_no ?? row.order_id}
@@ -836,7 +839,7 @@ export default function MyPosSummaryPage({
                         </thead>
                         <tbody>
                           {selectedRow.staff_splits.map((split, idx) => (
-                            <tr key={`${selectedRow.order_item_id}-${split.staff_id}-${idx}`} className="border-t border-gray-200 hover:bg-gray-50">
+                            <tr key={`${selectedRow.report_line_key ?? selectedRow.order_item_id}-${split.staff_id}-${idx}`} className="border-t border-gray-200 hover:bg-gray-50">
                               <td className="px-4 py-2">
                                 {split.staff_name ?? (split.staff_id ? `#${split.staff_id}` : '-')}
                               </td>
