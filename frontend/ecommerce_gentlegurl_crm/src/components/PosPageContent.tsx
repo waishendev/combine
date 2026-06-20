@@ -17,6 +17,7 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { normalizeInternationalPhone } from '@/lib/phone'
+import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
 import {
   printReceipt,
@@ -1338,6 +1339,7 @@ const getModalImageUrl = (value: unknown): string | null => {
 
 export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const { hasOpenShift, cashShiftLoading } = usePosCashShift()
+  const { isCompactLayout } = usePosWideLayout()
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
   const productsGridRef = useRef<HTMLDivElement | null>(null)
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
@@ -1525,6 +1527,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [checkoutConfirmationOpen, setCheckoutConfirmationOpen] = useState(false)
+  const [cartSheetOpen, setCartSheetOpen] = useState(false)
+  const [cartBarPulse, setCartBarPulse] = useState(false)
   const [bookingProductOptionModalOpen, setBookingProductOptionModalOpen] = useState(false)
   const [bookingProductDraft, setBookingProductDraft] = useState<BookingProductOption | null>(null)
   const [checkoutItemAssignments, setCheckoutItemAssignments] = useState<CheckoutItemAssignment[]>([])
@@ -1834,6 +1838,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const serviceQty = cartServiceItems.reduce((sum, item) => sum + item.qty, 0)
     return productQty + serviceQty
   }, [cartItems, cartServiceItems])
+  const cartFloatingCount = useMemo(() => {
+    const productQty = cartItems.reduce((sum, item) => sum + item.qty, 0)
+    const serviceQty = cartServiceItems.reduce((sum, item) => sum + item.qty, 0)
+    const packageQty = cartPackageItems.reduce((sum, item) => sum + item.qty, 0)
+    return productQty + serviceQty + packageQty + cartAppointmentSettlementItems.length
+  }, [cartAppointmentSettlementItems.length, cartItems, cartPackageItems, cartServiceItems])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   const bookingDepositTotal = Number(cart?.booking_deposit_total ?? 0)
@@ -4438,6 +4448,40 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     cartPackageItems.length > 0 ||
     cartAppointmentSettlementItems.length > 0
 
+  const cartActivitySignatureRef = useRef('')
+  const cartPulseReadyRef = useRef(false)
+  useEffect(() => {
+    if (!hasCartItems) {
+      setCartSheetOpen(false)
+      cartActivitySignatureRef.current = ''
+      cartPulseReadyRef.current = false
+      return
+    }
+
+    const signature = `${cartFloatingCount}:${cartTotal.toFixed(2)}`
+    if (!cartPulseReadyRef.current) {
+      cartPulseReadyRef.current = true
+      cartActivitySignatureRef.current = signature
+      return
+    }
+
+    if (cartActivitySignatureRef.current === signature) return
+
+    cartActivitySignatureRef.current = signature
+    setCartBarPulse(true)
+    const timer = window.setTimeout(() => setCartBarPulse(false), 550)
+    return () => window.clearTimeout(timer)
+  }, [cartFloatingCount, cartTotal, hasCartItems])
+
+  useEffect(() => {
+    if (!cartSheetOpen || typeof document === 'undefined') return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [cartSheetOpen])
+
   useEffect(() => {
     if (productSearchMode !== 'barcode') {
       setDebouncedSkuQuery('')
@@ -6138,7 +6182,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       </div>
 
       <div className="pos-split-layout grid min-w-0 grid-cols-1 gap-5">
-        <div className="pos-split-catalog min-w-0 space-y-5">
+        <div
+          className={[
+            'pos-split-catalog min-w-0 space-y-5',
+            isCompactLayout === true && hasCartItems && 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           {/* Hidden barcode scanner input for listening */}
           <input
             ref={scannerInputRef}
@@ -6663,15 +6714,41 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
 
 
-        <div className="pos-split-cart min-w-0 space-y-5">
+        <div
+          className={[
+            'pos-split-cart min-w-0 space-y-5',
+            isCompactLayout === true && 'fixed inset-x-0 bottom-0 z-[130] max-h-[92dvh] transition-transform duration-300 ease-out',
+            isCompactLayout === true && (cartSheetOpen ? 'translate-y-0 pointer-events-auto visible pos-cart-sheet-open' : 'translate-y-full pointer-events-none invisible'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
 
-            <div className="pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5">
+            <div
+              className={[
+                'pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5',
+                isCompactLayout === true && 'max-h-[92dvh] min-h-0 rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+            >
               <>
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
+            <div className="pos-cart-sheet-handle" aria-hidden="true" />
+            <h3 className="mb-4 flex flex-shrink-0 items-center gap-2 text-lg font-bold text-gray-900">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
               Shopping Cart
+              <button
+                type="button"
+                aria-label="Close cart"
+                onClick={() => setCartSheetOpen(false)}
+                className="pos-cart-sheet-close ml-auto inline-flex h-10 w-10 items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </h3>
             {hasCartItems ? (
               <div className="pos-split-cart-scroll mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
@@ -7377,6 +7454,61 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
         </div>
       </div>
+
+      {isCompactLayout === true &&
+        hasCartItems &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            {!cartSheetOpen ? (
+              <button
+                type="button"
+                aria-label="View cart details and checkout"
+                aria-expanded={cartSheetOpen}
+                onClick={() => setCartSheetOpen(true)}
+                className={[
+                  'fixed inset-x-3 z-[125] flex min-h-[4.25rem] touch-manipulation items-center justify-between gap-3 rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-white to-blue-50 px-4 py-3.5 shadow-[0_10px_30px_rgba(37,99,235,0.18)]',
+                  'bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))]',
+                  cartBarPulse ? 'animate-[pos-cart-bar-pulse_0.55s_ease]' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-blue-600 px-2 text-[13px] font-extrabold text-white shadow-sm">
+                    {cartFloatingCount}
+                  </span>
+                  <span className="flex min-w-0 flex-col items-start text-left">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                      {cartFloatingCount === 1 ? '1 item in cart' : `${cartFloatingCount} items in cart`}
+                    </span>
+                    <span className="text-sm font-bold text-gray-900">Shopping Cart</span>
+                  </span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-1.5 text-right">
+                  <span>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Total</span>
+                    <span className="text-lg font-extrabold tabular-nums text-orange-700">RM {cartTotal.toFixed(2)}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+                    View Details
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                </span>
+              </button>
+            ) : null}
+            {cartSheetOpen ? (
+              <div
+                className="fixed inset-0 z-[128] bg-slate-900/45 backdrop-blur-[2px]"
+                onClick={() => setCartSheetOpen(false)}
+                aria-hidden={false}
+              />
+            ) : null}
+          </>,
+          document.body,
+        )}
 
       {productSelectModalOpen && selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 overflow-y-auto">
@@ -10764,7 +10896,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {/* Bottom-right Toasts (commercial POS style) */}
       {toasts.length > 0 && (
-        <div className="fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3">
+        <div className={`fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3${isCompactLayout === true && hasCartItems ? ' !bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))]' : ''}`}>
           {toasts.map((toast) => {
             const styles =
               toast.kind === 'success'

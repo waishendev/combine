@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { createPortal } from 'react-dom'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
@@ -16,6 +17,7 @@ import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/com
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { normalizeInternationalPhone } from '@/lib/phone'
+import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
@@ -224,6 +226,7 @@ export default function PosAppointmentsWorkspace({
   )
   const showMsg = useCallback((text: string, kind: ToastKind = 'info') => pushToast(kind, text), [pushToast])
   const { hasOpenShift, cashShiftLoading, requireOpenShiftMessage } = usePosCashShift()
+  const { isCompactLayout } = usePosWideLayout()
   const cashShiftActionDisabled = cashShiftLoading || !hasOpenShift
   const cashShiftActionTitle = cashShiftActionDisabled ? requireOpenShiftMessage : undefined
 
@@ -310,6 +313,8 @@ export default function PosAppointmentsWorkspace({
   )
   const [appointmentDetail, setAppointmentDetail] = useState<PosAppointmentDetail | null>(null)
   const [appointmentDetailLoading, setAppointmentDetailLoading] = useState(false)
+  const [settlementSheetOpen, setSettlementSheetOpen] = useState(false)
+  const [settlementBarPulse, setSettlementBarPulse] = useState(false)
   const [appointmentPaymentMethod, setAppointmentPaymentMethod] = useState<'cash' | 'qrpay' | 'credit_card' | 'split'>('cash')
   const [appointmentSettlementPaymentAmounts, setAppointmentSettlementPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
   const [appointmentCheckoutConfirmationOpen, setAppointmentCheckoutConfirmationOpen] = useState(false)
@@ -2469,8 +2474,47 @@ export default function PosAppointmentsWorkspace({
       appointmentSettlementResult.cash_received > appointmentSettlementResult.paid_amount,
   )
 
+  const hasAppointmentSettlementTarget = appointmentDetailLoading || Boolean(appointmentDetail)
+  const settlementActivitySignatureRef = useRef('')
+  const settlementPulseReadyRef = useRef(false)
+
+  useEffect(() => {
+    if (!hasAppointmentSettlementTarget) {
+      setSettlementSheetOpen(false)
+      settlementActivitySignatureRef.current = ''
+      settlementPulseReadyRef.current = false
+      return
+    }
+
+    const signature = appointmentDetail
+      ? `${appointmentDetail.id}:${appointmentDueAfterDiscount.toFixed(2)}`
+      : 'loading'
+
+    if (!settlementPulseReadyRef.current) {
+      settlementPulseReadyRef.current = true
+      settlementActivitySignatureRef.current = signature
+      return
+    }
+
+    if (settlementActivitySignatureRef.current === signature) return
+
+    settlementActivitySignatureRef.current = signature
+    setSettlementBarPulse(true)
+    const timer = window.setTimeout(() => setSettlementBarPulse(false), 550)
+    return () => window.clearTimeout(timer)
+  }, [appointmentDetail, appointmentDueAfterDiscount, hasAppointmentSettlementTarget])
+
+  useEffect(() => {
+    if (!settlementSheetOpen || typeof document === 'undefined') return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [settlementSheetOpen])
+
   return (
-    <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
+    <div className="min-h-screen space-y-4 overflow-x-hidden bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Appointments</h2>
@@ -2484,8 +2528,15 @@ export default function PosAppointmentsWorkspace({
       </div>
 
       <div className="pos-appt-layout grid min-w-0 grid-cols-1 gap-5">
-        <div className="pos-appt-left space-y-5 min-w-0">
-          <div className="flex flex-col rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
+        <div
+          className={[
+            'pos-appt-left min-w-0 space-y-5',
+            isCompactLayout === true && 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <div className="pos-appt-panel flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
             <h3 className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xl font-bold text-gray-900">
               <div className="flex items-center gap-2">
                 <svg className="h-6 w-6 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -2615,7 +2666,7 @@ export default function PosAppointmentsWorkspace({
               scheduleStaff={scheduleStaffForDayGrid}
               staffOffTodayIds={staffOffTodayIds}
               filterSlot={(
-                <div className="grid gap-2 md:grid-cols-2">
+                <div className="grid gap-2 lg:grid-cols-2">
                   <input
                     value={appointmentQuery}
                     onChange={(e) => setAppointmentQuery(e.target.value)}
@@ -2662,11 +2713,44 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
 
-        <div className="pos-appt-right space-y-5 min-w-0">
-          <div className="flex flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5 min-w-0">
+        <div
+          className={[
+            'pos-appt-right min-w-0 space-y-5',
+            isCompactLayout === true && 'fixed inset-x-0 bottom-0 z-[130] max-h-[92dvh] transition-transform duration-300 ease-out',
+            isCompactLayout === true &&
+              (settlementSheetOpen
+                ? 'translate-y-0 pointer-events-auto visible pos-appt-settlement-sheet-open'
+                : 'translate-y-full pointer-events-none invisible'),
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
+          <div
+            className={[
+              'pos-appt-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5',
+              isCompactLayout === true && 'max-h-[92dvh] rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+          >
+            <div className="pos-settlement-sheet-handle" aria-hidden="true" />
             <div className="flex-shrink-0 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
-              <h3 className="text-base font-bold tracking-tight text-slate-900">Appointment Settlement</h3>
-              <p className="mt-0.5 text-xs text-slate-500">Review the breakdown, collect payment, or update the booking.</p>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold tracking-tight text-slate-900">Appointment Settlement</h3>
+                  <p className="mt-0.5 text-xs text-slate-500">Review the breakdown, collect payment, or update the booking.</p>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Close settlement"
+                  onClick={() => setSettlementSheetOpen(false)}
+                  className="pos-settlement-sheet-close inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
             </div>
 
             {appointmentDetailLoading ? (
@@ -2688,7 +2772,7 @@ export default function PosAppointmentsWorkspace({
               </div>
             ) : (
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-5">
+              <div className="pos-appt-settlement-scroll min-h-0 flex-1 space-y-5 overflow-y-auto px-4 py-5 sm:px-5">
                   {/* Booking summary */}
                   <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-2">
@@ -3206,6 +3290,87 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
       </div>
+
+      {isCompactLayout === true &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <>
+            {!hasAppointmentSettlementTarget ? (
+              <div className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))] z-[120] flex items-center gap-3 rounded-2xl border-2 border-dashed border-slate-300 bg-white/95 px-4 py-3 text-sm text-slate-600 shadow-md backdrop-blur-sm">
+                <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block font-semibold leading-snug text-slate-700">Select an appointment in the schedule</span>
+                  <span className="mt-0.5 block text-xs leading-snug text-slate-500">
+                    After selecting, tap <strong className="font-bold text-emerald-700">View Details</strong> here to open settlement &amp; checkout
+                  </span>
+                </span>
+              </div>
+            ) : null}
+            {hasAppointmentSettlementTarget && !settlementSheetOpen ? (
+              <button
+                type="button"
+                aria-label="View appointment settlement details"
+                aria-expanded={settlementSheetOpen}
+                onClick={() => setSettlementSheetOpen(true)}
+                className={[
+                  'fixed inset-x-3 z-[125] flex min-h-[4.25rem] touch-manipulation items-center justify-between gap-3 rounded-2xl border-2 border-emerald-200 bg-gradient-to-br from-white to-emerald-50 px-4 py-3.5 shadow-[0_10px_30px_rgba(16,185,129,0.18)]',
+                  'bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))]',
+                  settlementBarPulse ? 'animate-[pos-settlement-bar-pulse_0.55s_ease]' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
+                <span className="flex min-w-0 items-center gap-3">
+                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </span>
+                  <span className="flex min-w-0 flex-col items-start text-left">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                      {appointmentDetailLoading
+                        ? 'Loading appointment…'
+                        : appointmentDetail?.booking_code ?? 'Appointment selected'}
+                    </span>
+                    <span className="truncate text-sm font-bold text-gray-900">
+                      {appointmentDetailLoading
+                        ? 'Loading…'
+                        : appointmentDetail
+                          ? formatAppointmentCustomerDisplayName(appointmentDetail)
+                          : 'Appointment selected'}
+                    </span>
+                  </span>
+                </span>
+                <span className="flex shrink-0 flex-col items-end gap-1.5 text-right">
+                  <span>
+                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Due</span>
+                    <span className="text-lg font-extrabold tabular-nums text-emerald-700">
+                      {appointmentDetailLoading ? '…' : `RM ${appointmentDueAfterDiscount.toFixed(2)}`}
+                    </span>
+                  </span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+                    View Details
+                    <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </span>
+                </span>
+              </button>
+            ) : null}
+            {hasAppointmentSettlementTarget && settlementSheetOpen ? (
+              <div
+                className="fixed inset-0 z-[128] bg-slate-900/45 backdrop-blur-[2px]"
+                onClick={() => setSettlementSheetOpen(false)}
+                aria-hidden={false}
+              />
+            ) : null}
+          </>,
+          document.body,
+        )}
 
       {createAppointmentModalOpen ? (
         <div className="fixed inset-0 z-[135] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm">
@@ -5253,7 +5418,7 @@ export default function PosAppointmentsWorkspace({
       ) : null}
 
       {toasts.length > 0 && (
-        <div className="fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3">
+        <div className={`fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3${isCompactLayout === true ? ' !bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))]' : ''}`}>
           {toasts.map((toast) => {
             const styles =
               toast.kind === 'success'
