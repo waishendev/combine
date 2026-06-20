@@ -3219,7 +3219,8 @@ class PosController extends Controller
                     'sku' => $variant->sku,
                     'barcode' => $variant->barcode ?? $variant->sku,
                     'price' => (float) ($pricing['effective_price'] ?? $variant->sale_price ?? $variant->price ?? 0),
-                    'thumbnail_url' => $variant->image_url ?? $product?->cover_image_url,
+                    'thumbnail_url' => $product?->cover_image_url ?? $variant->image_url,
+                    'cover_image_url' => $product?->cover_image_url,
                     'variants_count' => 1,
                     'default_variant_id' => $variant->id,
                     'variants' => [[

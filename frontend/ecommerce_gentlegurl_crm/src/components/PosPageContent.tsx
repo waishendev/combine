@@ -1330,12 +1330,139 @@ function extractPaged<T>(json: unknown): PageResponse<T> {
   }
 }
 
-type PosPageContentProps = {
-  currentUser: PosCurrentUser
+type PosProductImageSource = {
+  url?: string | null
+  image_path?: string | null
+  path?: string | null
+  thumbnail_url?: string | null
 }
 
-const getModalImageUrl = (value: unknown): string | null => {
-  return typeof value === 'string' && value.trim() ? value.trim() : null
+const normalizePosProductImagePath = (raw: string | null | undefined): string | null => {
+  const value = raw?.trim()
+  if (!value || value === 'null' || value === 'undefined') return null
+  if (/^https?:\/\//i.test(value)) return value
+  if (value.startsWith('data:image/')) return value
+
+  const normalized = value.startsWith('/') ? value : `/${value}`
+  if (normalized.startsWith('/storage/')) return normalized
+  return `/storage${normalized}`
+}
+
+const normalizePosImageUrlDedupKey = (url: string): string => {
+  try {
+    if (/^https?:\/\//i.test(url)) {
+      return new URL(url).pathname.replace(/\/+/g, '/').replace(/\/$/, '') || url
+    }
+    return url.split('?')[0].replace(/\/+/g, '/').replace(/\/$/, '')
+  } catch {
+    return url.split('?')[0]
+  }
+}
+
+const resolvePosProductImageUrl = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    return normalizePosProductImagePath(value)
+  }
+  if (!value || typeof value !== 'object') return null
+
+  const source = value as PosProductImageSource
+  for (const candidate of [source.url, source.image_path, source.path, source.thumbnail_url]) {
+    const resolved = normalizePosProductImagePath(typeof candidate === 'string' ? candidate : null)
+    if (resolved) return resolved
+  }
+  return null
+}
+
+const resolvePosVariantOwnImageUrl = (
+  variant: { image_url?: string | null; image_path?: string | null } | null | undefined,
+): string | null => {
+  if (!variant) return null
+
+  const imageUrl = typeof variant.image_url === 'string' ? variant.image_url.trim() : ''
+  const imagePath = typeof variant.image_path === 'string' ? variant.image_path.trim() : ''
+  if (!imageUrl && !imagePath) return null
+
+  return normalizePosProductImagePath(imageUrl) || normalizePosProductImagePath(imagePath)
+}
+
+const resolvePosVariantImageUrl = (variant: ProductVariantOption | null | undefined): string | null => {
+  return resolvePosVariantOwnImageUrl(variant)
+}
+
+const resolvePosCatalogCoverImageUrl = (item: Pick<ProductOption, 'cover_image_url' | 'main_image_url' | 'image_url' | 'thumbnail_url'>): string | null => {
+  return (
+    resolvePosProductImageUrl(item.cover_image_url) ||
+    resolvePosProductImageUrl(item.main_image_url) ||
+    resolvePosProductImageUrl(item.image_url) ||
+    resolvePosProductImageUrl(item.thumbnail_url)
+  )
+}
+
+const buildPosProductGalleryImages = (
+  fullProductData: {
+    images?: unknown
+    cover_image_url?: unknown
+    main_image_url?: unknown
+    image_url?: unknown
+    variants?: unknown
+  } | null,
+  selectedProduct: ProductOption | null,
+): string[] => {
+  const urls: string[] = []
+  const seen = new Set<string>()
+  const push = (candidate: unknown) => {
+    const url = resolvePosProductImageUrl(candidate)
+    if (!url) return
+    const dedupKey = normalizePosImageUrlDedupKey(url)
+    if (seen.has(dedupKey)) return
+    seen.add(dedupKey)
+    urls.push(url)
+  }
+
+  if (Array.isArray(fullProductData?.images)) {
+    const sorted = [...fullProductData.images].sort((a, b) => {
+      const aRecord = a && typeof a === 'object' ? (a as { sort_order?: unknown; id?: unknown }) : null
+      const bRecord = b && typeof b === 'object' ? (b as { sort_order?: unknown; id?: unknown }) : null
+      const aOrder = Number(aRecord?.sort_order ?? 0)
+      const bOrder = Number(bRecord?.sort_order ?? 0)
+      if (aOrder !== bOrder) return aOrder - bOrder
+      return Number(aRecord?.id ?? 0) - Number(bRecord?.id ?? 0)
+    })
+    for (const image of sorted) {
+      push(image)
+    }
+  }
+
+  push(fullProductData?.cover_image_url)
+  push(fullProductData?.main_image_url)
+  push(fullProductData?.image_url)
+
+  if (selectedProduct) {
+    push(selectedProduct.cover_image_url)
+    push(selectedProduct.main_image_url)
+    push(selectedProduct.image_url)
+  }
+
+  const variantMap = new Map<number, ProductVariantOption | VariantPayload>()
+  for (const variant of selectedProduct?.variants ?? []) {
+    const id = Number(variant.id)
+    if (Number.isFinite(id) && id > 0) variantMap.set(id, variant)
+  }
+  if (Array.isArray(fullProductData?.variants)) {
+    for (const variant of fullProductData.variants as VariantPayload[]) {
+      const id = Number(variant?.id)
+      if (Number.isFinite(id) && id > 0) variantMap.set(id, variant)
+    }
+  }
+  for (const variant of variantMap.values()) {
+    push(resolvePosVariantOwnImageUrl(variant))
+  }
+
+  return urls
+}
+
+type PosPageContentProps = {
+  currentUser: PosCurrentUser
 }
 
 export default function PosPageContent({ currentUser }: PosPageContentProps) {
@@ -1376,6 +1503,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [productVariantLoading, setProductVariantLoading] = useState(false)
   const [selectedProductQty, setSelectedProductQty] = useState(1)
   const [fullProductData, setFullProductData] = useState<any>(null)
+  const [modalPreviewImageUrl, setModalPreviewImageUrl] = useState<string | null>(null)
   const [serviceQuery, setServiceQuery] = useState('')
   const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
   const [selectedBookingServiceCategoryId, setSelectedBookingServiceCategoryId] = useState<number | null>(null)
@@ -2503,7 +2631,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       barcode: activeBarcode || itemBarcode || sku,
       price: Number.isFinite(price) ? price : 0,
       is_staff_free: item.is_staff_free === true || item.is_staff_free === 1 || item.is_staff_free === '1' || item.is_staff_free === 'true',
-      thumbnail_url: activeVariant?.thumbnail_url ?? item.cover_image_url ?? item.main_image_url ?? item.image_url ?? null,
+      thumbnail_url:
+        resolvePosProductImageUrl(item.cover_image_url) ||
+        resolvePosProductImageUrl(item.main_image_url) ||
+        resolvePosProductImageUrl(item.image_url) ||
+        resolvePosVariantImageUrl(activeVariant) ||
+        null,
       main_image_url: item.main_image_url ?? null,
       cover_image_url: item.cover_image_url ?? null,
       image_url: item.image_url ?? null,
@@ -2666,10 +2799,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         const paged = extractPaged<ProductOption>(json)
         mapped = paged.data.map((item) => {
           const resolvedProductId = Number(item.product_id)
+          const coverImageUrl =
+            resolvePosProductImageUrl(item.cover_image_url) ||
+            resolvePosProductImageUrl(item.main_image_url) ||
+            resolvePosProductImageUrl(item.image_url) ||
+            null
 
           return {
             ...item,
             product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
+            cover_image_url: coverImageUrl ?? item.cover_image_url ?? null,
+            thumbnail_url: coverImageUrl ?? resolvePosProductImageUrl(item.thumbnail_url),
             variants: Array.isArray(item.variants) ? item.variants : [],
           }
         })
@@ -4839,6 +4979,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const hasPreferredVariant = Number.isFinite(resolvedPreferredVariantId) && resolvedPreferredVariantId > 0
 
     setFullProductData(null)
+    setModalPreviewImageUrl(null)
     setSelectedProduct(item)
     setSelectedVariantId(hasPreferredVariant ? resolvedPreferredVariantId : (item.variants.length === 1 ? item.variants[0].id : null))
     setSelectedProductQty(1)
@@ -4893,6 +5034,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setProductSelectModalOpen(false)
     setSelectedProduct(null)
     setSelectedVariantId(null)
+    setModalPreviewImageUrl(null)
     setProductVariantLoading(false)
     setFullProductData(null)
     focusScanner()
@@ -6174,35 +6316,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       checkoutResult.paid_amount > checkoutResult.total,
   )
 
-  const selectedModalVariant = useMemo(() => {
-    if (!selectedProduct || selectedProduct.variants.length === 0) return null
-    return selectedProduct.variants.find((variant) => variant.id === selectedVariantId) ?? null
-  }, [selectedProduct, selectedVariantId])
+  const modalGalleryImages = useMemo(
+    () => buildPosProductGalleryImages(fullProductData, selectedProduct),
+    [fullProductData, selectedProduct],
+  )
 
   const selectedProductDisplayImage = useMemo(() => {
+    if (modalPreviewImageUrl) return modalPreviewImageUrl
+
+    if (modalGalleryImages.length > 0) return modalGalleryImages[0]
+
     if (!selectedProduct) return null
 
-    const galleryImages = Array.isArray(fullProductData?.images) ? fullProductData.images : []
-    const firstGalleryImage = galleryImages
-      .map((image: { url?: string | null; image_path?: string | null } | null) =>
-        getModalImageUrl(image?.url) || getModalImageUrl(image?.image_path),
-      )
-      .find((url: string | null): url is string => Boolean(url))
-
     return (
-      getModalImageUrl(selectedModalVariant?.image_url) ||
-      getModalImageUrl(selectedModalVariant?.image_path) ||
-      getModalImageUrl(fullProductData?.main_image_url) ||
-      getModalImageUrl(fullProductData?.cover_image_url) ||
-      getModalImageUrl(fullProductData?.image_url) ||
-      getModalImageUrl(selectedProduct.main_image_url) ||
-      getModalImageUrl(selectedProduct.cover_image_url) ||
-      getModalImageUrl(selectedProduct.image_url) ||
-      firstGalleryImage ||
-      getModalImageUrl(selectedProduct.thumbnail_url) ||
+      resolvePosProductImageUrl(selectedProduct.cover_image_url) ||
+      resolvePosProductImageUrl(selectedProduct.main_image_url) ||
+      resolvePosProductImageUrl(selectedProduct.image_url) ||
+      resolvePosProductImageUrl(selectedProduct.thumbnail_url) ||
       null
     )
-  }, [fullProductData, selectedModalVariant, selectedProduct])
+  }, [modalGalleryImages, modalPreviewImageUrl, selectedProduct])
 
   return (
     <div className="min-h-screen space-y-4 overflow-x-hidden bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
@@ -6404,6 +6537,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 const variantsCount = item.variants_count ?? item.variants.length
                 const titleWithVariant = hit.matchedVariantName ? `${item.name} (${hit.matchedVariantName})` : item.name
                 const catalogCardOutOfStock = isPosSimpleProductOutOfStock(item)
+                const catalogCoverImageUrl = resolvePosCatalogCoverImageUrl(item)
                 const matchedVariantId = hit.matchedVariantId
                 const cartQty = matchedVariantId
                   ? (catalogProductCartQtyByVariantId.get(matchedVariantId) ?? 0)
@@ -6431,9 +6565,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <PosCatalogInCartBadge qty={cartQty} />
                   {/* Product Image - Left Side */}
                   <div className="w-[120px] h-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden flex-shrink-0">
-                    {item.thumbnail_url ? (
+                    {catalogCoverImageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.thumbnail_url} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" />
+                      <img src={catalogCoverImageUrl} alt={item.name} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110" />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center text-xs text-gray-400">
                         <svg className="h-10 w-10 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -7612,6 +7746,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   setProductSelectModalOpen(false)
                   setSelectedProduct(null)
                   setSelectedVariantId(null)
+                  setModalPreviewImageUrl(null)
                   setProductVariantLoading(false)
                   setFullProductData(null)
                 }}
@@ -7624,10 +7759,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <div className="grid md:grid-cols-2 gap-6 p-6 max-h-[80vh] overflow-y-auto">
               {/* Left: Product Images */}
               <div className="space-y-4">
-                {productVariantLoading ? (
-                  <div className="aspect-square bg-gradient-to-br from-gray-100 to-gray-50 rounded-xl flex items-center justify-center border-2 border-gray-200">
+                {selectedProductDisplayImage ? (
+                  <div className="relative aspect-square w-full overflow-hidden rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-100 to-gray-50 shadow-sm">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={selectedProductDisplayImage}
+                      alt={selectedProduct.name || ''}
+                      className="h-full w-full object-cover"
+                    />
+                    {productVariantLoading ? (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/60">
+                        <svg className="h-10 w-10 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : productVariantLoading ? (
+                  <div className="flex aspect-square items-center justify-center rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-100 to-gray-50">
                     <div className="text-center">
-                      <svg className="h-12 w-12 mx-auto mb-2 text-gray-400 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <svg className="mx-auto mb-2 h-12 w-12 animate-spin text-gray-400" fill="none" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
@@ -7635,38 +7787,39 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                   </div>
                 ) : (
-                  <>
-                    {selectedProductDisplayImage ? (
-                      <div className="aspect-square w-full bg-gradient-to-br from-gray-100 to-gray-50 rounded-xl overflow-hidden border-2 border-gray-200 shadow-sm">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          src={selectedProductDisplayImage}
-                          alt={selectedProduct.name || ''}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ) : (
-                      <div className="aspect-square w-full bg-gradient-to-br from-gray-100 to-gray-50 rounded-xl flex items-center justify-center border-2 border-gray-200">
-                        <div className="text-center">
-                          <svg className="h-16 w-16 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-                          </svg>
-                          <p className="text-sm font-medium text-gray-400">No image</p>
-                        </div>
-                      </div>
-                    )}
-                    {fullProductData?.images && fullProductData.images.length > 1 && (
-                      <div className="grid grid-cols-4 gap-2">
-                        {fullProductData.images.slice(0, 4).map((img: { url?: string | null; image_path?: string | null } | null, idx: number) => (
-                          <div key={idx} className="aspect-square bg-gray-100 rounded-lg overflow-hidden border-2 border-gray-200">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={getModalImageUrl(img?.url) || getModalImageUrl(img?.image_path) || ''} alt={`${selectedProduct.name} ${idx + 1}`} className="w-full h-full object-cover" />
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </>
+                  <div className="flex aspect-square w-full items-center justify-center rounded-xl border-2 border-gray-200 bg-gradient-to-br from-gray-100 to-gray-50">
+                    <div className="text-center">
+                      <svg className="mx-auto mb-2 h-16 w-16 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                      </svg>
+                      <p className="text-sm font-medium text-gray-400">No image</p>
+                    </div>
+                  </div>
                 )}
+                {modalGalleryImages.length > 0 ? (
+                  <div className="grid grid-cols-4 gap-2 sm:grid-cols-6">
+                    {modalGalleryImages.map((imageUrl, idx) => {
+                      const isActive = selectedProductDisplayImage === imageUrl
+                      return (
+                        <button
+                          key={`${imageUrl}-${idx}`}
+                          type="button"
+                          aria-label={`View product image ${idx + 1}`}
+                          aria-pressed={isActive}
+                          onClick={() => setModalPreviewImageUrl(imageUrl)}
+                          className={`aspect-square overflow-hidden rounded-lg border-2 bg-gray-100 transition-all ${
+                            isActive
+                              ? 'border-blue-500 ring-2 ring-blue-500/30'
+                              : 'border-gray-200 hover:border-blue-300'
+                          }`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={imageUrl} alt={`${selectedProduct.name} ${idx + 1}`} className="h-full w-full object-cover" />
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : null}
               </div>
 
               {/* Right: Product Info */}
@@ -7727,7 +7880,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <button
                             type="button"
                             key={variant.id}
-                            onClick={() => isActive && !outOfStock && setSelectedVariantId(variant.id)}
+                            onClick={() => {
+                              if (!isActive || outOfStock) return
+                              setSelectedVariantId(variant.id)
+                              setModalPreviewImageUrl(resolvePosVariantOwnImageUrl(variant))
+                            }}
                             disabled={!isActive || outOfStock}
                             className={`rounded-xl border-2 p-4 text-left transition-all ${
                               selected
