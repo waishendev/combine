@@ -246,6 +246,9 @@ type ServiceCartItem = {
   end_at?: string | null
   notes?: string | null
   staff_splits?: Array<{ staff_id: number; share_percent: number; service_commission_rate_snapshot?: number }>
+  availability_override?: boolean
+  availability_override_reason?: string | null
+  availability_override_warning_type?: string | null
   commission_rate_used?: number
   main_services?: Array<{
     id?: number | string | null
@@ -1563,6 +1566,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingDate, setBookingDate] = useState('')
   const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
   const [bookingSlotValue, setBookingSlotValue] = useState('')
+  const [bookingManualOverrideChecked, setBookingManualOverrideChecked] = useState(false)
+  const [bookingOverrideReason, setBookingOverrideReason] = useState('')
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
   const bookingRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
@@ -3365,16 +3370,30 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return allowed
   }, [bookingExtraServiceBlocks, bookingServiceDraft])
 
+  const bookingSelectedSlot = useMemo(() => bookingSlots.find((s) => s.start_at === bookingSlotValue) ?? null, [bookingSlotValue, bookingSlots])
+  const bookingNeedsAvailabilityOverride = useMemo(() => {
+    if (!bookingDate || !bookingSlotValue || !bookingAssignedStaffId) return false
+    if (!bookingSelectedSlot) return true
+    const allowedIds = bookingSelectedSlot.available_staff_ids ?? []
+    return Array.isArray(allowedIds) && allowedIds.length > 0 && !allowedIds.includes(bookingAssignedStaffId)
+  }, [bookingAssignedStaffId, bookingDate, bookingSelectedSlot, bookingSlotValue])
+  const bookingProjectedEndAt = useMemo(() => {
+    if (!bookingSlotValue) return null
+    const start = new Date(bookingSlotValue)
+    if (Number.isNaN(start.getTime())) return null
+    const duration = Number(bookingServiceDraft?.duration_min ?? 0) + bookingAddonDurationTotal + bookingExtraTotals.baseDuration + bookingExtraTotals.addonDuration
+    return new Date(start.getTime() + Math.max(0, duration) * 60000).toISOString()
+  }, [bookingAddonDurationTotal, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingServiceDraft?.duration_min, bookingSlotValue])
+
   const bookingStaffPickerOptions = useMemo(() => {
     if (!bookingDate || !bookingSlotValue) return []
-    const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
-    const allowedIds = slot?.available_staff_ids ?? null
+    const allowedIds = bookingSelectedSlot?.available_staff_ids ?? null
     const base = bookingAllowedStaffs
     if (Array.isArray(allowedIds) && allowedIds.length > 0) {
       return base.filter((s) => allowedIds.includes(s.id))
     }
-    return []
-  }, [bookingAllowedStaffs, bookingDate, bookingSlotValue, bookingSlots])
+    return base
+  }, [bookingAllowedStaffs, bookingDate, bookingSelectedSlot, bookingSlotValue])
 
   const bookingStaffPickerReady = Boolean(bookingDate && bookingSlotValue)
   const bookingSelectedServiceIds = useMemo(
@@ -3419,6 +3438,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     if (!bookingSlotValue) {
       setBookingModalError('Please select appointment slot/time.')
+      return
+    }
+    if (bookingNeedsAvailabilityOverride && !bookingManualOverrideChecked) {
+      setBookingModalError('This appointment is outside the staff schedule. Continue with override?')
       return
     }
     if (new Set(bookingSelectedServiceIds).size !== bookingSelectedServiceIds.length) {
@@ -3473,6 +3496,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       notes: bookingRemarkRef.current?.getValue().trim() || null,
       staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
       qty: 1,
+      availability_override: bookingNeedsAvailabilityOverride && bookingManualOverrideChecked,
+      availability_override_reason: bookingNeedsAvailabilityOverride ? (bookingOverrideReason.trim() || null) : null,
     }
     if (bookingIdentityMode === 'member' && selectedMember?.id) {
       payload.customer_id = selectedMember.id
@@ -3515,6 +3540,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     bookingDate,
     bookingGuestPhoneValue,
     bookingIdentityMode,
+    bookingManualOverrideChecked,
+    bookingNeedsAvailabilityOverride,
+    bookingOverrideReason,
     bookingQuestions,
     bookingExtraServiceBlocks,
     bookingSelectedOptionIds,
@@ -3531,6 +3559,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       if (!bookingModalOpen || !bookingServiceDraft?.id || !bookingDate) {
         setBookingSlots([])
         setBookingSlotValue('')
+        setBookingManualOverrideChecked(false)
+        setBookingOverrideReason('')
         return
       }
 
@@ -3567,7 +3597,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
 
         setBookingSlots(slots)
-        setBookingSlotValue((prev) => slots.some((slot) => slot.start_at === prev) ? prev : '')
+        setBookingSlotValue((prev) => prev)
       } finally {
         setBookingSlotsLoading(false)
       }
@@ -3586,13 +3616,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const staffIds = slot?.available_staff_ids ?? []
     const options = Array.isArray(staffIds) && staffIds.length > 0
       ? bookingAllowedStaffs.filter((staff) => staffIds.includes(staff.id))
-      : []
+      : bookingAllowedStaffs
 
     setBookingAssignedStaffId((prev) => {
       if (prev && options.some((staff) => staff.id === prev)) return prev
       return options[0]?.id ?? null
     })
   }, [bookingAllowedStaffs, bookingDate, bookingModalOpen, bookingSlotValue, bookingSlots])
+
+  useEffect(() => {
+    if (!bookingNeedsAvailabilityOverride) {
+      setBookingManualOverrideChecked(false)
+      setBookingOverrideReason('')
+    }
+  }, [bookingNeedsAvailabilityOverride])
 
   const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
     let staffs = activeStaffs
@@ -8618,6 +8655,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             <div className="flex-1 overflow-y-auto p-6 sm:p-8">
 
+              {cartServiceItems.some((item) => item.availability_override) ? (
+                <div className="mb-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900">
+                  <p className="font-bold">POS availability override used</p>
+                  <p className="mt-1">One or more service appointments are outside the staff schedule. Confirm staff agreed before completing checkout.</p>
+                </div>
+              ) : null}
+
               <div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3">
                 {selectedCheckoutBulkKeys.length > 0 ? (
                   <div className="flex flex-wrap items-center gap-3">
@@ -10560,7 +10604,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
                     <select
                       value={bookingSlotValue}
-                      onChange={(e) => setBookingSlotValue(e.target.value)}
+                      onChange={(e) => { setBookingSlotValue(e.target.value); setBookingManualOverrideChecked(false); setBookingOverrideReason('') }}
                       disabled={!bookingDate || bookingSlotsLoading}
                       className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
                     >
@@ -10571,8 +10615,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </option>
                       ))}
                     </select>
+                    <label className="mt-2 block text-[11px] font-semibold text-amber-700">Manual POS time / OT</label>
+                    <input
+                      type="datetime-local"
+                      value={bookingSlotValue ? (() => { const d = new Date(bookingSlotValue); return Number.isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 16) })() : ''}
+                      onChange={(e) => { setBookingSlotValue(e.target.value ? new Date(e.target.value).toISOString() : ''); setBookingManualOverrideChecked(false); setBookingOverrideReason('') }}
+                      className="mt-1 w-full rounded-lg border border-amber-300 px-3 py-2 text-sm"
+                    />
                   </div>
                 </div>
+
+                {bookingNeedsAvailabilityOverride ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    <p className="font-bold">Outside staff working hours</p>
+                    <p className="mt-1">This appointment is outside the staff schedule. Continue with override?</p>
+                    <p className="mt-1 text-xs">Appointment ends at {formatTimeRange(bookingProjectedEndAt, null)}.</p>
+                    <label className="mt-3 flex items-start gap-2 text-xs font-semibold">
+                      <input type="checkbox" checked={bookingManualOverrideChecked} onChange={(e) => setBookingManualOverrideChecked(e.target.checked)} />
+                      <span>Override availability for POS walk-in / OT</span>
+                    </label>
+                    <label className="mt-2 block text-xs font-semibold">Reason:</label>
+                    <textarea value={bookingOverrideReason} onChange={(e) => setBookingOverrideReason(e.target.value)} className="mt-1 w-full rounded-lg border border-amber-200 bg-white px-3 py-2 text-xs" placeholder="Customer walk-in, staff agreed OT." rows={2} />
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
@@ -10605,6 +10670,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   resetKey={bookingServiceDraft?.id ?? 'booking'}
                   label="Remarks (optional)"
                 />
+                {cartServiceItems.some((item) => item.availability_override) ? (
+                  <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                    Checkout warning: one or more service appointments used POS availability override. Please review before payment.
+                  </div>
+                ) : null}
               </div>
             </div>
             </div>
@@ -10621,7 +10691,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </button>
               <button
                 type="button"
-                disabled={bookingSubmitting || bookingAllowedStaffs.length === 0}
+                disabled={bookingSubmitting || bookingAllowedStaffs.length === 0 || (bookingNeedsAvailabilityOverride && !bookingManualOverrideChecked)}
                 onClick={() => void submitBooking()}
                 className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
