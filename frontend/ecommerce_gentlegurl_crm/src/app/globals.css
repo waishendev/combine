@@ -159,11 +159,15 @@ body {
 }
 
 /**
- * POS checkout: use two columns only when the viewport is wide *and* tall enough.
- * Prevents broken overlap on phone landscape (e.g. width ≥768px but height ~390px).
+ * POS checkout: catalog left, cart right when there is enough room.
+ * - Large screens (≥1024px): two columns in any orientation
+ * - Tablet landscape: iPad 10"/11" sideways (~1180×820 viewport)
+ * - iPad portrait (~834px viewport, ~578px after sidebar): single column (stacked)
+ * - Phone landscape: single column (height ~390px)
  */
 @layer utilities {
-  @media (min-width: 768px) and (min-height: 640px) {
+  @media (min-width: 1024px) and (min-height: 640px),
+    (orientation: landscape) and (min-width: 768px) and (min-height: 500px) {
     .pos-split-layout {
       grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
       min-height: 0;
