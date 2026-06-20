@@ -12,8 +12,12 @@ class OrderItemStaffSplit extends Model
 
     protected $fillable = [
         'order_item_id',
+        'line_type',
+        'line_ref_id',
         'staff_id',
         'share_percent',
+        'amount_basis',
+        'snapshot',
         'commission_rate_snapshot',
     ];
 
@@ -22,6 +26,8 @@ class OrderItemStaffSplit extends Model
         return [
             'share_percent' => 'integer',
             'commission_rate_snapshot' => 'decimal:4',
+            'amount_basis' => 'decimal:2',
+            'snapshot' => 'array',
         ];
     }
 
