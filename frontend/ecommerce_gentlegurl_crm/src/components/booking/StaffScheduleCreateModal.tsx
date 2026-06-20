@@ -37,8 +37,8 @@ const initialFormState: FormState = {
   day_of_week: '1',
   start_time: '10:00',
   end_time: '19:00',
-  break_start: '13:00',
-  break_end: '14:00',
+  break_start: '',
+  break_end: '',
   is_active: true,
 }
 
@@ -312,6 +312,7 @@ export default function StaffScheduleCreateModal({
               />
             </div>
           </div>
+          <p className="text-xs text-gray-500">Optional — leave both empty if there is no break.</p>
 
           <label className="flex items-center gap-2 text-sm text-gray-700">
             <input

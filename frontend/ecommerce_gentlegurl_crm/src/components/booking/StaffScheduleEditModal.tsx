@@ -374,6 +374,7 @@ export default function StaffScheduleEditModal({
                   />
                 </div>
               </div>
+              <p className="text-xs text-gray-500">Optional — leave both empty if there is no break.</p>
 
               <label className="flex items-center gap-2 text-sm text-gray-700">
                 <input

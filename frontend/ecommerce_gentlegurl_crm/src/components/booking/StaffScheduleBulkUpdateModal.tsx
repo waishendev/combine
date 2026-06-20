@@ -216,7 +216,8 @@ export default function StaffScheduleBulkUpdateModal({
           )}
 
           {selectedFields.includes('break') && (
-            <div className="grid gap-3 md:grid-cols-2">
+            <div>
+              <div className="grid gap-3 md:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-gray-700">Break Start</label>
                 <input
@@ -235,6 +236,8 @@ export default function StaffScheduleBulkUpdateModal({
                   className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
+              </div>
+              <p className="mt-1.5 text-xs text-gray-500">Leave both empty to remove break time.</p>
             </div>
           )}
 
