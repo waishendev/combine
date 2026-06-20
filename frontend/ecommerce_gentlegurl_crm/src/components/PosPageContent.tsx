@@ -7,6 +7,7 @@ import BookingPackageItemServicePicker from '@/components/booking/BookingPackage
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
+import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   bookingServiceSettlementSource,
@@ -1729,12 +1730,68 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [])
 
   const cartItems = useMemo(() => cart?.items ?? [], [cart?.items])
+  const catalogProductCartQtyByProductId = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const item of cartItems) {
+      if (item.item_type === 'BOOKING_PRODUCT') continue
+      const productId = Number(item.product_id)
+      if (!Number.isFinite(productId) || productId <= 0) continue
+      map.set(productId, (map.get(productId) ?? 0) + item.qty)
+    }
+    return map
+  }, [cartItems])
+  const catalogProductCartQtyByVariantId = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const item of cartItems) {
+      if (item.item_type === 'BOOKING_PRODUCT') continue
+      const variantId = Number(item.variant_id)
+      if (!Number.isFinite(variantId) || variantId <= 0) continue
+      map.set(variantId, (map.get(variantId) ?? 0) + item.qty)
+    }
+    return map
+  }, [cartItems])
   const cartServiceItems = useMemo(() => cart?.service_items ?? [], [cart?.service_items])
   const cartPackageItems = useMemo(() => cart?.package_items ?? [], [cart?.package_items])
   const cartAppointmentSettlementItems = useMemo(
     () => cart?.appointment_settlement_items ?? [],
     [cart?.appointment_settlement_items],
   )
+  const catalogBookingProductCartQtyById = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const item of cartItems) {
+      if (item.item_type !== 'BOOKING_PRODUCT') continue
+      const id = Number(item.booking_product_id)
+      if (!Number.isFinite(id) || id <= 0) continue
+      map.set(id, (map.get(id) ?? 0) + item.qty)
+    }
+    return map
+  }, [cartItems])
+  const catalogServiceCartQtyById = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const item of cartServiceItems) {
+      const id = Number(item.booking_service_id)
+      if (!Number.isFinite(id) || id <= 0) continue
+      map.set(id, (map.get(id) ?? 0) + item.qty)
+    }
+    return map
+  }, [cartServiceItems])
+  const catalogPackageCartQtyById = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const item of cartPackageItems) {
+      const id = Number(item.service_package_id)
+      if (!Number.isFinite(id) || id <= 0) continue
+      map.set(id, (map.get(id) ?? 0) + item.qty)
+    }
+    return map
+  }, [cartPackageItems])
+  const catalogSettlementBookingIdsInCart = useMemo(() => {
+    const set = new Set<number>()
+    for (const item of cartAppointmentSettlementItems) {
+      const id = Number(item.booking_id)
+      if (Number.isFinite(id) && id > 0) set.add(id)
+    }
+    return set
+  }, [cartAppointmentSettlementItems])
 
   const hasCartProducts = cartItems.length > 0
   const hasCartBookServices = cartServiceItems.length > 0
@@ -6347,13 +6404,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 const variantsCount = item.variants_count ?? item.variants.length
                 const titleWithVariant = hit.matchedVariantName ? `${item.name} (${hit.matchedVariantName})` : item.name
                 const catalogCardOutOfStock = isPosSimpleProductOutOfStock(item)
+                const matchedVariantId = hit.matchedVariantId
+                const cartQty = matchedVariantId
+                  ? (catalogProductCartQtyByVariantId.get(matchedVariantId) ?? 0)
+                  : (catalogProductCartQtyByProductId.get(item.product_id) ?? 0)
+                const isInCart = cartQty > 0
+                const isHighlighted = idx === productHighlighted
 
                 return (
                 <div
-                  key={item.product_id}
+                  key={matchedVariantId ? `${item.product_id}-v${matchedVariantId}` : item.product_id}
                   role="button"
                   tabIndex={0}
-                  className={`group cursor-pointer overflow-hidden rounded-xl border-2 bg-white transition-all shadow-sm flex flex-row h-[124px] ${idx === productHighlighted ? 'border-blue-500 shadow-lg ring-2 ring-blue-500/20' : catalogCardOutOfStock ? 'border-red-100 opacity-90' : 'border-gray-200 hover:border-blue-400 hover:shadow-lg'}`}
+                  className={`group relative cursor-pointer overflow-hidden rounded-xl border-2 transition-all shadow-sm flex flex-row h-[124px] ${isHighlighted ? posCatalogInCartBorderClass(false, { highlighted: true }) : isInCart ? posCatalogInCartBorderClass(true) : catalogCardOutOfStock ? 'border-red-100 bg-white opacity-90' : 'border-gray-200 bg-white hover:border-blue-400 hover:shadow-lg'}`}
                   onMouseEnter={() => setProductHighlighted(idx)}
                   onClick={() => {
                     void onSelectProduct(item, hit.matchedVariantId ?? null)
@@ -6365,6 +6428,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     }
                   }}
                 >
+                  <PosCatalogInCartBadge qty={cartQty} />
                   {/* Product Image - Left Side */}
                   <div className="w-[120px] h-full bg-gradient-to-br from-gray-100 to-gray-50 overflow-hidden flex-shrink-0">
                     {item.thumbnail_url ? (
@@ -6403,7 +6467,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </div>
                       )}
                     </div>
-                    <div className="pt-2 border-t border-gray-100">
+                    <div className="border-t border-gray-100 pt-2">
                       <span className="text-sm font-bold text-gray-900">RM {Number(item.price ?? 0).toFixed(2)}</span>
                     </div>
                   </div>
@@ -6502,8 +6566,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
                 </div>
                 <div className="grid grid-cols-1 gap-3 @min-[520px]:grid-cols-2 @min-[820px]:grid-cols-3">
-                  {filteredBookingProducts.map((item) => (
-                    <button key={item.id} type="button" onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0 && item.price_mode !== 'range') { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductOptionModalOpen(true); } }} className="rounded-lg border border-gray-200 p-3 text-left hover:border-blue-300 hover:bg-blue-50/30">
+                  {filteredBookingProducts.map((item) => {
+                    const cartQty = catalogBookingProductCartQtyById.get(item.id) ?? 0
+                    const isInCart = cartQty > 0
+
+                    return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => { const activeQuestions = (item.questions ?? []).filter((q) => q.is_active !== false && Array.isArray(q.options) && q.options.some((o) => o.is_active !== false)); if (activeQuestions.length === 0 && item.price_mode !== 'range') { void addBookingProductToCart(item); } else { setBookingProductDraft({ ...item, questions: activeQuestions }); setBookingProductOptionModalOpen(true); } }}
+                      className={`relative rounded-lg border-2 p-3 text-left transition-all ${isInCart ? posCatalogInCartBorderClass(true) : 'border-gray-200 hover:border-blue-300 hover:bg-blue-50/30'}`}
+                    >
+                      <PosCatalogInCartBadge qty={cartQty} />
                       <div className="flex items-start gap-3">
                         {item.image_url ? <img src={item.image_url} alt={item.name} className="h-12 w-12 rounded object-cover border" /> : <div className="h-12 w-12 rounded border bg-gray-100" />}
                         <div className="min-w-0 flex-1">
@@ -6514,7 +6588,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </div>
                       </div>
                     </button>
-                  ))}
+                    )
+                  })}
                 </div>
                 {!bookingProductsLoading && filteredBookingProducts.length === 0 && (
                   <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">
@@ -6532,6 +6607,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   searchQuery={serviceQuery}
                   onSearchQueryChange={setServiceQuery}
                   onSelectService={(service) => void openBookingModal(service as BookingServiceOption)}
+                  serviceCartQtyById={catalogServiceCartQtyById}
                   loading={servicesLoading}
                   emptyMessage="No services found."
                   searchPlaceholder="Search service name..."
@@ -6554,8 +6630,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ) : filteredServicePackages.length === 0 ? (
                     <div className="rounded-lg border border-gray-200 bg-gray-50 p-4 text-sm text-gray-500">No service packages available</div>
                   ) : (
-                    filteredServicePackages.map((servicePackage) => (
-                      <div key={servicePackage.id} className="flex items-center justify-between rounded-lg border border-gray-200 p-3">
+                    filteredServicePackages.map((servicePackage) => {
+                      const cartQty = catalogPackageCartQtyById.get(servicePackage.id) ?? 0
+                      const isInCart = cartQty > 0
+
+                      return (
+                      <div
+                        key={servicePackage.id}
+                        className={`relative flex items-center justify-between rounded-lg border-2 p-3 ${isInCart ? posCatalogInCartBorderClass(true) : 'border-gray-200'}`}
+                      >
+                        <PosCatalogInCartBadge qty={cartQty} />
                         <div>
                           <p className="text-sm font-semibold text-gray-900">{servicePackage.name}</p>
                           {servicePackage.description ? (
@@ -6581,7 +6665,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           </button>
                         </div>
                       </div>
-                    ))
+                      )
+                    })
                   )}
                 </div>
               </div>
@@ -6643,9 +6728,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           ? 'Guest checkout in cart. Settlement requires member; remove guest items or clear guest details first.'
                           : ''
                       const guestContactLines = getGuestContactLines(appt)
+                      const isInCart = catalogSettlementBookingIdsInCart.has(appt.id)
+                      const cartQty = isInCart ? 1 : 0
 
                       return (
-                        <div key={appt.id} className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-3">
+                        <div
+                          key={appt.id}
+                          className={`relative flex items-center justify-between gap-3 rounded-lg border-2 p-3 ${isInCart ? posCatalogInCartBorderClass(true) : 'border-gray-200'}`}
+                        >
+                          <PosCatalogInCartBadge qty={cartQty} />
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-gray-900">
                               {String(appt.booking_code ?? `BOOKING-${appt.id}`)}

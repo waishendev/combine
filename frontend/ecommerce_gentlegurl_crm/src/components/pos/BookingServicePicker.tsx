@@ -1,5 +1,7 @@
 'use client'
 
+import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
+
 type BookingServicePickerCategory = {
   id: number
   name: string
@@ -53,6 +55,7 @@ export default function BookingServicePicker({
   onSearchQueryChange,
   selectedServiceId,
   onSelectService,
+  serviceCartQtyById,
   loading = false,
   emptyMessage = 'No services found.',
   searchPlaceholder = 'Search service name...',
@@ -67,6 +70,7 @@ export default function BookingServicePicker({
   onSearchQueryChange: (query: string) => void
   selectedServiceId?: number | null
   onSelectService: (service: BookingServicePickerService) => void
+  serviceCartQtyById?: Map<number, number>
   loading?: boolean
   emptyMessage?: string
   searchPlaceholder?: string
@@ -122,17 +126,22 @@ export default function BookingServicePicker({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
             {filteredServices.map((service) => {
               const selected = selectedServiceId === service.id
+              const cartQty = serviceCartQtyById?.get(service.id) ?? 0
+              const isInCart = cartQty > 0
               return (
                 <button
                   key={service.id}
                   type="button"
                   onClick={() => onSelectService(service)}
-                  className={`flex min-h-[150px] w-full flex-col rounded-2xl border p-4 text-left transition ${
+                  className={`relative flex min-h-[150px] w-full flex-col rounded-2xl border-2 p-4 text-left transition ${
                     selected
                       ? 'border-blue-600 bg-blue-50 shadow-md ring-2 ring-blue-500/20'
-                      : 'border-gray-200 bg-white shadow-sm hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-md'
+                      : isInCart
+                        ? posCatalogInCartBorderClass(true)
+                        : 'border-gray-200 bg-white shadow-sm hover:border-blue-300 hover:bg-blue-50/40 hover:shadow-md'
                   }`}
                 >
+                  <PosCatalogInCartBadge qty={cartQty} />
                   <span className="break-words text-base font-bold leading-snug text-gray-900">{service.name || '—'}</span>
                   {service.cn_name ? <span className="mt-1 break-words text-sm leading-snug text-gray-500">{service.cn_name}</span> : null}
                   <span className="mt-auto pt-4 text-sm font-medium text-gray-600">{Number(service.duration_min ?? 0)} mins</span>
