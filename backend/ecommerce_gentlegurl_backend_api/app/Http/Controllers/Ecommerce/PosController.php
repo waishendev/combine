@@ -1379,6 +1379,8 @@ class PosController extends Controller
             'start_at' => ['required', 'date'],
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
             'reason' => ['nullable', 'string'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
@@ -1395,6 +1397,10 @@ class PosController extends Controller
             : (int) ($booking->staff_id ?? 0);
         if ($targetStaffId <= 0) {
             return $this->respondError(__('Assigned staff is required.'), 422);
+        }
+        $targetStaff = Staff::query()->findOrFail($targetStaffId);
+        if (! (bool) ($targetStaff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
         }
 
         $policy = SettingService::get('booking_policy', [
@@ -1421,9 +1427,15 @@ class PosController extends Controller
 
         $newStart = Carbon::parse($validated['start_at']);
         $newEnd = $newStart->copy()->addMinutes($this->recalculateAppointmentDurationMin($booking));
-        if (! $this->availabilityService->isWithinStaffAvailability($targetStaffId, $newStart, $newEnd)
-            || $this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
-            return $this->respondError(__('Selected slot is not available.'), 409);
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
+        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+            return $this->respondError(__('Selected staff is not available on this day.'), 409);
+        }
+
+        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
+            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
         }
 
         $oldStart = $booking->start_at;
@@ -2096,6 +2108,13 @@ class PosController extends Controller
         $endAt = $startAt->copy()->addMinutes($totalDurationMin);
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+            return $this->respondError(__('Selected staff is not available on this day.'), 409);
+        }
+
         if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
             return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
         }
@@ -2342,6 +2361,8 @@ class PosController extends Controller
             'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
             'deposit_qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -2394,6 +2415,10 @@ class PosController extends Controller
         }
 
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+        if (! (bool) ($staff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
+        }
+
         if (! $service->isStaffAllowed((int) $staff->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
         }
@@ -2505,24 +2530,15 @@ class PosController extends Controller
 
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        if (! $this->availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
-            || $this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
-            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+            return $this->respondError(__('Selected staff is not available on this day.'), 409);
         }
 
-        $daySlots = $this->availabilityService->getAvailableSlots(
-            $service,
-            (int) $staff->id,
-            $startAt->toDateString(),
-            15,
-            $addonDurationMin,
-            false
-        );
-        $slotStillVisible = collect($daySlots)->contains(function (array $slot) use ($startAt) {
-            return (string) ($slot['start_at'] ?? '') === $startAt->toIso8601String();
-        });
-        if (! $slotStillVisible) {
-            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
+            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
         }
 
         $splits = collect($validated['staff_splits'] ?? [

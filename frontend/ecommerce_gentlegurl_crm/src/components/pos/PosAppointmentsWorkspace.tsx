@@ -71,6 +71,30 @@ function durationMinutesFromRange(startAt?: string | null, endAt?: string | null
   return Math.round(ms / 60000)
 }
 
+
+const POS_SLOT_INTERVAL_MIN = 15
+
+function makeLocalDateTimeValue(date: string, minutesFromMidnight: number) {
+  const hours = Math.floor(minutesFromMidnight / 60)
+  const minutes = minutesFromMidnight % 60
+  return `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
+}
+
+function buildPosFullDaySlots(date: string, durationMin: number, stepMin = POS_SLOT_INTERVAL_MIN) {
+  const safeDurationMin = Math.max(1, durationMin)
+  const lastStartMinute = Math.max(0, (24 * 60) - safeDurationMin)
+  const slots: Array<{ start_at: string; end_at: string }> = []
+
+  for (let minute = 0; minute <= lastStartMinute; minute += stepMin) {
+    slots.push({
+      start_at: makeLocalDateTimeValue(date, minute),
+      end_at: makeLocalDateTimeValue(date, minute + safeDurationMin),
+    })
+  }
+
+  return slots
+}
+
 type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
 
 type BookingServiceOption = {
@@ -405,7 +429,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentRescheduleDate, setAppointmentRescheduleDate] = useState('')
   const [appointmentRescheduleSlotValue, setAppointmentRescheduleSlotValue] = useState('')
   const [appointmentRescheduleReason, setAppointmentRescheduleReason] = useState('')
-  const [appointmentRescheduleSlots, setAppointmentRescheduleSlots] = useState<Array<{ start_at: string; end_at: string }>>([])
+  const [appointmentRescheduleSlots, setAppointmentRescheduleSlots] = useState<Array<{ start_at: string; end_at: string; is_in_schedule?: boolean }>>([])
   const [appointmentRescheduleSlotsLoading, setAppointmentRescheduleSlotsLoading] = useState(false)
   const [appointmentRescheduleSubmitting, setAppointmentRescheduleSubmitting] = useState(false)
   const [appointmentReschedulePolicyWarnings, setAppointmentReschedulePolicyWarnings] = useState<string[]>([])
@@ -973,14 +997,33 @@ export default function PosAppointmentsWorkspace({
 
   const createAppointmentStaffPickerOptions = useMemo(() => {
     if (!createAppointmentDate || !createAppointmentSlotValue) return []
+    return createAppointmentAllowedStaffs
+  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSlotValue])
+
+  const createAppointmentSelectedSlotScheduleIds = useMemo(() => {
+    if (!createAppointmentSlotValue) return []
     const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
-    const staffIds = slot?.available_staff_ids
-    const base = createAppointmentAllowedStaffs
-    if (Array.isArray(staffIds) && staffIds.length > 0) {
-      return base.filter((s) => staffIds.includes(s.id))
-    }
-    return []
-  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSlotValue, createAppointmentSlots])
+    return Array.isArray(slot?.available_staff_ids) ? slot.available_staff_ids : []
+  }, [createAppointmentSlotValue, createAppointmentSlots])
+
+  const createAppointmentOutsideStaffSchedule = Boolean(
+    createAppointmentDate
+    && createAppointmentSlotValue
+    && createAppointmentAssignedStaffId
+    && !createAppointmentSelectedSlotScheduleIds.includes(createAppointmentAssignedStaffId),
+  )
+
+  const appointmentRescheduleSelectedSlot = useMemo(
+    () => appointmentRescheduleSlots.find((slot) => slot.start_at === appointmentRescheduleSlotValue) ?? null,
+    [appointmentRescheduleSlotValue, appointmentRescheduleSlots],
+  )
+
+  const appointmentRescheduleOutsideStaffSchedule = Boolean(
+    appointmentRescheduleDate
+    && appointmentRescheduleSlotValue
+    && appointmentRescheduleStaffId
+    && appointmentRescheduleSelectedSlot?.is_in_schedule === false,
+  )
 
   const createAppointmentStaffPickerReady = Boolean(createAppointmentDate && createAppointmentSlotValue)
 
@@ -1084,6 +1127,8 @@ export default function PosAppointmentsWorkspace({
         qty: 1,
         deposit_amount: Math.max(0, createAppointmentDepositValue || 0),
         deposit_payments: createAppointmentDepositValue > 0 ? createAppointmentDepositRows : [],
+        availability_override: true,
+        availability_override_reason: null,
       }
       if (createAppointmentIdentityMode === 'member') {
         payload.customer_id = createAppointmentCustomerId
@@ -2025,6 +2070,8 @@ export default function PosAppointmentsWorkspace({
           staff_id: appointmentRescheduleStaffId,
           start_at: appointmentRescheduleSlotValue,
           reason: appointmentRescheduleReason.trim() ? appointmentRescheduleReason.trim() : null,
+          availability_override: true,
+          availability_override_reason: null,
         }),
       })
       const json = await res.json().catch(() => null)
@@ -2073,26 +2120,42 @@ export default function PosAppointmentsWorkspace({
         const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
         const rows: unknown[] = Array.isArray(json?.data?.slots) ? json.data.slots : []
-        const slots = rows
+        const scheduledSlots = rows
           .map((row: unknown) => {
             if (!row || typeof row !== 'object') return null
             const maybe = row as Record<string, unknown>
             const startAt = String(maybe.start_at ?? '')
             const endAt = String(maybe.end_at ?? '')
             if (!startAt || !endAt) return null
-            return { start_at: startAt, end_at: endAt }
+            return { start_at: startAt, end_at: endAt, is_in_schedule: true }
           })
-          .filter((row): row is { start_at: string; end_at: string } => Boolean(row))
+          .filter((row): row is { start_at: string; end_at: string; is_in_schedule: boolean } => Boolean(row))
+        const scheduledByStart = new Map(scheduledSlots.map((slot) => [slot.start_at, slot]))
+        const durationMin = durationMinutesFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)
+          || Number(appointmentDetail.estimated_duration_min ?? 0)
+          || Number(appointmentDetail.service?.duration_min ?? 0)
+          || POS_SLOT_INTERVAL_MIN
+        const fullDaySlots = buildPosFullDaySlots(appointmentRescheduleDate, durationMin)
+          .map((slot) => ({ ...slot, is_in_schedule: scheduledByStart.has(slot.start_at) }))
 
-        setAppointmentRescheduleSlots(slots)
-        setAppointmentRescheduleSlotValue((prev) => (slots.some((slot) => slot.start_at === prev) ? prev : ''))
+        setAppointmentRescheduleSlots(fullDaySlots)
+        setAppointmentRescheduleSlotValue((prev) => (fullDaySlots.some((slot) => slot.start_at === prev) ? prev : ''))
       } finally {
         setAppointmentRescheduleSlotsLoading(false)
       }
     }
 
     void loadRescheduleSlots()
-  }, [appointmentDetail?.service?.id, appointmentRescheduleDate, appointmentRescheduleOpen, appointmentRescheduleStaffId])
+  }, [
+    appointmentDetail?.appointment_end_at,
+    appointmentDetail?.appointment_start_at,
+    appointmentDetail?.estimated_duration_min,
+    appointmentDetail?.service?.duration_min,
+    appointmentDetail?.service?.id,
+    appointmentRescheduleDate,
+    appointmentRescheduleOpen,
+    appointmentRescheduleStaffId,
+  ])
 
   useEffect(() => {
     const loadCreateSlots = async () => {
@@ -2135,8 +2198,20 @@ export default function PosAppointmentsWorkspace({
             }
           })
           .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
-        setCreateAppointmentSlots(slots)
-        setCreateAppointmentSlotValue((prev) => (slots.some((slot) => slot.start_at === prev) ? prev : ''))
+        const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
+        const fullDaySlots = buildPosFullDaySlots(
+          createAppointmentDate,
+          Math.max(
+            1,
+            Number(createAppointmentServiceDraft?.duration_min ?? 0) +
+            (createAppointmentAddonDurationTotal || 0) +
+            createAppointmentExtraTotals.baseDuration +
+            createAppointmentExtraTotals.addonDuration,
+          ),
+        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [] }))
+
+        setCreateAppointmentSlots(fullDaySlots)
+        setCreateAppointmentSlotValue((prev) => (fullDaySlots.some((slot) => slot.start_at === prev) ? prev : ''))
       } finally {
         setCreateAppointmentSlotsLoading(false)
       }
@@ -2148,6 +2223,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentExtraTotals.addonDuration,
     createAppointmentExtraTotals.baseDuration,
     createAppointmentModalOpen,
+    createAppointmentServiceDraft?.duration_min,
     createAppointmentServiceDraft?.id,
   ])
 
@@ -2157,22 +2233,15 @@ export default function PosAppointmentsWorkspace({
       return
     }
 
-    const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
-    const staffIds = slot?.available_staff_ids ?? []
-    const options = Array.isArray(staffIds) && staffIds.length > 0
-      ? createAppointmentAllowedStaffs.filter((staff) => staffIds.includes(staff.id))
-      : []
-
     setCreateAppointmentAssignedStaffId((prev) => {
-      if (prev && options.some((staff) => staff.id === prev)) return prev
-      return options[0]?.id ?? null
+      if (prev && createAppointmentAllowedStaffs.some((staff) => staff.id === prev)) return prev
+      return createAppointmentAllowedStaffs[0]?.id ?? null
     })
   }, [
     createAppointmentAllowedStaffs,
     createAppointmentDate,
     createAppointmentModalOpen,
     createAppointmentSlotValue,
-    createAppointmentSlots,
   ])
 
   useEffect(() => {
@@ -3845,8 +3914,15 @@ export default function PosAppointmentsWorkspace({
                           </option>
                         ))}
                       </select>
+                      <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p>
                     </div>
                   </div>
+
+                  {createAppointmentOutsideStaffSchedule ? (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                      Selected time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
+                    </div>
+                  ) : null}
 
                   <div>
                     <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
@@ -4313,7 +4389,10 @@ export default function PosAppointmentsWorkspace({
                 <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
                 <select
                   value={appointmentRescheduleStaffId ?? ''}
-                  onChange={(e) => setAppointmentRescheduleStaffId(Number(e.target.value) || null)}
+                  onChange={(e) => {
+                    setAppointmentRescheduleStaffId(Number(e.target.value) || null)
+                    setAppointmentRescheduleSlotValue('')
+                  }}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 >
                   <option value="">Select staff</option>
@@ -4329,7 +4408,10 @@ export default function PosAppointmentsWorkspace({
                 <input
                   type="date"
                   value={appointmentRescheduleDate}
-                  onChange={(e) => setAppointmentRescheduleDate(e.target.value)}
+                  onChange={(e) => {
+                    setAppointmentRescheduleDate(e.target.value)
+                    setAppointmentRescheduleSlotValue('')
+                  }}
                   className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                 />
               </div>
@@ -4348,7 +4430,13 @@ export default function PosAppointmentsWorkspace({
                     </option>
                   ))}
                 </select>
+                <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p>
               </div>
+              {appointmentRescheduleOutsideStaffSchedule ? (
+                <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                  Selected time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
+                </div>
+              ) : null}
               <div>
                 <label className="text-xs font-semibold text-gray-600">Reason (optional)</label>
                 <textarea
