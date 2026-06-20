@@ -997,16 +997,7 @@ class PosController extends Controller
         }
 
         if ($isRangePriced && isset($validated['settled_service_amount'])) {
-            $amount = (float) $validated['settled_service_amount'];
-            $rangeMin = (float) ($effectiveService->price_range_min ?? 0);
-            $rangeMax = (float) ($effectiveService->price_range_max ?? 0);
-            if ($amount < $rangeMin - 0.005 || $amount > $rangeMax + 0.005) {
-                return $this->respondError(__('Service amount must be between RM :min and RM :max.', [
-                    'min' => number_format($rangeMin, 2),
-                    'max' => number_format($rangeMax, 2),
-                ]), 422);
-            }
-            $booking->settled_service_amount = round($amount, 2);
+            $booking->settled_service_amount = round((float) $validated['settled_service_amount'], 2);
         } elseif (! $isRangePriced) {
             $booking->settled_service_amount = null;
         }
@@ -1673,13 +1664,10 @@ class PosController extends Controller
             if (! array_key_exists('actual_selling_price', $validated) || $validated['actual_selling_price'] === null || $validated['actual_selling_price'] === '') {
                 return $this->respondError(__('Product base price is required for range booking products.'), 422);
             }
-            $actualSellingPrice = round((float) $validated['actual_selling_price'], 2);
-            $minPrice = round((float) ($bookingProduct->price_range_min ?? 0), 2);
-            $maxPrice = round((float) ($bookingProduct->price_range_max ?? 0), 2);
-            if ($actualSellingPrice < $minPrice || $actualSellingPrice > $maxPrice) {
-                return $this->respondError(__('Product base price must be within the booking product price range.'), 422);
+            $basePrice = round((float) $validated['actual_selling_price'], 2);
+            if ($basePrice < 0) {
+                return $this->respondError(__('Product base price must be zero or greater.'), 422);
             }
-            $basePrice = $actualSellingPrice;
         }
         $unitPriceSnapshot = round($basePrice + $extraPrice, 2);
         $targetSignature = $this->bookingProductOptionConfigurationSignature($selectedSnapshotRows);

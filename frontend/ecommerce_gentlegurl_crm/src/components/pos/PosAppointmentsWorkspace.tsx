@@ -4420,7 +4420,7 @@ export default function PosAppointmentsWorkspace({
                     Service Amount
                   </label>
                   <p className="text-xs text-gray-500 mb-2">
-                    Range: RM {getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                    Reference range: RM {getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} – RM{' '}
                     {getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}
                   </p>
                   <div className="relative">

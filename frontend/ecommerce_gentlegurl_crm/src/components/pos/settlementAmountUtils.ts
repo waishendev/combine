@@ -70,30 +70,11 @@ export function parseSettlementAmountInput(raw: string): number | null {
 
 export function validateSettlementAmountInput(
   raw: string,
-  source?: SettlementRangeSource | null,
+  _source?: SettlementRangeSource | null,
 ): { ok: true; amount: number } | { ok: false; message: string } {
   const amt = parseSettlementAmountInput(raw)
   if (amt == null) {
     return { ok: false, message: 'Please enter a valid service amount.' }
-  }
-
-  if (!settlementNeedsSettledAmount(source)) {
-    return { ok: true, amount: amt }
-  }
-
-  const { min, max } = getSettlementRangeBounds(source)
-  if (max <= 0 && min <= 0) {
-    return {
-      ok: false,
-      message: 'This service has range pricing but no price range is configured. Please update the service catalog first.',
-    }
-  }
-
-  if (amt < min - 0.005 || amt > max + 0.005) {
-    return {
-      ok: false,
-      message: `Service amount must be between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.`,
-    }
   }
 
   return { ok: true, amount: amt }

@@ -666,12 +666,10 @@ const formatBookingProductCatalogPrice = (item: BookingProductOption) => item.pr
 
 const getInitialBookingProductBasePrice = (item: BookingProductOption) => (item.price_mode === 'range' ? Number(item.price_range_min ?? 0).toFixed(2) : '')
 
-const validateBookingProductBaseSellingPrice = (item: BookingProductOption, value: string) => {
-  const actualPrice = Number(value)
-  const min = Number(item.price_range_min ?? 0)
-  const max = Number(item.price_range_max ?? 0)
-  if (!Number.isFinite(actualPrice) || actualPrice < min || actualPrice > max) {
-    return { ok: false as const, message: `Enter a product base price between RM ${min.toFixed(2)} and RM ${max.toFixed(2)}.` }
+const validateBookingProductBaseSellingPrice = (value: string) => {
+  const actualPrice = Number(String(value ?? '').trim().replace(/,/g, '.'))
+  if (!Number.isFinite(actualPrice) || actualPrice < 0) {
+    return { ok: false as const, message: 'Enter a valid product base price.' }
   }
   return { ok: true as const, value: actualPrice }
 }
@@ -703,7 +701,7 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
       }
     }
 
-    const basePriceValidation = draft.price_mode === 'range' ? validateBookingProductBaseSellingPrice(draft, basePriceDraft) : null
+    const basePriceValidation = draft.price_mode === 'range' ? validateBookingProductBaseSellingPrice(basePriceDraft) : null
     if (basePriceValidation && !basePriceValidation.ok) {
       setError(basePriceValidation.message)
       return
@@ -729,8 +727,8 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
           {draft.price_mode === 'range' ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
               <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Product Base Price</p>
-              <p className="mt-1 text-xs text-gray-600">Price Range: {formatBookingProductCatalogPrice(draft)}</p>
-              <p className="mt-1 text-xs text-gray-500">This base price is validated independently. Selected options are added separately.</p>
+              <p className="mt-1 text-xs text-gray-600">Reference range: {formatBookingProductCatalogPrice(draft)}</p>
+              <p className="mt-1 text-xs text-gray-500">Enter any base price. Selected options are added separately.</p>
               <div className="relative mt-2 max-w-xs"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">RM</span><input type="text" inputMode="decimal" value={basePriceDraft} onChange={(e) => setBasePriceDraft(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm text-gray-900" /></div>
             </div>
           ) : null}
@@ -8061,7 +8059,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <div>
                   <label className="block text-sm font-bold text-gray-900 mb-1">Service Amount</label>
                   <p className="text-xs text-gray-500 mb-2">
-                    Range: RM {getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                    Reference range: RM {getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} – RM{' '}
                     {getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}
                   </p>
                   <div className="relative">
