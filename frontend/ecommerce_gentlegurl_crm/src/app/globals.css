@@ -192,23 +192,34 @@ body {
       min-height: 0;
     }
 
-    /* POS appointments: use two columns only when the viewport is wide *and* tall enough. */
+    /* POS appointments: side-by-side panels with internal scroll in schedule areas. */
     .pos-appt-layout {
       grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-      min-height: 0;
     }
     .pos-appt-left {
       grid-column: span 3 / span 3;
-      min-height: 0;
     }
     .pos-appt-right {
       grid-column: span 2 / span 2;
+    }
+    .pos-appt-left > .pos-appt-panel,
+    .pos-appt-right > .pos-appt-panel {
       min-height: 0;
     }
-    .pos-appt-panel {
-      height: calc(80vh - 5rem);
-      max-height: calc(100dvh - 6rem);
+
+    .pos-appt-schedule-host {
       min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pos-appt-day-grid-scroll {
+      max-height: min(72dvh, 960px);
+      min-height: 280px;
+      overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y;
     }
 
     /* Wide layout: inline panels only — hide floating controls */
@@ -364,6 +375,31 @@ body {
     /* POS appointments: settlement sheet + floating bar (compact) */
     .pos-appt-left--floating-bar {
       padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .pos-appt-left--compact > .pos-appt-panel {
+      max-height: none;
+      min-height: 0;
+    }
+
+    .pos-appt-schedule-host {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .pos-appt-month-grid > button,
+    .pos-appt-month-grid > div {
+      min-height: 5rem;
+    }
+
+    .pos-appt-day-grid-scroll {
+      max-height: min(65dvh, 720px);
+      min-height: 260px;
+      overflow: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y;
     }
 
     .pos-appt-right {

@@ -1,18 +1,24 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useLayoutEffect, useMemo, useRef } from 'react'
 
 import {
   posAppointmentDayBlockClass,
   posAppointmentDayBlockSubtextClass,
   posAppointmentVisualToneFromRow,
 } from './posAppointmentHelpers'
+import {
+  POS_APPOINTMENT_DAY_END_MIN,
+  POS_APPOINTMENT_DAY_START_MIN,
+  POS_APPOINTMENT_SLOT_MINUTES,
+  POS_APPOINTMENT_SLOT_PX,
+} from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 
-const SLOT_MINUTES = 15
-const DAY_START_MIN = 8 * 60
-const DAY_END_MIN = 21 * 60
-const SLOT_PX = 22
+const SLOT_MINUTES = POS_APPOINTMENT_SLOT_MINUTES
+const DAY_START_MIN = POS_APPOINTMENT_DAY_START_MIN
+const DAY_END_MIN = POS_APPOINTMENT_DAY_END_MIN
+const SLOT_PX = POS_APPOINTMENT_SLOT_PX
 const SCHEDULE_TZ = process.env.NEXT_PUBLIC_TIMEZONE || 'Asia/Kuala_Lumpur'
 
 const parseIsoToLocalYmd = (iso: string | null | undefined): string | null => {
@@ -195,6 +201,34 @@ export default function PosAppointmentsDayGrid({
 
   const totalSlots = Math.ceil((DAY_END_MIN - DAY_START_MIN) / SLOT_MINUTES)
   const gridHeight = totalSlots * SLOT_PX
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    const el = scrollRef.current
+    if (!el || loading) return
+
+    const now = new Date()
+    const todayParts = new Intl.DateTimeFormat('en-CA', {
+      timeZone: SCHEDULE_TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).formatToParts(now)
+    const read = (type: string) => todayParts.find((part) => part.type === type)?.value ?? ''
+    const todayYmd = `${read('year')}-${read('month')}-${read('day')}`
+
+    let targetMin = DAY_START_MIN
+    if (dayYmd === todayYmd) {
+      const { hour, minute } = getTimePartsInScheduleTz(now.toISOString())
+      const nowMin = hour * 60 + minute
+      if (nowMin > DAY_START_MIN && nowMin < DAY_END_MIN) {
+        targetMin = Math.max(DAY_START_MIN, nowMin - SLOT_MINUTES * 2)
+      }
+    }
+
+    const targetTop = ((targetMin - DAY_START_MIN) / SLOT_MINUTES) * SLOT_PX
+    el.scrollTop = Math.max(0, targetTop - SLOT_PX)
+  }, [dayYmd, loading, staffColumns.length])
 
   if (loading) {
     return (
@@ -213,8 +247,11 @@ export default function PosAppointmentsDayGrid({
   const HEADER_H = 44
 
   return (
-    <div className="flex h-full max-h-full min-h-0 flex-col">
-      <div className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]">
+    <div>
+      <div
+        ref={scrollRef}
+        className="pos-appt-day-grid-scroll rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]"
+      >
         <div className="min-w-max">
           <div className="flex min-w-full shrink-0 border-b border-slate-200 bg-slate-100">
         <div

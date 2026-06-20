@@ -251,6 +251,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentStaffOptions, setAppointmentStaffOptions] = useState<StaffOption[]>([])
   const [appointmentStaffLoading, setAppointmentStaffLoading] = useState(false)
   const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
+  const [appointmentFiltersOpen, setAppointmentFiltersOpen] = useState(false)
   const [createAppointmentModalOpen, setCreateAppointmentModalOpen] = useState(false)
   const [createAppointmentServices, setCreateAppointmentServices] = useState<BookingServiceOption[]>([])
   const [bookingServiceCategories, setBookingServiceCategories] = useState<BookingServiceCategoryOption[]>([])
@@ -2505,6 +2506,19 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentDetail, appointmentDueAfterDiscount, hasAppointmentSettlementTarget])
 
   useEffect(() => {
+    if (isCompactLayout === null) return
+    setAppointmentFiltersOpen(!isCompactLayout)
+  }, [isCompactLayout])
+
+  const appointmentActiveFilterCount = useMemo(
+    () =>
+      [appointmentQuery, appointmentCustomerFilter, appointmentStaffFilter, appointmentStatusFilter].filter(
+        (value) => value.trim().length > 0,
+      ).length,
+    [appointmentQuery, appointmentCustomerFilter, appointmentStaffFilter, appointmentStatusFilter],
+  )
+
+  useEffect(() => {
     if (!settlementSheetOpen || typeof document === 'undefined') return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -2514,30 +2528,22 @@ export default function PosAppointmentsWorkspace({
   }, [settlementSheetOpen])
 
   return (
-    <div className="min-h-screen space-y-4 overflow-x-hidden bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Appointments</h2>
-          {/* <p className="mt-2 text-sm text-gray-600">
-            Month view shows a calendar; Day view shows the staff × time grid. Settlement stays on the right.
-          </p>
-          {currentUser?.name ? (
-            <p className="mt-1 text-xs text-gray-500">Signed in as {currentUser.name}</p>
-          ) : null} */}
-        </div>
+    <div className="pos-appt-workspace space-y-3 sm:space-y-4">
+      <div className="lg:hidden">
+        <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">POS Appointments</h2>
       </div>
 
-      <div className="pos-appt-layout grid min-w-0 grid-cols-1 gap-5">
+      <div className="pos-appt-layout grid min-w-0 grid-cols-1 gap-3 lg:gap-5">
         <div
           className={[
             'pos-appt-left min-w-0 space-y-5',
-            isCompactLayout === true && 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
+            isCompactLayout === true && 'pos-appt-left--compact pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
           ]
             .filter(Boolean)
             .join(' ')}
         >
-          <div className="pos-appt-panel flex min-h-0 flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-6 shadow-md">
-            <h3 className="mb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2 text-xl font-bold text-gray-900">
+          <div className="pos-appt-panel flex flex-col rounded-xl border-2 border-gray-200 bg-white p-3 shadow-md sm:p-4 lg:p-5">
+            <h3 className="pos-appt-panel-header mb-2 flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 text-lg font-bold text-gray-900 sm:mb-3 sm:text-xl">
               <div className="flex items-center gap-2">
                 <svg className="h-6 w-6 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -2634,6 +2640,7 @@ export default function PosAppointmentsWorkspace({
                 ) : null}
               </div>
             </h3>
+            <div className="pos-appt-schedule-host">
             <PosAppointmentsSchedule
               viewMode={posApptViewMode}
               onViewModeChange={(mode) => {
@@ -2666,7 +2673,36 @@ export default function PosAppointmentsWorkspace({
               scheduleStaff={scheduleStaffForDayGrid}
               staffOffTodayIds={staffOffTodayIds}
               filterSlot={(
-                <div className="grid gap-2 lg:grid-cols-2">
+                <div className="shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setAppointmentFiltersOpen((open) => !open)}
+                    className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100"
+                    aria-expanded={appointmentFiltersOpen}
+                  >
+                    <span className="inline-flex items-center gap-2">
+                      <svg className="h-4 w-4 shrink-0 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                      </svg>
+                      Filters
+                      {appointmentActiveFilterCount > 0 ? (
+                        <span className="inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-blue-600 px-1.5 text-[10px] font-bold text-white">
+                          {appointmentActiveFilterCount}
+                        </span>
+                      ) : null}
+                    </span>
+                    <svg
+                      className={`h-4 w-4 shrink-0 text-slate-500 transition-transform ${appointmentFiltersOpen ? 'rotate-180' : ''}`}
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      aria-hidden
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {appointmentFiltersOpen ? (
+                    <div className="mt-2 grid gap-2 lg:grid-cols-2">
                   <input
                     value={appointmentQuery}
                     onChange={(e) => setAppointmentQuery(e.target.value)}
@@ -2707,9 +2743,12 @@ export default function PosAppointmentsWorkspace({
                     <option value="CONFIRMED">CONFIRMED</option>
                     <option value="COMPLETED">COMPLETED (UNPAID)</option>
                   </select>
+                    </div>
+                  ) : null}
                 </div>
               )}
             />
+            </div>
           </div>
         </div>
 

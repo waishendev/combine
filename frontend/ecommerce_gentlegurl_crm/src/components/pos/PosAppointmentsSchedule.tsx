@@ -3,6 +3,7 @@
 import { useMemo, type ReactNode } from 'react'
 
 import { posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow } from './posAppointmentHelpers'
+import { formatPosAppointmentScheduleRangeLabel } from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 import PosAppointmentsDayGrid from './PosAppointmentsDayGrid'
 
@@ -120,10 +121,10 @@ export default function PosAppointmentsSchedule({
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      {filterSlot}
+    <div className="flex flex-col gap-3">
+      <div className="shrink-0">{filterSlot}</div>
 
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+      <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
         <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5">
           <button
             type="button"
@@ -196,29 +197,29 @@ export default function PosAppointmentsSchedule({
       </div>
 
       <div
-        className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[11px] text-slate-600 shadow-sm"
+        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 shadow-sm"
         role="note"
       >
-        <span className="font-semibold text-slate-700">Colour key :</span>
+        <span className="font-semibold text-slate-700">Key</span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-3 w-6 shrink-0 rounded border-2 border-violet-900 bg-violet-600" aria-hidden />
+          <span className="h-3 w-5 shrink-0 rounded border-2 border-violet-900 bg-violet-600" aria-hidden />
           Hold
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-3 w-6 shrink-0 rounded border-2 border-indigo-900 bg-indigo-600" aria-hidden />
-          Confirmed, pending
+          <span className="h-3 w-5 shrink-0 rounded border-2 border-indigo-900 bg-indigo-600" aria-hidden />
+          Confirmed
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-3 w-6 shrink-0 rounded border-2 border-amber-900 bg-amber-600" aria-hidden />
+          <span className="h-3 w-5 shrink-0 rounded border-2 border-amber-900 bg-amber-600" aria-hidden />
           Completed · unpaid
         </span>
-        <span className="text-slate-500">Completed paid and terminal statuses are hidden from this active schedule.</span>
+        <span className="hidden text-slate-500 xl:inline">Paid / closed bookings are hidden from this schedule.</span>
       </div>
 
       {viewMode === 'month' ? (
-        <div className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="rounded-lg border border-slate-200 bg-white p-2 shadow-sm sm:p-3">
           <p className="mb-2 text-xs text-slate-500">
-            Tap a date to open the <span className="font-semibold text-slate-700">day schedule</span> (staff columns &amp; time slots). Times shown in your local timezone.
+            Tap a date for the <span className="font-semibold text-slate-700">day schedule</span>. Times in your local timezone.
           </p>
           <div className="grid grid-cols-7 gap-1 text-[11px] font-semibold text-slate-500">
             {WEEKDAYS.map((d) => (
@@ -227,9 +228,9 @@ export default function PosAppointmentsSchedule({
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1">
+          <div className="pos-appt-month-grid grid grid-cols-7 gap-1">
             {calendarCells.map((cell, idx) => {
-              if (!cell.date) return <div key={`empty-${idx}`} className="min-h-[7.5rem] rounded border border-transparent" />
+              if (!cell.date) return <div key={`empty-${idx}`} className="min-h-[5rem] rounded border border-transparent sm:min-h-[6rem]" />
 
               const key = formatYmd(cell.date)
               const { lines, more } = previewLinesForYmd(key)
@@ -242,7 +243,7 @@ export default function PosAppointmentsSchedule({
                   key={key}
                   type="button"
                   onClick={() => onMonthDayNavigateToDay(key)}
-                  className={`flex min-h-[7.5rem] flex-col rounded border p-1.5 text-left transition hover:border-indigo-500 hover:bg-indigo-50/90 ${
+                  className={`flex min-h-[5rem] flex-col rounded border p-1 text-left transition hover:border-indigo-500 hover:bg-indigo-50/90 sm:min-h-[6rem] sm:p-1.5 ${
                     hasBookings
                       ? 'border-indigo-400 bg-indigo-50/70 shadow-sm ring-1 ring-indigo-200/80'
                       : 'border-slate-200 bg-white hover:border-blue-400 hover:bg-blue-50/80'
@@ -251,7 +252,7 @@ export default function PosAppointmentsSchedule({
                   <span className={`text-xs font-bold ${isToday ? 'text-blue-700' : 'text-slate-800'}`}>
                     {cell.date.getDate()}
                   </span>
-                  <div className="mt-1 flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden">
+                  <div className="mt-0.5 flex min-h-0 flex-1 flex-col gap-0.5 overflow-hidden sm:mt-1">
                     {lines.length === 0 ? (
                       <span className="text-[10px] text-slate-400">—</span>
                     ) : (
@@ -277,13 +278,10 @@ export default function PosAppointmentsSchedule({
       ) : null}
 
       {viewMode === 'day' ? (
-        <div className="min-h-0 flex-1">
-          {/* <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-            Schedule · {dayDate}
-          </p> */}
-          {/* <p className="mb-2 text-[11px] text-slate-500">
-            15-minute grid · 8:00–21:00 · Click a block to open settlement on the right.
-          </p> */}
+        <div>
+          <p className="mb-2 text-[11px] text-slate-500">
+            {formatPosAppointmentScheduleRangeLabel()} · 15-minute slots · tap a block to open settlement.
+          </p>
           <PosAppointmentsDayGrid
             dayYmd={dayDate}
             appointments={appointments}
