@@ -10,14 +10,17 @@ class ActivityLogController extends Controller
     public function index(Request $request)
     {
         $perPage = min(max($request->integer('per_page', 50), 1), 200);
+        $supportedActions = ['created', 'updated', 'deleted'];
 
-        $query = ActivityLog::query()->latest('created_at');
+        $query = ActivityLog::query()
+            ->whereIn('action', $supportedActions)
+            ->latest('created_at');
 
         if ($request->filled('user_id')) {
             $query->where('user_id', $request->input('user_id'));
         }
 
-        if ($request->filled('action')) {
+        if ($request->filled('action') && in_array((string) $request->input('action'), $supportedActions, true)) {
             $query->where('action', $request->input('action'));
         }
 
@@ -69,10 +72,12 @@ class ActivityLogController extends Controller
             ],
             'filters' => [
                 'model_types' => ActivityLog::query()
+                    ->whereIn('action', $supportedActions)
                     ->distinct()
                     ->orderBy('model_type')
                     ->pluck('model_type'),
                 'users' => ActivityLog::query()
+                    ->whereIn('action', $supportedActions)
                     ->whereNotNull('user_id')
                     ->selectRaw('DISTINCT user_id, user_name')
                     ->orderBy('user_name')

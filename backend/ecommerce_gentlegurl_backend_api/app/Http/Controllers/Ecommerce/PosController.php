@@ -470,6 +470,7 @@ class PosController extends Controller
             'status' => (string) $booking->status,
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+            'schedule_override' => $this->serializeScheduleOverride($booking),
             'customer' => $booking->customer_id
                 ? [
                     'id' => (int) $booking->customer_id,
@@ -1379,6 +1380,8 @@ class PosController extends Controller
             'start_at' => ['required', 'date'],
             'staff_id' => ['nullable', 'integer', 'exists:staffs,id'],
             'reason' => ['nullable', 'string'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $booking = Booking::query()->with(['service', 'customer', 'staff'])->findOrFail($id);
@@ -1395,6 +1398,10 @@ class PosController extends Controller
             : (int) ($booking->staff_id ?? 0);
         if ($targetStaffId <= 0) {
             return $this->respondError(__('Assigned staff is required.'), 422);
+        }
+        $targetStaff = Staff::query()->findOrFail($targetStaffId);
+        if (! (bool) ($targetStaff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
         }
 
         $policy = SettingService::get('booking_policy', [
@@ -1421,10 +1428,18 @@ class PosController extends Controller
 
         $newStart = Carbon::parse($validated['start_at']);
         $newEnd = $newStart->copy()->addMinutes($this->recalculateAppointmentDurationMin($booking));
-        if (! $this->availabilityService->isWithinStaffAvailability($targetStaffId, $newStart, $newEnd)
-            || $this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
-            return $this->respondError(__('Selected slot is not available.'), 409);
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
+        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+            return $this->respondError(__('Selected staff is not available on this day.'), 409);
         }
+
+        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
+            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
+        }
+
+        $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, $scheduleDiagnostics, $request->user()?->id);
 
         $oldStart = $booking->start_at;
         $oldEnd = $booking->end_at;
@@ -1438,7 +1453,9 @@ class PosController extends Controller
             'rescheduled_at' => now(),
             'rescheduled_from_booking_id' => $booking->rescheduled_from_booking_id ?: $booking->id,
             'reschedule_reason' => $validated['reason'] ?? null,
+            ...$scheduleOverride,
         ]);
+        $this->recordScheduleOverrideAudit($booking->fresh(), $scheduleOverride, $request);
 
         BookingLog::create([
             'booking_id' => $booking->id,
@@ -1928,6 +1945,8 @@ class PosController extends Controller
             'deposit_payments' => ['nullable', 'array'],
             'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -1979,6 +1998,10 @@ class PosController extends Controller
             $guestPhone = $guestPhone !== '' ? $guestPhone : null;
         }
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+
+        if (! (bool) ($staff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
+        }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
@@ -2088,6 +2111,20 @@ class PosController extends Controller
         $selectedOptionIds = $mainItems->flatMap(fn (array $item) => $item['selected_option_ids'])->unique()->values();
         $totalDurationMin = (int) $mainItems->sum('duration_min');
         $endAt = $startAt->copy()->addMinutes($totalDurationMin);
+        $bufferMin = (int) ($service->buffer_min ?? 0);
+
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+            return $this->respondError(__('Selected staff is not available on this day.'), 409);
+        }
+
+        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
+            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
+        }
+
+
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
         ])->values();
@@ -2330,6 +2367,8 @@ class PosController extends Controller
             'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
             'deposit_qr_payment_proof' => ['nullable', 'file', 'mimes:jpg,jpeg,png,webp,pdf', 'max:5120'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -2382,6 +2421,10 @@ class PosController extends Controller
         }
 
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+        if (! (bool) ($staff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
+        }
+
         if (! $service->isStaffAllowed((int) $staff->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
         }
@@ -2493,25 +2536,18 @@ class PosController extends Controller
 
         $bufferMin = (int) ($service->buffer_min ?? 0);
 
-        if (! $this->availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
-            || $this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
-            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+        $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+            return $this->respondError(__('Selected staff is not available on this day.'), 409);
         }
 
-        $daySlots = $this->availabilityService->getAvailableSlots(
-            $service,
-            (int) $staff->id,
-            $startAt->toDateString(),
-            15,
-            $addonDurationMin,
-            false
-        );
-        $slotStillVisible = collect($daySlots)->contains(function (array $slot) use ($startAt) {
-            return (string) ($slot['start_at'] ?? '') === $startAt->toIso8601String();
-        });
-        if (! $slotStillVisible) {
-            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
+            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
         }
+
+        $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
 
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
@@ -2580,7 +2616,8 @@ class PosController extends Controller
             $normalizedSplits,
             $validated,
             $depositAmount,
-            $depositPayments
+            $depositPayments,
+            $scheduleOverride
         ) {
             $booking = Booking::query()->create([
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -2602,7 +2639,9 @@ class PosController extends Controller
                 'payment_status' => $depositAmount > 0 ? 'PARTIAL' : 'UNPAID',
                 'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
                 'notes' => $validated['notes'] ?? null,
+                ...$scheduleOverride,
             ]);
+            $this->recordScheduleOverrideAudit($booking, $scheduleOverride, $request);
 
             $depositProofPath = $request->hasFile('deposit_qr_payment_proof')
                 ? $request->file('deposit_qr_payment_proof')->store('booking-payment-proofs', 'public')
@@ -4702,7 +4741,7 @@ class PosController extends Controller
             'items.variant.product',
             'items.product',
             'serviceItems.bookingService',
-            'serviceItems.assignedStaff',
+            'serviceItems.assignedStaff:id,name,is_active',
             'serviceItems.customer:id,name',
             'packageItems.servicePackage',
             'packageItems.customer:id,name',
@@ -5370,11 +5409,23 @@ class PosController extends Controller
                 $endAt = $serviceItem->end_at ? Carbon::parse((string) $serviceItem->end_at) : $startAt->copy()->addMinutes((int) ($serviceItem->bookingService->duration_min ?? 0));
                 $bufferMin = (int) ($serviceItem->bookingService->buffer_min ?? 0);
 
-                if ($serviceItem->assigned_staff_id
-                    && (! $this->availabilityService->isWithinStaffAvailability((int) $serviceItem->assigned_staff_id, $startAt, $endAt)
-                        || $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin))) {
-                    abort(409, __('Selected slot is no longer available.'));
+                if ($serviceItem->assigned_staff_id && ! (bool) ($serviceItem->assignedStaff?->is_active ?? true)) {
+                    abort(422, __('Assigned staff is inactive.'));
                 }
+
+                $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
+                $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+                if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
+                    && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
+                    abort(409, __('Selected staff is not available on this day.'));
+                }
+
+                if ($serviceItem->assigned_staff_id
+                    && $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin)) {
+                    abort(409, __('Selected slot conflicts with another booking, leave, or blocked time.'));
+                }
+
+                $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
 
                 $booking = Booking::query()->create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -5396,7 +5447,9 @@ class PosController extends Controller
                     'payment_status' => 'PAID',
                     'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
                     'notes' => $serviceItem->notes,
+                    ...$scheduleOverride,
                 ]);
+                $this->recordScheduleOverrideAudit($booking, $scheduleOverride, $request);
 
                 $confirmedBookingIds[] = (int) $booking->id;
 
@@ -7369,6 +7422,88 @@ class PosController extends Controller
         return $baseDurationMin + $extraMainDurationMin + $topLevelAddonDurationMin + $nestedAddonDurationMin;
     }
 
+
+    protected function resolvePosScheduleOverride(int $staffId, Carbon $startAt, Carbon $endAt, array $scheduleDiagnostics, ?int $actorUserId = null): array
+    {
+        $failureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        $scheduleStartRaw = $scheduleDiagnostics['schedule_start'] ?? null;
+        $scheduleEndRaw = $scheduleDiagnostics['schedule_end'] ?? null;
+        $scheduleStart = $scheduleStartRaw ? Carbon::parse((string) $scheduleStartRaw) : null;
+        $scheduleEnd = $scheduleEndRaw ? Carbon::parse((string) $scheduleEndRaw) : null;
+        $overrideUsed = $failureReason === 'outside_staff_schedule' && $scheduleStart && $scheduleEnd;
+        $overrideType = null;
+
+        if ($overrideUsed) {
+            if ($startAt->lt($scheduleStart)) {
+                $overrideType = 'before_staff_working_hours';
+            } elseif ($endAt->gt($scheduleEnd)) {
+                $overrideType = 'after_staff_working_hours';
+            } else {
+                $overrideType = 'outside_staff_schedule';
+            }
+        }
+
+        return [
+            'schedule_override_used' => $overrideUsed,
+            'schedule_override_type' => $overrideUsed ? $overrideType : null,
+            'scheduled_staff_start_at' => $overrideUsed ? $scheduleStart : null,
+            'scheduled_staff_end_at' => $overrideUsed ? $scheduleEnd : null,
+            'actual_booking_start_at' => $startAt,
+            'actual_booking_end_at' => $endAt,
+            'schedule_override_by' => $overrideUsed ? $actorUserId : null,
+            'schedule_override_at' => $overrideUsed ? now() : null,
+        ];
+    }
+
+    protected function recordScheduleOverrideAudit(Booking $booking, array $overrideData, Request $request): void
+    {
+        if (! (bool) ($overrideData['schedule_override_used'] ?? false)) {
+            return;
+        }
+
+        $scheduledStart = $overrideData['scheduled_staff_start_at'] ?? null;
+        $scheduledEnd = $overrideData['scheduled_staff_end_at'] ?? null;
+        $actualStart = $overrideData['actual_booking_start_at'] ?? null;
+        $actualEnd = $overrideData['actual_booking_end_at'] ?? null;
+        $oldValueJson = [
+            'staff_schedule_start' => $scheduledStart instanceof Carbon ? $scheduledStart->format('H:i') : null,
+            'staff_schedule_end' => $scheduledEnd instanceof Carbon ? $scheduledEnd->format('H:i') : null,
+        ];
+        $newValueJson = [
+            'booking_start' => $actualStart instanceof Carbon ? $actualStart->format('H:i') : null,
+            'booking_end' => $actualEnd instanceof Carbon ? $actualEnd->format('H:i') : null,
+            'override_type' => $overrideData['schedule_override_type'] ?? null,
+        ];
+        $user = $request->user();
+
+        BookingLog::query()->create([
+            'booking_id' => (int) $booking->id,
+            'actor_type' => 'ADMIN',
+            'actor_id' => $user?->id,
+            'action' => 'SCHEDULE_OVERRIDE',
+            'meta' => [
+                'old_value_json' => $oldValueJson,
+                'new_value_json' => $newValueJson,
+                'performed_by' => $user?->id,
+            ],
+            'created_at' => now(),
+        ]);
+    }
+
+    protected function serializeScheduleOverride(Booking $booking): array
+    {
+        return [
+            'used' => (bool) ($booking->schedule_override_used ?? false),
+            'type' => $booking->schedule_override_type,
+            'scheduled_staff_start_at' => optional($booking->scheduled_staff_start_at)?->toIso8601String(),
+            'scheduled_staff_end_at' => optional($booking->scheduled_staff_end_at)?->toIso8601String(),
+            'actual_booking_start_at' => optional($booking->actual_booking_start_at)?->toIso8601String(),
+            'actual_booking_end_at' => optional($booking->actual_booking_end_at)?->toIso8601String(),
+            'by' => $booking->schedule_override_by ? (int) $booking->schedule_override_by : null,
+            'at' => optional($booking->schedule_override_at)?->toIso8601String(),
+        ];
+    }
+
     protected function resolveAppointmentSnapshot(Booking $booking): array
     {
         $summary = $this->resolveAppointmentFinancialSummary($booking);
@@ -7383,6 +7518,7 @@ class PosController extends Controller
             'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
+            'schedule_override' => $this->serializeScheduleOverride($booking),
             'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
                 ? 'Walk-in / Unknown'
                 : (($booking->customer?->name ?? '') !== ''
