@@ -4114,6 +4114,33 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         setCartEditSettlementError(json?.message ?? 'Failed to update settlement.')
         return
       }
+      if (cartEditSettlementItem?.id) {
+        const settlementId = cartEditSettlementItem.id
+        setCheckoutLineSplits((prev) => {
+          const next = { ...prev }
+          Object.keys(next).forEach((key) => {
+            if (key.startsWith(`settlement:${settlementId}:`) || key.startsWith(`settlement-edit:${settlementId}:`)) {
+              delete next[key]
+            }
+          })
+
+          const originalLineKey = (cartEditSettlementItem.main_service_settlement_items ?? [])
+            .find((line, idx) => line.is_original ?? idx === 0)?.line_key ?? 'service:original'
+          next[`settlement:${settlementId}:${originalLineKey}`] = normalizedSplits
+
+          Array.from(cartEditSelectedAddonIds).forEach((addonId) => {
+            const editKey = `settlement-edit:${settlementId}:addon:${addonId}`
+            const addonLineKey = (cartEditSettlementItem.addon_settlement_items ?? [])
+              .find((addon) => Number(addon.id ?? 0) === Number(addonId))?.line_key ?? `addon:${addonId}`
+            const addonSplits = prev[editKey] ?? normalizedSplits
+            if (addonSplits.length > 0) {
+              next[`settlement:${settlementId}:${addonLineKey}`] = addonSplits
+            }
+          })
+
+          return next
+        })
+      }
       showMsg('Settlement updated.', 'success')
       setCartEditSettlementOpen(false)
       await loadCart()
@@ -7733,62 +7760,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
 
               <div>
-                <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
-                {cartEditAddonOptionsLoading ? (
-                  <p className="text-xs text-gray-500">Loading add-on options...</p>
-                ) : cartEditAddonQuestions.length === 0 ? (
-                  <p className="text-xs text-gray-500">No add-on options available for this service.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {cartEditAddonQuestions.map((question) => (
-                      <div key={question.id}>
-                        <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
-                        <div className="space-y-1.5">
-                          {question.options.map((opt) => {
-                            const checked = cartEditSelectedAddonIds.has(opt.id)
-                            return (
-                              <label
-                                key={opt.id}
-                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
-                                  checked
-                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleCartEditAddon(opt.id)}
-                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                  />
-                                  <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                                </div>
-                                <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
-                                  <span>+RM {Number(cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
-                                  {checked ? (() => {
-                                    const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
-                                    const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
-                                    return (
-                                      <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
-                                        {renderLineSplitStack(lineKey, inherited, 'main service')}
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                      </>
-                                    )
-                                  })() : null}
-                                </span>
-                              </label>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div>
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-sm font-bold text-gray-900">Staff Split</p>
                   <button
@@ -7867,6 +7838,62 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
+                {cartEditAddonOptionsLoading ? (
+                  <p className="text-xs text-gray-500">Loading add-on options...</p>
+                ) : cartEditAddonQuestions.length === 0 ? (
+                  <p className="text-xs text-gray-500">No add-on options available for this service.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {cartEditAddonQuestions.map((question) => (
+                      <div key={question.id}>
+                        <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
+                        <div className="space-y-1.5">
+                          {question.options.map((opt) => {
+                            const checked = cartEditSelectedAddonIds.has(opt.id)
+                            return (
+                              <label
+                                key={opt.id}
+                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
+                                  checked
+                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleCartEditAddon(opt.id)}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                  />
+                                  <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
+                                </div>
+                                <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
+                                  <span>+RM {Number(cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
+                                  {checked ? (() => {
+                                    const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
+                                    const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                                    return (
+                                      <>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        {renderLineSplitStack(lineKey, inherited, 'main service')}
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </>
+                                    )
+                                  })() : null}
+                                </span>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
                 </div>
 

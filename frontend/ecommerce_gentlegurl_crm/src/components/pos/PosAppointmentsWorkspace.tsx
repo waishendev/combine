@@ -4298,70 +4298,6 @@ export default function PosAppointmentsWorkspace({
               </div>
 
               <div className="rounded-xl border border-gray-200 bg-white p-4">
-                <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
-                {editAddonOptionsLoading ? (
-                  <p className="text-xs text-gray-500">Loading add-on options...</p>
-                ) : editAddonQuestions.length === 0 ? (
-                  <p className="text-xs text-gray-500">No add-on options available for this service.</p>
-                ) : (
-                  <div className="space-y-3">
-                    {editAddonQuestions.map((question) => (
-                      <div key={question.id}>
-                        <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
-                        <div className="space-y-1.5">
-                          {question.options.map((opt) => {
-                            const checked = editSelectedAddonIds.has(opt.id)
-                            return (
-                              <label
-                                key={opt.id}
-                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
-                                  checked
-                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleEditAddon(opt.id)}
-                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                  />
-                                  <PosServiceNameStack
-                                    name={opt.label}
-                                    cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name}
-                                    primaryClassName="text-sm font-medium text-gray-900"
-                                    secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                                  />
-                                </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <span className="text-xs font-semibold tabular-nums text-gray-600">
-                                    +RM {Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}
-                                    {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
-                                  </span>
-                                  {checked && appointmentDetail?.id ? (() => {
-                                    const lineKey = `appointment-settlement:${appointmentDetail.id}:addon:${opt.id}`
-                                    const inherited = editStaffSplitsToLineSplits(editStaffSplits)
-                                    return (
-                                      <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
-                                        {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                      </>
-                                    )
-                                  })() : null}
-                                </div>
-                              </label>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <div className="mb-2 flex items-center justify-between">
                   <p className="text-sm font-bold text-gray-900">Staff Split</p>
                   <button
@@ -4445,7 +4381,72 @@ export default function PosAppointmentsWorkspace({
                   ))}
                 </div>
               </div>
-                </div>
+
+
+              <div className="rounded-xl border border-gray-200 bg-white p-4">
+                <p className="text-sm font-bold text-gray-900 mb-2">Add-ons</p>
+                {editAddonOptionsLoading ? (
+                  <p className="text-xs text-gray-500">Loading add-on options...</p>
+                ) : editAddonQuestions.length === 0 ? (
+                  <p className="text-xs text-gray-500">No add-on options available for this service.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {editAddonQuestions.map((question) => (
+                      <div key={question.id}>
+                        <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
+                        <div className="space-y-1.5">
+                          {question.options.map((opt) => {
+                            const checked = editSelectedAddonIds.has(opt.id)
+                            return (
+                              <label
+                                key={opt.id}
+                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
+                                  checked
+                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
+                                    : 'border-gray-200 bg-white hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleEditAddon(opt.id)}
+                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                                  />
+                                  <PosServiceNameStack
+                                    name={opt.label}
+                                    cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name}
+                                    primaryClassName="text-sm font-medium text-gray-900"
+                                    secondaryClassName="mt-0.5 text-[11px] text-gray-500"
+                                  />
+                                </div>
+                                <div className="flex shrink-0 flex-col items-end gap-1">
+                                  <span className="text-xs font-semibold tabular-nums text-gray-600">
+                                    +RM {Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}
+                                    {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
+                                  </span>
+                                  {checked && appointmentDetail?.id ? (() => {
+                                    const lineKey = `appointment-settlement:${appointmentDetail.id}:addon:${opt.id}`
+                                    const inherited = editStaffSplitsToLineSplits(editStaffSplits)
+                                    return (
+                                      <>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </>
+                                    )
+                                  })() : null}
+                                </div>
+                              </label>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              </div>
 
                 <div className="space-y-5">
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -4465,6 +4466,7 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     </button>
                   </div>
+
 
               {editAddedMainBlocks.map((block) => {
                 const addonOptions = block.addon_questions.flatMap((q) => q.options)
