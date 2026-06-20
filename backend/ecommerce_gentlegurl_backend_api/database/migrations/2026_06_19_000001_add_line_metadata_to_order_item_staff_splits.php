@@ -8,6 +8,10 @@ return new class extends Migration
 {
     public function up(): void
     {
+        if (! Schema::hasTable('order_item_staff_splits')) {
+            return;
+        }
+
         Schema::table('order_item_staff_splits', function (Blueprint $table) {
             try {
                 $table->dropUnique('order_item_staff_splits_order_item_id_staff_id_unique');
@@ -32,6 +36,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! Schema::hasTable('order_item_staff_splits')) {
+            return;
+        }
+
         Schema::table('order_item_staff_splits', function (Blueprint $table) {
             try {
                 $table->unique(['order_item_id', 'staff_id']);
