@@ -14,6 +14,7 @@ class PosCartServiceItem extends Model
         'qty', 'assigned_staff_id', 'start_at', 'end_at', 'notes', 'staff_splits', 'commission_rate_used',
         'addon_duration_min', 'addon_price', 'selected_option_ids', 'addon_items_json',
         'price_override_lines',
+        'availability_override', 'availability_override_reason', 'availability_override_warning_type', 'availability_override_by', 'availability_override_at',
     ];
 
     protected function casts(): array
@@ -30,6 +31,8 @@ class PosCartServiceItem extends Model
             'selected_option_ids' => 'array',
             'addon_items_json' => 'array',
             'price_override_lines' => 'array',
+            'availability_override' => 'boolean',
+            'availability_override_at' => 'datetime',
         ];
     }
 

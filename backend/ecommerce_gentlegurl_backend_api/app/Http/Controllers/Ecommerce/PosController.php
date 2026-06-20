@@ -989,6 +989,8 @@ class PosController extends Controller
             'deposit_payments' => ['nullable', 'array'],
             'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         if ($effectiveService && (int) ($booking->service_id ?? 0) !== (int) $effectiveService->id) {
@@ -1940,6 +1942,8 @@ class PosController extends Controller
             'deposit_payments' => ['nullable', 'array'],
             'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -1991,6 +1995,9 @@ class PosController extends Controller
             $guestPhone = $guestPhone !== '' ? $guestPhone : null;
         }
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+        if (! (bool) ($staff->is_active ?? false)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
+        }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
@@ -2112,6 +2119,29 @@ class PosController extends Controller
 
         $staffIds = $splits->pluck('staff_id')->map(fn ($id) => (int) $id)->unique()->values();
 
+        $availabilityOverride = (bool) ($validated['availability_override'] ?? false);
+        $availabilityOverrideReason = trim((string) ($validated['availability_override_reason'] ?? ''));
+        $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, (int) ($service->buffer_min ?? 0));
+        $hasHardConflict = ! empty($conflictDiagnostics['conflicting_booking_ids'])
+            || ! empty($conflictDiagnostics['conflicting_cart_item_ids'])
+            || ! empty($conflictDiagnostics['detected_leave_ids'])
+            || ! empty($conflictDiagnostics['detected_block_ids']);
+        if ($hasHardConflict) {
+            return $this->respondError(__('Selected slot is no longer available.'), 409);
+        }
+        $scheduleWarningType = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
+        $hasScheduleWarning = ! (bool) ($scheduleDiagnostics['is_available'] ?? false);
+        if ($hasScheduleWarning && ! in_array($scheduleWarningType, ['outside_staff_schedule', 'no_staff_schedule', 'schedule_inactive', 'hits_staff_break'], true)) {
+            return $this->respondError(__('Selected appointment slot is invalid.'), 422);
+        }
+        if ($hasScheduleWarning && ! $availabilityOverride) {
+            return $this->respondError(__('This appointment is outside the staff schedule. Continue with override?'), 422, [
+                'warning_type' => $scheduleWarningType ?: 'outside_staff_schedule',
+                'requires_availability_override' => true,
+            ]);
+        }
+
         foreach ($staffIds as $splitStaffId) {
             if (! $service->isStaffAllowed((int) $splitStaffId)) {
                 return $this->respondError(__('Selected staff split contains staff not allowed for this service.'), 422);
@@ -2170,6 +2200,11 @@ class PosController extends Controller
             'notes' => $validated['notes'] ?? null,
             'staff_splits' => $normalizedSplits,
             'commission_rate_used' => $primaryCommissionRate,
+            'availability_override' => $hasScheduleWarning && $availabilityOverride,
+            'availability_override_reason' => ($hasScheduleWarning && $availabilityOverrideReason !== '') ? $availabilityOverrideReason : null,
+            'availability_override_warning_type' => $hasScheduleWarning ? ($scheduleWarningType ?: 'outside_staff_schedule') : null,
+            'availability_override_by' => ($hasScheduleWarning && $availabilityOverride) ? (int) $request->user()->id : null,
+            'availability_override_at' => ($hasScheduleWarning && $availabilityOverride) ? now() : null,
         ]);
 
         return $this->respond([
@@ -2270,6 +2305,9 @@ class PosController extends Controller
         $service = BookingService::query()->with('allowedStaffs:id')->where('is_active', true)->findOrFail((int) $validated['booking_service_id']);
         $customer = Customer::query()->findOrFail((int) $validated['customer_id']);
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+        if (! (bool) ($staff->is_active ?? false)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
+        }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
@@ -5382,10 +5420,12 @@ class PosController extends Controller
                 $endAt = $serviceItem->end_at ? Carbon::parse((string) $serviceItem->end_at) : $startAt->copy()->addMinutes((int) ($serviceItem->bookingService->duration_min ?? 0));
                 $bufferMin = (int) ($serviceItem->bookingService->buffer_min ?? 0);
 
-                if ($serviceItem->assigned_staff_id
-                    && (! $this->availabilityService->isWithinStaffAvailability((int) $serviceItem->assigned_staff_id, $startAt, $endAt)
-                        || $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin))) {
-                    abort(409, __('Selected slot is no longer available.'));
+                if ($serviceItem->assigned_staff_id) {
+                    $scheduleOk = $this->availabilityService->isWithinStaffAvailability((int) $serviceItem->assigned_staff_id, $startAt, $endAt);
+                    $hasConflict = $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin);
+                    if ($hasConflict || (! $scheduleOk && ! (bool) ($serviceItem->availability_override ?? false))) {
+                        abort(409, __('Selected slot is no longer available.'));
+                    }
                 }
 
                 $booking = Booking::query()->create([
@@ -5407,7 +5447,7 @@ class PosController extends Controller
                     'addon_items_json' => $serviceItem->addon_items_json ?? [],
                     'payment_status' => 'PAID',
                     'created_by_staff_id' => (int) ($request->user()?->staff_id ?? 0) ?: null,
-                    'notes' => $serviceItem->notes,
+                    'notes' => trim((string) ($serviceItem->notes ?? '') . ((bool) ($serviceItem->availability_override ?? false) ? '\nPOS availability override: ' . (string) ($serviceItem->availability_override_reason ?? 'No reason provided') : '')) ?: null,
                 ]);
 
                 $confirmedBookingIds[] = (int) $booking->id;
@@ -5459,6 +5499,11 @@ class PosController extends Controller
                     'commission_rate_used' => $commissionRate,
                     'commission_amount' => round($lineTotal * $commissionRate, 2),
                     'item_type' => 'service',
+                    'availability_override' => (bool) ($serviceItem->availability_override ?? false),
+                    'availability_override_reason' => $serviceItem->availability_override_reason,
+                    'availability_override_warning_type' => $serviceItem->availability_override_warning_type,
+                    'availability_override_by' => $serviceItem->availability_override_by,
+                    'availability_override_at' => $serviceItem->availability_override_at,
                 ]);
 
                 $claimStatus = $serviceClaimStatuses[(int) $serviceItem->id] ?? null;
@@ -6666,6 +6711,9 @@ class PosController extends Controller
                 'notes' => $item->notes,
                 'staff_splits' => $item->staff_splits ?? [],
                 'commission_rate_used' => (float) ($item->commission_rate_used ?? 0),
+                'availability_override' => (bool) ($item->availability_override ?? false),
+                'availability_override_reason' => $item->availability_override_reason,
+                'availability_override_warning_type' => $item->availability_override_warning_type,
             ];
         })->values();
 

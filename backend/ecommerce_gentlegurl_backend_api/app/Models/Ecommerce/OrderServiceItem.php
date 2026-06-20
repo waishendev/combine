@@ -11,6 +11,7 @@ class OrderServiceItem extends Model
     protected $fillable = [
         'order_id', 'booking_id', 'booking_service_id', 'customer_id', 'service_name_snapshot', 'price_snapshot', 'qty', 'line_total',
         'assigned_staff_id', 'start_at', 'end_at', 'notes', 'staff_splits', 'commission_rate_used', 'commission_amount', 'item_type',
+        'availability_override', 'availability_override_reason', 'availability_override_warning_type', 'availability_override_by', 'availability_override_at',
     ];
 
     protected function casts(): array
@@ -24,6 +25,8 @@ class OrderServiceItem extends Model
             'staff_splits' => 'array',
             'commission_rate_used' => 'decimal:4',
             'commission_amount' => 'decimal:2',
+            'availability_override' => 'boolean',
+            'availability_override_at' => 'datetime',
         ];
     }
 
