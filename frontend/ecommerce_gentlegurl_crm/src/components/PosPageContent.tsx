@@ -1729,6 +1729,28 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
   }, [])
 
+
+  const makeLocalDateTimeValue = useCallback((date: string, minutesFromMidnight: number) => {
+    const hours = Math.floor(minutesFromMidnight / 60)
+    const minutes = minutesFromMidnight % 60
+    return `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
+  }, [])
+
+  const buildPosFullDaySlots = useCallback((date: string, durationMin: number, stepMin = 15) => {
+    const safeDurationMin = Math.max(1, durationMin)
+    const lastStartMinute = Math.max(0, (24 * 60) - safeDurationMin)
+    const slots: Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }> = []
+
+    for (let minute = 0; minute <= lastStartMinute; minute += stepMin) {
+      slots.push({
+        start_at: makeLocalDateTimeValue(date, minute),
+        end_at: makeLocalDateTimeValue(date, minute + safeDurationMin),
+      })
+    }
+
+    return slots
+  }, [makeLocalDateTimeValue])
+
   const formatSettlementStaffLabel = useCallback((settlement: AppointmentSettlementCartItem): string => {
     const splits = (settlement.staff_splits ?? [])
       .filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
@@ -3365,14 +3387,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const bookingStaffPickerOptions = useMemo(() => {
     if (!bookingDate || !bookingSlotValue) return []
+    return bookingAllowedStaffs
+  }, [bookingAllowedStaffs, bookingDate, bookingSlotValue])
+
+  const bookingSelectedSlotScheduleIds = useMemo(() => {
+    if (!bookingSlotValue) return []
     const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
-    const allowedIds = slot?.available_staff_ids ?? null
-    const base = bookingAllowedStaffs
-    if (Array.isArray(allowedIds) && allowedIds.length > 0) {
-      return base.filter((s) => allowedIds.includes(s.id))
-    }
-    return []
-  }, [bookingAllowedStaffs, bookingDate, bookingSlotValue, bookingSlots])
+    return Array.isArray(slot?.available_staff_ids) ? slot.available_staff_ids : []
+  }, [bookingSlotValue, bookingSlots])
+
+  const bookingOutsideStaffSchedule = Boolean(
+    bookingDate
+    && bookingSlotValue
+    && bookingAssignedStaffId
+    && !bookingSelectedSlotScheduleIds.includes(bookingAssignedStaffId),
+  )
 
   const bookingStaffPickerReady = Boolean(bookingDate && bookingSlotValue)
   const bookingSelectedServiceIds = useMemo(
@@ -3471,6 +3500,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       notes: bookingRemarkRef.current?.getValue().trim() || null,
       staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
       qty: 1,
+      availability_override: true,
+      availability_override_reason: null,
     }
     if (bookingIdentityMode === 'member' && selectedMember?.id) {
       payload.customer_id = selectedMember.id
@@ -3564,15 +3595,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           })
           .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
 
-        setBookingSlots(slots)
-        setBookingSlotValue((prev) => slots.some((slot) => slot.start_at === prev) ? prev : '')
+        const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
+        const fullDaySlots = buildPosFullDaySlots(
+          bookingDate,
+          Math.max(
+            1,
+            Number(bookingServiceDraft?.duration_min ?? 0) +
+            (bookingAddonDurationTotal || 0) +
+            bookingExtraTotals.baseDuration +
+            bookingExtraTotals.addonDuration,
+          ),
+        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [] }))
+
+        setBookingSlots(fullDaySlots)
+        setBookingSlotValue((prev) => fullDaySlots.some((slot) => slot.start_at === prev) ? prev : '')
       } finally {
         setBookingSlotsLoading(false)
       }
     }
 
     void loadSlots()
-  }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.id])
+  }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.duration_min, bookingServiceDraft?.id, buildPosFullDaySlots])
 
   useEffect(() => {
     if (!bookingModalOpen || !bookingDate || !bookingSlotValue) {
@@ -3580,17 +3623,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return
     }
 
-    const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
-    const staffIds = slot?.available_staff_ids ?? []
-    const options = Array.isArray(staffIds) && staffIds.length > 0
-      ? bookingAllowedStaffs.filter((staff) => staffIds.includes(staff.id))
-      : []
-
     setBookingAssignedStaffId((prev) => {
-      if (prev && options.some((staff) => staff.id === prev)) return prev
-      return options[0]?.id ?? null
+      if (prev && bookingAllowedStaffs.some((staff) => staff.id === prev)) return prev
+      return bookingAllowedStaffs[0]?.id ?? null
     })
-  }, [bookingAllowedStaffs, bookingDate, bookingModalOpen, bookingSlotValue, bookingSlots])
+  }, [bookingAllowedStaffs, bookingDate, bookingModalOpen, bookingSlotValue])
 
   const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
     let staffs = activeStaffs
@@ -10577,8 +10614,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </option>
                       ))}
                     </select>
+                    <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; checkout still blocks leave, inactive staff, and booking conflicts.</p>
                   </div>
                 </div>
+
+                {bookingOutsideStaffSchedule ? (
+                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                    Selected time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
+                  </div>
+                ) : null}
 
                 <div>
                   <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>

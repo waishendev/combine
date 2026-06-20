@@ -1928,6 +1928,8 @@ class PosController extends Controller
             'deposit_payments' => ['nullable', 'array'],
             'deposit_payments.*.method' => ['required_with:deposit_payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
             'deposit_payments.*.amount' => ['required_with:deposit_payments', 'numeric', 'gt:0'],
+            'availability_override' => ['nullable', 'boolean'],
+            'availability_override_reason' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $mainServicePayload = collect($validated['main_service_items'] ?? [])->map(fn (array $item) => [
@@ -1979,6 +1981,10 @@ class PosController extends Controller
             $guestPhone = $guestPhone !== '' ? $guestPhone : null;
         }
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
+
+        if (! (bool) ($staff->is_active ?? true)) {
+            return $this->respondError(__('Selected staff is inactive.'), 422);
+        }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
             return $this->respondError(__('Selected staff is not allowed for this service.'), 422);
@@ -2088,6 +2094,12 @@ class PosController extends Controller
         $selectedOptionIds = $mainItems->flatMap(fn (array $item) => $item['selected_option_ids'])->unique()->values();
         $totalDurationMin = (int) $mainItems->sum('duration_min');
         $endAt = $startAt->copy()->addMinutes($totalDurationMin);
+        $bufferMin = (int) ($service->buffer_min ?? 0);
+
+        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
+            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
+        }
+
         $splits = collect($validated['staff_splits'] ?? [
             ['staff_id' => (int) $staff->id, 'share_percent' => 100],
         ])->values();
@@ -4702,7 +4714,7 @@ class PosController extends Controller
             'items.variant.product',
             'items.product',
             'serviceItems.bookingService',
-            'serviceItems.assignedStaff',
+            'serviceItems.assignedStaff:id,name,is_active',
             'serviceItems.customer:id,name',
             'packageItems.servicePackage',
             'packageItems.customer:id,name',
@@ -5370,10 +5382,13 @@ class PosController extends Controller
                 $endAt = $serviceItem->end_at ? Carbon::parse((string) $serviceItem->end_at) : $startAt->copy()->addMinutes((int) ($serviceItem->bookingService->duration_min ?? 0));
                 $bufferMin = (int) ($serviceItem->bookingService->buffer_min ?? 0);
 
+                if ($serviceItem->assigned_staff_id && ! (bool) ($serviceItem->assignedStaff?->is_active ?? true)) {
+                    abort(422, __('Assigned staff is inactive.'));
+                }
+
                 if ($serviceItem->assigned_staff_id
-                    && (! $this->availabilityService->isWithinStaffAvailability((int) $serviceItem->assigned_staff_id, $startAt, $endAt)
-                        || $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin))) {
-                    abort(409, __('Selected slot is no longer available.'));
+                    && $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin)) {
+                    abort(409, __('Selected slot conflicts with another booking, leave, or blocked time.'));
                 }
 
                 $booking = Booking::query()->create([
