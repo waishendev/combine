@@ -341,6 +341,8 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
 
   return getPosServiceMainBlocks(item).map((service, idx) => {
     const isOriginal = service.is_original ?? idx === 0
+    const serviceRef = String(service.linked_booking_service_id ?? service.id ?? idx)
+    const serviceLineKey = isOriginal ? 'main' : `main_service:${serviceRef}`
     const deposit = isOriginal ? Number(item.deposit_contribution ?? 0) : 0
     const referenceDeposit = isOriginal && isMainPackageClaimed
       ? Math.max(mainDepositReference, deposit)
@@ -350,7 +352,7 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
     return {
       ...service,
       deposit,
-      line_key: 'main',
+      line_key: serviceLineKey,
       price_override: item.deposit_price_override ?? null,
       reference_deposit: referenceDeposit,
       covered_by_package: coveredByPackage,
@@ -364,7 +366,7 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
         return {
           ...addon,
           deposit: addonDeposit,
-          line_key: `addon:${Number(addon.id ?? 0)}`,
+          line_key: isOriginal ? `addon:${Number(addon.id ?? 0)}` : `${serviceLineKey}:addon:${Number(addon.id ?? 0)}`,
           price_override: depositLine?.price_override ?? null,
           reference_deposit: Math.max(addonReferenceDeposit, addonDeposit),
           covered_by_package: addonCoveredByPackage,
@@ -5109,24 +5111,54 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           quantity: item.qty,
           assigned_staff_id: item.assigned_staff_id ?? null,
           service_commission_rate_used: item.commission_rate_used ?? 0,
-          line_staff_splits: Object.entries(checkoutLineSplits)
-            .filter(([key]) => key.startsWith(`service:${item.id}:`))
+          line_staff_splits: (() => {
+            const rows = new Map<string, CheckoutItemStaffSplit[]>()
+            getPosServiceDepositBlocks(item).forEach((service, idx) => {
+              const serviceLineKey = `service:${item.id}:main:${service.line_key ?? service.linked_booking_service_id ?? service.id ?? idx}`
+              rows.set(serviceLineKey, checkoutLineSplits[serviceLineKey] ?? service.staff_splits ?? item.staff_splits ?? [])
+              ;(service.add_ons ?? []).forEach((addon, addonIdx) => {
+                const addonLineKey = `service:${item.id}:addon:${addon.line_key ?? addon.id ?? addonIdx}`
+                rows.set(addonLineKey, checkoutLineSplits[addonLineKey] ?? addon.staff_splits ?? service.staff_splits ?? item.staff_splits ?? [])
+              })
+            })
+            Object.entries(checkoutLineSplits)
+              .filter(([key]) => key.startsWith(`service:${item.id}:`))
+              .forEach(([key, splits]) => rows.set(key, splits))
+            return Array.from(rows.entries())
+              .filter(([, splits]) => splits.length > 0)
+              .map(([key, splits]) => ({
+                line_key: key,
+                line_type: key.includes(':addon:') ? 'service_addon_deposit' : 'service_deposit',
+                line_ref_id: key.split(':').pop() ?? null,
+                staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+              }))
+          })(),
+        })),
+        settlement_line_staff_splits: (() => {
+          const rows = new Map<string, CheckoutItemStaffSplit[]>()
+          cartAppointmentSettlementItems.forEach((settlement) => {
+            ;(settlement.main_service_settlement_items ?? []).forEach((service, idx) => {
+              const key = `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`
+              rows.set(key, checkoutLineSplits[key] ?? service.staff_splits ?? settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])
+            })
+            ;(settlement.addon_settlement_items ?? []).forEach((addon, idx) => {
+              const key = `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`
+              rows.set(key, checkoutLineSplits[key] ?? addon.staff_splits ?? settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])
+            })
+          })
+          Object.entries(checkoutLineSplits)
+            .filter(([key]) => key.startsWith('settlement:'))
+            .forEach(([key, splits]) => rows.set(key, splits))
+          return Array.from(rows.entries())
+            .filter(([, splits]) => splits.length > 0)
             .map(([key, splits]) => ({
-              line_key: key,
-              line_type: key.includes(':addon:') ? 'service_addon_deposit' : 'service_deposit',
+              settlement_cart_item_id: Number(key.split(':')[1] ?? 0) || null,
+              line_key: key.split(':').slice(2).join(':'),
+              line_type: key.includes(':addon:') ? 'settlement_addon' : 'settlement_service',
               line_ref_id: key.split(':').pop() ?? null,
               staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
-            })),
-        })),
-        settlement_line_staff_splits: Object.entries(checkoutLineSplits)
-          .filter(([key]) => key.startsWith('settlement:'))
-          .map(([key, splits]) => ({
-            settlement_cart_item_id: Number(key.split(':')[1] ?? 0) || null,
-            line_key: key.split(':').slice(2).join(':'),
-            line_type: key.includes(':addon:') ? 'settlement_addon' : 'settlement_service',
-            line_ref_id: key.split(':').pop() ?? null,
-            staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
-          })),
+            }))
+        })(),
         package_items: cartPackageItems.map((item) => ({
           type: 'service_package',
           cart_package_item_id: item.id,
