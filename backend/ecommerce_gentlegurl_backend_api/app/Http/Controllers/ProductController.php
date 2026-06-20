@@ -169,8 +169,9 @@ class ProductController extends Controller
             'variant_images.*' => ['nullable', 'image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
         ]);
 
-        if (($validated['type'] ?? 'single') === 'variant' && empty($validated['sku'])) {
+        if (($validated['type'] ?? 'single') === 'variant') {
             $validated['sku'] = null;
+            $validated['barcode'] = null;
         }
         $this->validateSalePrice($validated, $request);
         $this->validateVariantSkus($request);
@@ -290,8 +291,9 @@ class ProductController extends Controller
             'variant_images.*' => ['nullable', 'image', "mimes:{$imageExtensions}", "max:{$imageMaxKilobytes}"],
         ]);
 
-        if (($validated['type'] ?? $product->type) === 'variant' && array_key_exists('sku', $validated) && empty($validated['sku'])) {
+        if (($validated['type'] ?? $product->type) === 'variant') {
             $validated['sku'] = null;
+            $validated['barcode'] = null;
         }
         $this->validateSalePrice($validated, $request, $product);
         $this->validateVariantSkus($request, $product);
@@ -878,10 +880,23 @@ class ProductController extends Controller
             'is_active' => ['nullable', 'boolean'],
             'category_ids' => ['nullable', 'array'],
             'category_ids.*' => ['integer', 'exists:categories,id'],
+            'sku_prefix' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9._-]+$/'],
+            'barcode_prefix' => ['nullable', 'string', 'max:100', 'regex:/^[A-Za-z0-9._-]+$/'],
         ]);
 
-        $products = Product::whereIn('id', $validated['ids'])->get();
         $payload = collect($validated)->except('ids')->toArray();
+
+        if (array_key_exists('sku_prefix', $payload)) {
+            $this->applyBulkCodePrefix($validated['ids'], (string) $payload['sku_prefix'], 'sku', 'sku_prefix');
+            unset($payload['sku_prefix']);
+        }
+
+        if (array_key_exists('barcode_prefix', $payload)) {
+            $this->applyBulkCodePrefix($validated['ids'], (string) $payload['barcode_prefix'], 'barcode', 'barcode_prefix');
+            unset($payload['barcode_prefix']);
+        }
+
+        $products = Product::whereIn('id', $validated['ids'])->get();
 
         foreach ($products as $product) {
             if (array_key_exists('category_ids', $payload)) {
@@ -922,6 +937,76 @@ class ProductController extends Controller
         }
 
         return $this->respond($products, __('Products updated successfully.'));
+    }
+
+    /**
+     * Assign SKUs or barcodes as {prefix}-1, {prefix}-2, … across selected products (simple, variants, bundles).
+     */
+    protected function applyBulkCodePrefix(array $productIds, string $codePrefix, string $field, string $validationKey): void
+    {
+        if (! in_array($field, ['sku', 'barcode'], true)) {
+            throw new \InvalidArgumentException('Unsupported bulk code field.');
+        }
+
+        $prefix = trim($codePrefix);
+        if ($prefix === '') {
+            throw ValidationException::withMessages([
+                $validationKey => [__('Prefix is required.')],
+            ]);
+        }
+
+        $counter = 1;
+        $assignedCodes = [];
+
+        $products = Product::query()
+            ->with(['variants' => fn ($query) => $query->orderBy('sort_order')->orderBy('id')])
+            ->whereIn('id', $productIds)
+            ->orderBy('id')
+            ->get();
+
+        DB::transaction(function () use ($products, $prefix, $field, &$counter, &$assignedCodes) {
+            foreach ($products as $product) {
+                $variants = $product->variants;
+
+                if ($variants->isEmpty()) {
+                    $product->{$field} = $this->nextBulkCodeCandidate($prefix, $counter, $assignedCodes, $field);
+                    $counter++;
+                    $product->save();
+
+                    continue;
+                }
+
+                foreach ($variants as $variant) {
+                    $variant->{$field} = $this->nextBulkCodeCandidate($prefix, $counter, $assignedCodes, $field);
+                    $counter++;
+                    $variant->save();
+                }
+
+                $product->{$field} = null;
+                $product->save();
+            }
+        });
+    }
+
+    protected function nextBulkCodeCandidate(string $prefix, int $startNumber, array &$assignedCodes, string $field): string
+    {
+        $number = $startNumber;
+
+        while (true) {
+            $code = $prefix.'-'.$number;
+
+            if (
+                ! in_array($code, $assignedCodes, true)
+                && ! Product::query()->where($field, $code)->exists()
+                && ! ProductVariant::query()->where($field, $code)->exists()
+            ) {
+                $assignedCodes[] = $code;
+
+                return $code;
+            }
+
+            $number++;
+        }
     }
 
     public function bulkDelete(Request $request)

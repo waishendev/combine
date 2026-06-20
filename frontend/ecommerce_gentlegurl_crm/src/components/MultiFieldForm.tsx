@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import FieldRenderer, { FieldConfig, FieldType } from './FileRender'
 
 const FIELD_CONFIG: FieldConfig[] = [
+  { key: 'sku_prefix', label: 'SKU Prefix', type: 'text' },
+  { key: 'barcode_prefix', label: 'Barcode Prefix', type: 'text' },
   { key: 'price', label: 'Price', type: 'number' },
   { key: 'discount_percent', label: 'Apply Discount', type: 'discount' },
   { key: 'sale_price', label: 'Sale Price', type: 'number' },
@@ -108,6 +110,8 @@ export default function MultiFieldForm({
         return ''
       case 'category_multi':
         return []
+      case 'text':
+        return ''
       case 'time':
         return { available_from: '00:00:00', available_to: '23:59:59' }
       default:
@@ -170,6 +174,32 @@ export default function MultiFieldForm({
 
     for (const key of selectedFields) {
       if (key === 'discount_percent') {
+        continue
+      }
+      if (key === 'sku_prefix') {
+        const prefix = typeof values[key] === 'string' ? values[key].trim() : ''
+        if (!prefix) {
+          setErrorMessages(['SKU prefix is required.'])
+          return
+        }
+        if (!/^[A-Za-z0-9._-]+$/.test(prefix)) {
+          setErrorMessages(['SKU prefix may only contain letters, numbers, dots, underscores, and hyphens.'])
+          return
+        }
+        payload.sku_prefix = prefix
+        continue
+      }
+      if (key === 'barcode_prefix') {
+        const prefix = typeof values[key] === 'string' ? values[key].trim() : ''
+        if (!prefix) {
+          setErrorMessages(['Barcode prefix is required.'])
+          return
+        }
+        if (!/^[A-Za-z0-9._-]+$/.test(prefix)) {
+          setErrorMessages(['Barcode prefix may only contain letters, numbers, dots, underscores, and hyphens.'])
+          return
+        }
+        payload.barcode_prefix = prefix
         continue
       }
       if (key === 'category_ids') {

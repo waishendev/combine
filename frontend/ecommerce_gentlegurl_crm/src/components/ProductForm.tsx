@@ -979,10 +979,20 @@ export default function ProductForm({
     const { name, value, type } = target
     const checked = 'checked' in target ? target.checked : false
     if (name) clearFieldError(name)
-    setForm((prev) => ({
-      ...prev,
-      [name]: type === 'checkbox' ? checked : value,
-    }))
+    setForm((prev) => {
+      if (name === 'type' && value === 'variant') {
+        return {
+          ...prev,
+          type: value,
+          sku: '',
+          barcode: '',
+        }
+      }
+      return {
+        ...prev,
+        [name]: type === 'checkbox' ? checked : value,
+      }
+    })
   }
 
   const handleCategoryToggle = (id: number) => {
@@ -2497,8 +2507,13 @@ export default function ProductForm({
     formData.append('name', form.name.trim())
     formData.append('cn_name', form.cnName.trim())
     formData.append('slug', form.slug.trim())
-    formData.append('sku', form.sku.trim())
-    formData.append('barcode', form.barcode.trim())
+    if (resolvedType === 'variant') {
+      formData.append('sku', '')
+      formData.append('barcode', '')
+    } else {
+      formData.append('sku', form.sku.trim())
+      formData.append('barcode', form.barcode.trim())
+    }
     formData.append('type', resolvedType)
     formData.append('description', form.description.trim())
     formData.append('price', resolvedPrice)
@@ -3396,34 +3411,37 @@ export default function ProductForm({
                   placeholder={t('product.slugPlaceholder')}
                 />
               </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="sku">
-                  {t('product.sku')}
-                  {form.type !== 'variant' && <span className="text-red-500"> *</span>}
-                </label>
-                <input
-                  id="sku"
-                  name="sku"
-                  value={form.sku}
-                  onChange={handleChange}
-                  data-field-key="sku"
-                  className={fieldInputClass('sku')}
-                  placeholder={t('product.skuPlaceholder')}
-                />
-              </div>
-              <div className="space-y-2">
-                <label className="block text-sm font-medium text-gray-700" htmlFor="barcode">
-                  Barcode
-                </label>
-                <input
-                  id="barcode"
-                  name="barcode"
-                  value={form.barcode}
-                  onChange={handleChange}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
-                  placeholder="BARCODE-123456"
-                />
-              </div>
+              {form.type !== 'variant' && (
+                <>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="sku">
+                      {t('product.sku')} <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      id="sku"
+                      name="sku"
+                      value={form.sku}
+                      onChange={handleChange}
+                      data-field-key="sku"
+                      className={fieldInputClass('sku')}
+                      placeholder={t('product.skuPlaceholder')}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-gray-700" htmlFor="barcode">
+                      Barcode
+                    </label>
+                    <input
+                      id="barcode"
+                      name="barcode"
+                      value={form.barcode}
+                      onChange={handleChange}
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-colors"
+                      placeholder="BARCODE-123456"
+                    />
+                  </div>
+                </>
+              )}
               {!rewardOnly && (
                 <div className="space-y-2">
                   <label className="block text-sm font-medium text-gray-700" htmlFor="type">

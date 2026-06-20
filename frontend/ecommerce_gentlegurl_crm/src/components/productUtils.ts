@@ -133,6 +133,12 @@ export type ProductApiItem = {
   }> | null
 }
 
+const normalizeOptionalProductCode = (value: unknown): string => {
+  if (value === null || value === undefined) return ''
+  const text = String(value).trim()
+  return text === '-' ? '' : text
+}
+
 export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => {
   const idValue =
     typeof item.id === 'number'
@@ -310,8 +316,8 @@ export const mapProductApiItemToRow = (item: ProductApiItem): ProductRowData => 
     name: item.name ?? '-',
     cnName: typeof item.cn_name === 'string' ? item.cn_name : '',
     slug: item.slug ?? '-',
-    sku: item.sku ?? '-',
-    barcode: item.barcode ?? null,
+    sku: normalizeOptionalProductCode(item.sku),
+    barcode: normalizeOptionalProductCode(item.barcode),
     type: item.type ?? '-',
     description: item.description ?? '-',
     price: Number.isFinite(priceValue) ? priceValue : 0,

@@ -15,6 +15,7 @@ export type FieldType =
   | 'datetime'
   | 'discount'
   | 'category_multi'
+  | 'text'
 
 export interface FieldConfig {
   key: string
@@ -356,6 +357,33 @@ export default function FieldRenderer({
         onChange={onChange}
         categories={categories ?? []}
       />
+    )
+  }
+
+  if (field.type === 'text') {
+    return (
+      <div>
+        <label className="text-sm font-medium text-gray-700 block mb-1">{field.label}</label>
+        <input
+          type="text"
+          value={typeof value === 'string' ? value : ''}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={
+            field.key === 'sku_prefix' || field.key === 'barcode_prefix' ? 'e.g. XXXX' : undefined
+          }
+          className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+        />
+        {field.key === 'sku_prefix' ? (
+          <p className="mt-1.5 text-xs text-gray-500">
+            Assigns SKUs as PREFIX-1, PREFIX-2, … across selected products. Variant products update variant SKUs only.
+          </p>
+        ) : null}
+        {field.key === 'barcode_prefix' ? (
+          <p className="mt-1.5 text-xs text-gray-500">
+            Assigns barcodes as PREFIX-1, PREFIX-2, … across selected products. Variant products update variant barcodes only.
+          </p>
+        ) : null}
+      </div>
     )
   }
 

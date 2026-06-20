@@ -186,7 +186,7 @@ export default function ProductRow({
           </div>
         </div>
       </td>
-      <td className="px-4 py-2 border border-gray-200">{product.sku}</td>
+      <td className="px-4 py-2 border border-gray-200">{product.sku || '-'}</td>
       {!hideCategories && (
         <td className="px-4 py-2 border border-gray-200">{product.categories}</td>
       )}
