@@ -951,6 +951,8 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
 
   /** Icon-only narrow sidebar — desktop (lg+) only; iPad always shows full labels + scroll. */
   const compactSidebar = collapsed && !overlayMode && isLargeDesktop
+  /** iPad / tablet: hamburger hides the full sidebar to free horizontal space (e.g. POS portrait). */
+  const tabletSidebarHidden = collapsed && !overlayMode && !isLargeDesktop
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- keep active sidebar parents expanded after route/workspace changes.
@@ -999,6 +1001,8 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
             ? collapsed
               ? 'pointer-events-none invisible h-[calc(100dvh-4rem)] w-64 -translate-x-full'
               : 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-64 translate-x-0'
+            : tabletSidebarHidden
+              ? 'pointer-events-none invisible h-[calc(100dvh-4rem)] w-64 -translate-x-full'
             : compactSidebar
               ? 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-20 translate-x-0 md:static md:shrink-0'
               : 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-64 translate-x-0 md:static md:shrink-0'

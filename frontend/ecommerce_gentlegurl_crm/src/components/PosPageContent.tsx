@@ -6104,11 +6104,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [fullProductData, selectedModalVariant, selectedProduct])
 
   return (
-    <div className="min-h-screen space-y-4 bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+    <div className="min-h-screen space-y-4 overflow-x-hidden bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
         <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
-          <p className="mt-2 flex flex-col gap-1.5 text-sm text-gray-600 sm:flex-row sm:items-start sm:gap-2">
+          <p className="mt-2 flex flex-col gap-1.5 text-sm text-gray-600 lg:flex-row lg:items-start lg:gap-2">
             <span className="inline-flex shrink-0 items-center gap-2">
               <svg className="h-4 w-4 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -6120,7 +6120,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </span>
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+        <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
           {/* <Link
             href="/pos/appointments"
             className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 transition hover:border-gray-400 hover:bg-gray-50"
@@ -6154,7 +6154,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           />
 
           {/* Products / Services Section */}
-          <div className="@container pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
+          <div className="@container pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
             <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -6214,7 +6214,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             
             {/* Search + Category Filters */}
             <div className="mb-5 min-w-0 space-y-3">
-              <div className="grid min-w-0 gap-3 md:grid-cols-[auto_minmax(0,1fr)] md:items-center">
+              <div className="grid min-w-0 gap-3 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
                 <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
                   <button
                     type="button"
@@ -6665,7 +6665,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
         <div className="pos-split-cart min-w-0 space-y-5">
 
-            <div className="pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5">
+            <div className="pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5">
               <>
             <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2 mb-4 flex-shrink-0">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">

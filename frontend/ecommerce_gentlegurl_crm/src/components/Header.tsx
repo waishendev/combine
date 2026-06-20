@@ -115,12 +115,12 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 flex h-16 items-center gap-2 border-b border-slate-100/80 bg-white px-2 shadow-sm sm:gap-3 sm:px-4 md:px-6">
-      <div className="relative z-[1] flex min-w-0 shrink-0 items-center gap-1.5 sm:gap-3">
+      <div className="relative z-20 flex min-w-0 shrink-0 items-center gap-1.5 bg-white sm:gap-3">
         <button
           aria-label="Toggle sidebar"
           type="button"
           onClick={onToggleSidebar}
-          className="inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+          className="relative z-20 inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-md text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
         >
           <i className="fa-solid fa-bars pointer-events-none text-lg" />
         </button>
@@ -137,10 +137,10 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
         </div>
       </div>
 
-      <div className="relative z-[1] flex min-h-0 min-w-0 flex-1 items-center justify-end gap-1 sm:gap-3">
-        <div className="min-w-0 flex-1 overflow-visible sm:overflow-hidden lg:flex-none lg:overflow-visible">
+      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center justify-end gap-1 overflow-hidden sm:gap-3">
+        <div className="min-w-0 flex-1 overflow-hidden lg:flex-none">
           <div
-            className="-mr-1 flex touch-pan-x justify-end overflow-visible py-0.5 pl-1 sm:overflow-x-auto sm:overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] lg:mr-0 lg:overflow-visible lg:py-0 sm:[&::-webkit-scrollbar]:hidden"
+            className="flex touch-pan-x justify-end overflow-x-auto overflow-y-hidden py-0.5 pl-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:py-0 [&::-webkit-scrollbar]:hidden"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
             <WorkspaceSwitcher permissions={permissions} />
