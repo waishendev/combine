@@ -160,8 +160,8 @@ class StaffCommissionReportController extends Controller
             ->selectRaw('orders.id AS order_id')
             ->selectRaw('orders.order_number AS order_no')
             ->selectRaw('orders.created_at AS order_date')
-            ->selectRaw("'product' AS item_type")
-            ->selectRaw('order_items.product_name_snapshot AS product_name')
+            ->selectRaw("CASE WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_base' THEN 'booking_product_base' WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_option' THEN 'booking_product_option' WHEN order_items.line_type = 'booking_settlement' THEN 'booking_settlement' WHEN order_items.line_type = 'booking_deposit' THEN 'booking_deposit' WHEN order_items.line_type = 'booking_addon' THEN 'booking_addon' ELSE 'product' END AS item_type")
+            ->selectRaw("CASE WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_option' THEN COALESCE(order_item_staff_splits.snapshot->'option'->>'label', order_items.product_name_snapshot) ELSE order_items.product_name_snapshot END AS product_name")
             ->selectRaw('order_items.quantity AS qty')
             ->selectRaw("($effectiveLineTotalExpr) AS item_net_amount")
             ->selectRaw("($snapshotLineTotalExpr) AS item_snapshot_amount")
@@ -275,7 +275,7 @@ class StaffCommissionReportController extends Controller
 
     private function effectiveLineTotalExpr(): string
     {
-        return 'COALESCE(order_item_staff_splits.amount_basis, order_items.effective_line_total, order_items.line_total)::numeric';
+        return 'COALESCE(order_item_staff_splits.amount_basis, order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
     }
 
     private function snapshotLineTotalExpr(): string

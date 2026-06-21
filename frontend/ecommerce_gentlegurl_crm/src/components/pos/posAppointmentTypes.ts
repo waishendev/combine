@@ -91,17 +91,18 @@ export type PosAppointmentDetail = {
   staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
   main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean }>
+  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   settled_service_amount?: number | null
   is_range_priced?: boolean
   requires_settled_amount?: boolean
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number }>
+  add_ons?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   addon_total_duration_min?: number
   estimated_duration_min?: number
   addon_total_price?: number
   addon_paid_online?: number
   addon_paid_settlement?: number
   addon_balance_due?: number
+  addon_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   deposit_contribution?: number
   deposit_paid: number
   linked_booking_deposit?: number
