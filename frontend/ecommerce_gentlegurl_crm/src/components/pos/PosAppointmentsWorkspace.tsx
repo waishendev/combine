@@ -1237,6 +1237,7 @@ export default function PosAppointmentsWorkspace({
           return
         }
       }
+      const createMainStaffSplits = appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }]
       const payload: Record<string, unknown> = {
         booking_service_id: createAppointmentServiceDraft.id,
         assigned_staff_id: createAppointmentAssignedStaffId,
@@ -1245,21 +1246,24 @@ export default function PosAppointmentsWorkspace({
           {
             booking_service_id: createAppointmentServiceDraft.id,
             selected_option_ids: createAppointmentSelectedOptionIds,
-            staff_splits: appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
-            addon_staff_splits: Object.fromEntries(createAppointmentSelectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? []])),
+            staff_splits: createMainStaffSplits,
+            addon_staff_splits: Object.fromEntries(createAppointmentSelectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? createMainStaffSplits])),
           },
           ...createAppointmentExtraServiceBlocks
             .filter((block) => block.service?.id)
-            .map((block) => ({
-              booking_service_id: Number(block.service?.id),
-              selected_option_ids: block.selectedOptionIds,
-              staff_splits: appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
-              addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? []])),
-            })),
+            .map((block) => {
+              const blockMainStaffSplits = appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }]
+              return {
+                booking_service_id: Number(block.service?.id),
+                selected_option_ids: block.selectedOptionIds,
+                staff_splits: blockMainStaffSplits,
+                addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? blockMainStaffSplits])),
+              }
+            }),
         ],
         start_at: createAppointmentSlotValue,
         notes: createAppointmentNotes.trim() ? createAppointmentNotes.trim() : null,
-        staff_splits: [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
+        staff_splits: createMainStaffSplits,
         qty: 1,
         deposit_amount: Math.max(0, createAppointmentDepositValue || 0),
         deposit_payments: createAppointmentDepositValue > 0 ? createAppointmentDepositRows : [],

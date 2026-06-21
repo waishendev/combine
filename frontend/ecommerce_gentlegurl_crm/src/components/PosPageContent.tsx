@@ -3646,6 +3646,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return
         }
       }
+    const bookingMainStaffSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }]
     const payload: Record<string, unknown> = {
       booking_service_id: bookingServiceDraft.id,
       assigned_staff_id: bookingAssignedStaffId,
@@ -3654,21 +3655,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         {
           booking_service_id: bookingServiceDraft.id,
           selected_option_ids: bookingSelectedOptionIds,
-          staff_splits: checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
-          addon_staff_splits: Object.fromEntries(bookingSelectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? []])),
+          staff_splits: bookingMainStaffSplits,
+          addon_staff_splits: Object.fromEntries(bookingSelectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? bookingMainStaffSplits])),
         },
         ...bookingExtraServiceBlocks
           .filter((block) => block.service?.id)
-          .map((block) => ({
-            booking_service_id: Number(block.service?.id),
-            selected_option_ids: block.selectedOptionIds,
-            staff_splits: checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
-            addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? []])),
-          })),
+          .map((block) => {
+            const blockMainStaffSplits = checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }]
+            return {
+              booking_service_id: Number(block.service?.id),
+              selected_option_ids: block.selectedOptionIds,
+              staff_splits: blockMainStaffSplits,
+              addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? blockMainStaffSplits])),
+            }
+          }),
       ],
       start_at: bookingSlotValue,
       notes: bookingRemarkRef.current?.getValue().trim() || null,
-      staff_splits: [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+      staff_splits: bookingMainStaffSplits,
       qty: 1,
       availability_override: true,
       availability_override_reason: null,
@@ -9230,7 +9234,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <div key={`checkout-dep-service-${serviceItem.id}-${service.linked_booking_service_id ?? service.id ?? idx}`} className={`space-y-1 rounded-md border-b border-gray-100 pb-2 last:border-b-0 last:pb-0 ${service.covered_by_package ? 'bg-emerald-50/80 px-2 py-1.5 ring-1 ring-emerald-100' : ''}`}>
                                       <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                                         <span className="text-gray-500">{idx + 1}.</span>
-                                        <div>{renderGlobalBulkLineCheckbox(serviceLineKey)}<ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(serviceLineKey, serviceItem.staff_splits ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-1">{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(serviceLineKey, service.name ?? 'Service deposit', serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[serviceLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
+                                        <div>{renderGlobalBulkLineCheckbox(serviceLineKey)}<ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(serviceLineKey, service.staff_splits ?? serviceItem.staff_splits ?? [], 'assigned staff')}<div className="mt-1 flex flex-wrap gap-1">{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(serviceLineKey, service.name ?? 'Service deposit', service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[serviceLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
                                         <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} /></div>
                                       </div>
                                       {service.package_note ? (
@@ -9242,7 +9246,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                             <span className="text-gray-500">+</span>
-                                            <div>{renderGlobalBulkLineCheckbox(addonLineKey)}<ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(addonLineKey, service.staff_splits ?? serviceItem.staff_splits ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-1">{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonLineKey, addon.name ?? 'Service add-on deposit', serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[addonLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
+                                            <div>{renderGlobalBulkLineCheckbox(addonLineKey)}<ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(addonLineKey, addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-1">{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonLineKey, addon.name ?? 'Service add-on deposit', addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[addonLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
                                             <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} /></div>
                                           </div>
                                           {addon.package_note ? (
