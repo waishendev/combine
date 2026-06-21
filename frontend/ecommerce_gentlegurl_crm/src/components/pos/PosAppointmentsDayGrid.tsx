@@ -231,7 +231,13 @@ export default function PosAppointmentsDayGrid({
     }
 
     const targetTop = ((targetMin - DAY_START_MIN) / SLOT_MINUTES) * SLOT_PX
-    el.scrollTop = Math.max(0, targetTop - SLOT_PX)
+
+    const gridTop = el.getBoundingClientRect().top + window.scrollY
+    const headerOffset = 80
+    window.scrollTo({
+      top: Math.max(0, gridTop + targetTop - headerOffset),
+      behavior: 'auto',
+    })
   }, [dayYmd, loading])
 
   if (loading) {
@@ -251,10 +257,10 @@ export default function PosAppointmentsDayGrid({
   const HEADER_H = 44
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+    <div className="pos-appt-day-grid-root flex flex-col overflow-visible">
       <div
         ref={scrollRef}
-        className="pos-appt-day-grid-scroll min-h-0 flex-1 rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]"
+        className="pos-appt-day-grid-scroll rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]"
       >
         <div className="min-w-max">
           <div className="flex min-w-full shrink-0 border-b border-slate-200 bg-slate-100">

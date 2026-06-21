@@ -1485,6 +1485,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const { isCompactLayout } = usePosWideLayout()
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
   const productsGridRef = useRef<HTMLDivElement | null>(null)
+  const preservedProductGridScrollRef = useRef(0)
+  const preservedMainScrollRef = useRef(0)
   const qrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const qrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
@@ -2352,7 +2354,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const focusScanner = () => {
-    scannerInputRef.current?.focus()
+    try {
+      scannerInputRef.current?.focus({ preventScroll: true })
+    } catch {
+      scannerInputRef.current?.focus()
+    }
   }
 
   const clearScannerInput = () => {
@@ -5015,6 +5021,50 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [cartSheetOpen])
 
   useEffect(() => {
+    const grid = productsGridRef.current
+    const main =
+      typeof document !== 'undefined'
+        ? document.querySelector<HTMLElement>('.crm-dashboard-main')
+        : null
+
+    const onGridScroll = () => {
+      if (grid) preservedProductGridScrollRef.current = grid.scrollTop
+    }
+    const onMainScroll = () => {
+      if (main) preservedMainScrollRef.current = main.scrollTop
+    }
+
+    grid?.addEventListener('scroll', onGridScroll, { passive: true })
+    main?.addEventListener('scroll', onMainScroll, { passive: true })
+    return () => {
+      grid?.removeEventListener('scroll', onGridScroll)
+      main?.removeEventListener('scroll', onMainScroll)
+    }
+  }, [catalogTab])
+
+  useLayoutEffect(() => {
+    const grid = productsGridRef.current
+    const main =
+      typeof document !== 'undefined'
+        ? document.querySelector<HTMLElement>('.crm-dashboard-main')
+        : null
+
+    if (grid) {
+      const gridTop = preservedProductGridScrollRef.current
+      if (Math.abs(grid.scrollTop - gridTop) > 1) {
+        grid.scrollTop = gridTop
+      }
+    }
+
+    if (main) {
+      const mainTop = preservedMainScrollRef.current
+      if (Math.abs(main.scrollTop - mainTop) > 1) {
+        main.scrollTop = mainTop
+      }
+    }
+  }, [cart, cartItems.length, cartServiceItems.length, cartPackageItems.length, cartAppointmentSettlementItems.length])
+
+  useEffect(() => {
     if (productSearchMode !== 'barcode') {
       setDebouncedSkuQuery('')
       return
@@ -6735,7 +6785,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [modalGalleryImages, modalPreviewImageUrl, selectedProduct])
 
   return (
-    <div className="pos-checkout-workspace min-w-0 overflow-x-hidden">
+    <div className="pos-checkout-workspace min-w-0">
       <div className="pos-checkout-page-header flex shrink-0 flex-col gap-2 sm:gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-bold text-gray-900 sm:text-2xl lg:text-3xl">POS Checkout</h2>
@@ -6746,7 +6796,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </svg>
               <span className="font-medium">Barcode Listener Active</span>
             </span>
-            <span className="min-w-0 text-pretty text-gray-600">
+            <span className="min-w-0 text-pretty text-gray-600 pos-checkout-barcode-hint">
               System listens for barcode scans; scan items to add them to the cart automatically.
             </span>
           </p>
@@ -6768,11 +6818,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       </div>
 
-      <div className="pos-split-layout grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-3 sm:gap-4 lg:gap-5">
+      <div
+        className={[
+          'pos-split-layout grid min-w-0 gap-3 sm:gap-4 lg:gap-5',
+          isCompactLayout === true ? 'flex min-h-0 flex-col' : 'min-h-0 flex-1',
+        ].join(' ')}
+      >
         <div
           className={[
             'pos-split-catalog min-w-0 flex min-h-0 flex-1 flex-col gap-3 sm:gap-4 lg:gap-5',
-            isCompactLayout === true && hasCartItems && 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
+            isCompactLayout === true && hasCartItems && 'pos-split-catalog--floating-bar',
           ]
             .filter(Boolean)
             .join(' ')}
@@ -6787,13 +6842,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 void onScannerEnter()
               }
             }}
-            className="sr-only"
-            autoFocus
+            className="fixed left-0 top-0 h-px w-px overflow-hidden opacity-0"
+            aria-label="Barcode scanner input"
           />
 
           {/* Products / Services Section */}
           <div className="@container pos-split-panel flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
-            <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
+            <h3 className="pos-catalog-panel-header mb-5 flex items-center gap-2 text-xl font-bold text-gray-900">
+              <span className="flex min-w-0 flex-1 items-center gap-2">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
@@ -6804,9 +6860,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
                 </svg>
               )}
+              </span>
+              <button
+                type="button"
+                onClick={() => void openMemberQuickLookupPanel()}
+                className="pos-panel-member-lookup hidden shrink-0 items-center gap-1.5 rounded-lg border border-blue-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+              >
+                Member
+              </button>
             </h3>
 
-            <div className="mb-4 flex max-w-full flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1">
+            <div className="pos-catalog-tabs mb-4 flex max-w-full shrink-0 flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-100 p-1">
               <button
                 type="button"
                 onClick={() => setCatalogTab('products')}
@@ -6848,10 +6912,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             {catalogTab === 'products' ? (
-              <>
+              <div className="pos-catalog-products-host flex min-h-0 flex-1 flex-col overflow-hidden">
             
             {/* Search + Category Filters */}
-            <div className="mb-5 min-w-0 space-y-3">
+            <div className="pos-catalog-controls mb-5 min-w-0 shrink-0 space-y-3">
               <div className="grid min-w-0 gap-3 lg:grid-cols-[auto_minmax(0,1fr)] lg:items-center">
                 <div className="inline-flex rounded-lg border border-gray-200 bg-gray-100 p-1">
                   <button
@@ -6927,7 +6991,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             {/* Products Grid */}
-            <div ref={productsGridRef} className="pos-split-product-grid grid min-h-[260px] min-w-0 flex-1 auto-rows-max content-start grid-cols-1 gap-3 overflow-auto p-1 @min-[640px]:grid-cols-2">
+            <div ref={productsGridRef} className="pos-split-product-grid grid min-h-0 min-w-0 flex-1 auto-rows-max content-start grid-cols-1 gap-3 p-1 @min-[640px]:grid-cols-2">
               {visibleProductHits.map((hit, idx) => {
                 const item = hit.product
                 const displaySku = hit.matchedVariantSku || item.sku || firstActiveVariantSku(item) || '-'
@@ -7020,7 +7084,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             {/* Pagination */}
             {visibleProductHits.length > 0 && productPage < productLastPage && (
-              <div className="mt-4 flex items-center justify-end border-t pt-4">
+              <div className="pos-catalog-pagination mt-2 flex shrink-0 items-center justify-end border-t pt-2">
                 <button
                   className="rounded-lg border-2 border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 transition-all hover:border-blue-500 hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-gray-300 disabled:hover:bg-white disabled:hover:text-gray-700"
                   disabled={productLoading}
@@ -7040,7 +7104,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </button>
               </div>
             )}
-              </>
+              </div>
             ) : catalogTab === 'booking-products' ? (
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="mb-3 flex items-center justify-between">
@@ -7338,9 +7402,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
         <div
           className={[
-            'pos-split-cart min-w-0 flex min-h-0 flex-1 flex-col gap-3 sm:gap-4 lg:gap-5',
+            'pos-split-cart min-w-0 flex min-h-0 flex-col overflow-hidden',
             isCompactLayout === true && 'fixed inset-x-0 bottom-0 z-[130] max-h-[92dvh] transition-transform duration-300 ease-out',
-            isCompactLayout === true && (cartSheetOpen ? 'translate-y-0 pointer-events-auto visible pos-cart-sheet-open' : 'translate-y-full pointer-events-none invisible'),
+            isCompactLayout === true &&
+              (cartSheetOpen
+                ? 'translate-y-0 pointer-events-auto visible pos-cart-sheet-open'
+                : 'translate-y-full pointer-events-none invisible'),
           ]
             .filter(Boolean)
             .join(' ')}
@@ -7353,18 +7420,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               onClick={() => setCartSheetOpen(false)}
             />
           ) : null}
-
             <div
               className={[
-                'pos-split-panel relative z-[1] flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5',
-                isCompactLayout === true && 'max-h-[92dvh] min-h-0 rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
+                'pos-split-panel pos-split-cart-panel relative z-[1] flex h-full min-h-0 w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5',
+                isCompactLayout === true &&
+                  'max-h-[92dvh] min-h-0 rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
               ]
                 .filter(Boolean)
                 .join(' ')}
             >
-              <>
             <div className="pos-cart-sheet-handle" aria-hidden="true" />
-            <h3 className="mb-4 flex flex-shrink-0 items-center gap-2 text-lg font-bold text-gray-900">
+            <h3 className="pos-split-cart-header mb-0 flex shrink-0 items-center gap-2 text-lg font-bold text-gray-900">
               <svg className="h-5 w-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
               </svg>
@@ -7380,8 +7446,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </svg>
               </button>
             </h3>
+            <div className="pos-split-cart-scroll mt-3 min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
             {hasCartItems ? (
-              <div className="pos-split-cart-scroll mt-3 min-h-[220px] flex-1 space-y-3 overflow-y-auto overflow-x-hidden pr-1">
+              <>
                 {cartItems.map((item) => {
                   // Get current variant stock info
                   const currentVariant = item.variant_id 
@@ -8013,9 +8080,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     </div>
                   </div>
                 ))}
-                </div>
-              ) : (
-              <div className="mt-3 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
+              </>
+            ) : (
+              <div className="rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-8 text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gray-200">
                   <svg className="h-8 w-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -8026,13 +8093,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
             )}
 
-            <div className="mt-5 rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
-              {/* Order Summary inside payment card for clearer iPad POS flow */}
-              <div className="mb-4 space-y-1 rounded-lg bg-gray-50 border border-gray-200 px-3 py-2 text-sm">
-                {/* <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal</span>
-                  <span className="font-semibold text-gray-900">RM {cartSubtotal.toFixed(2)}</span>
-                </div> */}
+            </div>
+
+            <div className="pos-split-cart-footer shrink-0">
+            <div className="rounded-xl border-2 border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+              <div className="space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
                 {promotionDiscount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Promotion Discount</span>
@@ -8049,19 +8114,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <span className="text-gray-900">Total</span>
                   <span className="text-lg text-orange-700">RM {cartTotal.toFixed(2)}</span>
                 </div>
-                {/* {cartPackageItems.length > 0 && (
-                  <div className="border-t border-gray-200 pt-2 text-xs text-gray-700">
-                    Package assignment: {selectedMember ? selectedMember.name : 'No member selected'}
-                  </div>
-                )} */}
               </div>
-
             </div>
 
-            <button 
-              onClick={() => void checkout()} 
-              disabled={!canCheckout} 
-              className="mt-5 h-14 w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-base font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 hover:shadow-xl disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none active:scale-[0.98]"
+            <button
+              onClick={() => void checkout()}
+              disabled={!canCheckout}
+              className="mt-3 h-12 w-full rounded-xl bg-gradient-to-r from-blue-600 to-blue-700 text-base font-bold text-white shadow-lg transition-all hover:from-blue-700 hover:to-blue-800 hover:shadow-xl disabled:cursor-not-allowed disabled:from-gray-300 disabled:to-gray-400 disabled:shadow-none active:scale-[0.98] sm:h-14"
             >
               {checkingOut ? (
                 <span className="flex items-center justify-center gap-2">
@@ -8076,11 +8135,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               )}
             </button>
             {!hasOpenShift && !cashShiftLoading ? (
-              <p className="mt-2 text-center text-xs font-semibold text-amber-700">Open a cash shift before checkout.</p>
+              <p className="mt-1.5 text-center text-xs font-semibold text-amber-700">Open a cash shift before checkout.</p>
             ) : cashShiftLoading ? (
-              <p className="mt-2 text-center text-xs font-semibold text-blue-700">Checking current cash shift…</p>
+              <p className="mt-1.5 text-center text-xs font-semibold text-blue-700">Checking current cash shift…</p>
             ) : null}
-              </>
+            </div>
             </div>
         </div>
       </div>
@@ -8100,30 +8159,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   setCartSheetOpen(true)
                 }}
                 className={[
-                  'fixed inset-x-3 z-[125] flex min-h-[4.25rem] touch-manipulation items-center justify-between gap-3 rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-white to-blue-50 px-4 py-3.5 shadow-[0_10px_30px_rgba(37,99,235,0.18)]',
-                  'bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))]',
-                  cartBarPulse ? 'animate-[pos-cart-bar-pulse_0.55s_ease]' : '',
+                  'pos-floating-cart-bar touch-manipulation',
+                  cartBarPulse ? 'pos-floating-cart-bar--pulse' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
               >
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-blue-600 px-2 text-[13px] font-extrabold text-white shadow-sm">
+                <span className="pos-floating-cart-bar-leading flex min-w-0 items-center gap-3">
+                  <span className="pos-floating-cart-badge">
                     {cartFloatingCount}
                   </span>
                   <span className="flex min-w-0 flex-col items-start text-left">
-                    <span className="text-[11px] font-semibold uppercase tracking-wide text-blue-700">
+                    <span className="pos-floating-cart-bar-subtitle text-[11px] font-semibold uppercase tracking-wide text-blue-700">
                       {cartFloatingCount === 1 ? '1 item in cart' : `${cartFloatingCount} items in cart`}
                     </span>
-                    <span className="text-sm font-bold text-gray-900">Shopping Cart</span>
+                    <span className="pos-floating-cart-bar-title text-sm font-bold text-gray-900">Shopping Cart</span>
                   </span>
                 </span>
-                <span className="flex shrink-0 flex-col items-end gap-1.5 text-right">
+                <span className="pos-floating-cart-bar-trailing flex shrink-0 flex-col items-end gap-1.5 text-right">
                   <span>
-                    <span className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Total</span>
-                    <span className="text-lg font-extrabold tabular-nums text-orange-700">RM {cartTotal.toFixed(2)}</span>
+                    <span className="pos-floating-cart-bar-total-label block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Total</span>
+                    <span className="pos-floating-cart-bar-total-value text-lg font-extrabold tabular-nums text-orange-700">RM {cartTotal.toFixed(2)}</span>
                   </span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
+                  <span className="pos-floating-cart-bar-action inline-flex items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
                     View Details
                     <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M9 5l7 7-7 7" />
@@ -11680,7 +11738,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
       {/* Bottom-right Toasts (commercial POS style) */}
       {toasts.length > 0 && (
-        <div className={`fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3${isCompactLayout === true && hasCartItems ? ' !bottom-[calc(6.25rem+env(safe-area-inset-bottom,0px))]' : ''}`}>
+        <div className={`fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3`}>
           {toasts.map((toast) => {
             const styles =
               toast.kind === 'success'

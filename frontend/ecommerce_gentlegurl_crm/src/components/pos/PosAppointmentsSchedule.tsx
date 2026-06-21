@@ -121,10 +121,10 @@ export default function PosAppointmentsSchedule({
   }
 
   return (
-    <div className="pos-appt-schedule flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
+    <div className="pos-appt-schedule flex min-h-0 flex-col gap-3 overflow-visible">
       <div className="shrink-0">{filterSlot}</div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
+      <div className="pos-appt-schedule-toolbar flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">
         <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5">
           <button
             type="button"
@@ -278,8 +278,8 @@ export default function PosAppointmentsSchedule({
       ) : null}
 
       {viewMode === 'day' ? (
-        <div className="pos-appt-day-host min-h-0 flex-1">
-          <p className="mb-2 shrink-0 text-[11px] text-slate-500">
+        <div className="pos-appt-day-host min-h-0">
+          <p className="pos-appt-day-hint mb-2 shrink-0 text-[11px] text-slate-500">
             {formatPosAppointmentScheduleRangeLabel()} · 15-minute slots · tap a block to open settlement.
           </p>
           <PosAppointmentsDayGrid

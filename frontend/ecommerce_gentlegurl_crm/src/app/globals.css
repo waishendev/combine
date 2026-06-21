@@ -208,7 +208,7 @@ body {
 }
 
 .crm-dashboard-main {
-  overflow-x: hidden;
+  overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-y: contain;
   -webkit-overflow-scrolling: touch;
@@ -218,34 +218,6 @@ body {
 
 .crm-page-shell {
   min-height: min-content;
-}
-
-/* POS pages: fill dashboard main and scroll inside panels (iPad landscape). */
-.crm-dashboard-main:has(.pos-appt-page),
-.crm-dashboard-main:has(.pos-checkout-page) {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-  padding-bottom: 0;
-}
-
-.crm-dashboard-main:has(.pos-appt-page) .crm-page-shell.pos-appt-page,
-.crm-dashboard-main:has(.pos-checkout-page) .crm-page-shell.pos-checkout-page {
-  display: flex;
-  flex: 1 1 0%;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.crm-dashboard-main:has(.pos-appt-page) .pos-cash-shift-gate-host,
-.crm-dashboard-main:has(.pos-checkout-page) .pos-cash-shift-gate-host {
-  display: flex;
-  flex: 1 1 0%;
-  flex-direction: column;
-  min-height: 0;
-  overflow: hidden;
 }
 
 /* CRM sidebar: scroll inside nav so long menus stay reachable on iPad (nothing clipped). */
@@ -266,41 +238,138 @@ body {
 @layer utilities {
   @media (min-width: 1024px) and (min-height: 640px),
     (orientation: landscape) and (min-width: 768px) and (min-height: 500px) {
+    /* Wide POS: page scroll in dashboard main — sticky cart / settlement follow scroll. */
+    .crm-dashboard-main:has(.pos-appt-page),
+    .crm-dashboard-main:has(.pos-checkout-page) {
+      display: block;
+      min-height: 0;
+      overflow-x: clip;
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+    }
+
+    .crm-dashboard-main:has(.pos-appt-page) .crm-page-shell.pos-appt-page,
+    .crm-dashboard-main:has(.pos-checkout-page) .crm-page-shell.pos-checkout-page,
+    .crm-dashboard-main:has(.pos-appt-page) .pos-cash-shift-gate-host,
+    .crm-dashboard-main:has(.pos-checkout-page) .pos-cash-shift-gate-host,
+    .pos-appt-workspace,
+    .pos-checkout-workspace {
+      display: block;
+      flex: none;
+      height: auto;
+      max-height: none;
+      min-height: 0;
+      overflow: visible;
+    }
+
+    .pos-checkout-workspace {
+      gap: 0.75rem;
+    }
+
+    .pos-checkout-page-header {
+      flex-shrink: 0;
+    }
+
+    .pos-checkout-page {
+      --pos-cart-panel-height: min(68svh, calc(100svh - 11rem));
+    }
+
+    .pos-appt-page {
+      --pos-settlement-panel-height: min(68svh, calc(100svh - 11rem));
+    }
+
     .pos-split-layout {
       grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-      grid-template-rows: minmax(0, 1fr);
-      flex: 1 1 0%;
+      grid-template-rows: auto;
+      align-items: start;
+      flex: none;
       min-height: 0;
+      height: auto;
     }
+
     .pos-split-catalog {
       grid-column: span 3 / span 3;
+      align-self: start;
       display: flex;
       flex-direction: column;
       min-height: 0;
+      min-width: 0;
+      overflow: visible;
     }
+
+    .pos-split-catalog .pos-split-panel {
+      flex: 1 1 auto;
+      min-height: 0;
+      min-width: 0;
+      overflow: visible;
+    }
+
+    /* Catalog grows with products; page scrolls so cart sticky can follow. */
+    .pos-split-product-grid {
+      flex: none;
+      min-height: 0;
+      min-width: 0;
+      overflow: visible;
+    }
+
     .pos-split-cart {
       grid-column: span 2 / span 2;
+      align-self: start;
       display: flex;
       flex-direction: column;
+      width: 100%;
+      height: var(--pos-cart-panel-height);
+      max-height: var(--pos-cart-panel-height);
       min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+      position: sticky;
+      top: 0.625rem;
+      z-index: 15;
     }
+
     .pos-split-panel {
       display: flex;
-      flex: 1 1 0%;
+      flex: 1 1 auto;
       flex-direction: column;
       height: auto;
+      max-height: inherit;
+      min-height: 0;
+    }
+
+    .pos-split-cart > .pos-split-cart-panel {
+      flex: 1 1 0%;
+      height: 100%;
       max-height: 100%;
       min-height: 0;
+      overflow: hidden;
     }
-    .pos-split-product-grid {
-      min-height: 0;
+
+    .pos-split-cart-header {
+      flex-shrink: 0;
     }
+
     .pos-split-cart-scroll {
+      flex: 1 1 0%;
       min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .pos-split-cart-footer {
+      flex-shrink: 0;
+      border-top: 1px solid rgb(229 231 235);
+      padding-top: 0.75rem;
+      background: white;
     }
 
     .pos-appt-left {
       grid-column: span 3 / span 3;
+      align-self: stretch;
     }
     .pos-appt-right {
       grid-column: span 2 / span 2;
@@ -308,69 +377,58 @@ body {
 
     .pos-appt-right-host {
       grid-column: span 2 / span 2;
+      position: sticky;
+      top: 0.625rem;
+      align-self: start;
       display: flex;
       flex-direction: column;
+      width: 100%;
+      height: var(--pos-settlement-panel-height);
+      max-height: var(--pos-settlement-panel-height);
       min-height: 0;
       min-width: 0;
+      overflow: hidden;
+      z-index: 15;
     }
 
     .pos-appt-right-host > .pos-appt-right {
       position: static;
       display: flex;
-      flex: 1 1 0%;
+      flex: 1 1 auto;
       flex-direction: column;
       width: auto;
-      max-height: none;
-      height: 100%;
+      max-height: inherit;
+      height: auto;
       transform: none;
       visibility: visible;
       pointer-events: auto;
       transition: none;
     }
 
-    /* POS checkout: workspace fills remaining height below shift bar + page title. */
-    .pos-checkout-workspace {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      gap: 0.75rem;
-      min-height: 0;
-      overflow: hidden;
-    }
+    /* POS checkout workspace — flex chain defined above for wide checkout. */
 
-    /* POS appointments: equal-height panels, scroll inside each column. */
+    /* POS appointments page shell */
     .crm-page-shell.pos-appt-page {
-      display: flex;
-      flex-direction: column;
-      flex: 1 1 0%;
       height: auto;
       max-height: none;
-      min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .pos-appt-page .pos-cash-shift-gate-host {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .pos-appt-workspace {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
       gap: 0.75rem;
-      min-height: 0;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .pos-appt-layout {
       grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-      grid-template-rows: minmax(0, 1fr);
-      align-items: stretch;
-      flex: 1 1 0%;
+      grid-template-rows: auto;
+      align-items: start;
+      flex: none;
+      height: auto;
       min-height: 0;
     }
 
@@ -382,64 +440,58 @@ body {
       min-width: 0;
     }
 
-    .pos-appt-left > .pos-appt-panel,
+    .pos-appt-left {
+      align-self: start;
+    }
+
+    .pos-appt-left > .pos-appt-panel {
+      display: flex;
+      flex: none;
+      flex-direction: column;
+      height: auto;
+      max-height: none;
+      min-height: 0;
+      overflow: visible;
+    }
+
     .pos-appt-right > .pos-appt-panel {
       display: flex;
-      flex: 1 1 0%;
+      flex: 1 1 auto;
       flex-direction: column;
-      height: 100%;
-      max-height: 100%;
+      height: auto;
+      max-height: inherit;
       min-height: 0;
       overflow: hidden;
     }
 
-    .pos-appt-schedule-host {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    .pos-appt-schedule {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      gap: 0.75rem;
-      min-height: 0;
-      overflow: hidden;
+    .pos-appt-schedule-host,
+    .pos-appt-schedule,
+    .pos-appt-day-host,
+    .pos-appt-day-grid-root {
+      flex: none;
+      overflow: visible;
     }
 
     .pos-appt-month-scroll {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      min-height: 0;
-      overflow-y: auto;
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
-    }
-
-    .pos-appt-day-host {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      min-height: 0;
-      overflow: hidden;
+      flex: none;
+      overflow: visible;
+      max-height: none;
     }
 
     .pos-appt-day-grid-scroll {
-      flex: 1 1 0%;
+      flex: none;
+      height: auto;
       max-height: none;
       min-height: 0;
-      overflow: auto;
-      overscroll-behavior: contain;
+      overflow-x: auto;
+      overflow-y: visible;
+      overscroll-behavior-x: contain;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-x pan-y;
     }
 
     .pos-appt-settlement-scroll {
-      flex: 1 1 0%;
+      flex: 1 1 auto;
       min-height: 0;
       overflow-y: auto;
     }
@@ -456,42 +508,189 @@ body {
       display: none !important;
     }
 
-    /* iPad / tablet landscape: reclaim vertical space for catalog + schedule scroll areas. */
-    @media (orientation: landscape) and (min-width: 768px) and (max-height: 900px) {
-      .pos-checkout-page-subtitle {
-        display: none;
+    /* iPad / tablet landscape: immersive layout — maximize catalog + schedule scroll height. */
+    @media (orientation: landscape) and (min-width: 768px) and (max-width: 1366px) and (max-height: 950px) {
+      .crm-dashboard-main:has(.pos-appt-page) .crm-page-shell.pos-appt-page,
+      .crm-dashboard-main:has(.pos-checkout-page) .crm-page-shell.pos-checkout-page {
+        padding: 0.25rem 0.375rem !important;
+      }
+
+      .pos-checkout-workspace,
+      .pos-appt-workspace {
+        gap: 0.25rem;
+      }
+
+      .pos-split-layout,
+      .pos-appt-layout {
+        gap: 0.375rem !important;
+        grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr) !important;
+      }
+
+      .pos-split-catalog,
+      .pos-appt-left {
+        grid-column: 1 / 2 !important;
+      }
+
+      .pos-split-cart,
+      .pos-appt-right-host {
+        grid-column: 2 / 3 !important;
       }
 
       .pos-checkout-page-header {
-        gap: 0.5rem;
-      }
-
-      .pos-cash-shift-gate-host > .mb-2 {
-        margin-bottom: 0.35rem;
-      }
-
-      .pos-cash-shift-gate-host > .mb-2 > div {
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-      }
-
-      .pos-appt-panel-header {
-        margin-bottom: 0.35rem !important;
-        font-size: 1rem !important;
-        line-height: 1.35 !important;
-      }
-
-      .pos-appt-legend {
-        padding-top: 0.35rem;
-        padding-bottom: 0.35rem;
-      }
-
-      .pos-appt-legend-extra {
         display: none !important;
       }
 
-      .pos-appt-day-host > p {
-        margin-bottom: 0.35rem;
+      .pos-panel-member-lookup {
+        display: inline-flex !important;
+      }
+
+      .pos-checkout-barcode-hint {
+        display: none;
+      }
+
+      .pos-shift-status-bar {
+        margin-bottom: 0.25rem !important;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        justify-content: flex-start;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .pos-shift-status-bar > div,
+      .pos-shift-status-bar > button {
+        flex-shrink: 0;
+        font-size: 0.6875rem;
+        padding: 0.35rem 0.55rem;
+        border-radius: 0.65rem;
+      }
+
+      .pos-shift-status-bar span.rounded-full {
+        padding: 0.15rem 0.45rem;
+        font-size: 0.625rem;
+      }
+
+      .pos-split-panel,
+      .pos-appt-panel {
+        padding: 0.45rem 0.55rem !important;
+        border-width: 1px;
+      }
+
+      .pos-catalog-panel-header {
+        margin-bottom: 0.35rem !important;
+        font-size: 0.95rem !important;
+      }
+
+      .pos-catalog-panel-header svg.h-6 {
+        height: 1.1rem;
+        width: 1.1rem;
+      }
+
+      .pos-catalog-controls {
+        margin-bottom: 0.35rem !important;
+        gap: 0.35rem;
+      }
+
+      .pos-catalog-controls .py-3 {
+        padding-top: 0.45rem;
+        padding-bottom: 0.45rem;
+      }
+
+      .pos-split-product-grid {
+        min-height: 0 !important;
+      }
+
+      .pos-appt-panel-header {
+        margin-bottom: 0.25rem !important;
+        font-size: 0.9rem !important;
+        line-height: 1.25 !important;
+        gap: 0.25rem !important;
+      }
+
+      .pos-appt-panel-header svg.h-6 {
+        height: 1.1rem;
+        width: 1.1rem;
+      }
+
+      .pos-appt-toolbar {
+        gap: 0.25rem !important;
+      }
+
+      .pos-catalog-tabs {
+        margin-bottom: 0.35rem !important;
+        padding: 0.15rem;
+      }
+
+      .pos-catalog-tabs button {
+        padding: 0.25rem 0.45rem;
+        font-size: 0.625rem;
+      }
+
+      .pos-catalog-pagination {
+        margin-top: 0.25rem !important;
+        padding-top: 0.25rem !important;
+      }
+
+      .pos-catalog-pagination button {
+        padding: 0.25rem 0.55rem;
+        font-size: 0.6875rem;
+      }
+
+      .pos-appt-auto-refresh-label,
+      .pos-appt-toolbar .text-xs.font-medium.text-slate-500 {
+        display: none;
+      }
+
+      .pos-appt-toolbar button,
+      .pos-appt-toolbar label {
+        font-size: 0.6875rem;
+        padding: 0.25rem 0.45rem;
+      }
+
+      .pos-appt-toolbar .min-h-8 {
+        min-height: 1.5rem;
+        min-width: 1.5rem;
+        font-size: 0.75rem;
+        padding-left: 0.35rem;
+        padding-right: 0.35rem;
+      }
+
+      .pos-appt-schedule {
+        gap: 0.35rem !important;
+      }
+
+      .pos-appt-schedule-toolbar {
+        padding: 0.15rem;
+        gap: 0.25rem;
+      }
+
+      .pos-appt-schedule-toolbar button,
+      .pos-appt-schedule-toolbar input {
+        padding: 0.25rem 0.45rem;
+        font-size: 0.6875rem;
+      }
+
+      .pos-appt-legend {
+        display: none !important;
+      }
+
+      .pos-appt-day-hint {
+        display: none !important;
+      }
+
+      .pos-appt-day-grid-scroll {
+        min-height: 12rem;
+      }
+
+      .pos-split-cart-scroll {
+        min-height: 0;
+      }
+
+      .pos-checkout-page {
+        --pos-cart-panel-height: min(62svh, calc(100svh - 5.5rem));
+      }
+
+      .pos-appt-page {
+        --pos-settlement-panel-height: min(62svh, calc(100svh - 5.5rem));
       }
     }
   }
@@ -503,8 +702,35 @@ body {
   @media (orientation: portrait) and (max-width: 1023px),
     (orientation: landscape) and (max-width: 767px),
     (orientation: landscape) and (max-height: 499px) {
+    /* Phone / narrow: page scrolls normally in dashboard main. */
+    .crm-dashboard-main:has(.pos-appt-page),
+    .crm-dashboard-main:has(.pos-checkout-page) {
+      display: block;
+      overflow-x: clip;
+      overflow-y: auto;
+      overscroll-behavior-y: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-y;
+      padding-bottom: max(1.5rem, env(safe-area-inset-bottom, 0px));
+    }
+
+    .crm-dashboard-main:has(.pos-appt-page) .crm-page-shell.pos-appt-page,
+    .crm-dashboard-main:has(.pos-checkout-page) .crm-page-shell.pos-checkout-page,
+    .crm-dashboard-main:has(.pos-appt-page) .pos-cash-shift-gate-host,
+    .crm-dashboard-main:has(.pos-checkout-page) .pos-cash-shift-gate-host,
+    .pos-appt-workspace,
+    .pos-checkout-workspace {
+      display: block;
+      flex: none;
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
+
     .pos-split-layout {
-      grid-template-columns: minmax(0, 1fr) !important;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
     }
 
     .pos-split-catalog--floating-bar {
@@ -512,35 +738,37 @@ body {
     }
 
     .pos-split-cart {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 130;
-      max-height: min(92dvh, 860px);
-      transform: translateY(100%);
-      transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
-      pointer-events: none;
-      visibility: hidden;
+      width: 100%;
+      max-width: 100%;
     }
 
-    .pos-split-cart.pos-cart-sheet-open {
-      transform: translateY(0);
-      pointer-events: auto;
-      visibility: visible;
+    .pos-split-cart .pos-split-cart-panel {
+      height: 100%;
+      max-height: 100%;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .pos-split-cart .pos-split-panel {
       height: auto;
-      max-height: min(92dvh, 860px);
+      max-height: inherit;
       min-height: 0;
-      border-radius: 1.25rem 1.25rem 0 0;
-      border-bottom: 0;
-      box-shadow: 0 -12px 40px rgba(15, 23, 42, 0.18);
     }
 
     .pos-split-cart-scroll {
+      flex: 1 1 auto;
+      min-height: 0;
       max-height: min(52dvh, 480px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .pos-split-cart-footer {
+      flex-shrink: 0;
+      border-top: 1px solid rgb(229 231 235);
+      padding-top: 0.75rem;
+      background: white;
     }
 
     .pos-cart-sheet-handle {
@@ -656,8 +884,11 @@ body {
     }
 
     .pos-appt-layout {
+      display: flex;
+      flex-direction: column;
       flex: none;
       height: auto;
+      gap: 0.75rem;
     }
 
     .pos-appt-left,
@@ -666,86 +897,36 @@ body {
     }
 
     .pos-appt-right-host {
-      display: none;
-      height: 0;
-      overflow: hidden;
+      display: block;
+      width: 100%;
+      max-width: 100%;
     }
 
+    .pos-appt-right,
     body > .pos-appt-right {
       position: fixed;
       left: 0;
       right: 0;
       bottom: 0;
-      top: auto;
       z-index: 130;
+      display: flex;
+      flex-direction: column;
       width: 100%;
-      max-height: min(92dvh, 860px);
-      height: auto;
-      margin: 0;
+      max-width: 100%;
+      max-height: min(96dvh, calc(100dvh - 0.5rem));
       transform: translateY(100%);
       transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
       pointer-events: none;
       visibility: hidden;
     }
 
+    .pos-appt-right.pos-appt-settlement-sheet-open,
     body > .pos-appt-right.pos-appt-settlement-sheet-open {
       transform: translateY(0);
       pointer-events: auto;
       visibility: visible;
-    }
-
-    .pos-appt-layout > .pos-appt-right-host > .pos-appt-right {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      top: auto;
-      z-index: 130;
-      width: 100%;
-      max-height: min(92dvh, 860px);
-      height: auto;
-      margin: 0;
-      transform: translateY(100%);
-      transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
-      pointer-events: none;
-      visibility: hidden;
-    }
-
-    .pos-appt-layout > .pos-appt-right-host > .pos-appt-right.pos-appt-settlement-sheet-open {
-      transform: translateY(0);
-      pointer-events: auto;
-      visibility: visible;
-    }
-
-    .pos-appt-left--compact > .pos-appt-panel {
-      flex: none;
-      height: auto;
-      max-height: none;
-      min-height: 0;
-      overflow: visible;
-    }
-
-    .pos-appt-schedule-host,
-    .pos-appt-schedule,
-    .pos-appt-month-scroll,
-    .pos-appt-day-host {
-      flex: none;
-      overflow: visible;
-    }
-
-    .pos-appt-month-grid {
-      flex: none;
-      grid-template-rows: none;
-    }
-
-    .pos-appt-day-grid-scroll {
-      flex: none;
-      max-height: min(65dvh, 720px);
-      min-height: 260px;
-      overflow: auto;
-      overscroll-behavior: contain;
-      -webkit-overflow-scrolling: touch;
-      touch-action: pan-x pan-y;
+      height: min(96dvh, calc(100dvh - 0.5rem));
+      max-height: min(96dvh, calc(100dvh - 0.5rem));
     }
 
     .pos-appt-right .pos-appt-panel,
@@ -753,8 +934,9 @@ body {
       display: flex;
       flex-direction: column;
       width: 100%;
-      height: auto;
-      max-height: min(92dvh, 860px);
+      flex: 1 1 auto;
+      height: 100%;
+      max-height: 100%;
       min-height: 0;
       border-radius: 1.25rem 1.25rem 0 0;
       border-bottom: 0;
@@ -762,7 +944,12 @@ body {
     }
 
     .pos-appt-settlement-scroll {
-      max-height: min(52dvh, 480px);
+      flex: 1 1 0%;
+      min-height: 0;
+      max-height: none;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
     }
 
     .pos-settlement-sheet-handle {
@@ -784,6 +971,14 @@ body {
       display: inline-flex;
     }
 
+    .pos-appt-left--compact > .pos-appt-panel {
+      flex: none;
+      height: auto;
+      max-height: none;
+      min-height: 0;
+      overflow: visible;
+    }
+
     .pos-settlement-sheet-backdrop {
       position: fixed;
       inset: 0;
@@ -798,6 +993,57 @@ body {
     .pos-settlement-sheet-backdrop--open {
       opacity: 1;
       pointer-events: auto;
+    }
+
+    .pos-appt-left--compact .pos-appt-schedule-host {
+      flex: none;
+      overflow: visible;
+    }
+
+    .pos-appt-left--compact .pos-appt-schedule {
+      overflow: visible;
+      gap: 0.75rem;
+    }
+
+    .pos-appt-left--compact .pos-appt-day-host {
+      flex: none;
+      overflow: visible;
+    }
+
+    .pos-appt-left--compact .pos-appt-day-grid-root {
+      flex: none;
+      min-height: 0;
+      overflow: visible;
+    }
+
+    .pos-appt-schedule-host,
+    .pos-appt-schedule,
+    .pos-appt-month-scroll,
+    .pos-appt-day-host {
+      flex: none;
+      overflow: visible;
+    }
+
+    .pos-appt-month-grid {
+      flex: none;
+      grid-template-rows: none;
+    }
+
+    .pos-appt-day-grid-scroll {
+      flex: none;
+      height: auto;
+      max-height: none;
+      min-height: 0;
+      overflow-x: auto;
+      overflow-y: visible;
+      overscroll-behavior-x: contain;
+      -webkit-overflow-scrolling: touch;
+      touch-action: pan-x pan-y;
+    }
+
+    .pos-appt-month-scroll {
+      overflow: visible;
+      max-height: none;
     }
 
     .pos-floating-settlement-bar {
@@ -836,8 +1082,255 @@ body {
       transform: translateY(120%);
     }
 
+    .pos-floating-settlement-bar--placeholder {
+      z-index: 120;
+      border-style: dashed;
+      border-color: rgb(203 213 225);
+      background: rgba(255 255 255 / 0.95);
+      backdrop-filter: blur(4px);
+      cursor: default;
+      pointer-events: none;
+    }
+
     .pos-toast-stack--floating-settlement {
       bottom: calc(6.25rem + env(safe-area-inset-bottom, 0px)) !important;
+    }
+
+    /*
+     * Small phone landscape (~360–430px tall): maximize catalog height,
+     * slim floating cart bar, compact sheet + panel chrome.
+     */
+    @media (orientation: landscape) and (max-height: 499px) {
+      .crm-dashboard-main:has(.pos-checkout-page) .crm-page-shell.pos-checkout-page,
+      .crm-dashboard-main:has(.pos-appt-page) .crm-page-shell.pos-appt-page {
+        padding: 0.25rem 0.5rem !important;
+      }
+
+      .pos-checkout-workspace,
+      .pos-appt-workspace {
+        gap: 0.375rem;
+      }
+
+      .pos-checkout-page-header {
+        display: none !important;
+      }
+
+      .pos-panel-member-lookup {
+        display: inline-flex !important;
+      }
+
+      .pos-shift-status-bar {
+        margin-bottom: 0.125rem !important;
+        gap: 0.25rem;
+      }
+
+      .pos-shift-status-bar > div,
+      .pos-shift-status-bar > button {
+        font-size: 0.625rem;
+        padding: 0.25rem 0.45rem;
+        border-radius: 0.5rem;
+      }
+
+      .pos-shift-status-bar span.rounded-full {
+        padding: 0.1rem 0.35rem;
+        font-size: 0.5625rem;
+      }
+
+      .pos-split-layout,
+      .pos-appt-layout {
+        gap: 0.375rem !important;
+      }
+
+      .pos-split-catalog .pos-split-panel,
+      .pos-appt-left--compact > .pos-appt-panel {
+        padding: 0.5rem 0.65rem !important;
+        border-width: 1px;
+      }
+
+      .pos-catalog-panel-header,
+      .pos-appt-panel-header {
+        margin-bottom: 0.35rem !important;
+        font-size: 0.9rem !important;
+        line-height: 1.25 !important;
+      }
+
+      .pos-catalog-panel-header svg.h-6,
+      .pos-appt-panel-header svg.h-6 {
+        height: 1rem;
+        width: 1rem;
+      }
+
+      .pos-catalog-tabs,
+      .pos-catalog-controls {
+        margin-bottom: 0.35rem !important;
+      }
+
+      .pos-catalog-tabs {
+        gap: 0.2rem;
+        padding: 0.2rem;
+      }
+
+      .pos-catalog-tabs button {
+        padding: 0.3rem 0.45rem;
+        font-size: 0.625rem;
+      }
+
+      .pos-split-product-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        gap: 0.45rem !important;
+      }
+
+      .pos-split-catalog--floating-bar,
+      .pos-appt-left--floating-bar {
+        padding-bottom: calc(3.25rem + env(safe-area-inset-bottom, 0px));
+      }
+
+      .pos-floating-cart-bar {
+        left: 0.5rem;
+        right: 0.5rem;
+        bottom: calc(0.375rem + env(safe-area-inset-bottom, 0px));
+        min-height: 2.75rem;
+        padding: 0.35rem 0.6rem;
+        gap: 0.5rem;
+        border-radius: 0.75rem;
+        border-width: 1px;
+      }
+
+      .pos-floating-cart-bar-leading {
+        gap: 0.5rem;
+      }
+
+      .pos-floating-cart-bar-subtitle,
+      .pos-floating-cart-bar-total-label {
+        display: none;
+      }
+
+      .pos-floating-cart-bar-trailing {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.45rem;
+      }
+
+      .pos-floating-cart-bar-title {
+        font-size: 0.8125rem;
+      }
+
+      .pos-floating-cart-bar-total-value {
+        font-size: 0.9375rem;
+      }
+
+      .pos-floating-cart-bar-action {
+        font-size: 0;
+        gap: 0;
+        padding: 0.3rem 0.35rem;
+      }
+
+      .pos-floating-cart-bar-action svg {
+        width: 1rem;
+        height: 1rem;
+      }
+
+      .pos-floating-cart-badge {
+        min-width: 1.5rem;
+        height: 1.5rem;
+        font-size: 0.75rem;
+      }
+
+      .pos-split-cart {
+        max-height: min(96dvh, calc(100dvh - 0.5rem));
+      }
+
+      .pos-split-cart .pos-split-cart-panel {
+        padding: 0.5rem 0.65rem !important;
+      }
+
+      .pos-split-cart-scroll {
+        max-height: min(38dvh, 220px);
+      }
+
+      .pos-cart-sheet-handle {
+        padding: 0.35rem 0 0.1rem;
+      }
+
+      .pos-split-cart-header {
+        font-size: 0.9375rem;
+      }
+
+      .pos-split-cart-footer {
+        padding-top: 0.5rem;
+      }
+
+      .pos-split-cart-footer button {
+        height: 2.5rem !important;
+        min-height: 2.5rem;
+        margin-top: 0.5rem !important;
+        font-size: 0.875rem;
+      }
+
+      .pos-toast-stack--floating-cart {
+        bottom: calc(4rem + env(safe-area-inset-bottom, 0px)) !important;
+      }
+
+      .pos-appt-workspace > .lg\:hidden {
+        display: none !important;
+      }
+
+      .pos-floating-settlement-bar,
+      .pos-floating-settlement-bar--placeholder {
+        left: 0.5rem;
+        right: 0.5rem;
+        bottom: calc(0.375rem + env(safe-area-inset-bottom, 0px));
+        min-height: 2.75rem;
+        padding: 0.35rem 0.6rem;
+        gap: 0.5rem;
+        border-radius: 0.75rem;
+        border-width: 1px;
+      }
+
+      .pos-floating-settlement-bar-hint,
+      .pos-floating-settlement-bar-subtitle,
+      .pos-floating-settlement-bar-due-label {
+        display: none;
+      }
+
+      .pos-floating-settlement-bar-trailing {
+        flex-direction: row;
+        align-items: center;
+        gap: 0.45rem;
+      }
+
+      .pos-floating-settlement-bar-title {
+        font-size: 0.8125rem;
+      }
+
+      .pos-floating-settlement-bar-due-value {
+        font-size: 0.9375rem;
+      }
+
+      .pos-floating-settlement-bar-action {
+        font-size: 0;
+        gap: 0;
+        padding: 0.3rem 0.35rem;
+      }
+
+      .pos-floating-settlement-bar-action svg {
+        width: 1rem;
+        height: 1rem;
+      }
+
+      .pos-appt-settlement-scroll {
+        max-height: none;
+      }
+
+      .pos-appt-right.pos-appt-settlement-sheet-open,
+      body > .pos-appt-right.pos-appt-settlement-sheet-open {
+        height: min(94dvh, calc(100dvh - 0.35rem));
+        max-height: min(94dvh, calc(100dvh - 0.35rem));
+      }
+
+      .pos-toast-stack--floating-settlement {
+        bottom: calc(4rem + env(safe-area-inset-bottom, 0px)) !important;
+      }
     }
   }
 }

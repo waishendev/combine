@@ -250,7 +250,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   return (
     <PosCashShiftContext.Provider value={contextValue}>
     <div className="pos-cash-shift-gate-host relative">
-      <div className="mb-2 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
+      <div className="pos-shift-status-bar mb-2 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
         {cashShiftLoading ? (
           <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800 shadow-sm">
             Checking current cash shift…
