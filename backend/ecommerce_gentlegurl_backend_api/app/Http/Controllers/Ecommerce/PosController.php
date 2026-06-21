@@ -6839,6 +6839,10 @@ class PosController extends Controller
                     'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                     'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                    'staff_splits' => collect($addon['staff_splits'] ?? [])->map(fn ($split) => [
+                        'staff_id' => (int) ($split['staff_id'] ?? 0),
+                        'share_percent' => (int) ($split['share_percent'] ?? 0),
+                    ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all(),
                 ])
                 ->values();
             $mainServices = $rawAddonItems
@@ -6853,6 +6857,10 @@ class PosController extends Controller
                             'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                             'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                             'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                            'staff_splits' => collect($addon['staff_splits'] ?? [])->map(fn ($split) => [
+                                'staff_id' => (int) ($split['staff_id'] ?? 0),
+                                'share_percent' => (int) ($split['share_percent'] ?? 0),
+                            ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all(),
                         ])
                         ->values();
 
@@ -6908,6 +6916,10 @@ class PosController extends Controller
                         'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                         'extra_price' => (float) ($addon['extra_price'] ?? 0),
                         'linked_deposit_amount' => round((float) ($addon['linked_deposit_amount'] ?? 0), 2),
+                        'staff_splits' => collect($addon['staff_splits'] ?? [])->map(fn ($split) => [
+                            'staff_id' => (int) ($split['staff_id'] ?? 0),
+                            'share_percent' => (int) ($split['share_percent'] ?? 0),
+                        ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all(),
                     ])->values()->all(),
                 'main_services' => $mainServices->all(),
                 'deposit_contribution' => (float) $depositContribution,
