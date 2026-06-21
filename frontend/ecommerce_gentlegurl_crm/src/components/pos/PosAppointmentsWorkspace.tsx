@@ -1769,6 +1769,42 @@ export default function PosAppointmentsWorkspace({
         auto_balance: true,
       }))
       .filter((block) => block.service_id > 0)
+    setAppointmentLineStaffSplits((prev) => {
+      const next = { ...prev }
+      ;(appointmentDetail.add_ons ?? []).forEach((addon) => {
+        const addonId = Number(addon.id ?? 0)
+        const splits = (addon.staff_splits ?? [])
+          .map((split) => ({
+            staff_id: Number(split.staff_id ?? 0),
+            share_percent: Number(split.share_percent ?? 0),
+          }))
+          .filter((split) => split.staff_id > 0 && split.share_percent > 0)
+        if (addonId > 0 && splits.length > 0) {
+          next[`appointment-settlement:${appointmentDetail.id}:addon:${addonId}`] = splits
+        }
+      })
+      addedMainBlocksSeed.forEach((block) => {
+        block.selected_addon_ids.forEach((addonId) => {
+          const addon = appointmentDisplayMainServices
+            .find((service) => Number(service.linked_booking_service_id ?? service.id ?? 0) === block.service_id)
+            ?.add_ons?.find((row) => Number(row.id ?? 0) === addonId)
+          const splits = (addon?.staff_splits ?? [])
+            .map((split) => ({
+              staff_id: Number(split.staff_id ?? 0),
+              share_percent: Number(split.share_percent ?? 0),
+            }))
+            .filter((split) => split.staff_id > 0 && split.share_percent > 0)
+          if (splits.length > 0) {
+            next[`appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${addonId}`] = splits
+          }
+        })
+      })
+      console.debug('[POS appointment settlement staff-splits] seeded saved add-on splits', {
+        appointment_id: appointmentDetail.id,
+        seeded_line_splits: Object.fromEntries(Object.entries(next).filter(([key]) => key.startsWith(`appointment-settlement:${appointmentDetail.id}:`))),
+      })
+      return next
+    })
     setEditAddedMainBlocks(addedMainBlocksSeed)
     setEditMainServiceQuery('')
                   setEditMainServiceCategoryId(null)
