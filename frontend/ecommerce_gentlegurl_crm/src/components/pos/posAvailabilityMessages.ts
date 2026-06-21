@@ -26,9 +26,17 @@ export type PosAvailabilityConflictDebug = {
 }
 
 export const POS_SCHEDULE_OVERRIDE_REASONS = new Set([
-  'no_staff_schedule',
   'outside_staff_schedule',
   'hits_staff_break',
+])
+
+export const POS_HARD_AVAILABILITY_REASONS = new Set([
+  'staff_off_day',
+  'staff_leave',
+  'booking_conflict',
+  'staff_inactive',
+  'no_staff_schedule',
+  'schedule_inactive',
 ])
 
 function formatPosAvailabilityTimeLabel(startAt?: string | null, endAt?: string | null): string {
@@ -112,7 +120,7 @@ export function formatPosAvailabilityErrorMessage(params: {
   }
 
   if (reasonCode === 'no_staff_schedule') {
-    return `${staff} is not rostered to work on ${weekdayLabel} (no staff schedule is set for this weekday). Add their schedule in staff settings, pick another date, assign another staff member, or continue for walk-in / overtime.`
+    return `${staff} is not rostered to work on ${weekdayLabel} (no staff schedule is set for this weekday). Add their schedule in Staff Schedules, pick another date, or assign another staff member.`
   }
 
   if (reasonCode === 'schedule_inactive') {
@@ -137,4 +145,40 @@ export function formatPosAvailabilityErrorMessage(params: {
 
   return backendMessage?.trim()
     || `${staff} is not available for ${slotLabel}. Please choose another time or staff member.`
+}
+
+export function formatPosNoStaffAvailableMessage(params: {
+  allowedStaffCount: number
+  unavailableReasons?: Record<string, string>
+  allowedStaffIds?: number[]
+}): string {
+  const { allowedStaffCount, unavailableReasons = {}, allowedStaffIds = [] } = params
+
+  if (allowedStaffCount <= 0) {
+    return 'No staff is linked to this service. Update the service allowed staff list or choose another service.'
+  }
+
+  const reasons = new Set(
+    allowedStaffIds
+      .map((id) => unavailableReasons[String(id)] ?? '')
+      .filter(Boolean),
+  )
+
+  if (reasons.has('no_staff_schedule') || reasons.has('schedule_inactive')) {
+    return 'No staff available for this slot. Eligible staff have no roster for this weekday or an inactive schedule — check Staff Schedules, or pick another date/time.'
+  }
+
+  if (reasons.has('staff_off_day') || reasons.has('staff_leave')) {
+    return 'No staff available for this slot. All eligible staff are on off day or approved leave. Pick another date/time.'
+  }
+
+  if (reasons.has('staff_inactive')) {
+    return 'No staff available for this slot. Eligible staff are inactive. Assign active staff to this service or choose another service.'
+  }
+
+  if (reasons.has('booking_conflict')) {
+    return 'No staff available for this slot. All eligible staff have a booking conflict at this time. Pick another slot.'
+  }
+
+  return 'No staff available for this slot. Pick another date/time or check Staff Schedules and leave settings.'
 }

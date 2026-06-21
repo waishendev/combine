@@ -17,7 +17,7 @@ import {
   validateSettlementAmountInput,
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
-import { POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -32,9 +32,6 @@ import {
   type ReceiptLineItem,
 } from '@/utils/printReceipt'
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
-
-
-const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_off_day', 'staff_leave', 'booking_conflict', 'staff_inactive'])
 
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'cash', label: 'Cash' },
@@ -3583,10 +3580,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ?? activeStaffs.find((staff) => staff.id === bookingAssignedStaffId)?.name
       ?? 'Selected staff'
 
-    if (bookingStaffScheduleWarning === 'no_staff_schedule') {
-      return `${staffName} is not rostered on this weekday (no staff schedule for this day). Add their schedule, pick another date/staff, or continue for walk-in / overtime.`
-    }
-
     if (bookingStaffScheduleWarning === 'hits_staff_break') {
       return `${staffName} is scheduled for a break at this time. POS can continue for walk-in / overtime.`
     }
@@ -3600,6 +3593,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   ])
 
   const bookingStaffPickerReady = Boolean(bookingDate && bookingSlotValue)
+
+  const bookingNoStaffAvailableMessage = useMemo(() => {
+    if (!bookingStaffPickerReady || bookingSlotsLoading) return null
+    if (bookingStaffPickerOptions.length > 0) return null
+    return formatPosNoStaffAvailableMessage({
+      allowedStaffCount: bookingAllowedStaffs.length,
+      unavailableReasons: bookingSelectedSlot?.unavailable_staff_reasons,
+      allowedStaffIds: bookingAllowedStaffs.map((staff) => staff.id),
+    })
+  }, [
+    bookingAllowedStaffs,
+    bookingSelectedSlot,
+    bookingSlotsLoading,
+    bookingStaffPickerOptions.length,
+    bookingStaffPickerReady,
+  ])
 
   useEffect(() => {
     if (bookingAssignedStaffId && bookingStaffPickerReady && !bookingStaffPickerOptions.some((staff) => staff.id === bookingAssignedStaffId)) {
@@ -11051,6 +11060,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       }
                     />
                   </div>
+                  {bookingNoStaffAvailableMessage ? (
+                    <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800">
+                      {bookingNoStaffAvailableMessage}
+                    </div>
+                  ) : null}
                   {bookingStaffScheduleWarningMessage ? (
                     <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                       {bookingStaffScheduleWarningMessage}

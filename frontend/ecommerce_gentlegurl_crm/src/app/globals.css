@@ -262,34 +262,137 @@ body {
       min-height: 0;
     }
 
-    /* POS appointments: side-by-side panels with internal scroll in schedule areas. */
-    .pos-appt-layout {
-      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
-    }
     .pos-appt-left {
       grid-column: span 3 / span 3;
     }
     .pos-appt-right {
       grid-column: span 2 / span 2;
     }
+
+    .pos-appt-right-host {
+      grid-column: span 2 / span 2;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+    }
+
+    .pos-appt-right-host > .pos-appt-right {
+      position: static;
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      width: auto;
+      max-height: none;
+      height: 100%;
+      transform: none;
+      visibility: visible;
+      pointer-events: auto;
+      transition: none;
+    }
+
+    /* POS appointments: equal-height panels, scroll inside each column. */
+    .crm-page-shell.pos-appt-page {
+      display: flex;
+      flex-direction: column;
+      height: calc(100dvh - 4rem);
+      max-height: calc(100dvh - 4rem);
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pos-appt-page .pos-cash-shift-gate-host {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pos-appt-workspace {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pos-appt-layout {
+      grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      align-items: stretch;
+      flex: 1 1 0%;
+      min-height: 0;
+    }
+
+    .pos-appt-left,
+    .pos-appt-right {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      min-width: 0;
+    }
+
     .pos-appt-left > .pos-appt-panel,
     .pos-appt-right > .pos-appt-panel {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      height: 100%;
+      max-height: 100%;
       min-height: 0;
+      overflow: hidden;
     }
 
     .pos-appt-schedule-host {
-      min-height: 0;
       display: flex;
+      flex: 1 1 0%;
       flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pos-appt-schedule {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pos-appt-month-scroll {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      min-height: 0;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .pos-appt-day-host {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
     }
 
     .pos-appt-day-grid-scroll {
-      max-height: min(72dvh, 960px);
-      min-height: 280px;
+      flex: 1 1 0%;
+      max-height: none;
+      min-height: 0;
       overflow: auto;
       overscroll-behavior: contain;
       -webkit-overflow-scrolling: touch;
       touch-action: pan-x pan-y;
+    }
+
+    .pos-appt-settlement-scroll {
+      flex: 1 1 0%;
+      min-height: 0;
+      overflow-y: auto;
     }
 
     /* Wide layout: inline panels only — hide floating controls */
@@ -447,23 +550,108 @@ body {
       padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
     }
 
+    .crm-page-shell.pos-appt-page {
+      display: block;
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
+
+    .pos-appt-page .pos-cash-shift-gate-host {
+      display: block;
+      overflow: visible;
+    }
+
+    .pos-appt-workspace {
+      display: block;
+      overflow: visible;
+    }
+
+    .pos-appt-layout {
+      flex: none;
+      height: auto;
+    }
+
+    .pos-appt-left,
+    .pos-appt-right {
+      display: block;
+    }
+
+    .pos-appt-right-host {
+      display: none;
+      height: 0;
+      overflow: hidden;
+    }
+
+    body > .pos-appt-right {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      top: auto;
+      z-index: 130;
+      width: 100%;
+      max-height: min(92dvh, 860px);
+      height: auto;
+      margin: 0;
+      transform: translateY(100%);
+      transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+      pointer-events: none;
+      visibility: hidden;
+    }
+
+    body > .pos-appt-right.pos-appt-settlement-sheet-open {
+      transform: translateY(0);
+      pointer-events: auto;
+      visibility: visible;
+    }
+
+    .pos-appt-layout > .pos-appt-right-host > .pos-appt-right {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      top: auto;
+      z-index: 130;
+      width: 100%;
+      max-height: min(92dvh, 860px);
+      height: auto;
+      margin: 0;
+      transform: translateY(100%);
+      transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
+      pointer-events: none;
+      visibility: hidden;
+    }
+
+    .pos-appt-layout > .pos-appt-right-host > .pos-appt-right.pos-appt-settlement-sheet-open {
+      transform: translateY(0);
+      pointer-events: auto;
+      visibility: visible;
+    }
+
     .pos-appt-left--compact > .pos-appt-panel {
+      flex: none;
+      height: auto;
       max-height: none;
       min-height: 0;
+      overflow: visible;
     }
 
-    .pos-appt-schedule-host {
-      min-height: 0;
-      display: flex;
-      flex-direction: column;
+    .pos-appt-schedule-host,
+    .pos-appt-schedule,
+    .pos-appt-month-scroll,
+    .pos-appt-day-host {
+      flex: none;
+      overflow: visible;
     }
 
-    .pos-appt-month-grid > button,
-    .pos-appt-month-grid > div {
-      min-height: 5rem;
+    .pos-appt-month-grid {
+      flex: none;
+      grid-template-rows: none;
     }
 
     .pos-appt-day-grid-scroll {
+      flex: none;
       max-height: min(65dvh, 720px);
       min-height: 260px;
       overflow: auto;
@@ -472,26 +660,11 @@ body {
       touch-action: pan-x pan-y;
     }
 
-    .pos-appt-right {
-      position: fixed;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 130;
-      max-height: min(92dvh, 860px);
-      transform: translateY(100%);
-      transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1);
-      pointer-events: none;
-      visibility: hidden;
-    }
-
-    .pos-appt-right.pos-appt-settlement-sheet-open {
-      transform: translateY(0);
-      pointer-events: auto;
-      visibility: visible;
-    }
-
-    .pos-appt-right .pos-appt-panel {
+    .pos-appt-right .pos-appt-panel,
+    body > .pos-appt-right .pos-appt-panel {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
       height: auto;
       max-height: min(92dvh, 860px);
       min-height: 0;

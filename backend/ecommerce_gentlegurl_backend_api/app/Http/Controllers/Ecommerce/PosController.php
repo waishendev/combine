@@ -7697,7 +7697,7 @@ class PosController extends Controller
 
     protected function posScheduleSoftFailureReasons(): array
     {
-        return ['outside_staff_schedule', 'hits_staff_break', 'no_staff_schedule'];
+        return ['outside_staff_schedule', 'hits_staff_break'];
     }
 
     protected function isPosScheduleOverrideReason(?string $reasonCode): bool
@@ -7813,7 +7813,7 @@ class PosController extends Controller
         }
 
         if ($reasonCode === 'no_staff_schedule') {
-            return __(':staff is not rostered to work on :day (no staff schedule is set for this weekday). Add their schedule in staff settings, pick another date, assign another staff member, or continue for walk-in / overtime.', [
+            return __(':staff is not rostered to work on :day (no staff schedule is set for this weekday). Add their schedule in Staff Schedules, pick another date, or assign another staff member.', [
                 'staff' => $staffLabel,
                 'day' => $weekdayLabel,
             ]);

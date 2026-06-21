@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
@@ -16,7 +16,7 @@ import BookingServicePhotosModal from '@/components/booking/BookingServicePhotos
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
-import { formatPosAvailabilityErrorMessage, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
@@ -72,8 +72,6 @@ function durationMinutesFromRange(startAt?: string | null, endAt?: string | null
   return Math.round(ms / 60000)
 }
 
-
-const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_off_day', 'staff_leave', 'booking_conflict', 'staff_inactive'])
 
 const POS_SLOT_INTERVAL_MIN = 15
 
@@ -253,6 +251,8 @@ export default function PosAppointmentsWorkspace({
   )
   const { hasOpenShift, cashShiftLoading, requireOpenShiftMessage } = usePosCashShift()
   const { isCompactLayout } = usePosWideLayout()
+  const settlementColumnRef = useRef<HTMLDivElement>(null)
+  const settlementHostRef = useRef<HTMLDivElement>(null)
   const cashShiftActionDisabled = cashShiftLoading || !hasOpenShift
   const cashShiftActionTitle = cashShiftActionDisabled ? requireOpenShiftMessage : undefined
 
@@ -1155,10 +1155,6 @@ export default function PosAppointmentsWorkspace({
       ?? activeStaffs.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name
       ?? 'Selected staff'
 
-    if (createAppointmentStaffScheduleWarning === 'no_staff_schedule') {
-      return `${staffName} is not rostered on this weekday (no staff schedule for this day). Add their schedule, pick another date/staff, or continue for walk-in / overtime.`
-    }
-
     if (createAppointmentStaffScheduleWarning === 'hits_staff_break') {
       return `${staffName} is scheduled for a break at this time. POS can continue for walk-in / overtime.`
     }
@@ -1184,6 +1180,22 @@ export default function PosAppointmentsWorkspace({
   )
 
   const createAppointmentStaffPickerReady = Boolean(createAppointmentDate && createAppointmentSlotValue)
+
+  const createAppointmentNoStaffAvailableMessage = useMemo(() => {
+    if (!createAppointmentStaffPickerReady || createAppointmentSlotsLoading) return null
+    if (createAppointmentStaffPickerOptions.length > 0) return null
+    return formatPosNoStaffAvailableMessage({
+      allowedStaffCount: createAppointmentAllowedStaffs.length,
+      unavailableReasons: createAppointmentSelectedSlot?.unavailable_staff_reasons,
+      allowedStaffIds: createAppointmentAllowedStaffs.map((staff) => staff.id),
+    })
+  }, [
+    createAppointmentAllowedStaffs,
+    createAppointmentSelectedSlot,
+    createAppointmentSlotsLoading,
+    createAppointmentStaffPickerOptions.length,
+    createAppointmentStaffPickerReady,
+  ])
 
   useEffect(() => {
     if (createAppointmentAssignedStaffId && createAppointmentStaffPickerReady && !createAppointmentStaffPickerOptions.some((staff) => staff.id === createAppointmentAssignedStaffId)) {
@@ -2960,6 +2972,24 @@ export default function PosAppointmentsWorkspace({
     }
   }, [settlementSheetOpen])
 
+  useLayoutEffect(() => {
+    if (typeof document === 'undefined') return
+    const node = settlementColumnRef.current
+    const host = settlementHostRef.current
+    if (!node) return
+
+    if (isCompactLayout !== false) {
+      if (node.parentNode !== document.body) {
+        document.body.appendChild(node)
+      }
+      return
+    }
+
+    if (host && node.parentNode !== host) {
+      host.appendChild(node)
+    }
+  }, [isCompactLayout])
+
   return (
     <div className="pos-appt-workspace space-y-3 sm:space-y-4">
       <div className="lg:hidden">
@@ -2975,7 +3005,7 @@ export default function PosAppointmentsWorkspace({
             .filter(Boolean)
             .join(' ')}
         >
-          <div className="pos-appt-panel flex flex-col rounded-xl border-2 border-gray-200 bg-white p-3 shadow-md sm:p-4 lg:p-5">
+          <div className="pos-appt-panel flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-3 shadow-md sm:p-4 lg:p-5">
             <h3 className="pos-appt-panel-header mb-2 flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 text-lg font-bold text-gray-900 sm:mb-3 sm:text-xl">
               <div className="flex items-center gap-2">
                 <svg className="h-6 w-6 shrink-0 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
@@ -3073,7 +3103,7 @@ export default function PosAppointmentsWorkspace({
                 ) : null}
               </div>
             </h3>
-            <div className="pos-appt-schedule-host">
+            <div className="pos-appt-schedule-host min-h-0 flex-1 overflow-hidden">
             <PosAppointmentsSchedule
               viewMode={posApptViewMode}
               onViewModeChange={(mode) => {
@@ -3185,14 +3215,12 @@ export default function PosAppointmentsWorkspace({
           </div>
         </div>
 
+        <div ref={settlementHostRef} className="pos-appt-right-host min-w-0">
         <div
+          ref={settlementColumnRef}
           className={[
-            'pos-appt-right min-w-0 space-y-5',
-            isCompactLayout === true && 'fixed inset-x-0 bottom-0 z-[130] h-[100dvh] max-h-[100dvh] transition-transform duration-300 ease-out',
-            isCompactLayout === true &&
-              (settlementSheetOpen
-                ? 'translate-y-0 pointer-events-auto visible pos-appt-settlement-sheet-open'
-                : 'translate-y-full pointer-events-none invisible'),
+            'pos-appt-right min-w-0',
+            settlementSheetOpen && 'pos-appt-settlement-sheet-open',
           ]
             .filter(Boolean)
             .join(' ')}
@@ -3200,7 +3228,7 @@ export default function PosAppointmentsWorkspace({
           <div
             className={[
               'pos-appt-panel flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200/90 bg-white shadow-md ring-1 ring-slate-900/5',
-              isCompactLayout === true && 'h-[100dvh] max-h-[100dvh] min-h-0 rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
+              isCompactLayout === true && 'rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -3226,12 +3254,12 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             {appointmentDetailLoading ? (
-              <div className="flex flex-1 flex-col items-center justify-center gap-3 px-6 py-16">
+              <div className="flex flex-1 flex-col items-center justify-start gap-3 px-6 py-8 sm:justify-center sm:py-16">
                 <div className="h-9 w-9 animate-spin rounded-full border-2 border-slate-200 border-t-blue-600" aria-hidden />
                 <p className="text-sm text-slate-500">Loading booking details…</p>
               </div>
             ) : !appointmentDetail ? (
-              <div className="flex flex-1 flex-col items-center justify-center px-6 py-14 text-center">
+              <div className="flex flex-1 flex-col items-center justify-start px-6 py-8 text-center sm:justify-center sm:py-14">
                 <div className="rounded-full bg-slate-100 p-4 text-slate-400">
                   <svg className="h-10 w-10" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -3775,6 +3803,7 @@ export default function PosAppointmentsWorkspace({
               </div>
             )}
           </div>
+        </div>
         </div>
       </div>
 
@@ -4334,6 +4363,11 @@ export default function PosAppointmentsWorkspace({
                         }
                       />
                     </div>
+                    {createAppointmentNoStaffAvailableMessage ? (
+                      <div className="mt-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-800">
+                        {createAppointmentNoStaffAvailableMessage}
+                      </div>
+                    ) : null}
                     {createAppointmentStaffScheduleWarningMessage ? (
                       <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
                         {createAppointmentStaffScheduleWarningMessage}
@@ -4746,15 +4780,6 @@ export default function PosAppointmentsWorkspace({
               </p>
               <p>
                 <span className="font-semibold">Customer:</span> {formatAppointmentCustomerDisplayName(appointmentDetail)}
-              </p>
-              <p>
-                <span className="font-semibold">Service:</span>
-                <PosServiceNameStack
-                  name={appointmentDetail.service?.name}
-                  cnName={appointmentDetail.service?.cn_name}
-                  primaryClassName="mt-0.5 text-xs font-medium text-gray-900"
-                  secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                />
               </p>
               <p>
                 <span className="font-semibold">Current Staff:</span> {formatAppointmentStaffLabel(appointmentDetail)}
