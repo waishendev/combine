@@ -36,7 +36,7 @@ class CommissionTestingSeeder extends Seeder
         $staffIds = $this->resolveStaffIds();
         $services = $this->resolveServices();
 
-        $this->seedCompletedBookingsAcrossMonths($staffIds, $services);
+        // $this->seedCompletedBookingsAcrossMonths($staffIds, $services);
         $this->seedEcommerceAndPackageSplits($staffIds);
 
         $this->seedManualMonthlySalesRows($staffIds);

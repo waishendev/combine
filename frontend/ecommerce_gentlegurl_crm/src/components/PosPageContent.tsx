@@ -5306,16 +5306,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const renderGlobalBulkColumnCheckbox = (key: string) => (
-    <input
-      type="checkbox"
-      checked={globalBulkSelectedKeys.has(key)}
-      onChange={() => {
-        setGlobalBulkSelectedOnly(true)
-        toggleGlobalBulkKey(key)
-      }}
-      className="h-4 w-4 rounded border-indigo-300 text-indigo-600"
-      aria-label="Select line"
-    />
+    <div className="flex w-full items-center justify-center">
+      <input
+        type="checkbox"
+        checked={globalBulkSelectedKeys.has(key)}
+        onChange={() => {
+          setGlobalBulkSelectedOnly(true)
+          toggleGlobalBulkKey(key)
+        }}
+        className="h-4 w-4 shrink-0 rounded border-indigo-300 text-indigo-600"
+        aria-label="Select line"
+      />
+    </div>
   )
 
   const openGlobalBulkSplitEditor = () => {
@@ -5897,6 +5899,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return `${assignment.splits.length} staff (${total}%)`
   }
 
+  const getCheckoutLineSplitSummary = (lineKey: string, inheritedSplits: CheckoutItemStaffSplit[]) => {
+    const explicitSplits = checkoutLineSplits[lineKey] ?? []
+    const rows = (explicitSplits.length > 0 ? explicitSplits : inheritedSplits)
+      .filter((split) => Number(split.staff_id) > 0 && Number(split.share_percent) > 0)
+    if (!rows.length) return 'No staff assigned'
+    const total = rows.reduce((sum, row) => sum + Number(row.share_percent), 0)
+    return `${rows.length} staff (${total}%)`
+  }
+
+  const renderCheckoutLineSplitSummary = (lineKey: string, inheritedSplits: CheckoutItemStaffSplit[]) => (
+    <p className="text-xs font-medium leading-relaxed text-gray-600">{getCheckoutLineSplitSummary(lineKey, inheritedSplits)}</p>
+  )
+
   const getSettlementWorkerSummary = useCallback((settlement: AppointmentSettlementCartItem) => {
     const splitSummary = formatSettlementStaffLabel(settlement)
     return splitSummary === '—' ? 'Staff: —' : `Staff: ${splitSummary}`
@@ -5997,6 +6012,52 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const explicitSplits = checkoutLineSplits[lineKey] ?? []
     if (explicitSplits.length > 0) return `Staff split: ${formatCheckoutSplitRows(explicitSplits)}`
     return `Staff split: inherited from ${inheritedLabel} — ${formatCheckoutSplitRows(inheritedSplits)}`
+  }
+
+  const hasExplicitCheckoutLineSplit = (lineKey: string) => (checkoutLineSplits[lineKey]?.length ?? 0) > 0
+
+  const clearCheckoutLineSplit = (lineKey: string) => {
+    setCheckoutLineSplits((prev) => {
+      if (!prev[lineKey]?.length) return prev
+      const next = { ...prev }
+      delete next[lineKey]
+      return next
+    })
+  }
+
+  const renderCheckoutStaffSplitButtons = (
+    lineKey: string,
+    title: string,
+    inheritedSplits: CheckoutItemStaffSplit[],
+  ) => {
+    const hasSplit = hasExplicitCheckoutLineSplit(lineKey)
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => void openLineSplitEditor(lineKey, title, inheritedSplits)}
+          className={`inline-flex items-center gap-1.5 rounded-lg border-2 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:shadow-md active:scale-95 ${
+            hasSplit
+              ? 'border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-600 hover:to-indigo-700'
+              : 'border-emerald-500 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700'
+          }`}
+        >
+          {hasSplit ? 'Edit Staff Split' : 'Assign Staff Split'}
+        </button>
+        {hasSplit ? (
+          <button
+            type="button"
+            onClick={() => clearCheckoutLineSplit(lineKey)}
+            className="inline-flex items-center gap-1.5 rounded-lg border-2 border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 shadow-sm transition-all hover:bg-red-50 hover:border-red-400 hover:shadow-md active:scale-95"
+          >
+            <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+            Clear
+          </button>
+        ) : null}
+      </>
+    )
   }
 
   const renderLineSplitStack = (lineKey: string, inheritedSplits: CheckoutItemStaffSplit[], inheritedLabel = 'main service') => {
@@ -8671,15 +8732,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     }} className="inline-flex items-center rounded-lg border border-indigo-500 bg-indigo-600 px-4 py-2 text-xs font-bold text-white shadow-sm">
                       Apply Staff Split
                     </button>
-                    <span className="text-[11px] font-medium text-indigo-700">Use row checkboxes for selected-line bulk actions.</span>
                   </div>
                 )}
               </div>
               <div className="overflow-x-auto rounded-2xl border border-gray-200/90 bg-gradient-to-b from-slate-50/80 to-white shadow-inner ring-1 ring-gray-100">
                 <table className="min-w-[720px] w-full text-sm">
+                  <colgroup>
+                    <col className="w-12" />
+                  </colgroup>
                   <thead className="sticky top-0 z-10 bg-gradient-to-r from-slate-100 via-gray-50 to-slate-100 shadow-sm">
                     <tr>
-                      <th className="w-12 px-3 py-3.5 text-left"><input type="checkbox" checked={allCheckoutBulkSelected} ref={(node) => { if (node) node.indeterminate = someCheckoutBulkSelected }} onChange={toggleAllCheckoutBulkKeys} className="h-4 w-4 rounded border-indigo-300 text-indigo-600" aria-label="Select all chargeable lines" /></th>
+                      <th className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center">
+                        <div className="flex w-full items-center justify-center">
+                          <input type="checkbox" checked={allCheckoutBulkSelected} ref={(node) => { if (node) node.indeterminate = someCheckoutBulkSelected }} onChange={toggleAllCheckoutBulkKeys} className="h-4 w-4 shrink-0 rounded border-indigo-300 text-indigo-600" aria-label="Select all chargeable lines" />
+                        </div>
+                      </th>
                       <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:px-5">Item</th>
                       <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:min-w-[220px]">Details</th>
                       <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:min-w-[160px]">Unit / Deposit</th>
@@ -8699,7 +8766,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       return (
                         <Fragment key={item.id}>
                         <tr className="bg-white hover:bg-slate-50/90 transition-colors align-top">
-                          <td className="px-3 py-3.5 align-top">{renderGlobalBulkColumnCheckbox(`product:${item.id}`)}</td>
+                          <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center align-top">{renderGlobalBulkColumnCheckbox(`product:${item.id}`)}</td>
                           <td className="px-4 py-3.5 sm:px-5">
                             {isBookingProduct ? <p className="mb-1 text-[11px] font-bold uppercase tracking-wide text-blue-700">TYPE: BOOKING PRODUCT</p> : null}
                             <p className="font-semibold text-gray-900">{item.product_name}</p>
@@ -8736,7 +8803,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <td className="px-4 py-3.5 min-w-[260px] align-top">
                             <div className="space-y-2">
                               <p className="text-xs text-gray-600 font-medium leading-relaxed">{getSplitSummary(assignment)}</p>
-                              <div className="flex items-center gap-2">
+                              <div className="flex flex-wrap items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => void openItemSplitEditor(item.id)}
@@ -8775,7 +8842,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   </button>
                                 ) : null}
                                 {selectedBookingProductOptions.length > 0 ? (
-                                  <button type="button" onClick={() => void openBulkSplitEditor('Booking product lines', selectedBookingProductOptions.map((opt, idx) => `cart:${item.id}:booking_product_option:${Number(opt.id ?? idx)}`), assignment?.splits ?? [], [item.id])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split to All Lines</button>
+                                  <button type="button" onClick={() => void openBulkSplitEditor('Booking product lines', selectedBookingProductOptions.map((opt, idx) => `cart:${item.id}:booking_product_option:${Number(opt.id ?? idx)}`), assignment?.splits ?? [], [item.id])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split for Section Block</button>
                                 ) : null}
                                 <button
                                   type="button"
@@ -8845,12 +8912,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           const optionNet = getBookingProductOptionNetLineTotal(item, opt)
                           const optionDiscount = Number(opt.discount_amount ?? Math.max(0, optionGross - optionNet))
                           const optionSplitKey = `cart:${item.id}:booking_product_option:${Number(opt.id ?? optIdx)}`
-                          const optionSplits = checkoutLineSplits[optionSplitKey] ?? (assignment?.splits ?? [])
                           const inheritedProductSplits = assignment?.splits ?? []
-                          const optionSplitSummary = formatLineSplitSummary(optionSplitKey, inheritedProductSplits, 'main product')
                           return (
                           <tr key={`checkout-bp-addon-${item.id}-${opt.id ?? optIdx}`} className="bg-blue-50/50 align-top">
-                            <td className="px-3 py-2.5 align-top">{renderGlobalBulkColumnCheckbox(optionSplitKey)}</td>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5 text-center align-top">{renderGlobalBulkColumnCheckbox(optionSplitKey)}</td>
                             <td className="px-4 py-2.5 pl-6 sm:px-5 sm:pl-7">
                               <p className="text-[11px] font-bold uppercase tracking-wide text-blue-700">ADD-ON</p>
                               <p className="mt-1 text-sm text-gray-800">+ {opt.label}</p>
@@ -8858,34 +8923,34 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <p className="mt-1 text-xs font-semibold text-gray-600">Qty: {item.qty}</p>
                             </td>
                             <td className="px-4 py-2.5 text-xs text-gray-500">
-                              <div className="mb-2 space-y-1">
-                                <p className="text-[11px] font-medium text-gray-600">{optionSplitSummary}</p>
+                              <div className="space-y-2">
+                                {renderCheckoutLineSplitSummary(optionSplitKey, inheritedProductSplits)}
+                                <div className="flex flex-wrap items-center gap-2">
+                                {renderCheckoutStaffSplitButtons(
+                                  optionSplitKey,
+                                  `+ ${opt.label ?? 'Booking Product Option'}`,
+                                  inheritedProductSplits,
+                                )}
                                 <button
                                   type="button"
-                                  onClick={() => void openLineSplitEditor(optionSplitKey, `+ ${opt.label ?? 'Booking Product Option'}`, inheritedProductSplits)}
-                                  className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700"
+                                  onClick={() => opt.id && openDiscountModal({
+                                    kind: 'bookingProductOption',
+                                    id: item.id,
+                                    optionId: Number(opt.id),
+                                    name: `+ ${opt.label ?? 'Booking Product Option'}`,
+                                    lineTotal: optionGross,
+                                    discountType: opt.discount_type ?? null,
+                                    discountValue: Number(opt.discount_value ?? 0),
+                                    discountRemark: opt.discount_remark ?? null,
+                                  })}
+                                  disabled={!opt.id}
+                                  className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50"
                                 >
-                                  {checkoutLineSplits[optionSplitKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}
+                                  {optionDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                 </button>
+                                <button type="button" onClick={() => opt.id && openPriceEditModal({ kind: 'bookingProductOption', id: item.id, optionId: Number(opt.id), name: `+ ${opt.label ?? 'Booking Product Option'}`, currentUnitPrice: Number(opt.extra_price ?? 0), originalUnitPrice: Number(opt.original_unit_price_snapshot ?? opt.extra_price ?? 0), quantity: Number(item.qty ?? 1), currentLineTotal: optionGross })} disabled={!opt.id} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 disabled:opacity-50">Edit Price</button>
                               </div>
-                              <button
-                                type="button"
-                                onClick={() => opt.id && openDiscountModal({
-                                  kind: 'bookingProductOption',
-                                  id: item.id,
-                                  optionId: Number(opt.id),
-                                  name: `+ ${opt.label ?? 'Booking Product Option'}`,
-                                  lineTotal: optionGross,
-                                  discountType: opt.discount_type ?? null,
-                                  discountValue: Number(opt.discount_value ?? 0),
-                                  discountRemark: opt.discount_remark ?? null,
-                                })}
-                                disabled={!opt.id}
-                                className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50"
-                              >
-                                {optionDiscount > 0 ? 'Edit Discount' : 'Discount'}
-                              </button>
-                              <button type="button" onClick={() => opt.id && openPriceEditModal({ kind: 'bookingProductOption', id: item.id, optionId: Number(opt.id), name: `+ ${opt.label ?? 'Booking Product Option'}`, currentUnitPrice: Number(opt.extra_price ?? 0), originalUnitPrice: Number(opt.original_unit_price_snapshot ?? opt.extra_price ?? 0), quantity: Number(item.qty ?? 1), currentLineTotal: optionGross })} disabled={!opt.id} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700 disabled:opacity-50">Edit Price</button>
+                              </div>
                             </td>
                             <td className="px-4 py-2.5 text-left tabular-nums text-sm text-gray-700">
                               <div className="space-y-1">
@@ -8906,12 +8971,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           </tr>
                           )
                         })}
-                        {isBookingProduct && selectedBookingProductOptions.length > 0 ? (
-                          <tr className="bg-blue-100/60 align-top">
-                            <td className="px-4 py-2.5 pl-6 text-xs font-bold uppercase tracking-wide text-blue-900 sm:px-5 sm:pl-7" colSpan={3}>Subtotal / Line Total</td>
-                            <td className="px-4 py-2.5 text-right text-sm font-bold tabular-nums text-blue-900 sm:px-5">RM {Number(item.line_total).toFixed(2)}</td>
-                          </tr>
-                        ) : null}
                         </Fragment>
                       )
                     })}
@@ -8945,10 +9004,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       return (
                         <Fragment key={`checkout-service-${serviceItem.id}`}>
                           <tr className={`${svcRowClass} align-top`}>
-                            <td className="px-3 py-3.5" aria-hidden />
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5" aria-hidden />
                             <td className="px-4 py-3.5 sm:px-5">{checkoutServiceItemHeader}</td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
-                              <button type="button" onClick={() => void openBulkSplitEditor('Service lines', checkoutDepositBlocks.flatMap((service, idx) => [`service:${serviceItem.id}:main:${service.line_key ?? service.linked_booking_service_id ?? service.id ?? idx}`, ...(service.add_ons ?? []).map((addon, addonIdx) => `service:${serviceItem.id}:addon:${addon.line_key ?? addon.id ?? addonIdx}`)]), serviceItem.staff_splits ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split to All Lines</button>
+                              <button type="button" onClick={() => void openBulkSplitEditor('Service lines', checkoutDepositBlocks.flatMap((service, idx) => [`service:${serviceItem.id}:main:${service.line_key ?? service.linked_booking_service_id ?? service.id ?? idx}`, ...(service.add_ons ?? []).map((addon, addonIdx) => `service:${serviceItem.id}:addon:${addon.line_key ?? addon.id ?? addonIdx}`)]), serviceItem.staff_splits ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split for Section Block</button>
                             </td>
                             <td className="px-4 py-3.5 align-top tabular-nums text-xs text-gray-400">—</td>
                             <td className="px-4 py-3.5 text-right align-top tabular-nums text-xs text-gray-400 sm:px-5">
@@ -9040,11 +9099,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         settlement.service_total,
                         pkgOffset,
                       )
+                      const settlementLineKeys = [
+                        ...checkoutServiceBlocks.map((service, idx) => `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`),
+                        ...addons.map((addon, idx) => `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`),
+                      ]
+                      const settlementInheritedSplits = settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? []
 
                       return (
                         <Fragment key={`checkout-settlement-${settlement.id}`}>
                           <tr className={`${stRowClass} align-top`}>
-                            <td className="px-3 py-3.5" aria-hidden />
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5" aria-hidden />
                             <td className="px-4 py-3.5 sm:px-5">
                               <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Type: Settlement Services</p>
                               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
@@ -9067,12 +9131,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
-                              <div className="space-y-2">
-                                <button type="button" onClick={() => void openBulkSplitEditor('Settlement lines', [...checkoutServiceBlocks.map((service, idx) => `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`), ...addons.map((addon, idx) => `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`)], settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split to All Lines</button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button type="button" onClick={() => void openBulkSplitEditor('Settlement lines', settlementLineKeys, settlementInheritedSplits)} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">Apply Staff Split for Section Block</button>
                                 <button
                                   type="button"
                                   onClick={() => void openCartEditSettlement(settlement)}
-                                  className="ml-2 inline-flex items-center gap-1.5 rounded-lg border-2 border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-indigo-600 hover:to-indigo-700"
+                                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-indigo-500 bg-gradient-to-r from-indigo-500 to-indigo-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-indigo-600 hover:to-indigo-700"
                                 >
                                   Edit Settlement
                                 </button>
@@ -9102,7 +9166,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 return (
                                   <Fragment key={`chk-main-block-row-${settlement.id}-${service.id ?? service.name}-${idx}`}>
                                     <tr className={`${stRowClass} align-top`}>
-                                      <td className="px-3 py-2.5 align-top">{renderGlobalBulkColumnCheckbox(serviceSettlementSplitKey)}</td>
+                                      <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5 text-center align-top">{renderGlobalBulkColumnCheckbox(serviceSettlementSplitKey)}</td>
                                       <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
                                         <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Services Block</p>
                                         <ServiceNameStack name={`${service.name}${service.is_original ? ' (Original)' : ''}`} cnName={service.cn_name} primaryClassName="mt-1 text-xs text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
@@ -9113,12 +9177,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         ) : null}
                                       </td>
                                       <td className="min-w-[260px] px-4 py-2.5 align-top">
-                                        {renderLineSplitStack(serviceSettlementSplitKey, settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [], 'main service')}
-                                        <div className="mt-1 flex flex-wrap gap-2"><button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                                        <div className="space-y-2">
+                                          {renderCheckoutLineSplitSummary(serviceSettlementSplitKey, settlementInheritedSplits)}
+                                          <div className="flex flex-wrap gap-2">
+                                          {renderCheckoutStaffSplitButtons(serviceSettlementSplitKey, service.name ?? 'Settlement service', settlementInheritedSplits)}
+                                          <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
-                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
-                                        <button type="button" onClick={() => void openLineSplitEditor(serviceSettlementSplitKey, service.name ?? 'Settlement service', settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">{checkoutLineSplits[serviceSettlementSplitKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div>
+                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                          </div>
+                                        </div>
                                       </td>
                                       <td className="px-4 py-2.5 align-top tabular-nums text-xs font-semibold text-gray-700">
                                         {coveredByPackage ? (
@@ -9163,9 +9231,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 const addonSettlementSplitKey = `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
-                                    <td className="px-3 py-2 align-top">{renderGlobalBulkColumnCheckbox(addonSettlementSplitKey)}</td>
+                                    <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2 text-center align-top">{renderGlobalBulkColumnCheckbox(addonSettlementSplitKey)}</td>
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</td>
-                                    <td className="min-w-[260px] px-4 py-2 align-top">{renderLineSplitStack(addonSettlementSplitKey, settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-2"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonSettlementSplitKey, addon.name ?? 'Settlement add-on', settlement.staff_splits?.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })) ?? [])} className="inline-flex items-center rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-semibold text-indigo-700">{checkoutLineSplits[addonSettlementSplitKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top">
+                                      <div className="space-y-2">
+                                        {renderCheckoutLineSplitSummary(addonSettlementSplitKey, settlementInheritedSplits)}
+                                        <div className="flex flex-wrap gap-2">
+                                        {renderCheckoutStaffSplitButtons(addonSettlementSplitKey, addon.name ?? 'Settlement add-on', settlementInheritedSplits)}
+                                        <button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>
+                                        {!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                        </div>
+                                      </div>
+                                    </td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <>RM {due.toFixed(2)}</>}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                   </tr>
@@ -9266,7 +9343,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                       return (
                         <tr key={`checkout-package-${packageItem.id}`} className="bg-purple-50/50 hover:bg-purple-50/80 transition-colors align-middle">
-                          <td className="px-3 py-3.5 align-top">{renderGlobalBulkColumnCheckbox(`package:${packageItem.id}`)}</td>
+                          <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center align-top">{renderGlobalBulkColumnCheckbox(`package:${packageItem.id}`)}</td>
                           <td className="px-4 py-3.5 sm:px-5">
                             <p className="text-xs font-semibold uppercase tracking-wide text-purple-700">Type: Service Package</p>
                             <p className="mt-1 text-base font-bold leading-snug text-gray-900">{packageItem.package_name}</p>
@@ -9280,29 +9357,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   ? `${splitRows.length} staff (${splitRows.reduce((sum, row) => sum + Number(row.share_percent || 0), 0)}%)`
                                   : 'No staff assigned'}
                               </p>
-                              <button
-                                type="button"
-                                onClick={() => void openPackageSplitEditor(packageItem.id)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border-2 border-purple-500 bg-gradient-to-r from-purple-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-purple-600 hover:to-purple-700"
-                              >
-                                Assign Staff Split
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => openDiscountModal({
-                                  kind: 'package',
-                                  id: packageItem.id,
-                                  name: packageItem.package_name,
-                                  lineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0),
-                                  discountType: packageItem.discount_type ?? null,
-                                  discountValue: Number(packageItem.discount_value ?? 0),
-                                  discountRemark: packageItem.discount_remark ?? null,
-                                })}
-                                className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800"
-                              >
-                                {(packageItem.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
-                              </button>
-                              <button type="button" onClick={() => openPriceEditModal({ kind: 'package', id: packageItem.id, name: packageItem.package_name, currentUnitPrice: Number(packageItem.unit_price ?? 0), originalUnitPrice: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) / Math.max(1, Number(packageItem.qty ?? 1)), quantity: Number(packageItem.qty ?? 1), currentLineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => void openPackageSplitEditor(packageItem.id)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border-2 border-purple-500 bg-gradient-to-r from-purple-500 to-purple-600 px-3 py-1.5 text-xs font-semibold text-white shadow-sm transition-all hover:from-purple-600 hover:to-purple-700"
+                                >
+                                  Assign Staff Split
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => openDiscountModal({
+                                    kind: 'package',
+                                    id: packageItem.id,
+                                    name: packageItem.package_name,
+                                    lineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0),
+                                    discountType: packageItem.discount_type ?? null,
+                                    discountValue: Number(packageItem.discount_value ?? 0),
+                                    discountRemark: packageItem.discount_remark ?? null,
+                                  })}
+                                  className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800"
+                                >
+                                  {(packageItem.discount_amount ?? 0) > 0 ? 'Edit Discount' : 'Discount'}
+                                </button>
+                                <button type="button" onClick={() => openPriceEditModal({ kind: 'package', id: packageItem.id, name: packageItem.package_name, currentUnitPrice: Number(packageItem.unit_price ?? 0), originalUnitPrice: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) / Math.max(1, Number(packageItem.qty ?? 1)), quantity: Number(packageItem.qty ?? 1), currentLineTotal: Number(packageItem.line_total_snapshot ?? packageItem.line_total ?? 0) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button>
+                              </div>
                             </div>
                           </td>
                           <td className="px-4 py-3.5 align-top tabular-nums">

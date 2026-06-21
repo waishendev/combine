@@ -3921,7 +3921,7 @@ export default function PosAppointmentsWorkspace({
                           </option>
                         ))}
                       </select>
-                      <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p>
+                      {/* <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p> */}
                     </div>
                   </div>
 
@@ -4437,7 +4437,7 @@ export default function PosAppointmentsWorkspace({
                     </option>
                   ))}
                 </select>
-                <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p>
+                {/* <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p> */}
               </div>
               {appointmentRescheduleOutsideStaffSchedule ? (
                 <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">

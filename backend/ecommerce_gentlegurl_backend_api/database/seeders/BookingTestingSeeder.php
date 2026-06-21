@@ -47,12 +47,12 @@ class BookingTestingSeeder extends Seeder
 
         $this->seedBookingSettings();
 
-        $bookings = $this->seedBookings($staffOneId, $haircutService, $customerId);
-        $this->seedBookingLogs($bookings, $staffOneId);
+        // $bookings = $this->seedBookings($staffOneId, $haircutService, $customerId);
+        // $this->seedBookingLogs($bookings, $staffOneId);
 
-        $this->seedGuestCompletedBookingForFeedback($staffOneId, $haircutService);
+        // $this->seedGuestCompletedBookingForFeedback($staffOneId, $haircutService);
 
-        $this->seedVoucherForNotifiedCancellation($bookings['NOTIFIED_CANCELLATION'], $customerId);
+        // $this->seedVoucherForNotifiedCancellation($bookings['NOTIFIED_CANCELLATION'], $customerId);
     }
 
     private function truncateBookingTables(): void
