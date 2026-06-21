@@ -109,25 +109,23 @@ class StaffCommissionService
         }
 
         $completedAt = $booking->completed_at ?: now();
-        $servicePrice = $this->resolveBookingCommissionableNetAmount((int) $booking->id, (float) optional($booking->service)->service_price);
-
-        $splits = $this->resolveBookingStaffSplits($booking);
-        if ($splits->isEmpty()) {
+        $commissionRows = $this->resolveBookingIncrementalCommissionRows($booking);
+        if ($commissionRows->isEmpty()) {
             return;
         }
+
         $year = (int) $completedAt->format('Y');
         $month = (int) $completedAt->format('m');
-        $monthlyRows = $this->resolveOrCreateBookingMonthlyRows($splits->pluck('staff_id')->unique()->values(), $year, $month);
+        $monthlyRows = $this->resolveOrCreateBookingMonthlyRows($commissionRows->pluck('staff_id')->unique()->values(), $year, $month);
         if ($monthlyRows->contains(fn (StaffMonthlySale $row) => $this->isFrozen($row))) {
             return;
         }
 
-        foreach ($splits as $split) {
-            $staffId = (int) ($split['staff_id'] ?? 0);
-            $share = (float) ($split['share_percent'] ?? 0);
-            $splitSales = round($servicePrice * ($share / 100), 2);
-            $monthly = $monthlyRows->first(fn (StaffMonthlySale $row) => (int) $row->staff_id === $staffId);
-            if (! $monthly) {
+        foreach ($commissionRows as $row) {
+            $staffId = (int) ($row['staff_id'] ?? 0);
+            $splitSales = (float) ($row['split_sales'] ?? 0);
+            $monthly = $monthlyRows->first(fn (StaffMonthlySale $monthlyRow) => (int) $monthlyRow->staff_id === $staffId);
+            if (! $monthly || $splitSales <= 0) {
                 continue;
             }
             $monthly->total_sales = (float) $monthly->total_sales + $splitSales;
@@ -149,17 +147,17 @@ class StaffCommissionService
         }
 
         $completedAt = $booking->completed_at ?: Carbon::parse($booking->commission_counted_at);
-        $servicePrice = $this->resolveBookingCommissionableNetAmount((int) $booking->id, (float) optional($booking->service)->service_price);
-        $splits = $this->resolveBookingStaffSplits($booking);
-        if ($splits->isEmpty()) {
+        $commissionRows = $this->resolveBookingIncrementalCommissionRows($booking);
+        if ($commissionRows->isEmpty()) {
             $booking->forceFill(['commission_counted_at' => null])->save();
             return;
         }
+
         $year = (int) $completedAt->format('Y');
         $month = (int) $completedAt->format('m');
         $monthlyRows = StaffMonthlySale::query()
             ->where('type', self::TYPE_BOOKING)
-            ->whereIn('staff_id', $splits->pluck('staff_id')->unique()->values()->all())
+            ->whereIn('staff_id', $commissionRows->pluck('staff_id')->unique()->values()->all())
             ->where('year', $year)
             ->where('month', $month)
             ->get();
@@ -168,12 +166,11 @@ class StaffCommissionService
             return;
         }
 
-        foreach ($splits as $split) {
-            $staffId = (int) ($split['staff_id'] ?? 0);
-            $share = (float) ($split['share_percent'] ?? 0);
-            $splitSales = round($servicePrice * ($share / 100), 2);
-            $monthly = $monthlyRows->first(fn (StaffMonthlySale $row) => (int) $row->staff_id === $staffId);
-            if (! $monthly) {
+        foreach ($commissionRows as $row) {
+            $staffId = (int) ($row['staff_id'] ?? 0);
+            $splitSales = (float) ($row['split_sales'] ?? 0);
+            $monthly = $monthlyRows->first(fn (StaffMonthlySale $monthlyRow) => (int) $monthlyRow->staff_id === $staffId);
+            if (! $monthly || $splitSales <= 0) {
                 continue;
             }
             $monthly->total_sales = max(0, (float) $monthly->total_sales - $splitSales);
@@ -540,6 +537,67 @@ class StaffCommissionService
         return $bookingOrderMonths
             ->unique(fn ($row) => $row['year'].'-'.$row['month'])
             ->sortBy([['year', 'asc'], ['month', 'asc']])
+            ->values();
+    }
+
+
+    private function resolveBookingIncrementalCommissionRows(Booking $booking): Collection
+    {
+        $bookingId = (int) $booking->id;
+        if ($bookingId <= 0) {
+            return collect();
+        }
+
+        $lineRows = DB::table('orders')
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->where('order_items.booking_id', $bookingId)
+            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->where(function ($query) {
+                $query->where('orders.status', 'completed')
+                    ->orWhere('orders.payment_status', 'paid');
+            })
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at')
+            ->selectRaw('order_item_staff_splits.staff_id AS staff_id')
+            ->selectRaw('order_item_staff_splits.share_percent AS share_percent')
+            ->selectRaw("({$this->effectiveLineTotalExpr()}) AS amount_basis")
+            ->selectRaw('order_items.line_type AS order_line_type')
+            ->selectRaw('order_item_staff_splits.line_type AS split_line_type')
+            ->get()
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'share_percent' => (float) ($row->share_percent ?? 0),
+                'amount_basis' => round((float) ($row->amount_basis ?? 0), 2),
+                'split_sales' => round(((float) ($row->amount_basis ?? 0)) * (((float) ($row->share_percent ?? 0)) / 100), 2),
+                'order_line_type' => (string) ($row->order_line_type ?? ''),
+                'split_line_type' => (string) ($row->split_line_type ?? ''),
+                'source' => 'order_item_staff_splits',
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0 && $row['amount_basis'] > 0)
+            ->values();
+
+        if ($lineRows->isNotEmpty()) {
+            return $lineRows;
+        }
+
+        $servicePrice = $this->resolveBookingCommissionableNetAmount($bookingId, (float) optional($booking->service)->service_price);
+
+        return $this->resolveBookingStaffSplits($booking)
+            ->map(fn ($split) => [
+                'staff_id' => (int) ($split['staff_id'] ?? 0),
+                'share_percent' => (float) ($split['share_percent'] ?? 0),
+                'amount_basis' => $servicePrice,
+                'split_sales' => round($servicePrice * (((float) ($split['share_percent'] ?? 0)) / 100), 2),
+                'order_line_type' => 'legacy_booking_total',
+                'split_line_type' => 'legacy_booking_total',
+                'source' => 'booking_service_staff_splits',
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0 && $row['amount_basis'] > 0)
             ->values();
     }
 
