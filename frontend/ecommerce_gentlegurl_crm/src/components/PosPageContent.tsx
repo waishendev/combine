@@ -4997,6 +4997,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [cartFloatingCount, cartTotal, hasCartItems])
 
   useEffect(() => {
+    if (!memberOpen || typeof document === 'undefined') return
+    const previousOverflow = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previousOverflow
+    }
+  }, [memberOpen])
+
+  useEffect(() => {
     if (!cartSheetOpen || typeof document === 'undefined') return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -6026,6 +6035,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const openMemberQuickLookupPanel = async () => {
+    setCartSheetOpen(false)
     setMemberOpen(true)
     setMemberQuery('')
     setMembers([])
@@ -7335,10 +7345,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             .filter(Boolean)
             .join(' ')}
         >
+          {isCompactLayout === true && cartSheetOpen ? (
+            <button
+              type="button"
+              className="fixed inset-0 z-0 touch-manipulation bg-slate-900/45 backdrop-blur-[2px]"
+              aria-label="Close cart"
+              onClick={() => setCartSheetOpen(false)}
+            />
+          ) : null}
 
             <div
               className={[
-                'pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5',
+                'pos-split-panel relative z-[1] flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5',
                 isCompactLayout === true && 'max-h-[92dvh] min-h-0 rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
               ]
                 .filter(Boolean)
@@ -8077,7 +8095,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 type="button"
                 aria-label="View cart details and checkout"
                 aria-expanded={cartSheetOpen}
-                onClick={() => setCartSheetOpen(true)}
+                onClick={() => {
+                  closeMemberPanel()
+                  setCartSheetOpen(true)
+                }}
                 className={[
                   'fixed inset-x-3 z-[125] flex min-h-[4.25rem] touch-manipulation items-center justify-between gap-3 rounded-2xl border-2 border-blue-200 bg-gradient-to-br from-white to-blue-50 px-4 py-3.5 shadow-[0_10px_30px_rgba(37,99,235,0.18)]',
                   'bottom-[calc(0.75rem+env(safe-area-inset-bottom,0px))]',
@@ -8110,13 +8131,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </span>
                 </span>
               </button>
-            ) : null}
-            {cartSheetOpen ? (
-              <div
-                className="fixed inset-0 z-[128] bg-slate-900/45 backdrop-blur-[2px]"
-                onClick={() => setCartSheetOpen(false)}
-                aria-hidden={false}
-              />
             ) : null}
           </>,
           document.body,
@@ -11137,18 +11151,33 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       ) : null}
 
 
-      {memberOpen && (
-        <div className={`fixed inset-0 ${bookingModalOpen || checkoutConfirmationOpen ? 'z-[140]' : 'z-50'} bg-black/40`}>
-          <button type="button" className="absolute inset-0 h-full w-full cursor-default" onClick={closeMemberPanel} aria-label="Close member panel" />
-          <div className="absolute right-0 top-0 h-[100dvh] max-h-[100dvh] w-full max-w-3xl lg:max-w-5xl border-l border-gray-200 bg-white shadow-2xl">
+      {memberOpen && typeof document !== 'undefined'
+        ? createPortal(
+            <div className="fixed inset-0 z-[160]">
+              <button
+                type="button"
+                className="absolute inset-0 touch-manipulation bg-black/40"
+                onClick={closeMemberPanel}
+                aria-label="Close member panel"
+              />
+              <div
+                className="absolute inset-x-0 bottom-0 top-12 flex max-h-[calc(100dvh-3rem)] flex-col overflow-hidden rounded-t-2xl border-t border-gray-200 bg-white shadow-2xl md:inset-y-0 md:left-auto md:right-0 md:top-0 md:max-h-[100dvh] md:w-full md:max-w-3xl md:rounded-none md:border-l md:border-t-0 lg:max-w-5xl"
+                onClick={(event) => event.stopPropagation()}
+                onTouchStart={(event) => event.stopPropagation()}
+              >
             <div className="flex h-full min-h-0 flex-col">
               <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
                 <div>
                   <h4 className="text-lg font-bold text-gray-900">Member Quick Lookup</h4>
                   <p className="text-xs text-gray-500">Search member by name or phone</p>
                 </div>
-                <button type="button" onClick={closeMemberPanel} className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-700">
-                  <span className="text-xl leading-none">×</span>
+                <button
+                  type="button"
+                  onClick={closeMemberPanel}
+                  aria-label="Close member panel"
+                  className="inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <span className="text-2xl leading-none">×</span>
                 </button>
               </div>
 
@@ -11363,9 +11392,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      )}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {memberOrderViewId ? (
         <OrderViewPanel
