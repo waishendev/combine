@@ -9,6 +9,7 @@ import TableLoadingRow from '@/components/TableLoadingRow'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 
 type StaffOption = { id: number; name: string }
+type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
 
 type AppointmentHistoryRow = {
   id: number
@@ -18,8 +19,8 @@ type AppointmentHistoryRow = {
   guest_name?: string | null
   guest_phone?: string | null
   guest_email?: string | null
-  service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null } | null
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number }>
+  service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null; amount?: number | null; staff_splits?: StaffSplit[] } | null
+  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string }>
   staff: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -85,6 +86,18 @@ const formatDateTime = (value?: string | null) => {
 
 const formatMoney = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`
 
+const paidAmountClass = (value?: number | string | null) => {
+  const amount = Number(value ?? 0)
+  if (amount <= 0) return 'text-slate-500'
+  return 'font-semibold text-emerald-700'
+}
+
+const balanceDueClass = (value?: number | string | null) => {
+  const amount = Number(value ?? 0)
+  if (amount <= 0) return 'font-medium text-slate-500'
+  return 'font-bold text-amber-700'
+}
+
 const paymentBadgeClass = (status?: string | null) => {
   switch (String(status ?? '').toLowerCase()) {
     case 'paid':
@@ -103,11 +116,40 @@ const formatPaymentStatus = (status?: string | null) => {
   return 'Unpaid'
 }
 
-function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailField({
+  label,
+  value,
+  labelClassName,
+  valueClassName,
+}: {
+  label: string
+  value: React.ReactNode
+  labelClassName?: string
+  valueClassName?: string
+}) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-900">{value}</dd>
+      <dt className={`text-xs font-semibold uppercase tracking-wide ${labelClassName ?? 'text-slate-500'}`}>{label}</dt>
+      <dd className={`mt-1 text-sm font-medium ${valueClassName ?? 'text-slate-900'}`}>{value}</dd>
+    </div>
+  )
+}
+
+
+function StaffSplitList({ splits, inherited }: { splits?: StaffSplit[]; inherited?: boolean }) {
+  if (!splits?.length) return <p className="text-sm text-slate-500">—</p>
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Split:</p>
+      <ul className="space-y-1 text-sm text-slate-700">
+        {splits.map((split, index) => (
+          <li key={`${split.staff_id}-${index}`}>
+            <span>{split.staff_name ?? split.name ?? `Staff #${split.staff_id}`} — {Number(split.share_percent ?? 0)}%</span>
+            {inherited && index === 0 ? <span className="ml-2 text-xs text-slate-500">Inherited from main service</span> : null}
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
@@ -151,12 +193,36 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
 
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Services + Add-ons</h4>
-                <dl className="mt-4 grid gap-4 md:grid-cols-2">
-                  <DetailField label="Service" value={<><span>{row.service?.name ?? '—'}</span>{row.service?.cn_name ? <span className="mt-0.5 block text-xs text-slate-500">{row.service.cn_name}</span> : null}</>} />
-                  <DetailField label="Staff" value={row.staff?.name ?? '—'} />
-                  <DetailField label="Schedule" value={`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`} />
-                  <DetailField label="Add-ons" value={(row.add_ons ?? []).length > 0 ? <div className="space-y-1">{row.add_ons?.map((item, index) => <div key={`${item.id ?? item.name}-${index}`}><p>{item.name} ({formatMoney(item.extra_price)})</p>{item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}</div>)}</div> : '—'} />
-                </dl>
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-900">Main Service</p>
+                    <div className="mt-2 space-y-2">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{row.service?.name ?? '—'}</p>
+                        {row.service?.cn_name ? <p className="text-xs text-slate-500">{row.service.cn_name}</p> : null}
+                      </div>
+                      <p className="text-sm text-slate-700">Amount: {formatMoney(row.service?.amount ?? Math.max(0, Number(row.total_amount ?? 0) - (row.add_ons ?? []).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)))}</p>
+                      <p className="text-sm text-slate-700">Schedule: {`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`}</p>
+                      <StaffSplitList splits={row.service?.staff_splits ?? (row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : [])} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Add-ons</p>
+                    {(row.add_ons ?? []).length > 0 ? (
+                      <div className="mt-2 space-y-3">
+                        {row.add_ons?.map((item, index) => (
+                          <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 p-3">
+                            <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
+                            {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
+                            <p className="mt-2 text-sm text-slate-700">Amount: {formatMoney(item.extra_price)}</p>
+                            <div className="mt-2"><StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} /></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p className="mt-2 text-sm text-slate-500">—</p>}
+                  </div>
+                </div>
               </section>
 
               <section className="rounded-xl border border-slate-200 p-4">
@@ -166,8 +232,8 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
                   <DetailField label="Deposit" value={formatMoney(row.deposit_paid)} />
                   <DetailField label="Settlement Paid" value={formatMoney(row.settlement_paid)} />
                   <DetailField label="Package Offset" value={formatMoney(row.package_offset)} />
-                  <DetailField label="Paid Amount" value={formatMoney(row.paid_amount)} />
-                  <DetailField label="Balance Due" value={formatMoney(row.balance_due)} />
+                  <DetailField label="Paid Amount" value={formatMoney(row.paid_amount)} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
+                  <DetailField label="Balance Due" value={formatMoney(row.balance_due)} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
 
@@ -308,11 +374,11 @@ export default function BookingAppointmentHistoryPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <label className="text-sm">
-            <span className="mb-1 block font-medium text-slate-700">From date</span>
+            <span className="mb-1 block font-medium text-slate-700">Created from</span>
             <input type="date" value={filters.fromDate} onChange={(e) => setFilters((prev) => ({ ...prev, fromDate: e.target.value }))} className="w-full rounded border border-slate-300 px-3 py-2" />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block font-medium text-slate-700">To date</span>
+            <span className="mb-1 block font-medium text-slate-700">Created to</span>
             <input type="date" value={filters.toDate} onChange={(e) => setFilters((prev) => ({ ...prev, toDate: e.target.value }))} className="w-full rounded border border-slate-300 px-3 py-2" />
           </label>
           <label className="text-sm">
@@ -342,7 +408,7 @@ export default function BookingAppointmentHistoryPage() {
           </label>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-slate-500">{activeFilterCount > 0 ? `${activeFilterCount} filter(s) applied` : 'Showing all appointment records'}</div>
+          <div className="text-sm text-slate-500">{activeFilterCount > 0 ? `${activeFilterCount} filter(s) applied` : 'Showing newest created appointment records'}</div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={resetFilters} className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</button>
             <button type="button" onClick={applyFilters} className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
@@ -367,8 +433,8 @@ export default function BookingAppointmentHistoryPage() {
               <th className="px-3 py-3">Status</th>
               <th className="px-3 py-3">Payment Status</th>
               <th className="px-3 py-3 text-right">Total Amount</th>
-              <th className="px-3 py-3 text-right">Paid Amount</th>
-              <th className="px-3 py-3 text-right">Balance Due</th>
+              <th className="px-3 py-3 text-right text-emerald-700">Paid Amount</th>
+              <th className="px-3 py-3 text-right text-amber-700">Balance Due</th>
               <th className="px-3 py-3">Created At</th>
               <th className="px-3 py-3">Actions</th>
             </tr>
@@ -389,8 +455,8 @@ export default function BookingAppointmentHistoryPage() {
                 <td className="px-3 py-3"><BookingStatusBadge status={row.status} label={row.status} /></td>
                 <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(row.computed_payment_status)}`}>{formatPaymentStatus(row.computed_payment_status)}</span></td>
                 <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.total_amount)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.paid_amount)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.balance_due)}</td>
+                <td className={`px-3 py-3 text-right tabular-nums ${paidAmountClass(row.paid_amount)}`}>{formatMoney(row.paid_amount)}</td>
+                <td className={`px-3 py-3 text-right tabular-nums ${balanceDueClass(row.balance_due)}`}>{formatMoney(row.balance_due)}</td>
                 <td className="px-3 py-3 text-xs tabular-nums">{formatDateTime(row.created_at)}</td>
                 <td className="px-3 py-3">
                   <ReportViewDetailsButton onClick={() => { setDetail(row); setDetailId(row.id) }} title={`View details for ${row.booking_code}`} />
