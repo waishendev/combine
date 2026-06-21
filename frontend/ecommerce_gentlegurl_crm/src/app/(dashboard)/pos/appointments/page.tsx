@@ -19,7 +19,7 @@ export default async function PosAppointmentsPage() {
   }
 
   return (
-    <div className="crm-page-shell pos-appt-page min-h-0 px-3 py-3 sm:px-4 sm:py-4 md:px-5 md:py-4 lg:px-6">
+    <div className="crm-page-shell pos-appt-page px-3 py-3 sm:px-4 sm:py-4 md:px-5 lg:px-6">
       <PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
         <PosAppointmentsWorkspace
           currentUser={{

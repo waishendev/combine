@@ -3001,15 +3001,15 @@ export default function PosAppointmentsWorkspace({
   }, [isCompactLayout])
 
   return (
-    <div className="pos-appt-workspace min-h-0 flex-1 space-y-3 sm:space-y-4">
+    <div className="pos-appt-workspace min-w-0">
       <div className="lg:hidden">
-        <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">POS Appointments</h2>
+        <h2 className="mb-3 text-xl font-bold text-gray-900 sm:mb-4 sm:text-2xl">POS Appointments</h2>
       </div>
 
       <div className="pos-appt-layout grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-3 lg:gap-5">
         <div
           className={[
-            'pos-appt-left flex min-h-0 min-w-0 flex-1 flex-col space-y-3 sm:space-y-4 lg:space-y-5',
+            'pos-appt-left flex min-h-0 min-w-0 flex-1 flex-col gap-3 sm:gap-4 lg:gap-5',
             isCompactLayout === true && 'pos-appt-left--compact pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
           ]
             .filter(Boolean)

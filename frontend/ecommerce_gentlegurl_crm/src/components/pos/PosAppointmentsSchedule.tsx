@@ -197,7 +197,7 @@ export default function PosAppointmentsSchedule({
       </div>
 
       <div
-        className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 shadow-sm"
+        className="pos-appt-legend flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-[11px] text-slate-600 shadow-sm"
         role="note"
       >
         <span className="font-semibold text-slate-700">Key</span>
@@ -213,7 +213,7 @@ export default function PosAppointmentsSchedule({
           <span className="h-3 w-5 shrink-0 rounded border-2 border-amber-900 bg-amber-600" aria-hidden />
           Completed · unpaid
         </span>
-        <span className="hidden text-slate-500 xl:inline">Paid / closed bookings are hidden from this schedule.</span>
+        <span className="pos-appt-legend-extra hidden text-slate-500 xl:inline">Paid / closed bookings are hidden from this schedule.</span>
       </div>
 
       {viewMode === 'month' ? (
