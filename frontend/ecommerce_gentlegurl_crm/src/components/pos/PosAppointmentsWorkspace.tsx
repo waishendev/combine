@@ -1237,6 +1237,21 @@ export default function PosAppointmentsWorkspace({
           return
         }
       }
+      console.debug('[POS appointment-create staff-splits] modal state before payload', {
+        main_service: {
+          booking_service_id: createAppointmentServiceDraft.id,
+          staff_splits: appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
+        },
+        selected_addon_ids: createAppointmentSelectedOptionIds,
+        addon_staff_splits: Object.fromEntries(createAppointmentSelectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? []])),
+        service_blocks: createAppointmentExtraServiceBlocks.map((block) => ({
+          id: block.id,
+          booking_service_id: block.service?.id ?? null,
+          selected_addon_ids: block.selectedOptionIds,
+          staff_splits: appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? [],
+          addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? []])),
+        })),
+      })
       const createMainStaffSplits = appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }]
       const payload: Record<string, unknown> = {
         booking_service_id: createAppointmentServiceDraft.id,
@@ -1270,6 +1285,10 @@ export default function PosAppointmentsWorkspace({
         availability_override: true,
         availability_override_reason: null,
       }
+      console.debug('[POS appointment-create staff-splits] payload before submit', {
+        staff_splits: payload.staff_splits,
+        main_service_items: payload.main_service_items,
+      })
       if (createAppointmentIdentityMode === 'member') {
         payload.customer_id = createAppointmentCustomerId
       } else {
@@ -1339,7 +1358,24 @@ export default function PosAppointmentsWorkspace({
         const detailRes = await fetch(`/api/proxy/pos/appointments/${createdId}`, { cache: 'no-store' })
         const detailJson = await detailRes.json().catch(() => null)
         if (detailRes.ok) {
-          setAppointmentDetail((detailJson?.data ?? null) as PosAppointmentDetail | null)
+          const nextDetail = (detailJson?.data ?? null) as PosAppointmentDetail | null
+          console.debug('[POS appointment-create staff-splits] appointment detail after create', {
+            id: nextDetail?.id,
+            staff_splits: nextDetail?.staff_splits ?? [],
+            main_services: nextDetail?.main_services?.map((service) => ({
+              id: service.id,
+              staff_splits: service.staff_splits,
+              add_ons: service.add_ons?.map((addon) => ({
+                id: addon.id,
+                staff_splits: addon.staff_splits,
+              })),
+            })),
+            add_ons: nextDetail?.add_ons?.map((addon) => ({
+              id: addon.id,
+              staff_splits: addon.staff_splits,
+            })),
+          })
+          setAppointmentDetail(nextDetail)
         }
       }
     } finally {
@@ -3160,17 +3196,25 @@ export default function PosAppointmentsWorkspace({
                       <div className="mt-3 rounded-lg border border-violet-100 bg-gradient-to-br from-violet-50/80 to-white px-3 py-3 shadow-sm ring-1 ring-violet-100/80">
                         <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Add-ons</p>
                         <ul className="mt-2 space-y-2 text-sm text-slate-800">
-                          {appointmentDetail.add_ons.map((addon, idx) => (
-                            <li
-                              key={`${addon.id ?? addon.name}-${idx}`}
-                              className="flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-white/80 px-2 py-1.5 ring-1 ring-violet-100"
-                            >
-                              <span className="min-w-0 font-medium">{addon.name}</span>
-                              <span className="shrink-0 text-xs tabular-nums text-violet-900/80">
-                                +RM {Number(addon.extra_price ?? 0).toFixed(2)}
-                              </span>
-                            </li>
-                          ))}
+                          {appointmentDetail.add_ons.map((addon, idx) => {
+                            console.debug('[POS appointment detail staff-splits] add-on row render input', {
+                              appointment_id: appointmentDetail.id,
+                              addon_id: addon.id ?? null,
+                              addon_staff_splits: addon.staff_splits ?? [],
+                              appointment_staff_splits: appointmentDetail.staff_splits ?? [],
+                            })
+                            return (
+                              <li
+                                key={`${addon.id ?? addon.name}-${idx}`}
+                                className="flex flex-wrap items-baseline justify-between gap-2 rounded-md bg-white/80 px-2 py-1.5 ring-1 ring-violet-100"
+                              >
+                                <span className="min-w-0 font-medium">{addon.name}</span>
+                                <span className="shrink-0 text-xs tabular-nums text-violet-900/80">
+                                  +RM {Number(addon.extra_price ?? 0).toFixed(2)}
+                                </span>
+                              </li>
+                            )
+                          })}
                         </ul>
                       </div>
                     ) : null} */}

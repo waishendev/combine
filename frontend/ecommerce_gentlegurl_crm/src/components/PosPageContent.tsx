@@ -225,6 +225,7 @@ type ServiceCartItem = {
     linked_deposit_amount?: number
     item_kind?: string | null
     linked_booking_service_id?: number | null
+    staff_splits?: Array<{ staff_id: number; share_percent: number }>
   }>
   service_type?: string | null
   /** Main service deposit only (excludes add-on deposits) */
@@ -300,6 +301,10 @@ function getPosServiceMainBlocks(item: ServiceCartItem): NonNullable<ServiceCart
         extra_duration_min: Number(addon.extra_duration_min ?? 0),
         extra_price: Number(addon.extra_price ?? 0),
         linked_deposit_amount: Number(addon.linked_deposit_amount ?? 0),
+        staff_splits: (addon.staff_splits ?? []).map((split) => ({
+          staff_id: Number(split.staff_id),
+          share_percent: Number(split.share_percent),
+        })),
       })),
     staff_splits: item.staff_splits?.map((split) => ({
       staff_id: Number(split.staff_id),
@@ -3646,6 +3651,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return
         }
       }
+    console.debug('[POS add-service staff-splits] modal state before payload', {
+      main_service: {
+        booking_service_id: bookingServiceDraft.id,
+        staff_splits: checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
+      },
+      selected_addon_ids: bookingSelectedOptionIds,
+      addon_staff_splits: Object.fromEntries(bookingSelectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? []])),
+      service_blocks: bookingExtraServiceBlocks.map((block) => ({
+        id: block.id,
+        booking_service_id: block.service?.id ?? null,
+        selected_addon_ids: block.selectedOptionIds,
+        staff_splits: checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? [],
+        addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? []])),
+      })),
+    })
     const bookingMainStaffSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }]
     const payload: Record<string, unknown> = {
       booking_service_id: bookingServiceDraft.id,
@@ -3677,6 +3697,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       availability_override: true,
       availability_override_reason: null,
     }
+    console.debug('[POS add-service staff-splits] payload before submit', {
+      staff_splits: payload.staff_splits,
+      main_service_items: payload.main_service_items,
+    })
     if (bookingIdentityMode === 'member' && selectedMember?.id) {
       payload.customer_id = selectedMember.id
     } else {
@@ -3701,7 +3725,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return
     }
 
-    setCart((json?.data?.cart ?? null) as Cart | null)
+    const nextCart = (json?.data?.cart ?? null) as Cart | null
+    console.debug('[POS add-service staff-splits] cart state after create', {
+      service_items: nextCart?.service_items?.map((item) => ({
+        id: item.id,
+        staff_splits: item.staff_splits,
+        main_services: item.main_services?.map((service) => ({
+          id: service.id,
+          staff_splits: service.staff_splits,
+          add_ons: service.add_ons?.map((addon) => ({
+            id: addon.id,
+            staff_splits: addon.staff_splits,
+          })),
+        })),
+      })),
+    })
+    setCart(nextCart)
     if (bookingIdentityMode === 'guest') {
       setGuestContactCache({
         name: (bookingGuestNameRef.current?.value ?? '').trim(),
@@ -9242,6 +9281,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       ) : null}
                                       {(service.add_ons ?? []).map((addon, addonIdx) => {
                                         const addonLineKey = `service:${serviceItem.id}:addon:${addon.line_key ?? addon.id ?? addonIdx}`
+                                        console.debug('[POS checkout staff-splits] service add-on row render input', {
+                                          cart_service_item_id: serviceItem.id,
+                                          service_line_key: service.line_key ?? service.linked_booking_service_id ?? service.id ?? idx,
+                                          addon_line_key: addonLineKey,
+                                          addon_staff_splits: addon.staff_splits ?? [],
+                                          parent_service_staff_splits: service.staff_splits ?? [],
+                                          cart_item_staff_splits: serviceItem.staff_splits ?? [],
+                                          checkout_line_splits: checkoutLineSplits[addonLineKey] ?? [],
+                                        })
                                         return (
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
