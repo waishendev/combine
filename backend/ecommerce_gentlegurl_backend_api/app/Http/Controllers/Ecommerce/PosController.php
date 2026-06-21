@@ -723,15 +723,21 @@ class PosController extends Controller
             ->all();
 
         [$order, $receiptUrl] = DB::transaction(function () use ($request, $booking, $amount, $validated, $summary, $discountType, $discountValue, $discountRemark, $totalDiscount, $balanceDue, $paymentRows, $lineSplitPayloads, $staffCommissionRates) {
-            $serviceBalanceDue = max(0, (float) ($summary['service_balance_due'] ?? 0));
+            $mainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
             $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
-            $lineGrossAmounts = collect();
+            $lineGrossRows = collect();
 
-            if ($serviceBalanceDue > 0) {
-                $lineGrossAmounts->push($serviceBalanceDue);
+            foreach ($mainSettlementItems as $mainLine) {
+                $lineGross = max(0, (float) ($mainLine['balance_due'] ?? 0));
+                if ($lineGross > 0.0001) {
+                    $lineGrossRows->push(['type' => 'service', 'line' => $mainLine, 'gross' => $lineGross]);
+                }
             }
             foreach ($addonSettlementItems as $addon) {
-                $lineGrossAmounts->push(max(0, (float) ($addon['balance_due'] ?? 0)));
+                $lineGross = max(0, (float) ($addon['balance_due'] ?? 0));
+                if ($lineGross > 0.0001) {
+                    $lineGrossRows->push(['type' => 'addon', 'line' => $addon, 'gross' => $lineGross]);
+                }
             }
 
             $normalizeSplits = function ($splits) {
@@ -779,8 +785,9 @@ class PosController extends Controller
 
             $lineDiscounts = [];
             $remaining = $totalDiscount;
-            $lineCount = $lineGrossAmounts->count();
-            foreach ($lineGrossAmounts as $index => $lineGross) {
+            $lineCount = $lineGrossRows->count();
+            foreach ($lineGrossRows as $index => $lineGrossRow) {
+                $lineGross = (float) ($lineGrossRow['gross'] ?? 0);
                 $lineGross = max(0, round((float) $lineGross, 2));
                 if ($lineCount <= 1 || $index === $lineCount - 1) {
                     $lineDiscount = min($lineGross, max(0, round($remaining, 2)));
@@ -793,7 +800,7 @@ class PosController extends Controller
             if ($remaining > 0.0001 && $lineCount > 0) {
                 $lastIndex = $lineCount - 1;
                 $lineDiscounts[$lastIndex] = min(
-                    (float) ($lineGrossAmounts[$lastIndex] ?? 0),
+                    (float) ($lineGrossRows[$lastIndex]['gross'] ?? 0),
                     round(($lineDiscounts[$lastIndex] ?? 0) + $remaining, 2)
                 );
             }
@@ -818,14 +825,19 @@ class PosController extends Controller
                 'notes' => 'POS appointment settlement by staff #' . $request->user()->id . ' | booking_id=' . $booking->id,
             ]);
 
-            if ($serviceBalanceDue > 0) {
-                $serviceDiscount = (float) ($lineDiscounts[0] ?? 0);
+            $discountCursor = 0;
+            foreach ($mainSettlementItems as $mainIdx => $mainLine) {
+                $serviceBalanceDue = max(0, (float) ($mainLine['balance_due'] ?? 0));
+                if ($serviceBalanceDue <= 0.0001) {
+                    continue;
+                }
+                $serviceDiscount = (float) ($lineDiscounts[$discountCursor++] ?? 0);
                 $serviceLineNet = max(0, round($serviceBalanceDue - $serviceDiscount, 2));
                 $serviceOrderItem = OrderItem::query()->create([
                     'order_id' => (int) $order->id,
                     'line_type' => 'booking_settlement',
-                    'product_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
-                    'display_name_snapshot' => 'Final Settlement - ' . (string) ($booking->service?->name ?: 'Service'),
+                    'product_name_snapshot' => 'Final Settlement - ' . (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service')),
+                    'display_name_snapshot' => 'Final Settlement - ' . (string) ($mainLine['name'] ?? ($booking->service?->name ?: 'Service')),
                     'quantity' => 1,
                     'price_snapshot' => $serviceBalanceDue,
                     'unit_price_snapshot' => $serviceBalanceDue,
@@ -840,24 +852,25 @@ class PosController extends Controller
                     'discount_remark' => $serviceDiscount > 0 ? $discountRemark : null,
                     'locked' => true,
                     'booking_id' => (int) $booking->id,
-                    'booking_service_id' => (int) $booking->service_id,
+                    'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id),
                 ]);
 
-                $mainLine = collect((array) ($summary['main_service_settlement_items'] ?? []))->first(fn ($line) => (float) ($line['balance_due'] ?? 0) > 0.0001) ?? [];
-                $serviceLineKey = (string) ($mainLine['line_key'] ?? 'service:original');
+                $serviceLineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, (int) $mainIdx));
                 $serviceSplits = $resolveLineSplits($serviceLineKey, $mainLine['staff_splits'] ?? [], $bookingSplits);
                 $persistLineSplits($serviceOrderItem, $serviceSplits, 'settlement_service', $serviceLineKey, $serviceLineNet, [
                     'booking_id' => (int) $booking->id,
                     'line_key' => $serviceLineKey,
                     'line_type' => 'settlement_service',
+                    'service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id),
+                    'service_ref' => ($mainLine['is_original'] ?? false) ? 'original' : (string) ($mainLine['name'] ?? $serviceLineKey),
+                    'service' => $mainLine,
                     'staff_split_source' => $findLineSplitPayload($serviceLineKey) ? 'explicit' : (! empty($mainLine['staff_splits'] ?? []) ? 'line' : 'inherited'),
                 ]);
             }
 
             foreach ($addonSettlementItems as $addonIdx => $addon) {
                 $addonAmount = max(0, (float) ($addon['balance_due'] ?? 0));
-                $discountIndex = ($serviceBalanceDue > 0 ? 1 : 0) + $addonIdx;
-                $addonDiscount = (float) ($lineDiscounts[$discountIndex] ?? 0);
+                $addonDiscount = (float) ($lineDiscounts[$discountCursor++] ?? 0);
                 $addonLineNet = max(0, round($addonAmount - $addonDiscount, 2));
                 $addonOrderItem = OrderItem::query()->create([
                     'order_id' => (int) $order->id,
@@ -7970,6 +7983,7 @@ class PosController extends Controller
         $originalAddonSource = $originalMainAddonItems->isNotEmpty()
             ? $originalMainAddonItems
             : $settlementItems->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service');
+        $originalMainStaffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all();
         $originalAddonItems = $originalAddonSource
             ->map(fn ($item) => [
             'id' => isset($item['id']) ? (int) $item['id'] : null,
@@ -7980,7 +7994,7 @@ class PosController extends Controller
             'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
                 'staff_id' => (int) ($split['staff_id'] ?? 0),
                 'share_percent' => (int) ($split['share_percent'] ?? 0),
-            ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all(),
+            ])->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)->values()->all() ?: $originalMainStaffSplits,
             'service_ref' => 'original',
         ])->values();
         $addedMainAddonItems = $extraMainServices
