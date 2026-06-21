@@ -1,7 +1,8 @@
 'use client'
 
 import Link from 'next/link'
-import { startTransition, useEffect, useRef, useState } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { usePathname, useRouter } from 'next/navigation'
 
 import { getWorkspace, getWorkspaceLanding, setWorkspace, type Workspace } from '@/lib/workspace'
@@ -32,6 +33,8 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
   const [menuOpen, setMenuOpen] = useState(false)
   const menuRef = useRef<HTMLDivElement | null>(null)
+  const menuTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const [menuStyle, setMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null)
   const staffPortalOnly = getLoginPortal() === 'staff'
   const workspaceOptions = staffPortalOnly ? OPTIONS.filter((o) => o.value === 'booking') : OPTIONS
   const showPos = permissions.includes('pos.checkout')
@@ -56,15 +59,57 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
     setMenuOpen(false)
   }, [pathname])
 
+  const updateMenuPosition = useCallback(() => {
+    const trigger = menuTriggerRef.current
+    if (!trigger) return
+
+    const rect = trigger.getBoundingClientRect()
+    const width = Math.min(window.innerWidth - 16, Math.max(rect.width, 256))
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
+
+    setMenuStyle({
+      top: rect.bottom + 4,
+      left,
+      width,
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!menuOpen) {
+      setMenuStyle(null)
+      return
+    }
+
+    updateMenuPosition()
+
+    const handleReposition = () => updateMenuPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+
+    return () => {
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
+    }
+  }, [menuOpen, updateMenuPosition])
+
   useEffect(() => {
     if (!menuOpen) return
-    const close = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false)
-      }
+
+    const close = (event: MouseEvent | TouchEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (menuRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest('[data-crm-workspace-menu]')) return
+      setMenuOpen(false)
     }
+
     document.addEventListener('mousedown', close)
-    return () => document.removeEventListener('mousedown', close)
+    document.addEventListener('touchstart', close, { passive: true })
+
+    return () => {
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('touchstart', close)
+    }
   }, [menuOpen])
 
   // Warm common targets so leaving POS / heavy pages feels snappier.
@@ -105,94 +150,121 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
 
   const closeMenu = () => setMenuOpen(false)
 
+  const mobileMenuItems = (
+    <>
+      {workspaceOptions.map((option) => {
+        const isActive = option.value === workspace && !isPosRoute
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="option"
+            aria-selected={isActive}
+            onClick={() => {
+              handleSwitch(option.value)
+              closeMenu()
+            }}
+            className={mobileRowClass(isActive)}
+          >
+            {isActive ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
+            {option.label}
+          </button>
+        )
+      })}
+      {showPos && (
+        <>
+          <Link
+            href="/pos"
+            role="option"
+            aria-selected={isPosCheckout}
+            onClick={closeMenu}
+            className={mobileRowClass(isPosCheckout)}
+          >
+            {isPosCheckout ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
+            POS
+          </Link>
+          <Link
+            href="/pos/appointments"
+            role="option"
+            aria-selected={isPosAppointments}
+            onClick={closeMenu}
+            className={mobileRowClass(isPosAppointments)}
+          >
+            {isPosAppointments ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
+            Appointments
+          </Link>
+        </>
+      )}
+      {showDailyBooking && (
+        <Link
+          href="/daily-booking"
+          role="option"
+          aria-selected={isDailyBookingRoute}
+          onClick={closeMenu}
+          className={mobileRowClass(isDailyBookingRoute)}
+        >
+          {isDailyBookingRoute ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
+          Daily Booking
+        </Link>
+      )}
+      {showSalesReport && (
+        <Link
+          href="/reports/sales/visual"
+          role="option"
+          aria-selected={isSalesVisualRoute}
+          onClick={closeMenu}
+          className={mobileRowClass(isSalesVisualRoute)}
+        >
+          {isSalesVisualRoute ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
+          Daily Sales report
+        </Link>
+      )}
+    </>
+  )
+
+  const mobileMenuPortal =
+    menuOpen && menuStyle && typeof document !== 'undefined'
+      ? createPortal(
+          <>
+            <button
+              type="button"
+              className="fixed inset-0 z-[9998] cursor-default border-0 bg-black/20 p-0"
+              aria-label="Close workspace menu"
+              onClick={closeMenu}
+            />
+            <div
+              data-crm-workspace-menu
+              className="fixed z-[9999] max-h-[min(70vh,24rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
+              style={{
+                top: menuStyle.top,
+                left: menuStyle.left,
+                width: menuStyle.width,
+              }}
+              role="listbox"
+            >
+              {mobileMenuItems}
+            </div>
+          </>,
+          document.body,
+        )
+      : null
+
   return (
     <>
       {/* Phone: one large control + full-width tap targets in a dropdown */}
       <div className="relative w-full min-w-0 sm:hidden" ref={menuRef}>
         <button
+          ref={menuTriggerRef}
           type="button"
           aria-expanded={menuOpen}
           aria-haspopup="listbox"
-          onClick={() => setMenuOpen((o) => !o)}
+          onClick={() => setMenuOpen((open) => !open)}
           className="flex h-11 w-full min-w-0 max-w-[min(100%,14rem)] touch-manipulation items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 text-left shadow-sm"
         >
           <span className="truncate text-sm font-semibold text-slate-800">{mobileActiveLabel}</span>
           <i className={`fa-solid fa-chevron-down shrink-0 text-xs text-slate-500 transition ${menuOpen ? 'rotate-180' : ''}`} />
         </button>
-        {menuOpen && (
-          <div
-            className="absolute right-0 z-[110] mt-1 max-h-[min(70vh,24rem)] w-[min(calc(100vw-5rem),16rem)] overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-lg"
-            role="listbox"
-          >
-            {workspaceOptions.map((option) => {
-              const isActive = option.value === workspace && !isPosRoute
-              return (
-                <button
-                  key={option.value}
-                  type="button"
-                  role="option"
-                  aria-selected={isActive}
-                  onClick={() => {
-                    handleSwitch(option.value)
-                    closeMenu()
-                  }}
-                  className={mobileRowClass(isActive)}
-                >
-                  {isActive ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
-                  {option.label}
-                </button>
-              )
-            })}
-            {showPos && (
-              <>
-                <Link
-                  href="/pos"
-                  role="option"
-                  aria-selected={isPosCheckout}
-                  onClick={closeMenu}
-                  className={mobileRowClass(isPosCheckout)}
-                >
-                  {isPosCheckout ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
-                  POS
-                </Link>
-                <Link
-                  href="/pos/appointments"
-                  role="option"
-                  aria-selected={isPosAppointments}
-                  onClick={closeMenu}
-                  className={mobileRowClass(isPosAppointments)}
-                >
-                  {isPosAppointments ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
-                  Appointments
-                </Link>
-              </>
-            )}
-            {showDailyBooking && (
-              <Link
-                href="/daily-booking"
-                role="option"
-                aria-selected={isDailyBookingRoute}
-                onClick={closeMenu}
-                className={mobileRowClass(isDailyBookingRoute)}
-              >
-                {isDailyBookingRoute ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
-                Daily Booking
-              </Link>
-            )}
-            {showSalesReport && (
-              <Link
-                href="/reports/sales/visual"
-                role="option"
-                aria-selected={isSalesVisualRoute}
-                onClick={closeMenu}
-                className={mobileRowClass(isSalesVisualRoute)}
-              >
-                {isSalesVisualRoute ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
-                Daily Sales report
-              </Link>
-            )}
-          </div>
-        )}
+        {mobileMenuPortal}
       </div>
 
       {/* sm+: compact segmented control */}

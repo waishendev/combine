@@ -202,10 +202,14 @@ export default function PosAppointmentsDayGrid({
   const totalSlots = Math.ceil((DAY_END_MIN - DAY_START_MIN) / SLOT_MINUTES)
   const gridHeight = totalSlots * SLOT_PX
   const scrollRef = useRef<HTMLDivElement>(null)
+  const autoScrolledDayRef = useRef<string | null>(null)
 
   useLayoutEffect(() => {
     const el = scrollRef.current
     if (!el || loading) return
+    if (autoScrolledDayRef.current === dayYmd) return
+
+    autoScrolledDayRef.current = dayYmd
 
     const now = new Date()
     const todayParts = new Intl.DateTimeFormat('en-CA', {
@@ -228,7 +232,7 @@ export default function PosAppointmentsDayGrid({
 
     const targetTop = ((targetMin - DAY_START_MIN) / SLOT_MINUTES) * SLOT_PX
     el.scrollTop = Math.max(0, targetTop - SLOT_PX)
-  }, [dayYmd, loading, staffColumns.length])
+  }, [dayYmd, loading])
 
   if (loading) {
     return (

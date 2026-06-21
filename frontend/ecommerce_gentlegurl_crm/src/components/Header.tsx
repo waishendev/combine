@@ -1,8 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
+import { createPortal } from 'react-dom'
 
 import { useI18n } from '@/lib/i18n'
 import WorkspaceSwitcher from '@/components/WorkspaceSwitcher'
@@ -27,24 +28,62 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
   }
   const [logoUrl, setLogoUrl] = useState<string | null>(getInitialLogoUrl())
   const accountRef = useRef<HTMLDivElement | null>(null)
+  const accountTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const [accountMenuStyle, setAccountMenuStyle] = useState<{ top: number; left: number; width: number } | null>(null)
   const showStaffConsumablesLink = Boolean(staffId) && permissions.includes('pos.staff_consumables.access')
 
+  const updateAccountMenuPosition = useCallback(() => {
+    const trigger = accountTriggerRef.current
+    if (!trigger) return
+
+    const rect = trigger.getBoundingClientRect()
+    const width = Math.min(208, window.innerWidth - 16)
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8)
+
+    setAccountMenuStyle({
+      top: rect.bottom + 8,
+      left,
+      width,
+    })
+  }, [])
+
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent | TouchEvent) => {
-      const target = event.target
-      if (!(target instanceof Node)) return
-      if (accountRef.current && !accountRef.current.contains(target)) {
-        setAccountOpen(false)
-      }
+    if (!accountOpen) {
+      setAccountMenuStyle(null)
+      return
     }
 
-    document.addEventListener('mousedown', handleClickOutside)
-    document.addEventListener('touchstart', handleClickOutside, { passive: true })
+    updateAccountMenuPosition()
+
+    const handleReposition = () => updateAccountMenuPosition()
+    window.addEventListener('resize', handleReposition)
+    window.addEventListener('scroll', handleReposition, true)
+
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-      document.removeEventListener('touchstart', handleClickOutside)
+      window.removeEventListener('resize', handleReposition)
+      window.removeEventListener('scroll', handleReposition, true)
     }
-  }, [])
+  }, [accountOpen, updateAccountMenuPosition])
+
+  useEffect(() => {
+    if (!accountOpen) return
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target
+      if (!(target instanceof Node)) return
+      if (accountRef.current?.contains(target)) return
+      if (target instanceof Element && target.closest('[data-crm-account-menu]')) return
+      setAccountOpen(false)
+    }
+
+    document.addEventListener('mousedown', handlePointerDown)
+    document.addEventListener('touchstart', handlePointerDown, { passive: true })
+
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown)
+      document.removeEventListener('touchstart', handlePointerDown)
+    }
+  }, [accountOpen])
 
   const loadBranding = async (signal?: AbortSignal) => {
     try {
@@ -137,10 +176,10 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
         </div>
       </div>
 
-      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center justify-end gap-1 overflow-hidden sm:gap-3">
-        <div className="min-w-0 flex-1 overflow-hidden lg:flex-none">
+      <div className="relative z-10 flex min-h-0 min-w-0 flex-1 items-center justify-end gap-1 overflow-visible sm:gap-3">
+        <div className="min-w-0 flex-1 overflow-visible lg:flex-none lg:overflow-hidden">
           <div
-            className="flex touch-pan-x justify-end overflow-x-auto overflow-y-hidden py-0.5 pl-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:py-0 [&::-webkit-scrollbar]:hidden"
+            className="flex touch-pan-x justify-end overflow-x-auto overflow-y-visible py-0.5 pl-1 [-ms-overflow-style:none] [scrollbar-width:none] lg:py-0 [&::-webkit-scrollbar]:hidden"
             style={{ WebkitOverflowScrolling: 'touch' }}
           >
             <WorkspaceSwitcher permissions={permissions} />
@@ -159,9 +198,12 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
 
         <div className="relative shrink-0" ref={accountRef}>
           <button
+            ref={accountTriggerRef}
             type="button"
+            aria-expanded={accountOpen}
+            aria-haspopup="menu"
             onClick={() => setAccountOpen((open) => !open)}
-            className="flex touch-manipulation items-center gap-1.5 rounded-full border border-transparent bg-white px-1 py-1.5 text-left transition hover:bg-slate-100 sm:gap-3 sm:px-2 sm:py-2"
+            className="flex h-11 min-w-[44px] touch-manipulation items-center gap-1.5 rounded-full border border-transparent bg-white px-1 py-1.5 text-left transition hover:bg-slate-100 sm:gap-3 sm:px-2 sm:py-2"
           >
             <Image
               src="/images/default_user_image.jpg"
@@ -176,32 +218,51 @@ export default function Header({ onLogout, onToggleSidebar, userEmail, permissio
             >
               {userEmail || t('header.account')}
             </p>
-            <i className="fa-solid fa-chevron-down text-xs text-slate-400" />
+            <i className={`fa-solid fa-chevron-down text-xs text-slate-400 transition ${accountOpen ? 'rotate-180' : ''}`} />
           </button>
-          {accountOpen && (
-            <div className="absolute right-0 z-[110] mt-2 w-52 max-w-[calc(100vw-1rem)] rounded-xl border border-slate-200 bg-white py-2 shadow-lg sm:max-w-none sm:w-48">
-              {userEmail ? (
-                <div className="border-b border-slate-100 px-4 py-2 md:hidden">
-                  <p className="truncate text-xs font-medium text-slate-700" title={userEmail}>
-                    {userEmail}
-                  </p>
-                </div>
-              ) : null}
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={isLoggingOut}
-                className={`flex w-full items-center justify-between px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-100 ${
-                  isLoggingOut ? 'cursor-not-allowed opacity-60' : ''
-                }`}
-              >
-                <span>
-                  {isLoggingOut ? `${t('header.logout')}...` : t('header.logout')}
-                </span>
-                <i className="fa-solid fa-arrow-right-from-bracket text-sm" />
-              </button>
-            </div>
-          )}
+          {accountOpen && accountMenuStyle && typeof document !== 'undefined'
+            ? createPortal(
+                <>
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-[9998] cursor-default border-0 bg-black/20 p-0 sm:bg-black/10"
+                    aria-label="Close account menu"
+                    onClick={() => setAccountOpen(false)}
+                  />
+                  <div
+                    data-crm-account-menu
+                    className="fixed z-[9999] rounded-xl border border-slate-200 bg-white py-2 shadow-lg"
+                    style={{
+                      top: accountMenuStyle.top,
+                      left: accountMenuStyle.left,
+                      width: accountMenuStyle.width,
+                    }}
+                  >
+                    {userEmail ? (
+                      <div className="border-b border-slate-100 px-4 py-2 md:hidden">
+                        <p className="truncate text-xs font-medium text-slate-700" title={userEmail}>
+                          {userEmail}
+                        </p>
+                      </div>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      disabled={isLoggingOut}
+                      className={`flex w-full touch-manipulation items-center justify-between px-4 py-3 text-sm text-slate-600 transition hover:bg-slate-100 active:bg-slate-100 sm:py-2 ${
+                        isLoggingOut ? 'cursor-not-allowed opacity-60' : ''
+                      }`}
+                    >
+                      <span>
+                        {isLoggingOut ? `${t('header.logout')}...` : t('header.logout')}
+                      </span>
+                      <i className="fa-solid fa-arrow-right-from-bracket text-sm" />
+                    </button>
+                  </div>
+                </>,
+                document.body,
+              )
+            : null}
         </div>
       </div>
     </header>

@@ -321,6 +321,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentLineSplitError, setAppointmentLineSplitError] = useState<string | null>(null)
   const [appointments, setAppointments] = useState<PosAppointmentListItem[]>([])
   const [appointmentsLoading, setAppointmentsLoading] = useState(false)
+  const [appointmentsRefreshing, setAppointmentsRefreshing] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
   const [appointmentListRefreshCountdown, setAppointmentListRefreshCountdown] = useState(5)
   const [pendingCancellationRequestsCount, setPendingCancellationRequestsCount] = useState(0)
@@ -782,8 +783,13 @@ export default function PosAppointmentsWorkspace({
     [fetchStaffOptions],
   )
 
-  const fetchAppointments = useCallback(async () => {
-    setAppointmentsLoading(true)
+  const fetchAppointments = useCallback(async (options?: { silent?: boolean }) => {
+    const silent = options?.silent ?? false
+    if (silent) {
+      setAppointmentsRefreshing(true)
+    } else {
+      setAppointmentsLoading(true)
+    }
     try {
       const params = new URLSearchParams({ page: '1' })
       if (posApptViewMode === 'month') {
@@ -818,7 +824,11 @@ export default function PosAppointmentsWorkspace({
       setAppointments([])
       setPendingCancellationRequestsCount(0)
     } finally {
-      setAppointmentsLoading(false)
+      if (silent) {
+        setAppointmentsRefreshing(false)
+      } else {
+        setAppointmentsLoading(false)
+      }
     }
   }, [
     appointmentCustomerFilter,
@@ -1429,7 +1439,7 @@ export default function PosAppointmentsWorkspace({
         setAppointmentReceiptQrLoaded(false)
       }
 
-      await fetchAppointments()
+      await fetchAppointments({ silent: true })
 
       const createdId = Number(json?.data?.id ?? json?.data?.booking_id ?? 0)
       if (createdId > 0) {
@@ -1576,7 +1586,7 @@ export default function PosAppointmentsWorkspace({
         setCancellationConfirmAction(null)
         setCancellationConfirmNote('')
         await loadCancellationRequestsModal()
-        await fetchAppointments()
+        await fetchAppointments({ silent: true })
         await refreshOpenedAppointmentDetail()
       } finally {
         setCancellationReviewSubmitting(false)
@@ -1764,7 +1774,7 @@ export default function PosAppointmentsWorkspace({
       setAppointmentQrProofFile(null)
       setAppointmentQrProofPreviewUrl(null)
       setAppointmentQrProofFileName(null)
-      await fetchAppointments()
+      await fetchAppointments({ silent: true })
       setAppointmentDetail(null)
     } finally {
       setAppointmentActionLoading(false)
@@ -2215,7 +2225,7 @@ export default function PosAppointmentsWorkspace({
       showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
       setEditSettlementOpen(false)
       await refreshOpenedAppointmentDetail()
-      await fetchAppointments()
+      await fetchAppointments({ silent: true })
     } finally {
       setEditSettlementLoading(false)
     }
@@ -2274,7 +2284,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
       showMsg('Package reserved for appointment.', 'success')
-      await fetchAppointments()
+      await fetchAppointments({ silent: true })
       await refreshOpenedAppointmentDetail()
     } finally {
       setAppointmentActionLoading(false)
@@ -2292,7 +2302,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
       showMsg('Package claim released.', 'success')
-      await fetchAppointments()
+      await fetchAppointments({ silent: true })
       await refreshOpenedAppointmentDetail()
     } finally {
       setAppointmentActionLoading(false)
@@ -2310,7 +2320,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
       showMsg('Appointment marked as completed.', 'success')
-      await fetchAppointments()
+      await fetchAppointments({ silent: true })
       await refreshOpenedAppointmentDetail()
     } finally {
       setAppointmentActionLoading(false)
@@ -2361,7 +2371,7 @@ export default function PosAppointmentsWorkspace({
           return
         }
         showMsg('Appointment status updated.', 'success')
-        await fetchAppointments()
+        await fetchAppointments({ silent: true })
         await refreshOpenedAppointmentDetail()
       } finally {
         setAppointmentActionLoading(false)
@@ -2432,7 +2442,7 @@ export default function PosAppointmentsWorkspace({
       setAppointmentReschedulePolicyWarnings(warnings)
       showMsg(warnings.length ? 'Appointment rescheduled with override warning.' : 'Appointment rescheduled.', 'success')
       setAppointmentRescheduleOpen(false)
-      await fetchAppointments()
+      await fetchAppointments({ silent: true })
       await refreshOpenedAppointmentDetail()
     } finally {
       setAppointmentRescheduleSubmitting(false)
@@ -2627,7 +2637,7 @@ export default function PosAppointmentsWorkspace({
     const id = window.setInterval(() => {
       setAppointmentListRefreshCountdown((c) => {
         if (c <= 1) {
-          void fetchAppointments()
+          void fetchAppointments({ silent: true })
           return 5
         }
         return c - 1
@@ -3041,9 +3051,9 @@ export default function PosAppointmentsWorkspace({
                   type="button"
                   onClick={() => {
                     setAppointmentListRefreshCountdown(5)
-                    void fetchAppointments()
+                    void fetchAppointments({ silent: true })
                   }}
-                  disabled={appointmentsLoading}
+                  disabled={appointmentsRefreshing}
                   title={
                     appointmentListAutoRefresh
                       ? 'Refresh now (countdown resets to 5)'
@@ -3052,7 +3062,7 @@ export default function PosAppointmentsWorkspace({
                   className="inline-flex items-center gap-1.5 rounded-lg border-2 border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-blue-500 hover:bg-blue-50 hover:text-blue-900 disabled:pointer-events-none disabled:opacity-50"
                 >
                   <svg
-                    className={`h-4 w-4 shrink-0 ${appointmentsLoading ? 'animate-spin text-blue-600' : 'text-gray-600'}`}
+                    className={`h-4 w-4 shrink-0 ${appointmentsRefreshing ? 'animate-spin text-blue-600' : 'text-gray-600'}`}
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
