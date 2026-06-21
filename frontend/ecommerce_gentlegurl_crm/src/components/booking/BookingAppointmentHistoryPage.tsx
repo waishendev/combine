@@ -20,7 +20,7 @@ type AppointmentHistoryRow = {
   guest_phone?: string | null
   guest_email?: string | null
   service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null; amount?: number | null; staff_splits?: StaffSplit[] } | null
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string }>
+  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string; service_ref?: string | null; item_kind?: string | null; line_type?: string | null; parent_service_ref?: string | null }>
   staff: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -111,6 +111,12 @@ const paymentBadgeClass = (status?: string | null) => {
 }
 
 const resolvedPaymentStatus = (row: Pick<AppointmentHistoryRow, 'payment_status' | 'computed_payment_status'>) => row.payment_status ?? row.computed_payment_status
+
+const visibleAddOns = (row: Pick<AppointmentHistoryRow, 'add_ons'>) => (row.add_ons ?? []).filter((item) => {
+  const itemKind = String(item.item_kind ?? item.line_type ?? 'addon').toLowerCase()
+  const serviceRef = String(item.service_ref ?? '').toLowerCase()
+  return itemKind !== 'main_service' && serviceRef !== 'original'
+})
 
 const formatPaymentStatus = (status?: string | null) => {
   const s = String(status ?? '').toLowerCase()
@@ -204,7 +210,7 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
                         <p className="text-sm font-medium text-slate-900">{row.service?.name ?? '—'}</p>
                         {row.service?.cn_name ? <p className="text-xs text-slate-500">{row.service.cn_name}</p> : null}
                       </div>
-                      <p className="text-sm text-slate-700">Amount: {formatMoney(row.service?.amount ?? Math.max(0, Number(row.total_amount ?? 0) - (row.add_ons ?? []).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)))}</p>
+                      <p className="text-sm text-slate-700">Amount: {formatMoney(row.service?.amount ?? Math.max(0, Number(row.total_amount ?? 0) - visibleAddOns(row).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)))}</p>
                       <p className="text-sm text-slate-700">Schedule: {`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`}</p>
                       <StaffSplitList splits={row.service?.staff_splits ?? (row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : [])} />
                     </div>
@@ -212,9 +218,9 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
 
                   <div>
                     <p className="text-sm font-semibold text-slate-900">Add-ons</p>
-                    {(row.add_ons ?? []).length > 0 ? (
+                    {visibleAddOns(row).length > 0 ? (
                       <div className="mt-2 space-y-3">
-                        {row.add_ons?.map((item, index) => (
+                        {visibleAddOns(row).map((item, index) => (
                           <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 p-3">
                             <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
                             {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
