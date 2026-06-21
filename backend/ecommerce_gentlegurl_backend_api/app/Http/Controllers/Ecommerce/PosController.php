@@ -1090,6 +1090,11 @@ class PosController extends Controller
                             'staff_splits' => collect($addonStaffSplits[(int) $option->id] ?? [])->values()->all(),
                         ])->values()->all();
                     $itemSplits = collect($itemPayload['staff_splits'] ?? [])->values();
+                    $bookingProductOptionSnapshots = collect($item->selected_booking_product_options ?? [])
+                        ->flatMap(fn ($question) => collect($question['options'] ?? []))
+                        ->filter(fn ($option) => is_array($option))
+                        ->values();
+
                     if ($itemSplits->isNotEmpty()) {
                         $splitSum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
                         $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
@@ -5364,6 +5369,11 @@ class PosController extends Controller
                         'locked' => true,
                     ]);
 
+                    $bookingProductOptionSnapshots = collect($item->selected_booking_product_options ?? [])
+                        ->flatMap(fn ($question) => collect($question['options'] ?? []))
+                        ->filter(fn ($option) => is_array($option))
+                        ->values();
+
                     if ($itemSplits->isNotEmpty()) {
                         $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
                         $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
@@ -5371,7 +5381,7 @@ class PosController extends Controller
                             abort(422, __('Invalid staff split.'));
                         }
 
-                        $baseAmountBasis = max(0, $lineNetTotal - collect($item->selected_booking_product_options ?? [])->sum(fn ($option) => (float) ($option['line_total_after_discount'] ?? (((float) ($option['extra_price'] ?? 0)) * (int) $item->qty))));
+                        $baseAmountBasis = max(0, $lineNetTotal - $bookingProductOptionSnapshots->sum(fn ($option) => (float) ($option['line_total_after_discount'] ?? (((float) ($option['extra_price'] ?? 0)) * (int) $item->qty))));
                         foreach ($itemSplits as $split) {
                             OrderItemStaffSplit::create([
                                 'order_item_id' => $orderItem->id,
@@ -5387,15 +5397,18 @@ class PosController extends Controller
                     }
 
 
-                    foreach (collect($lineStaffSplitsByCartItemId->get((int) $item->id, [])) as $lineSplitPayload) {
-                        $lineType = (string) ($lineSplitPayload['line_type'] ?? '');
-                        if ($lineType !== 'booking_product_option') {
+                    foreach ($bookingProductOptionSnapshots as $optionSnapshot) {
+                        $optionId = (string) ($optionSnapshot['id'] ?? '');
+                        if ($optionId === '') {
                             continue;
                         }
-                        $optionId = (string) ($lineSplitPayload['line_ref_id'] ?? '');
-                        $optionSnapshot = collect($item->selected_booking_product_options ?? [])->first(fn ($option) => (string) ($option['id'] ?? '') === $optionId);
-                        $amountBasis = $optionSnapshot ? (float) ($optionSnapshot['line_total_after_discount'] ?? (((float) ($optionSnapshot['extra_price'] ?? 0)) * (int) $item->qty)) : 0.0;
-                        $splits = collect($lineSplitPayload['staff_splits'] ?? [])->values();
+                        $lineKey = sprintf('booking_product_option:%s', $optionId);
+                        $lineSplitPayload = $findLineSplitPayload($lineStaffSplitsByCartItemId->get((int) $item->id, []), $lineKey)
+                            ?: $findLineSplitPayload($lineStaffSplitsByCartItemId->get((int) $item->id, []), $optionId);
+                        $amountBasis = (float) ($optionSnapshot['line_total_after_discount'] ?? (((float) ($optionSnapshot['extra_price'] ?? 0)) * (int) $item->qty));
+                        $splits = $lineSplitPayload
+                            ? collect($lineSplitPayload['staff_splits'] ?? [])->values()
+                            : $itemSplits->values();
                         if ($splits->isEmpty()) {
                             continue;
                         }
@@ -5413,7 +5426,12 @@ class PosController extends Controller
                                 'share_percent' => (int) $split['share_percent'],
                                 'amount_basis' => $amountBasis,
                                 'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
-                                'snapshot' => ['cart_item_id' => (int) $item->id, 'line_key' => $lineSplitPayload['line_key'] ?? null, 'option' => $optionSnapshot],
+                                'snapshot' => [
+                                    'cart_item_id' => (int) $item->id,
+                                    'line_key' => $lineSplitPayload['line_key'] ?? $lineKey,
+                                    'staff_split_source' => $lineSplitPayload ? 'explicit' : 'inherited',
+                                    'option' => $optionSnapshot,
+                                ],
                             ]);
                         }
                     }

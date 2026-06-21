@@ -232,61 +232,14 @@ class StaffCommissionService
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $nextMonthStart = $start->copy()->addMonth();
 
-        $bookings = Booking::query()
-            ->with('service:id,service_price')
-            ->where('status', 'COMPLETED')
-            ->where('payment_status', 'PAID')
-            ->where('completed_at', '>=', $start)
-            ->where('completed_at', '<', $nextMonthStart)
-            ->get();
-        $bookingIds = $bookings->pluck('id')->all();
-        $splitRows = empty($bookingIds) ? collect() : DB::table('booking_service_staff_splits')
-            ->whereIn('booking_id', $bookingIds)
-            ->get(['booking_id', 'staff_id', 'split_percent'])
-            ->groupBy('booking_id');
-
-        $bookingNetTotals = $this->resolveBookingNetTotalsByIds($bookings->pluck('id')->map(fn ($id) => (int) $id)->all());
-        $totalSales = 0.0;
-        $bookingCount = 0;
-        foreach ($bookings as $booking) {
-            $servicePrice = (float) ($bookingNetTotals[(int) $booking->id] ?? (float) optional($booking->service)->service_price);
-            $splits = collect($splitRows->get($booking->id, []))
-                ->map(fn ($row) => ['staff_id' => (int) ($row->staff_id ?? 0), 'share_percent' => (int) ($row->split_percent ?? 0)])
-                ->filter(fn ($row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
-                ->values();
-            if ($splits->isEmpty() && $booking->staff_id) {
-                $splits = collect([['staff_id' => (int) $booking->staff_id, 'share_percent' => 100]]);
-            }
-            $matched = $splits->first(fn ($row) => (int) $row['staff_id'] === $staffId);
-            if (! $matched) {
-                continue;
-            }
-            $totalSales += round($servicePrice * (((float) $matched['share_percent']) / 100), 2);
-            $bookingCount++;
-        }
-        $bookingProductRows = DB::table('orders')
-            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
-            ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+        $bookingLineRows = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart)
             ->where('order_item_staff_splits.staff_id', $staffId)
-            ->where('order_items.line_type', 'booking_product')
-            ->where('orders.created_at', '>=', $start)
-            ->where('orders.created_at', '<', $nextMonthStart)
-            ->where(function ($query) {
-                $query->where('orders.status', 'completed')
-                    ->orWhere('orders.payment_status', 'paid');
-            })
-            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
-            ->where(function ($query) {
-                $query->where('orders.payment_status', '!=', 'refunded')
-                    ->orWhereNull('orders.payment_status');
-            })
-            ->whereNull('orders.refunded_at')
-            ->selectRaw('COALESCE(SUM((COALESCE(order_items.effective_line_total, order_items.line_total)::numeric) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as total_sales')
+            ->selectRaw("COALESCE(SUM(({$this->effectiveLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as total_sales")
             ->selectRaw('COUNT(order_item_staff_splits.id) as row_count')
             ->first();
 
-        $totalSales += (float) ($bookingProductRows->total_sales ?? 0);
-        $bookingCount += (int) ($bookingProductRows->row_count ?? 0);
+        $totalSales = (float) ($bookingLineRows->total_sales ?? 0);
+        $bookingCount = (int) ($bookingLineRows->row_count ?? 0);
         $totalSales = round($totalSales, 2);
 
         $monthly = StaffMonthlySale::query()->firstOrCreate(
@@ -322,45 +275,14 @@ class StaffCommissionService
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $nextMonthStart = $start->copy()->addMonth();
 
-        $staffIds = Booking::query()
-            ->where('status', 'COMPLETED')
-            ->where('payment_status', 'PAID')
-            ->where('completed_at', '>=', $start)
-            ->where('completed_at', '<', $nextMonthStart)
-            ->pluck('staff_id')
-            ->concat(
-                DB::table('bookings')
-                    ->join('booking_service_staff_splits', 'booking_service_staff_splits.booking_id', '=', 'bookings.id')
-                    ->where('bookings.status', 'COMPLETED')
-                    ->where('bookings.payment_status', 'PAID')
-                    ->where('bookings.completed_at', '>=', $start)
-                    ->where('bookings.completed_at', '<', $nextMonthStart)
-                    ->pluck('booking_service_staff_splits.staff_id')
-            )
+        $staffIds = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart)
+            ->pluck('order_item_staff_splits.staff_id')
             ->concat(
                 StaffMonthlySale::query()
                     ->where('type', self::TYPE_BOOKING)
                     ->where('year', $year)
                     ->where('month', $month)
                     ->pluck('staff_id')
-            )->concat(
-                DB::table('orders')
-                    ->join('order_items', 'order_items.order_id', '=', 'orders.id')
-                    ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
-                    ->where('order_items.line_type', 'booking_product')
-                    ->where('orders.created_at', '>=', $start)
-                    ->where('orders.created_at', '<', $nextMonthStart)
-                    ->where(function ($query) {
-                        $query->where('orders.status', 'completed')
-                            ->orWhere('orders.payment_status', 'paid');
-                    })
-                    ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
-                    ->where(function ($query) {
-                        $query->where('orders.payment_status', '!=', 'refunded')
-                            ->orWhereNull('orders.payment_status');
-                    })
-                    ->whereNull('orders.refunded_at')
-                    ->pluck('order_item_staff_splits.staff_id')
             )
             ->filter()
             ->unique()
@@ -453,6 +375,27 @@ class StaffCommissionService
         }
 
         return $result;
+    }
+
+
+    private function baseBookingOrderItemSplitQuery(Carbon $start, Carbon $nextMonthStart)
+    {
+        return DB::table('orders')
+            ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+            ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->where('orders.created_at', '>=', $start)
+            ->where('orders.created_at', '<', $nextMonthStart)
+            ->where(function ($query) {
+                $query->where('orders.status', 'completed')
+                    ->orWhere('orders.payment_status', 'paid');
+            })
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($query) {
+                $query->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at');
     }
 
     private function baseEcommerceProductSplitQuery(Carbon $start, Carbon $nextMonthStart)
@@ -572,37 +515,11 @@ class StaffCommissionService
 
     private function resolveBookingMonths(?int $staffId = null): Collection
     {
-        $bookingMonths = Booking::query()
-            ->where('status', 'COMPLETED')
-            ->where('payment_status', 'PAID')
-            ->when($staffId, function ($query) use ($staffId) {
-                $query->where(function ($sub) use ($staffId) {
-                    $sub->where('staff_id', $staffId)
-                        ->orWhereExists(function ($exists) use ($staffId) {
-                            $exists->selectRaw('1')
-                                ->from('booking_service_staff_splits')
-                                ->whereColumn('booking_service_staff_splits.booking_id', 'bookings.id')
-                                ->where('booking_service_staff_splits.staff_id', $staffId);
-                        });
-                });
-            })
-            ->whereNotNull('completed_at')
-            ->selectRaw('EXTRACT(YEAR FROM completed_at)::int AS year')
-            ->selectRaw('EXTRACT(MONTH FROM completed_at)::int AS month')
-            ->groupByRaw('EXTRACT(YEAR FROM completed_at), EXTRACT(MONTH FROM completed_at)')
-            ->orderBy('year')
-            ->orderBy('month')
-            ->get()
-            ->map(fn ($row) => [
-                'year' => (int) $row->year,
-                'month' => (int) $row->month,
-            ]);
-
-        $bookingProductMonths = DB::table('orders')
+        $bookingOrderMonths = DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn ($query) => $query->where('order_item_staff_splits.staff_id', $staffId))
-            ->where('order_items.line_type', 'booking_product')
+            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -620,7 +537,7 @@ class StaffCommissionService
             ->get()
             ->map(fn ($row) => ['year' => (int) $row->year, 'month' => (int) $row->month]);
 
-        return $bookingMonths->concat($bookingProductMonths)
+        return $bookingOrderMonths
             ->unique(fn ($row) => $row['year'].'-'.$row['month'])
             ->sortBy([['year', 'asc'], ['month', 'asc']])
             ->values();
