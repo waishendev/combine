@@ -281,8 +281,11 @@ class AppointmentController extends Controller
     private function mapHistoryBooking(Booking $booking): array
     {
         $financial = $this->resolveHistoryFinancials($booking);
-        $addonItems = $this->mapAddonItems($booking->addon_items_json);
+        $mainStaffSplits = $this->resolveHistoryStaffSplits($booking);
+        $addonItems = $this->mapAddonItems($booking->addon_items_json, $mainStaffSplits);
         $guestName = trim((string) ($booking->guest_name ?? ''));
+        $addonTotal = collect($addonItems)->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0));
+        $serviceAmount = round(max(0, (float) ($financial['total_amount'] ?? 0) - $addonTotal), 2);
 
         return [
             'id' => (int) $booking->id,
@@ -303,6 +306,8 @@ class AppointmentController extends Controller
                 'name' => (string) $booking->service->name,
                 'cn_name' => $booking->service->cn_name,
                 'duration_min' => (int) ($booking->service->duration_min ?? 0),
+                'amount' => $serviceAmount,
+                'staff_splits' => $mainStaffSplits,
             ] : null,
             'add_ons' => $addonItems,
             'staff' => $booking->staff ? [
@@ -387,13 +392,52 @@ class AppointmentController extends Controller
         ]));
     }
 
-    private function mapAddonItems($rawItems): array
+    private function resolveHistoryStaffSplits(Booking $booking): array
+    {
+        $rows = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.booking_id', (int) $booking->id)
+            ->orderBy('splits.id')
+            ->get(['splits.staff_id', 'staffs.name as staff_name', 'splits.split_percent'])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'staff_name' => (string) ($row->staff_name ?? '-'),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->values();
+
+        if ($rows->isNotEmpty()) {
+            return $rows->all();
+        }
+
+        return $booking->staff ? [[
+            'staff_id' => (int) $booking->staff->id,
+            'staff_name' => (string) ($booking->staff->name ?? '-'),
+            'share_percent' => 100,
+        ]] : [];
+    }
+
+    private function mapAddonItems($rawItems, array $mainStaffSplits = []): array
     {
         return collect(is_array($rawItems) ? $rawItems : [])
-            ->map(function ($item) {
+            ->map(function ($item) use ($mainStaffSplits) {
                 if (!is_array($item)) {
                     return null;
                 }
+
+                $staffNameLookup = DB::table('staffs')
+                    ->whereIn('id', collect($item['staff_splits'] ?? [])->pluck('staff_id')->filter()->unique()->values()->all())
+                    ->pluck('name', 'id');
+                $explicitSplits = collect($item['staff_splits'] ?? [])
+                    ->map(fn ($split) => [
+                        'staff_id' => (int) ($split['staff_id'] ?? 0),
+                        'staff_name' => (string) ($split['staff_name'] ?? $split['name'] ?? $staffNameLookup[(int) ($split['staff_id'] ?? 0)] ?? '-'),
+                        'share_percent' => (int) ($split['share_percent'] ?? $split['split_percent'] ?? 0),
+                    ])
+                    ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                    ->values()
+                    ->all();
 
                 return [
                     'id' => isset($item['id']) ? (int) $item['id'] : null,
@@ -401,6 +445,8 @@ class AppointmentController extends Controller
                     'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
                     'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                    'staff_splits' => ! empty($explicitSplits) ? $explicitSplits : $mainStaffSplits,
+                    'staff_split_source' => ! empty($explicitSplits) ? 'explicit' : 'inherited',
                 ];
             })
             ->filter()

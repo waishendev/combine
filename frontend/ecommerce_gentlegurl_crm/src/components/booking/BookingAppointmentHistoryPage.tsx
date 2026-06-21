@@ -9,6 +9,7 @@ import TableLoadingRow from '@/components/TableLoadingRow'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 
 type StaffOption = { id: number; name: string }
+type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
 
 type AppointmentHistoryRow = {
   id: number
@@ -18,8 +19,8 @@ type AppointmentHistoryRow = {
   guest_name?: string | null
   guest_phone?: string | null
   guest_email?: string | null
-  service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null } | null
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number }>
+  service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null; amount?: number | null; staff_splits?: StaffSplit[] } | null
+  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string }>
   staff: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -112,6 +113,25 @@ function DetailField({ label, value }: { label: string; value: React.ReactNode }
   )
 }
 
+
+function StaffSplitList({ splits, inherited }: { splits?: StaffSplit[]; inherited?: boolean }) {
+  if (!splits?.length) return <p className="text-sm text-slate-500">—</p>
+
+  return (
+    <div className="space-y-1">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Split:</p>
+      <ul className="space-y-1 text-sm text-slate-700">
+        {splits.map((split, index) => (
+          <li key={`${split.staff_id}-${index}`}>
+            <span>{split.staff_name ?? split.name ?? `Staff #${split.staff_id}`} — {Number(split.share_percent ?? 0)}%</span>
+            {inherited && index === 0 ? <span className="ml-2 text-xs text-slate-500">Inherited from main service</span> : null}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistoryRow | null; loading: boolean; error: string | null; onClose: () => void }) {
   if (!row && !loading && !error) return null
 
@@ -151,12 +171,36 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
 
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Services + Add-ons</h4>
-                <dl className="mt-4 grid gap-4 md:grid-cols-2">
-                  <DetailField label="Service" value={<><span>{row.service?.name ?? '—'}</span>{row.service?.cn_name ? <span className="mt-0.5 block text-xs text-slate-500">{row.service.cn_name}</span> : null}</>} />
-                  <DetailField label="Staff" value={row.staff?.name ?? '—'} />
-                  <DetailField label="Schedule" value={`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`} />
-                  <DetailField label="Add-ons" value={(row.add_ons ?? []).length > 0 ? <div className="space-y-1">{row.add_ons?.map((item, index) => <div key={`${item.id ?? item.name}-${index}`}><p>{item.name} ({formatMoney(item.extra_price)})</p>{item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}</div>)}</div> : '—'} />
-                </dl>
+                <div className="mt-4 space-y-4">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-900">Main Service</p>
+                    <div className="mt-2 space-y-2">
+                      <div>
+                        <p className="text-sm font-medium text-slate-900">{row.service?.name ?? '—'}</p>
+                        {row.service?.cn_name ? <p className="text-xs text-slate-500">{row.service.cn_name}</p> : null}
+                      </div>
+                      <p className="text-sm text-slate-700">Amount: {formatMoney(row.service?.amount ?? Math.max(0, Number(row.total_amount ?? 0) - (row.add_ons ?? []).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)))}</p>
+                      <p className="text-sm text-slate-700">Schedule: {`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`}</p>
+                      <StaffSplitList splits={row.service?.staff_splits ?? (row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : [])} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <p className="text-sm font-semibold text-slate-900">Add-ons</p>
+                    {(row.add_ons ?? []).length > 0 ? (
+                      <div className="mt-2 space-y-3">
+                        {row.add_ons?.map((item, index) => (
+                          <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 p-3">
+                            <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
+                            {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
+                            <p className="mt-2 text-sm text-slate-700">Amount: {formatMoney(item.extra_price)}</p>
+                            <div className="mt-2"><StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} /></div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : <p className="mt-2 text-sm text-slate-500">—</p>}
+                  </div>
+                </div>
               </section>
 
               <section className="rounded-xl border border-slate-200 p-4">
