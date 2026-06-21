@@ -134,7 +134,7 @@ class BookingLeaveService
             : $startDate->copy()->endOfDay();
 
         if ($dayType === 'full_day') {
-            return [$workStart, $workEnd];
+            return [$startDate->copy()->startOfDay(), $endDate->copy()->endOfDay()];
         }
 
         $halfMinutes = (int) floor($workStart->diffInMinutes($workEnd) / 2);

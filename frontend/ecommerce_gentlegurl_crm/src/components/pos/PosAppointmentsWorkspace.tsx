@@ -72,6 +72,8 @@ function durationMinutesFromRange(startAt?: string | null, endAt?: string | null
 }
 
 
+const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_off_day', 'staff_leave', 'booking_conflict', 'staff_inactive'])
+
 const POS_SLOT_INTERVAL_MIN = 15
 
 function makeLocalDateTimeValue(date: string, minutesFromMidnight: number) {
@@ -304,7 +306,7 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentAssignedStaffId, setCreateAppointmentAssignedStaffId] = useState<number | null>(null)
   const [createAppointmentDate, setCreateAppointmentDate] = useState('')
   const [createAppointmentSlotValue, setCreateAppointmentSlotValue] = useState('')
-  const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
+  const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> }>>([])
   const [createAppointmentSlotsLoading, setCreateAppointmentSlotsLoading] = useState(false)
   const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
   const [createAppointmentDepositPayments, setCreateAppointmentDepositPayments] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
@@ -372,6 +374,7 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementOpen, setEditSettlementOpen] = useState(false)
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
   const [editSettlementError, setEditSettlementError] = useState<string | null>(null)
+  const [editSettlementAvailability, setEditSettlementAvailability] = useState<{ reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null>(null)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
@@ -429,7 +432,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentRescheduleDate, setAppointmentRescheduleDate] = useState('')
   const [appointmentRescheduleSlotValue, setAppointmentRescheduleSlotValue] = useState('')
   const [appointmentRescheduleReason, setAppointmentRescheduleReason] = useState('')
-  const [appointmentRescheduleSlots, setAppointmentRescheduleSlots] = useState<Array<{ start_at: string; end_at: string; is_in_schedule?: boolean }>>([])
+  const [appointmentRescheduleSlots, setAppointmentRescheduleSlots] = useState<Array<{ start_at: string; end_at: string; is_in_schedule?: boolean; unavailable_reason?: string }>>([])
   const [appointmentRescheduleSlotsLoading, setAppointmentRescheduleSlotsLoading] = useState(false)
   const [appointmentRescheduleSubmitting, setAppointmentRescheduleSubmitting] = useState(false)
   const [appointmentReschedulePolicyWarnings, setAppointmentReschedulePolicyWarnings] = useState<string[]>([])
@@ -995,16 +998,20 @@ export default function PosAppointmentsWorkspace({
     return allowed
   }, [createAppointmentExtraServiceBlocks, createAppointmentServiceDraft])
 
+  const createAppointmentSelectedSlot = useMemo(
+    () => createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue) ?? null,
+    [createAppointmentSlotValue, createAppointmentSlots],
+  )
+
   const createAppointmentStaffPickerOptions = useMemo(() => {
     if (!createAppointmentDate || !createAppointmentSlotValue) return []
-    return createAppointmentAllowedStaffs
-  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSlotValue])
+    const unavailableReasons = createAppointmentSelectedSlot?.unavailable_staff_reasons ?? {}
+    return createAppointmentAllowedStaffs.filter((staff) => !POS_HARD_AVAILABILITY_REASONS.has(unavailableReasons[String(staff.id)] ?? ''))
+  }, [createAppointmentAllowedStaffs, createAppointmentDate, createAppointmentSelectedSlot, createAppointmentSlotValue])
 
   const createAppointmentSelectedSlotScheduleIds = useMemo(() => {
-    if (!createAppointmentSlotValue) return []
-    const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
-    return Array.isArray(slot?.available_staff_ids) ? slot.available_staff_ids : []
-  }, [createAppointmentSlotValue, createAppointmentSlots])
+    return Array.isArray(createAppointmentSelectedSlot?.scheduled_staff_ids) ? createAppointmentSelectedSlot.scheduled_staff_ids : []
+  }, [createAppointmentSelectedSlot])
 
   const createAppointmentOutsideStaffSchedule = Boolean(
     createAppointmentDate
@@ -1026,6 +1033,12 @@ export default function PosAppointmentsWorkspace({
   )
 
   const createAppointmentStaffPickerReady = Boolean(createAppointmentDate && createAppointmentSlotValue)
+
+  useEffect(() => {
+    if (createAppointmentAssignedStaffId && createAppointmentStaffPickerReady && !createAppointmentStaffPickerOptions.some((staff) => staff.id === createAppointmentAssignedStaffId)) {
+      setCreateAppointmentAssignedStaffId(null)
+    }
+  }, [createAppointmentAssignedStaffId, createAppointmentStaffPickerOptions, createAppointmentStaffPickerReady])
 
   const createAppointmentSelectedServiceIds = useMemo(
     () => [
@@ -1097,10 +1110,25 @@ export default function PosAppointmentsWorkspace({
         }
       }
     }
+    const unavailableReason = createAppointmentSelectedSlot?.unavailable_staff_reasons?.[String(createAppointmentAssignedStaffId)] ?? ''
+    if (POS_HARD_AVAILABILITY_REASONS.has(unavailableReason)) {
+      setCreateAppointmentError(unavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (unavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+      return
+    }
 
     setCreateAppointmentSubmitting(true)
     setCreateAppointmentError(null)
     try {
+      if (createAppointmentSelectedSlot?.end_at) {
+        const params = new URLSearchParams({ staff_id: String(createAppointmentAssignedStaffId), start_at: createAppointmentSlotValue, end_at: createAppointmentSelectedSlot.end_at })
+        const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
+        const availabilityJson = await availabilityRes.json().catch(() => null)
+        const reason = String(availabilityJson?.data?.reason_code ?? '')
+        if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
+          setCreateAppointmentError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+          return
+        }
+      }
       const payload: Record<string, unknown> = {
         booking_service_id: createAppointmentServiceDraft.id,
         assigned_staff_id: createAppointmentAssignedStaffId,
@@ -1782,6 +1810,11 @@ export default function PosAppointmentsWorkspace({
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
     setEditSettlementError(null)
+    if (editSettlementAvailability?.is_hard_block) {
+      const reason = editSettlementAvailability.reason_code
+      setEditSettlementError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Updated appointment time conflicts with staff availability.'))
+      return
+    }
     setEditSettlementLoading(true)
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(editOriginalSettlementSource)
@@ -1889,7 +1922,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -2066,6 +2099,10 @@ export default function PosAppointmentsWorkspace({
       showMsg('Please select appointment slot/time.', 'error')
       return
     }
+    if (appointmentRescheduleSelectedSlot?.unavailable_reason && POS_HARD_AVAILABILITY_REASONS.has(appointmentRescheduleSelectedSlot.unavailable_reason)) {
+      showMsg(appointmentRescheduleSelectedSlot.unavailable_reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (appointmentRescheduleSelectedSlot.unavailable_reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'), 'error')
+      return
+    }
 
     setAppointmentRescheduleSubmitting(true)
     try {
@@ -2101,6 +2138,7 @@ export default function PosAppointmentsWorkspace({
     appointmentDetail?.id,
     appointmentRescheduleDate,
     appointmentRescheduleReason,
+    appointmentRescheduleSelectedSlot,
     appointmentRescheduleSlotValue,
     appointmentRescheduleStaffId,
     fetchAppointments,
@@ -2118,31 +2156,48 @@ export default function PosAppointmentsWorkspace({
 
       setAppointmentRescheduleSlotsLoading(true)
       try {
+        const durationMin = durationMinutesFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)
+          || Number(appointmentDetail.estimated_duration_min ?? 0)
+          || Number(appointmentDetail.service?.duration_min ?? 0)
+          || POS_SLOT_INTERVAL_MIN
+        const extraDurationMin = Math.max(0, durationMin - Number(appointmentDetail.service?.duration_min ?? 0))
         const params = new URLSearchParams({
           service_id: String(appointmentDetail.service.id),
-          staff_id: String(appointmentRescheduleStaffId),
           date: appointmentRescheduleDate,
+          extra_duration_min: String(extraDurationMin),
         })
-        const res = await fetch(`/api/proxy/booking/availability?${params.toString()}`, { cache: 'no-store' })
+        const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
-        const rows: unknown[] = Array.isArray(json?.data?.slots) ? json.data.slots : []
-        const scheduledSlots = rows
+        const rows: unknown[] = Array.isArray(json?.data?.visible_slots)
+          ? json.data.visible_slots
+          : (Array.isArray(json?.data?.slots) ? json.data.slots : [])
+        const slotMeta = rows
           .map((row: unknown) => {
             if (!row || typeof row !== 'object') return null
             const maybe = row as Record<string, unknown>
             const startAt = String(maybe.start_at ?? '')
             const endAt = String(maybe.end_at ?? '')
             if (!startAt || !endAt) return null
-            return { start_at: startAt, end_at: endAt, is_in_schedule: true }
+            const scheduledStaffIds = Array.isArray(maybe.scheduled_staff_ids)
+              ? (maybe.scheduled_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+              : []
+            const unavailableReasons = maybe.unavailable_staff_reasons && typeof maybe.unavailable_staff_reasons === 'object'
+              ? (maybe.unavailable_staff_reasons as Record<string, unknown>)
+              : {}
+            return {
+              start_at: startAt,
+              end_at: endAt,
+              is_in_schedule: scheduledStaffIds.includes(appointmentRescheduleStaffId),
+              unavailable_reason: String(unavailableReasons[String(appointmentRescheduleStaffId)] ?? ''),
+            }
           })
-          .filter((row): row is { start_at: string; end_at: string; is_in_schedule: boolean } => Boolean(row))
-        const scheduledByStart = new Map(scheduledSlots.map((slot) => [slot.start_at, slot]))
-        const durationMin = durationMinutesFromRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)
-          || Number(appointmentDetail.estimated_duration_min ?? 0)
-          || Number(appointmentDetail.service?.duration_min ?? 0)
-          || POS_SLOT_INTERVAL_MIN
+          .filter((row): row is { start_at: string; end_at: string; is_in_schedule: boolean; unavailable_reason: string } => Boolean(row))
+        const metaByStart = new Map(slotMeta.map((slot) => [slot.start_at, slot]))
         const fullDaySlots = buildPosFullDaySlots(appointmentRescheduleDate, durationMin)
-          .map((slot) => ({ ...slot, is_in_schedule: scheduledByStart.has(slot.start_at) }))
+          .map((slot) => {
+            const meta = metaByStart.get(slot.start_at)
+            return { ...slot, is_in_schedule: meta?.is_in_schedule ?? false, unavailable_reason: meta?.unavailable_reason ?? '' }
+          })
 
         setAppointmentRescheduleSlots(fullDaySlots)
         setAppointmentRescheduleSlotValue((prev) => (fullDaySlots.some((slot) => slot.start_at === prev) ? prev : ''))
@@ -2197,13 +2252,19 @@ export default function PosAppointmentsWorkspace({
             const staffIds = Array.isArray(maybe.available_staff_ids)
               ? (maybe.available_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
               : undefined
-            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds } as {
+            const scheduledStaffIds = Array.isArray(maybe.scheduled_staff_ids)
+              ? (maybe.scheduled_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+              : undefined
+            const unavailableStaffReasons = maybe.unavailable_staff_reasons && typeof maybe.unavailable_staff_reasons === 'object'
+              ? Object.fromEntries(Object.entries(maybe.unavailable_staff_reasons as Record<string, unknown>).map(([id, reason]) => [id, String(reason ?? '')]))
+              : undefined
+            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds, scheduled_staff_ids: scheduledStaffIds, unavailable_staff_reasons: unavailableStaffReasons } as {
               start_at: string
               end_at: string
               available_staff_ids?: number[]
             }
           })
-          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
+          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> } => row !== null)
         const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
         const fullDaySlots = buildPosFullDaySlots(
           createAppointmentDate,
@@ -2214,7 +2275,7 @@ export default function PosAppointmentsWorkspace({
             createAppointmentExtraTotals.baseDuration +
             createAppointmentExtraTotals.addonDuration,
           ),
-        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [] }))
+        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [], scheduled_staff_ids: slotByStart.get(slot.start_at)?.scheduled_staff_ids ?? [], unavailable_staff_reasons: slotByStart.get(slot.start_at)?.unavailable_staff_reasons ?? {} }))
 
         setCreateAppointmentSlots(fullDaySlots)
         setCreateAppointmentSlotValue((prev) => (fullDaySlots.some((slot) => slot.start_at === prev) ? prev : ''))
@@ -2433,6 +2494,29 @@ export default function PosAppointmentsWorkspace({
     if (Number.isNaN(start.getTime())) return appointmentDetail?.appointment_end_at ?? null
     return new Date(start.getTime() + editSettlementEstimatedDurationMin * 60 * 1000).toISOString()
   }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, editSettlementEstimatedDurationMin])
+
+  useEffect(() => {
+    const checkEditSettlementAvailability = async () => {
+      if (!editSettlementOpen || !appointmentDetail?.id || !appointmentDetail?.staff?.id || !appointmentDetail.appointment_start_at || !editSettlementEstimatedEndAt) {
+        setEditSettlementAvailability(null)
+        return
+      }
+      const params = new URLSearchParams({
+        staff_id: String(appointmentDetail.staff.id),
+        start_at: appointmentDetail.appointment_start_at,
+        end_at: editSettlementEstimatedEndAt,
+        ignore_booking_id: String(appointmentDetail.id),
+      })
+      const res = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        setEditSettlementAvailability(null)
+        return
+      }
+      setEditSettlementAvailability((json?.data ?? null) as { reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null)
+    }
+    void checkEditSettlementAvailability()
+  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, editSettlementEstimatedEndAt, editSettlementOpen])
 
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
@@ -4511,9 +4595,14 @@ export default function PosAppointmentsWorkspace({
                     {formatTimeRange(appointmentDetail.appointment_start_at, editSettlementEstimatedEndAt)}
                   </div>
                 </div>
-                {appointmentDetail.appointment_end_at && editSettlementEstimatedEndAt && new Date(editSettlementEstimatedEndAt).getTime() > new Date(appointmentDetail.appointment_end_at).getTime() ? (
+                {editSettlementAvailability?.is_outside_staff_schedule ? (
                   <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900">
-                    Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment. Save will still be blocked for another booking conflict, staff leave, inactive staff, or missing required date/time/staff.
+                    Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
+                  </p>
+                ) : null}
+                {editSettlementAvailability?.is_hard_block ? (
+                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">
+                    Updated appointment time is blocked by staff leave/off day, inactive staff, or another booking conflict.
                   </p>
                 ) : null}
               </div>

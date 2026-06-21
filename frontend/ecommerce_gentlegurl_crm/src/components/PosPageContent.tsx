@@ -32,6 +32,9 @@ import {
 } from '@/utils/printReceipt'
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
 
+
+const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_off_day', 'staff_leave', 'booking_conflict', 'staff_inactive'])
+
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'cash', label: 'Cash' },
   { method: 'qrpay', label: 'QRPay' },
@@ -1559,7 +1562,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
   const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
   const [bookingDate, setBookingDate] = useState('')
-  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
+  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> }>>([])
   const [bookingSlotValue, setBookingSlotValue] = useState('')
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
   const bookingRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
@@ -1739,7 +1742,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const buildPosFullDaySlots = useCallback((date: string, durationMin: number, stepMin = 15) => {
     const safeDurationMin = Math.max(1, durationMin)
     const lastStartMinute = Math.max(0, (24 * 60) - safeDurationMin)
-    const slots: Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }> = []
+    const slots: Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> }> = []
 
     for (let minute = 0; minute <= lastStartMinute; minute += stepMin) {
       slots.push({
@@ -3385,16 +3388,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return allowed
   }, [bookingExtraServiceBlocks, bookingServiceDraft])
 
+  const bookingSelectedSlot = useMemo(
+    () => bookingSlots.find((s) => s.start_at === bookingSlotValue) ?? null,
+    [bookingSlotValue, bookingSlots],
+  )
+
   const bookingStaffPickerOptions = useMemo(() => {
     if (!bookingDate || !bookingSlotValue) return []
-    return bookingAllowedStaffs
-  }, [bookingAllowedStaffs, bookingDate, bookingSlotValue])
+    const unavailableReasons = bookingSelectedSlot?.unavailable_staff_reasons ?? {}
+    return bookingAllowedStaffs.filter((staff) => !POS_HARD_AVAILABILITY_REASONS.has(unavailableReasons[String(staff.id)] ?? ''))
+  }, [bookingAllowedStaffs, bookingDate, bookingSelectedSlot, bookingSlotValue])
 
   const bookingSelectedSlotScheduleIds = useMemo(() => {
-    if (!bookingSlotValue) return []
-    const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
-    return Array.isArray(slot?.available_staff_ids) ? slot.available_staff_ids : []
-  }, [bookingSlotValue, bookingSlots])
+    return Array.isArray(bookingSelectedSlot?.scheduled_staff_ids) ? bookingSelectedSlot.scheduled_staff_ids : []
+  }, [bookingSelectedSlot])
 
   const bookingOutsideStaffSchedule = Boolean(
     bookingDate
@@ -3404,6 +3411,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   )
 
   const bookingStaffPickerReady = Boolean(bookingDate && bookingSlotValue)
+
+  useEffect(() => {
+    if (bookingAssignedStaffId && bookingStaffPickerReady && !bookingStaffPickerOptions.some((staff) => staff.id === bookingAssignedStaffId)) {
+      setBookingAssignedStaffId(null)
+    }
+  }, [bookingAssignedStaffId, bookingStaffPickerOptions, bookingStaffPickerReady])
   const bookingSelectedServiceIds = useMemo(
     () => [
       ...(bookingServiceDraft?.id ? [bookingServiceDraft.id] : []),
@@ -3474,8 +3487,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         }
       }
     }
+    const bookingUnavailableReason = bookingSelectedSlot?.unavailable_staff_reasons?.[String(bookingAssignedStaffId)] ?? ''
+    if (POS_HARD_AVAILABILITY_REASONS.has(bookingUnavailableReason)) {
+      setBookingModalError(bookingUnavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (bookingUnavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+      return
+    }
 
     setBookingSubmitting(true)
+    if (bookingSelectedSlot?.end_at) {
+        const params = new URLSearchParams({ staff_id: String(bookingAssignedStaffId), start_at: bookingSlotValue, end_at: bookingSelectedSlot.end_at })
+        const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
+        const availabilityJson = await availabilityRes.json().catch(() => null)
+        const reason = String(availabilityJson?.data?.reason_code ?? '')
+        if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
+          setBookingModalError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+          setBookingSubmitting(false)
+          return
+        }
+      }
     const payload: Record<string, unknown> = {
       booking_service_id: bookingServiceDraft.id,
       assigned_staff_id: bookingAssignedStaffId,
@@ -3587,13 +3616,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             const staffIds = Array.isArray(maybe.available_staff_ids)
               ? (maybe.available_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
               : undefined
-            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds } as {
+            const scheduledStaffIds = Array.isArray(maybe.scheduled_staff_ids)
+              ? (maybe.scheduled_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+              : undefined
+            const unavailableStaffReasons = maybe.unavailable_staff_reasons && typeof maybe.unavailable_staff_reasons === 'object'
+              ? Object.fromEntries(Object.entries(maybe.unavailable_staff_reasons as Record<string, unknown>).map(([id, reason]) => [id, String(reason ?? '')]))
+              : undefined
+            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds, scheduled_staff_ids: scheduledStaffIds, unavailable_staff_reasons: unavailableStaffReasons } as {
               start_at: string
               end_at: string
               available_staff_ids?: number[]
             }
           })
-          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
+          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> } => row !== null)
 
         const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
         const fullDaySlots = buildPosFullDaySlots(
@@ -3605,7 +3640,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             bookingExtraTotals.baseDuration +
             bookingExtraTotals.addonDuration,
           ),
-        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [] }))
+        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [], scheduled_staff_ids: slotByStart.get(slot.start_at)?.scheduled_staff_ids ?? [], unavailable_staff_reasons: slotByStart.get(slot.start_at)?.unavailable_staff_reasons ?? {} }))
 
         setBookingSlots(fullDaySlots)
         setBookingSlotValue((prev) => fullDaySlots.some((slot) => slot.start_at === prev) ? prev : '')

@@ -8,6 +8,7 @@ use App\Models\Booking\BookingCartItem;
 use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingStaffSchedule;
 use App\Models\Booking\BookingStaffTimeoff;
+use App\Models\Booking\BookingLeaveRequest;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Database\Eloquent\Builder;
@@ -285,7 +286,42 @@ class BookingAvailabilityService
                 'id' => (int) $timeoff->id,
                 'start_at' => optional($timeoff->start_at)?->toDateTimeString(),
                 'end_at' => optional($timeoff->end_at)?->toDateTimeString(),
+                'leave_type' => null,
+                'day_type' => null,
             ])
+            ->values();
+
+        $requestDates = collect([$queryStartAt->toDateString(), $queryEndAt->toDateString(), $queryBlockEndAt->toDateString()])
+            ->unique()
+            ->values();
+        $fullDayLeaveConflicts = BookingLeaveRequest::query()
+            ->where('staff_id', $staffId)
+            ->where('status', 'approved')
+            ->where(function ($query) use ($requestDates) {
+                foreach ($requestDates as $date) {
+                    $query->orWhere(function ($nested) use ($date) {
+                        $nested->whereDate('start_date', '<=', $date)
+                            ->whereDate('end_date', '>=', $date);
+                    });
+                }
+            })
+            ->where(function ($query) {
+                $query->where('leave_type', 'off_day')
+                    ->orWhere('day_type', 'full_day');
+            })
+            ->get(['id', 'approved_timeoff_id', 'leave_type', 'day_type', 'start_date', 'end_date'])
+            ->map(fn (BookingLeaveRequest $leave) => [
+                'id' => $leave->approved_timeoff_id ? (int) $leave->approved_timeoff_id : (int) $leave->id,
+                'leave_request_id' => (int) $leave->id,
+                'start_at' => optional($leave->start_date)?->toDateString(),
+                'end_at' => optional($leave->end_date)?->toDateString(),
+                'leave_type' => (string) ($leave->leave_type ?? ''),
+                'day_type' => (string) ($leave->day_type ?? ''),
+            ]);
+
+        $timeoffConflicts = $timeoffConflicts
+            ->concat($fullDayLeaveConflicts)
+            ->unique(fn (array $item) => ((string) ($item['leave_type'] ?? 'timeoff')) . ':' . ((int) ($item['id'] ?? 0)) . ':' . ((int) ($item['leave_request_id'] ?? 0)))
             ->values()
             ->all();
 
@@ -347,6 +383,7 @@ class BookingAvailabilityService
             'conflicting_cart_item_ids' => $conflictingCartItemIds,
             'conflicting_cart_items' => $cartConflicts,
             'detected_leave_ids' => $timeoffIds,
+            'detected_leave_types' => collect($timeoffConflicts)->pluck('leave_type')->filter()->unique()->values()->all(),
             'detected_leaves' => $timeoffConflicts,
             'detected_block_ids' => $blockIdList,
             'detected_blocks' => $blockConflicts,
