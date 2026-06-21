@@ -2840,7 +2840,8 @@ class PosController extends Controller
             $validated,
             $depositAmount,
             $depositPayments,
-            $scheduleOverride
+            $scheduleOverride,
+            $mainItems
         ) {
             $booking = Booking::query()->create([
                 'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
@@ -2932,24 +2933,65 @@ class PosController extends Controller
                     'item_type' => 'service',
                 ]);
 
-                OrderItem::query()->create([
-                    'order_id' => (int) $depositOrder->id,
-                    'line_type' => 'booking_deposit',
-                    'product_id' => null,
-                    'product_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?: 'Service'),
-                    'display_name_snapshot' => 'Booking Deposit - ' . (string) ($service->name ?: 'Service'),
-                    'quantity' => 1,
-                    'price_snapshot' => $depositAmount,
-                    'unit_price_snapshot' => $depositAmount,
-                    'line_total' => $depositAmount,
-                    'line_total_snapshot' => $depositAmount,
-                    'effective_unit_price' => $depositAmount,
-                    'effective_line_total' => $depositAmount,
-                    'line_total_after_discount' => $depositAmount,
-                    'locked' => true,
-                    'booking_id' => (int) $booking->id,
-                    'booking_service_id' => (int) $booking->service_id,
-                ]);
+                $persistDepositLineSplits = function (OrderItem $orderItem, array $splits, float $amountBasis, string $lineRefId): void {
+                    $rows = collect($splits)
+                        ->map(fn (array $split) => [
+                            'order_item_id' => (int) $orderItem->id,
+                            'line_type' => 'booking_deposit',
+                            'line_ref_id' => $lineRefId,
+                            'staff_id' => (int) ($split['staff_id'] ?? 0),
+                            'share_percent' => (int) ($split['share_percent'] ?? 0),
+                            'amount_basis' => round(max(0, $amountBasis), 2),
+                            'commission_rate_snapshot' => (float) ($split['service_commission_rate_snapshot'] ?? 0),
+                            'snapshot' => json_encode([
+                                'booking_id' => (int) $orderItem->booking_id,
+                                'booking_service_id' => (int) $orderItem->booking_service_id,
+                                'source' => 'pos_create_appointment_deposit',
+                            ]),
+                            'created_at' => now(),
+                            'updated_at' => now(),
+                        ])
+                        ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+                        ->values()
+                        ->all();
+
+                    if (! empty($rows)) {
+                        DB::table('order_item_staff_splits')->insert($rows);
+                    }
+                };
+
+                foreach ($mainItems as $index => $mainItem) {
+                    $lineService = $mainItem['service'];
+                    $lineAmount = $index === 0 ? $depositAmount : 0.0;
+                    $lineSplits = collect($mainItem['staff_splits'] ?? [])
+                        ->filter(fn ($split) => is_array($split))
+                        ->values()
+                        ->all();
+                    if (empty($lineSplits)) {
+                        $lineSplits = $normalizedSplits;
+                    }
+
+                    $depositOrderItem = OrderItem::query()->create([
+                        'order_id' => (int) $depositOrder->id,
+                        'line_type' => 'booking_deposit',
+                        'product_id' => null,
+                        'product_name_snapshot' => 'Booking Deposit - ' . (string) ($lineService->name ?: 'Service'),
+                        'display_name_snapshot' => 'Booking Deposit - ' . (string) ($lineService->name ?: 'Service'),
+                        'quantity' => 1,
+                        'price_snapshot' => $lineAmount,
+                        'unit_price_snapshot' => $lineAmount,
+                        'line_total' => $lineAmount,
+                        'line_total_snapshot' => $lineAmount,
+                        'effective_unit_price' => $lineAmount,
+                        'effective_line_total' => $lineAmount,
+                        'line_total_after_discount' => $lineAmount,
+                        'locked' => true,
+                        'booking_id' => (int) $booking->id,
+                        'booking_service_id' => (int) $lineService->id,
+                    ]);
+
+                    $persistDepositLineSplits($depositOrderItem, $lineSplits, $lineAmount, (string) $lineService->id);
+                }
 
                 $this->replaceOrderPayments($depositOrder, $depositPayments, 'pos_create_appointment_deposit');
 
