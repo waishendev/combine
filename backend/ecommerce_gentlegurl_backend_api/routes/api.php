@@ -472,6 +472,7 @@ $protectedRoutes = function () {
         Route::get('/appointments', [PosController::class, 'appointmentSearch']);
         Route::post('/appointments', [PosController::class, 'createAppointment']);
         Route::get('/availability/pooled', [PosController::class, 'availabilityPooled']);
+        Route::get('/availability/check', [PosController::class, 'availabilityCheck']);
         Route::get('/cancellation-requests', [PosController::class, 'posCancellationRequestsIndex']);
         Route::post('/cancellation-requests/{id}/approve', [PosController::class, 'posCancellationRequestApprove'])
             ->middleware('permission:booking.appointments.update_status');

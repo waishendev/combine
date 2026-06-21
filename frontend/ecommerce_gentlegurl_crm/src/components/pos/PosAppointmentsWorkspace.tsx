@@ -374,6 +374,7 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementOpen, setEditSettlementOpen] = useState(false)
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
   const [editSettlementError, setEditSettlementError] = useState<string | null>(null)
+  const [editSettlementAvailability, setEditSettlementAvailability] = useState<{ reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null>(null)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
@@ -1118,6 +1119,16 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentSubmitting(true)
     setCreateAppointmentError(null)
     try {
+      if (createAppointmentSelectedSlot?.end_at) {
+        const params = new URLSearchParams({ staff_id: String(createAppointmentAssignedStaffId), start_at: createAppointmentSlotValue, end_at: createAppointmentSelectedSlot.end_at })
+        const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
+        const availabilityJson = await availabilityRes.json().catch(() => null)
+        const reason = String(availabilityJson?.data?.reason_code ?? '')
+        if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
+          setCreateAppointmentError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+          return
+        }
+      }
       const payload: Record<string, unknown> = {
         booking_service_id: createAppointmentServiceDraft.id,
         assigned_staff_id: createAppointmentAssignedStaffId,
@@ -1799,6 +1810,11 @@ export default function PosAppointmentsWorkspace({
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
     setEditSettlementError(null)
+    if (editSettlementAvailability?.is_hard_block) {
+      const reason = editSettlementAvailability.reason_code
+      setEditSettlementError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Updated appointment time conflicts with staff availability.'))
+      return
+    }
     setEditSettlementLoading(true)
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(editOriginalSettlementSource)
@@ -1906,7 +1922,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -2478,6 +2494,29 @@ export default function PosAppointmentsWorkspace({
     if (Number.isNaN(start.getTime())) return appointmentDetail?.appointment_end_at ?? null
     return new Date(start.getTime() + editSettlementEstimatedDurationMin * 60 * 1000).toISOString()
   }, [appointmentDetail?.appointment_end_at, appointmentDetail?.appointment_start_at, editSettlementEstimatedDurationMin])
+
+  useEffect(() => {
+    const checkEditSettlementAvailability = async () => {
+      if (!editSettlementOpen || !appointmentDetail?.id || !appointmentDetail?.staff?.id || !appointmentDetail.appointment_start_at || !editSettlementEstimatedEndAt) {
+        setEditSettlementAvailability(null)
+        return
+      }
+      const params = new URLSearchParams({
+        staff_id: String(appointmentDetail.staff.id),
+        start_at: appointmentDetail.appointment_start_at,
+        end_at: editSettlementEstimatedEndAt,
+        ignore_booking_id: String(appointmentDetail.id),
+      })
+      const res = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        setEditSettlementAvailability(null)
+        return
+      }
+      setEditSettlementAvailability((json?.data ?? null) as { reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null)
+    }
+    void checkEditSettlementAvailability()
+  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, editSettlementEstimatedEndAt, editSettlementOpen])
 
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
@@ -4556,9 +4595,14 @@ export default function PosAppointmentsWorkspace({
                     {formatTimeRange(appointmentDetail.appointment_start_at, editSettlementEstimatedEndAt)}
                   </div>
                 </div>
-                {appointmentDetail.appointment_end_at && editSettlementEstimatedEndAt && new Date(editSettlementEstimatedEndAt).getTime() > new Date(appointmentDetail.appointment_end_at).getTime() ? (
+                {editSettlementAvailability?.is_outside_staff_schedule ? (
                   <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900">
-                    Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment. Save will still be blocked for another booking conflict, staff leave, inactive staff, or missing required date/time/staff.
+                    Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
+                  </p>
+                ) : null}
+                {editSettlementAvailability?.is_hard_block ? (
+                  <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">
+                    Updated appointment time is blocked by staff leave/off day, inactive staff, or another booking conflict.
                   </p>
                 ) : null}
               </div>

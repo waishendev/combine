@@ -3494,6 +3494,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     setBookingSubmitting(true)
+    if (bookingSelectedSlot?.end_at) {
+        const params = new URLSearchParams({ staff_id: String(bookingAssignedStaffId), start_at: bookingSlotValue, end_at: bookingSelectedSlot.end_at })
+        const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
+        const availabilityJson = await availabilityRes.json().catch(() => null)
+        const reason = String(availabilityJson?.data?.reason_code ?? '')
+        if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
+          setBookingModalError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+          setBookingSubmitting(false)
+          return
+        }
+      }
     const payload: Record<string, unknown> = {
       booking_service_id: bookingServiceDraft.id,
       assigned_staff_id: bookingAssignedStaffId,
