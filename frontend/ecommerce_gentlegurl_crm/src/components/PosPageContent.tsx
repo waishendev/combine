@@ -4285,6 +4285,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const needsSettledAmount = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(cartEditSelectedAddonIds),
+        availability_override: true,
+        availability_override_type: 'outside_staff_schedule',
+        availability_override_reason: null,
         addon_staff_splits: Object.fromEntries(Array.from(cartEditSelectedAddonIds).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`] ?? []])),
         main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
         main_service_items: cartEditAddedMainBlocks.map((block) => ({
@@ -4356,6 +4359,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         setCartEditSettlementError(json?.message ?? 'Failed to update settlement.')
         return
       }
+      const warnings = Array.isArray(json?.data?.policy_warnings)
+        ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+        : []
+
       if (cartEditSettlementItem?.id) {
         const settlementId = cartEditSettlementItem.id
         setCheckoutLineSplits((prev) => {
@@ -4383,7 +4390,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           return next
         })
       }
-      showMsg('Settlement updated.', 'success')
+      showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
       setCartEditSettlementOpen(false)
       await loadCart()
       void fetchUnpaidCompletedAppointments(settlementQuery)
@@ -8602,6 +8609,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-5 py-4">
+              <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
+                Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment. Save will still be blocked for another booking conflict, staff leave, inactive staff, or missing required date/time/staff.
+              </p>
               {cartEditSettlementError ? (
                 <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">{cartEditSettlementError}</p>
               ) : null}

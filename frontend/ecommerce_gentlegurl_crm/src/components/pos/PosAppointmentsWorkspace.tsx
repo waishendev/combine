@@ -1788,6 +1788,9 @@ export default function PosAppointmentsWorkspace({
       const payload: Record<string, unknown> = {
         addon_option_ids: Array.from(editSelectedAddonIds),
         addon_price_overrides: editAddonPriceOverrides,
+        availability_override: true,
+        availability_override_type: 'outside_staff_schedule',
+        availability_override_reason: null,
         addon_staff_splits: Object.fromEntries(Array.from(editSelectedAddonIds).map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:addon:${id}`] ?? []])),
         original_service_price: editOriginalServicePriceOverride,
         main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
@@ -1876,7 +1879,10 @@ export default function PosAppointmentsWorkspace({
           amount_due_now: Number(json?.data?.amount_due_now ?? updatedAppointment.amount_due_now ?? current.amount_due_now ?? 0),
         } : current)
       }
-      showMsg('Settlement updated.', 'success')
+      const warnings = Array.isArray(json?.data?.policy_warnings)
+        ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+        : []
+      showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
       setEditSettlementOpen(false)
       await refreshOpenedAppointmentDetail()
       await fetchAppointments()
@@ -4507,7 +4513,7 @@ export default function PosAppointmentsWorkspace({
                 </div>
                 {appointmentDetail.appointment_end_at && editSettlementEstimatedEndAt && new Date(editSettlementEstimatedEndAt).getTime() > new Date(appointmentDetail.appointment_end_at).getTime() ? (
                   <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900">
-                    This settlement extends the appointment. Save will be blocked if the new end time conflicts with another booking or staff availability.
+                    Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment. Save will still be blocked for another booking conflict, staff leave, inactive staff, or missing required date/time/staff.
                   </p>
                 ) : null}
               </div>
