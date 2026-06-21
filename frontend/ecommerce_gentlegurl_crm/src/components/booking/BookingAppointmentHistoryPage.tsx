@@ -86,6 +86,18 @@ const formatDateTime = (value?: string | null) => {
 
 const formatMoney = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`
 
+const paidAmountClass = (value?: number | string | null) => {
+  const amount = Number(value ?? 0)
+  if (amount <= 0) return 'text-slate-500'
+  return 'font-semibold text-emerald-700'
+}
+
+const balanceDueClass = (value?: number | string | null) => {
+  const amount = Number(value ?? 0)
+  if (amount <= 0) return 'font-medium text-slate-500'
+  return 'font-bold text-amber-700'
+}
+
 const paymentBadgeClass = (status?: string | null) => {
   switch (String(status ?? '').toLowerCase()) {
     case 'paid':
@@ -104,11 +116,21 @@ const formatPaymentStatus = (status?: string | null) => {
   return 'Unpaid'
 }
 
-function DetailField({ label, value }: { label: string; value: React.ReactNode }) {
+function DetailField({
+  label,
+  value,
+  labelClassName,
+  valueClassName,
+}: {
+  label: string
+  value: React.ReactNode
+  labelClassName?: string
+  valueClassName?: string
+}) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</dt>
-      <dd className="mt-1 text-sm font-medium text-slate-900">{value}</dd>
+      <dt className={`text-xs font-semibold uppercase tracking-wide ${labelClassName ?? 'text-slate-500'}`}>{label}</dt>
+      <dd className={`mt-1 text-sm font-medium ${valueClassName ?? 'text-slate-900'}`}>{value}</dd>
     </div>
   )
 }
@@ -210,8 +232,8 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
                   <DetailField label="Deposit" value={formatMoney(row.deposit_paid)} />
                   <DetailField label="Settlement Paid" value={formatMoney(row.settlement_paid)} />
                   <DetailField label="Package Offset" value={formatMoney(row.package_offset)} />
-                  <DetailField label="Paid Amount" value={formatMoney(row.paid_amount)} />
-                  <DetailField label="Balance Due" value={formatMoney(row.balance_due)} />
+                  <DetailField label="Paid Amount" value={formatMoney(row.paid_amount)} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
+                  <DetailField label="Balance Due" value={formatMoney(row.balance_due)} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
 
@@ -411,8 +433,8 @@ export default function BookingAppointmentHistoryPage() {
               <th className="px-3 py-3">Status</th>
               <th className="px-3 py-3">Payment Status</th>
               <th className="px-3 py-3 text-right">Total Amount</th>
-              <th className="px-3 py-3 text-right">Paid Amount</th>
-              <th className="px-3 py-3 text-right">Balance Due</th>
+              <th className="px-3 py-3 text-right text-emerald-700">Paid Amount</th>
+              <th className="px-3 py-3 text-right text-amber-700">Balance Due</th>
               <th className="px-3 py-3">Created At</th>
               <th className="px-3 py-3">Actions</th>
             </tr>
@@ -433,8 +455,8 @@ export default function BookingAppointmentHistoryPage() {
                 <td className="px-3 py-3"><BookingStatusBadge status={row.status} label={row.status} /></td>
                 <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(row.computed_payment_status)}`}>{formatPaymentStatus(row.computed_payment_status)}</span></td>
                 <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.total_amount)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.paid_amount)}</td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.balance_due)}</td>
+                <td className={`px-3 py-3 text-right tabular-nums ${paidAmountClass(row.paid_amount)}`}>{formatMoney(row.paid_amount)}</td>
+                <td className={`px-3 py-3 text-right tabular-nums ${balanceDueClass(row.balance_due)}`}>{formatMoney(row.balance_due)}</td>
                 <td className="px-3 py-3 text-xs tabular-nums">{formatDateTime(row.created_at)}</td>
                 <td className="px-3 py-3">
                   <ReportViewDetailsButton onClick={() => { setDetail(row); setDetailId(row.id) }} title={`View details for ${row.booking_code}`} />
