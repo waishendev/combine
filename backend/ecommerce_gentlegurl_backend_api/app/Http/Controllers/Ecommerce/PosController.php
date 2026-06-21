@@ -1431,7 +1431,7 @@ class PosController extends Controller
         }
         $targetStaff = Staff::query()->findOrFail($targetStaffId);
         if (! (bool) ($targetStaff->is_active ?? true)) {
-            return $this->respondError(__('Selected staff is inactive.'), 422);
+            return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
         }
 
         $policy = SettingService::get('booking_policy', [
@@ -1462,11 +1462,12 @@ class PosController extends Controller
         $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
         if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
             && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-            return $this->respondError(__('Selected staff is not available on this day.'), 409);
+            return $this->respondError(__('Selected staff is not available on this day.'), 409, ['reason_code' => $scheduleFailureReason ?: 'staff_unavailable']);
         }
 
-        if ($this->availabilityService->hasConflict($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
-            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking);
+        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+            return $this->respondPosAvailabilityError($conflictDiagnostics);
         }
 
         $scheduleOverride = $this->resolvePosScheduleOverride($targetStaffId, $newStart, $newEnd, $scheduleDiagnostics, $request->user()?->id);
@@ -1915,13 +1916,29 @@ class PosController extends Controller
             }
         }
 
-        $visible = array_values($mergedByStart);
-        foreach ($visible as &$row) {
-            $row['available_staff_ids'] = array_values(array_unique($row['available_staff_ids'] ?? []));
-        }
-        unset($row);
+        $durationMin = max(1, (int) $service->duration_min + $extraDurationMin);
+        $lastStartMinute = max(0, (24 * 60) - $durationMin);
+        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $visible = [];
+        for ($minute = 0; $minute <= $lastStartMinute; $minute += 15) {
+            $startAt = Carbon::parse(sprintf('%s %02d:%02d:00', (string) $validated['date'], intdiv($minute, 60), $minute % 60), $timezone);
+            $endAt = $startAt->copy()->addMinutes($durationMin);
+            $key = $startAt->format('Y-m-d\TH:i:s');
+            $scheduledStaffIds = [];
+            foreach ($staffIds as $staffId) {
+                $diagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staffId, $startAt, $endAt);
+                if ((bool) ($diagnostics['is_available'] ?? false)) {
+                    $scheduledStaffIds[] = (int) $staffId;
+                }
+            }
 
-        usort($visible, fn ($a, $b) => strcmp((string) ($a['start_at'] ?? ''), (string) ($b['start_at'] ?? '')));
+            $visible[] = [
+                'start_at' => $key,
+                'end_at' => $endAt->format('Y-m-d\TH:i:s'),
+                'available_staff_ids' => array_values(array_unique($mergedByStart[$key]['available_staff_ids'] ?? [])),
+                'scheduled_staff_ids' => array_values(array_unique($scheduledStaffIds)),
+            ];
+        }
 
         return $this->respond([
             'date' => (string) $validated['date'],
@@ -2030,7 +2047,7 @@ class PosController extends Controller
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
 
         if (! (bool) ($staff->is_active ?? true)) {
-            return $this->respondError(__('Selected staff is inactive.'), 422);
+            return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
         }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
@@ -2147,11 +2164,12 @@ class PosController extends Controller
         $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
         if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
             && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-            return $this->respondError(__('Selected staff is not available on this day.'), 409);
+            return $this->respondError(__('Selected staff is not available on this day.'), 409, ['reason_code' => $scheduleFailureReason ?: 'staff_unavailable']);
         }
 
-        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
-            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin);
+        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+            return $this->respondPosAvailabilityError($conflictDiagnostics);
         }
 
 
@@ -2452,7 +2470,7 @@ class PosController extends Controller
 
         $staff = Staff::query()->findOrFail((int) $validated['assigned_staff_id']);
         if (! (bool) ($staff->is_active ?? true)) {
-            return $this->respondError(__('Selected staff is inactive.'), 422);
+            return $this->respondError(__('Selected staff is inactive.'), 422, ['reason_code' => 'staff_inactive']);
         }
 
         if (! $service->isStaffAllowed((int) $staff->id)) {
@@ -2572,11 +2590,12 @@ class PosController extends Controller
         $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
         if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
             && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-            return $this->respondError(__('Selected staff is not available on this day.'), 409);
+            return $this->respondError(__('Selected staff is not available on this day.'), 409, ['reason_code' => $scheduleFailureReason ?: 'staff_unavailable']);
         }
 
-        if ($this->availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, $bufferMin)) {
-            return $this->respondError(__('Selected slot conflicts with another booking, leave, or blocked time.'), 409);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin);
+        if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+            return $this->respondPosAvailabilityError($conflictDiagnostics);
         }
 
         $scheduleOverride = $this->resolvePosScheduleOverride((int) $staff->id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
@@ -5452,9 +5471,11 @@ class PosController extends Controller
                     abort(409, __('Selected staff is not available on this day.'));
                 }
 
-                if ($serviceItem->assigned_staff_id
-                    && $this->availabilityService->hasConflict((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin)) {
-                    abort(409, __('Selected slot conflicts with another booking, leave, or blocked time.'));
+                if ($serviceItem->assigned_staff_id) {
+                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin);
+                    if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                        abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
+                    }
                 }
 
                 $scheduleOverride = $this->resolvePosScheduleOverride((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $scheduleDiagnostics, $request->user()?->id);
@@ -7396,6 +7417,45 @@ class PosController extends Controller
     }
 
 
+
+    protected function posAvailabilityReasonCode(array $diagnostics): string
+    {
+        if (! empty($diagnostics['detected_leave_ids'] ?? [])) {
+            return 'staff_leave';
+        }
+
+        if (! empty($diagnostics['conflicting_booking_ids'] ?? []) || ! empty($diagnostics['conflicting_cart_item_ids'] ?? []) || ! empty($diagnostics['detected_block_ids'] ?? [])) {
+            return 'booking_conflict';
+        }
+
+        $schedule = (array) ($diagnostics['staff_schedule'] ?? []);
+        if ((string) ($schedule['failure_reason'] ?? '') === 'outside_staff_schedule') {
+            return 'outside_staff_schedule';
+        }
+
+        return 'booking_conflict';
+    }
+
+    protected function posAvailabilityMessage(string $reasonCode): string
+    {
+        return match ($reasonCode) {
+            'staff_inactive' => __('Selected staff is inactive.'),
+            'staff_leave' => __('Selected staff is on approved leave or off day.'),
+            'outside_staff_schedule' => __('Selected time is outside staff schedule.'),
+            default => __('Selected slot conflicts with another booking or blocked time.'),
+        };
+    }
+
+    protected function respondPosAvailabilityError(array $diagnostics, int $status = 409)
+    {
+        $reasonCode = $this->posAvailabilityReasonCode($diagnostics);
+
+        return $this->respondError($this->posAvailabilityMessage($reasonCode), $status, [
+            'reason_code' => $reasonCode,
+            'validation_reason' => $reasonCode,
+            'conflict_debug' => $diagnostics,
+        ]);
+    }
 
     protected function formatSettlementConflictMessage(array $diagnostics): string
     {

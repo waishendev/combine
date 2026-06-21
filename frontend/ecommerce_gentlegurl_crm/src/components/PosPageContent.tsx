@@ -1559,7 +1559,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [bookingServiceDraft, setBookingServiceDraft] = useState<BookingServiceOption | null>(null)
   const [bookingAssignedStaffId, setBookingAssignedStaffId] = useState<number | null>(null)
   const [bookingDate, setBookingDate] = useState('')
-  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
+  const [bookingSlots, setBookingSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[] }>>([])
   const [bookingSlotValue, setBookingSlotValue] = useState('')
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
   const bookingRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
@@ -1739,7 +1739,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const buildPosFullDaySlots = useCallback((date: string, durationMin: number, stepMin = 15) => {
     const safeDurationMin = Math.max(1, durationMin)
     const lastStartMinute = Math.max(0, (24 * 60) - safeDurationMin)
-    const slots: Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }> = []
+    const slots: Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[] }> = []
 
     for (let minute = 0; minute <= lastStartMinute; minute += stepMin) {
       slots.push({
@@ -3393,13 +3393,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const bookingSelectedSlotScheduleIds = useMemo(() => {
     if (!bookingSlotValue) return []
     const slot = bookingSlots.find((s) => s.start_at === bookingSlotValue)
-    return Array.isArray(slot?.available_staff_ids) ? slot.available_staff_ids : []
+    return Array.isArray(slot?.scheduled_staff_ids) ? slot.scheduled_staff_ids : []
   }, [bookingSlotValue, bookingSlots])
 
   const bookingOutsideStaffSchedule = Boolean(
     bookingDate
     && bookingSlotValue
     && bookingAssignedStaffId
+    && bookingSelectedSlotScheduleIds.length > 0
     && !bookingSelectedSlotScheduleIds.includes(bookingAssignedStaffId),
   )
 
@@ -3587,13 +3588,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             const staffIds = Array.isArray(maybe.available_staff_ids)
               ? (maybe.available_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
               : undefined
-            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds } as {
+            const scheduledStaffIds = Array.isArray(maybe.scheduled_staff_ids)
+              ? (maybe.scheduled_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+              : undefined
+            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds, scheduled_staff_ids: scheduledStaffIds } as {
               start_at: string
               end_at: string
               available_staff_ids?: number[]
             }
           })
-          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
+          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[] } => row !== null)
 
         const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
         const fullDaySlots = buildPosFullDaySlots(
@@ -3605,7 +3609,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             bookingExtraTotals.baseDuration +
             bookingExtraTotals.addonDuration,
           ),
-        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [] }))
+        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [], scheduled_staff_ids: slotByStart.get(slot.start_at)?.scheduled_staff_ids ?? [] }))
 
         setBookingSlots(fullDaySlots)
         setBookingSlotValue((prev) => fullDaySlots.some((slot) => slot.start_at === prev) ? prev : '')

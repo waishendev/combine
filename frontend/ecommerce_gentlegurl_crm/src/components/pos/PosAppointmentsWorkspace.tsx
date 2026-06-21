@@ -304,7 +304,7 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentAssignedStaffId, setCreateAppointmentAssignedStaffId] = useState<number | null>(null)
   const [createAppointmentDate, setCreateAppointmentDate] = useState('')
   const [createAppointmentSlotValue, setCreateAppointmentSlotValue] = useState('')
-  const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[] }>>([])
+  const [createAppointmentSlots, setCreateAppointmentSlots] = useState<Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[] }>>([])
   const [createAppointmentSlotsLoading, setCreateAppointmentSlotsLoading] = useState(false)
   const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
   const [createAppointmentDepositPayments, setCreateAppointmentDepositPayments] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
@@ -1003,13 +1003,14 @@ export default function PosAppointmentsWorkspace({
   const createAppointmentSelectedSlotScheduleIds = useMemo(() => {
     if (!createAppointmentSlotValue) return []
     const slot = createAppointmentSlots.find((s) => s.start_at === createAppointmentSlotValue)
-    return Array.isArray(slot?.available_staff_ids) ? slot.available_staff_ids : []
+    return Array.isArray(slot?.scheduled_staff_ids) ? slot.scheduled_staff_ids : []
   }, [createAppointmentSlotValue, createAppointmentSlots])
 
   const createAppointmentOutsideStaffSchedule = Boolean(
     createAppointmentDate
     && createAppointmentSlotValue
     && createAppointmentAssignedStaffId
+    && createAppointmentSelectedSlotScheduleIds.length > 0
     && !createAppointmentSelectedSlotScheduleIds.includes(createAppointmentAssignedStaffId),
   )
 
@@ -2197,13 +2198,16 @@ export default function PosAppointmentsWorkspace({
             const staffIds = Array.isArray(maybe.available_staff_ids)
               ? (maybe.available_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
               : undefined
-            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds } as {
+            const scheduledStaffIds = Array.isArray(maybe.scheduled_staff_ids)
+              ? (maybe.scheduled_staff_ids as unknown[]).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+              : undefined
+            return { start_at: startAt, end_at: endAt, available_staff_ids: staffIds, scheduled_staff_ids: scheduledStaffIds } as {
               start_at: string
               end_at: string
               available_staff_ids?: number[]
             }
           })
-          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[] } => row !== null)
+          .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[] } => row !== null)
         const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
         const fullDaySlots = buildPosFullDaySlots(
           createAppointmentDate,
@@ -2214,7 +2218,7 @@ export default function PosAppointmentsWorkspace({
             createAppointmentExtraTotals.baseDuration +
             createAppointmentExtraTotals.addonDuration,
           ),
-        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [] }))
+        ).map((slot) => ({ ...slot, available_staff_ids: slotByStart.get(slot.start_at)?.available_staff_ids ?? [], scheduled_staff_ids: slotByStart.get(slot.start_at)?.scheduled_staff_ids ?? [] }))
 
         setCreateAppointmentSlots(fullDaySlots)
         setCreateAppointmentSlotValue((prev) => (fullDaySlots.some((slot) => slot.start_at === prev) ? prev : ''))
