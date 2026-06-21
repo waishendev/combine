@@ -287,8 +287,10 @@ class PublicShopController extends Controller
                 $soldCount = $realSoldCount + $dummySoldCount;
 
                 $sortedImages = $product->images
-                    ->sortBy('sort_order')
-                    ->sortBy('id')
+                    ->sortBy([
+                        ['sort_order', 'asc'],
+                        ['id', 'asc'],
+                    ])
                     ->values()
                     ->map(function ($image) {
                         return [
@@ -459,8 +461,10 @@ class PublicShopController extends Controller
             ->firstOrFail();
 
         $product->images = $product->images
-            ->sortBy('id')
-            ->sortBy('sort_order')
+            ->sortBy([
+                ['sort_order', 'asc'],
+                ['id', 'asc'],
+            ])
             ->values();
 
         $categories = $product->categories->map(function (Category $category) {
@@ -520,8 +524,10 @@ class PublicShopController extends Controller
 
         $media = $media->merge(
             $product->images
-                ->sortBy('sort_order')
-                ->sortBy('id')
+                ->sortBy([
+                    ['sort_order', 'asc'],
+                    ['id', 'asc'],
+                ])
                 ->values()
                 ->map(fn($image) => [
                     'id' => $image->id,

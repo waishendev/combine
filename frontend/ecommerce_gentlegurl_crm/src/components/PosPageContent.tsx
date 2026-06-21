@@ -804,6 +804,7 @@ type ProductOption = {
   main_image_url?: string | null
   cover_image_url?: string | null
   image_url?: string | null
+  images?: Array<{ url?: string | null; image_path?: string | null; path?: string | null; sort_order?: number | null; id?: number | null }>
   variants: ProductVariantOption[]
   variants_count?: number
   default_variant_id?: number | null
@@ -1280,7 +1281,7 @@ type ProductApiItem = {
   cover_image_url?: string | null
   main_image_url?: string | null
   image_url?: string | null
-  images?: Array<{ url?: string | null; image_path?: string | null }>
+  images?: Array<{ url?: string | null; image_path?: string | null; path?: string | null; sort_order?: number | null; id?: number | null }>
   variants?: Array<{
     id?: number
     name?: string | null
@@ -1393,7 +1394,25 @@ const resolvePosVariantImageUrl = (variant: ProductVariantOption | null | undefi
   return resolvePosVariantOwnImageUrl(variant)
 }
 
-const resolvePosCatalogCoverImageUrl = (item: Pick<ProductOption, 'cover_image_url' | 'main_image_url' | 'image_url' | 'thumbnail_url'>): string | null => {
+const sortPosProductImages = <T,>(images: T[]): T[] => {
+  return [...images].sort((a, b) => {
+    const aRecord = a && typeof a === 'object' ? (a as { sort_order?: unknown; id?: unknown }) : null
+    const bRecord = b && typeof b === 'object' ? (b as { sort_order?: unknown; id?: unknown }) : null
+    const aOrder = Number(aRecord?.sort_order ?? 0)
+    const bOrder = Number(bRecord?.sort_order ?? 0)
+    if (aOrder !== bOrder) return aOrder - bOrder
+    return Number(aRecord?.id ?? 0) - Number(bRecord?.id ?? 0)
+  })
+}
+
+const resolvePosCatalogCoverImageUrl = (item: Pick<ProductOption, 'images' | 'cover_image_url' | 'main_image_url' | 'image_url' | 'thumbnail_url'>): string | null => {
+  if (Array.isArray(item.images) && item.images.length > 0) {
+    for (const image of sortPosProductImages(item.images)) {
+      const url = resolvePosProductImageUrl(image)
+      if (url) return url
+    }
+  }
+
   return (
     resolvePosProductImageUrl(item.cover_image_url) ||
     resolvePosProductImageUrl(item.main_image_url) ||
@@ -1424,15 +1443,7 @@ const buildPosProductGalleryImages = (
   }
 
   if (Array.isArray(fullProductData?.images)) {
-    const sorted = [...fullProductData.images].sort((a, b) => {
-      const aRecord = a && typeof a === 'object' ? (a as { sort_order?: unknown; id?: unknown }) : null
-      const bRecord = b && typeof b === 'object' ? (b as { sort_order?: unknown; id?: unknown }) : null
-      const aOrder = Number(aRecord?.sort_order ?? 0)
-      const bOrder = Number(bRecord?.sort_order ?? 0)
-      if (aOrder !== bOrder) return aOrder - bOrder
-      return Number(aRecord?.id ?? 0) - Number(bRecord?.id ?? 0)
-    })
-    for (const image of sorted) {
+    for (const image of sortPosProductImages(fullProductData.images)) {
       push(image)
     }
   }
@@ -2787,6 +2798,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         : Number(item.variants_count ?? 0) || 0
     const isSimpleProduct = variants.length === 0 && declaredVariantCount === 0
 
+    const productImages = Array.isArray(item.images) ? item.images : undefined
+    const catalogCoverImageUrl = resolvePosCatalogCoverImageUrl({
+      images: productImages,
+      cover_image_url: item.cover_image_url ?? null,
+      main_image_url: item.main_image_url ?? null,
+      image_url: item.image_url ?? null,
+      thumbnail_url: null,
+    })
+
     return {
       // IMPORTANT: keep the list/grid unique by product id (like Shop).
       // Variants should only be selected inside the modal / cart item variant selector.
@@ -2799,14 +2819,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       price: Number.isFinite(price) ? price : 0,
       is_staff_free: item.is_staff_free === true || item.is_staff_free === 1 || item.is_staff_free === '1' || item.is_staff_free === 'true',
       thumbnail_url:
-        resolvePosProductImageUrl(item.cover_image_url) ||
-        resolvePosProductImageUrl(item.main_image_url) ||
-        resolvePosProductImageUrl(item.image_url) ||
+        catalogCoverImageUrl ||
         resolvePosVariantImageUrl(activeVariant) ||
         null,
       main_image_url: item.main_image_url ?? null,
-      cover_image_url: item.cover_image_url ?? null,
+      cover_image_url: catalogCoverImageUrl ?? item.cover_image_url ?? null,
       image_url: item.image_url ?? null,
+      images: productImages,
       variants,
       variants_count: typeof item.variants_count === 'number'
         ? item.variants_count
@@ -2966,17 +2985,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         const paged = extractPaged<ProductOption>(json)
         mapped = paged.data.map((item) => {
           const resolvedProductId = Number(item.product_id)
-          const coverImageUrl =
-            resolvePosProductImageUrl(item.cover_image_url) ||
-            resolvePosProductImageUrl(item.main_image_url) ||
-            resolvePosProductImageUrl(item.image_url) ||
-            null
+          const productImages = Array.isArray(item.images) ? item.images : undefined
+          const coverImageUrl = resolvePosCatalogCoverImageUrl({
+            images: productImages,
+            cover_image_url: item.cover_image_url ?? null,
+            main_image_url: item.main_image_url ?? null,
+            image_url: item.image_url ?? null,
+            thumbnail_url: item.thumbnail_url ?? null,
+          })
 
           return {
             ...item,
             product_id: Number.isFinite(resolvedProductId) && resolvedProductId > 0 ? resolvedProductId : Number(item.id),
             cover_image_url: coverImageUrl ?? item.cover_image_url ?? null,
             thumbnail_url: coverImageUrl ?? resolvePosProductImageUrl(item.thumbnail_url),
+            images: productImages,
             variants: Array.isArray(item.variants) ? item.variants : [],
           }
         })

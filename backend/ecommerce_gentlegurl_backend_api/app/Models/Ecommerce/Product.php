@@ -104,8 +104,10 @@ class Product extends Model
             : $this->images()->get();
 
         $cover = $images
-            ->sortBy('sort_order')
-            ->sortBy('id')
+            ->sortBy([
+                ['sort_order', 'asc'],
+                ['id', 'asc'],
+            ])
             ->first();
 
         return $cover?->url;
