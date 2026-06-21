@@ -1601,8 +1601,11 @@ export default function PosAppointmentsWorkspace({
     setAppointmentActionLoading(true)
     try {
       const appointmentMainSplits = (appointmentDetail.staff_splits ?? []).map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent }))
+      const mainSettlementLines = appointmentDetail.main_service_settlement_items ?? []
+      const splitKeyForServiceLine = (line: { is_original?: boolean; name?: string | null; line_key?: string | null; linked_booking_service_id?: number | null; id?: number | null }, idx: number) => (line.is_original ? 'original' : String(line.name ?? line.line_key ?? line.linked_booking_service_id ?? line.id ?? idx))
+      const mainSplitsByServiceRef = new Map(mainSettlementLines.map((line, idx) => [splitKeyForServiceLine(line, idx), (line.staff_splits?.length ? line.staff_splits : appointmentMainSplits).map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent }))]))
       const settlementLineStaffSplits = [
-        ...(appointmentDetail.main_service_settlement_items ?? []).map((line, idx) => {
+        ...mainSettlementLines.map((line, idx) => {
           const lineKey = line.line_key ?? `service:${line.id ?? idx}`
           const splits = line.staff_splits?.length ? line.staff_splits : appointmentMainSplits
           return {
@@ -1614,7 +1617,8 @@ export default function PosAppointmentsWorkspace({
         }),
         ...(appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? []).map((addon, idx) => {
           const lineKey = addon.line_key ?? `addon:${addon.id ?? idx}`
-          const splits = addon.staff_splits?.length ? addon.staff_splits : appointmentMainSplits
+          const parentSplits = mainSplitsByServiceRef.get(String(addon.service_ref ?? 'original')) ?? appointmentMainSplits
+          const splits = addon.staff_splits?.length ? addon.staff_splits : parentSplits
           return {
             line_key: lineKey,
             line_type: 'settlement_addon',
