@@ -320,7 +320,8 @@ class AppointmentController extends Controller
             'completed_at' => optional($booking->completed_at)?->toIso8601String(),
             'cancelled_at' => optional($booking->cancelled_at)?->toIso8601String(),
             'status' => (string) $booking->status,
-            'payment_status' => (string) $booking->payment_status,
+            'booking_payment_status' => (string) $booking->payment_status,
+            'payment_status' => (string) ($financial['computed_payment_status'] ?? $booking->payment_status),
             ...$financial,
         ];
     }
@@ -334,6 +335,13 @@ class AppointmentController extends Controller
         $totalAmount = round(max(0, $serviceTotal + $addonTotal), 2);
 
         $orderItems = OrderItem::query()
+            ->whereHas('order', function ($query) {
+                $query->whereIn(DB::raw('LOWER(payment_status)'), ['paid'])
+                    ->where(function ($statusQuery) {
+                        $statusQuery->whereNull('status')
+                            ->orWhereNotIn(DB::raw('LOWER(status)'), ['cancelled', 'failed']);
+                    });
+            })
             ->where('booking_id', (int) $booking->id)
             ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
             ->get(['line_type', 'line_total', 'variant_name_snapshot']);

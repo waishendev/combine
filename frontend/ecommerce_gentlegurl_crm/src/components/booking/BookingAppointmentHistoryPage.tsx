@@ -28,8 +28,9 @@ type AppointmentHistoryRow = {
   completed_at?: string | null
   cancelled_at?: string | null
   status: string
-  payment_status: string
-  computed_payment_status: 'paid' | 'partial' | 'unpaid' | string
+  payment_status: 'paid' | 'partial' | 'unpaid' | string
+  booking_payment_status?: string
+  computed_payment_status?: 'paid' | 'partial' | 'unpaid' | string
   total_amount: number
   paid_amount: number
   deposit_paid: number
@@ -109,6 +110,8 @@ const paymentBadgeClass = (status?: string | null) => {
   }
 }
 
+const resolvedPaymentStatus = (row: Pick<AppointmentHistoryRow, 'payment_status' | 'computed_payment_status'>) => row.payment_status ?? row.computed_payment_status
+
 const formatPaymentStatus = (status?: string | null) => {
   const s = String(status ?? '').toLowerCase()
   if (s === 'paid') return 'Paid'
@@ -176,7 +179,7 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
                   <DetailField label="Booking No" value={row.booking_code} />
                   <DetailField label="Source" value={row.source ?? '—'} />
                   <DetailField label="Status" value={<BookingStatusBadge status={row.status} label={row.status} />} />
-                  <DetailField label="Payment Status" value={<span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(row.computed_payment_status)}`}>{formatPaymentStatus(row.computed_payment_status)}</span>} />
+                  <DetailField label="Payment Status" value={<span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>{formatPaymentStatus(resolvedPaymentStatus(row))}</span>} />
                   <DetailField label="Created At" value={formatDateTime(row.created_at)} />
                   <DetailField label="Completed / Cancelled" value={row.completed_at ? formatDateTime(row.completed_at) : formatDateTime(row.cancelled_at)} />
                 </dl>
@@ -453,7 +456,7 @@ export default function BookingAppointmentHistoryPage() {
                 <td className="px-3 py-3">{row.staff?.name ?? '—'}</td>
                 <td className="px-3 py-3 text-xs tabular-nums">{formatDateTime(row.start_at)}<br /><span className="text-slate-500">to {formatDateTime(row.end_at)}</span></td>
                 <td className="px-3 py-3"><BookingStatusBadge status={row.status} label={row.status} /></td>
-                <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(row.computed_payment_status)}`}>{formatPaymentStatus(row.computed_payment_status)}</span></td>
+                <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>{formatPaymentStatus(resolvedPaymentStatus(row))}</span></td>
                 <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.total_amount)}</td>
                 <td className={`px-3 py-3 text-right tabular-nums ${paidAmountClass(row.paid_amount)}`}>{formatMoney(row.paid_amount)}</td>
                 <td className={`px-3 py-3 text-right tabular-nums ${balanceDueClass(row.balance_due)}`}>{formatMoney(row.balance_due)}</td>
