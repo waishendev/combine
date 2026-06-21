@@ -1560,12 +1560,37 @@ export default function PosAppointmentsWorkspace({
     reportAppointmentCheckoutError(null)
     setAppointmentActionLoading(true)
     try {
+      const appointmentMainSplits = (appointmentDetail.staff_splits ?? []).map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent }))
+      const settlementLineStaffSplits = [
+        ...(appointmentDetail.main_service_settlement_items ?? []).map((line, idx) => {
+          const lineKey = line.line_key ?? `service:${line.id ?? idx}`
+          const splits = line.staff_splits?.length ? line.staff_splits : appointmentMainSplits
+          return {
+            line_key: lineKey,
+            line_type: 'settlement_service',
+            line_ref_id: String(line.id ?? lineKey),
+            staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+          }
+        }),
+        ...(appointmentDetail.addon_settlement_items ?? appointmentDetail.add_ons ?? []).map((addon, idx) => {
+          const lineKey = addon.line_key ?? `addon:${addon.id ?? idx}`
+          const splits = addon.staff_splits?.length ? addon.staff_splits : appointmentMainSplits
+          return {
+            line_key: lineKey,
+            line_type: 'settlement_addon',
+            line_ref_id: String(addon.id ?? lineKey),
+            staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
+          }
+        }),
+      ].filter((line) => line.staff_splits.length > 0)
+
       const payload = {
         payment_method: paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod),
         payments: paymentRows,
         discount_type: discountDraftValue > 0 ? appointmentDiscountTypeDraft : null,
         discount_value: discountDraftValue > 0 ? discountDraftValue : 0,
         discount_remark: discountDraftValue > 0 ? appointmentDiscountRemarkDraft.trim() || null : null,
+        settlement_line_staff_splits: settlementLineStaffSplits,
       }
 
       const endpoint = isZeroPackageFinalize
