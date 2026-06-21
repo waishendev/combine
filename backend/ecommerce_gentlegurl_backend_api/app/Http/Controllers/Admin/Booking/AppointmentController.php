@@ -103,13 +103,13 @@ class AppointmentController extends Controller
         $query = Booking::query()->with(['service', 'staff', 'customer']);
 
         if ($request->filled('from_date')) {
-            $query->whereDate('start_at', '>=', $request->string('from_date'));
+            $query->whereDate('created_at', '>=', $request->string('from_date'));
         }
         if ($request->filled('to_date')) {
-            $query->whereDate('start_at', '<=', $request->string('to_date'));
+            $query->whereDate('created_at', '<=', $request->string('to_date'));
         }
         if ($request->filled('date')) {
-            $query->whereDate('start_at', $request->string('date'));
+            $query->whereDate('created_at', $request->string('date'));
         }
         if ($request->filled('staff_id')) {
             $query->where('staff_id', (int) $request->staff_id);
@@ -138,7 +138,7 @@ class AppointmentController extends Controller
         $page = max(1, $request->integer('page', 1));
 
         if (! $needsComputedFilter) {
-            $paginator = $query->orderByDesc('start_at')->paginate($perPage, ['*'], 'page', $page);
+            $paginator = $query->orderByDesc('created_at')->orderByDesc('id')->paginate($perPage, ['*'], 'page', $page);
 
             return $this->respond([
                 'data' => collect($paginator->items())->map(fn (Booking $booking) => $this->mapHistoryBooking($booking))->values(),
@@ -149,7 +149,7 @@ class AppointmentController extends Controller
             ]);
         }
 
-        $rows = $query->orderByDesc('start_at')->get()
+        $rows = $query->orderByDesc('created_at')->orderByDesc('id')->get()
             ->map(fn (Booking $booking) => $this->mapHistoryBooking($booking))
             ->filter(fn (array $row) => strtolower((string) $row['computed_payment_status']) === $paymentStatus)
             ->values();

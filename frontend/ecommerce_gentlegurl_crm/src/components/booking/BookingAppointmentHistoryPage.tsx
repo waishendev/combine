@@ -352,11 +352,11 @@ export default function BookingAppointmentHistoryPage() {
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
           <label className="text-sm">
-            <span className="mb-1 block font-medium text-slate-700">From date</span>
+            <span className="mb-1 block font-medium text-slate-700">Created from</span>
             <input type="date" value={filters.fromDate} onChange={(e) => setFilters((prev) => ({ ...prev, fromDate: e.target.value }))} className="w-full rounded border border-slate-300 px-3 py-2" />
           </label>
           <label className="text-sm">
-            <span className="mb-1 block font-medium text-slate-700">To date</span>
+            <span className="mb-1 block font-medium text-slate-700">Created to</span>
             <input type="date" value={filters.toDate} onChange={(e) => setFilters((prev) => ({ ...prev, toDate: e.target.value }))} className="w-full rounded border border-slate-300 px-3 py-2" />
           </label>
           <label className="text-sm">
@@ -386,7 +386,7 @@ export default function BookingAppointmentHistoryPage() {
           </label>
         </div>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-sm text-slate-500">{activeFilterCount > 0 ? `${activeFilterCount} filter(s) applied` : 'Showing all appointment records'}</div>
+          <div className="text-sm text-slate-500">{activeFilterCount > 0 ? `${activeFilterCount} filter(s) applied` : 'Showing newest created appointment records'}</div>
           <div className="flex items-center gap-2">
             <button type="button" onClick={resetFilters} className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Reset</button>
             <button type="button" onClick={applyFilters} className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700">Apply filters</button>
