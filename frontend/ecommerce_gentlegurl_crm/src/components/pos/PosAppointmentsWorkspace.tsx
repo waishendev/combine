@@ -16,6 +16,7 @@ import BookingServicePhotosModal from '@/components/booking/BookingServicePhotos
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
+import { formatPosAvailabilityErrorMessage, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
@@ -1121,12 +1122,54 @@ export default function PosAppointmentsWorkspace({
     return Array.isArray(createAppointmentSelectedSlot?.scheduled_staff_ids) ? createAppointmentSelectedSlot.scheduled_staff_ids : []
   }, [createAppointmentSelectedSlot])
 
-  const createAppointmentOutsideStaffSchedule = Boolean(
-    createAppointmentDate
-    && createAppointmentSlotValue
-    && createAppointmentAssignedStaffId
-    && !createAppointmentSelectedSlotScheduleIds.includes(createAppointmentAssignedStaffId),
-  )
+  const createAppointmentStaffScheduleWarning = useMemo(() => {
+    if (!createAppointmentAssignedStaffId || !createAppointmentSlotValue || createAppointmentSlotsLoading) {
+      return null
+    }
+
+    const unavailableReason = createAppointmentSelectedSlot?.unavailable_staff_reasons?.[String(createAppointmentAssignedStaffId)] ?? ''
+    if (POS_SCHEDULE_OVERRIDE_REASONS.has(unavailableReason)) {
+      return unavailableReason
+    }
+
+    if (
+      createAppointmentSelectedSlotScheduleIds.length > 0
+      && !createAppointmentSelectedSlotScheduleIds.includes(createAppointmentAssignedStaffId)
+    ) {
+      return 'outside_staff_schedule'
+    }
+
+    return null
+  }, [
+    createAppointmentAssignedStaffId,
+    createAppointmentSelectedSlot,
+    createAppointmentSelectedSlotScheduleIds,
+    createAppointmentSlotValue,
+    createAppointmentSlotsLoading,
+  ])
+
+  const createAppointmentStaffScheduleWarningMessage = useMemo(() => {
+    if (!createAppointmentStaffScheduleWarning || !createAppointmentAssignedStaffId) return null
+    const staffName =
+      createAppointmentStaffPickerOptions.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name
+      ?? activeStaffs.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name
+      ?? 'Selected staff'
+
+    if (createAppointmentStaffScheduleWarning === 'no_staff_schedule') {
+      return `${staffName} is not rostered on this weekday (no staff schedule for this day). Add their schedule, pick another date/staff, or continue for walk-in / overtime.`
+    }
+
+    if (createAppointmentStaffScheduleWarning === 'hits_staff_break') {
+      return `${staffName} is scheduled for a break at this time. POS can continue for walk-in / overtime.`
+    }
+
+    return `${staffName} is outside their regular working hours for this time. POS can continue for walk-in / overtime.`
+  }, [
+    activeStaffs,
+    createAppointmentAssignedStaffId,
+    createAppointmentStaffPickerOptions,
+    createAppointmentStaffScheduleWarning,
+  ])
 
   const appointmentRescheduleSelectedSlot = useMemo(
     () => appointmentRescheduleSlots.find((slot) => slot.start_at === appointmentRescheduleSlotValue) ?? null,
@@ -1219,8 +1262,13 @@ export default function PosAppointmentsWorkspace({
       }
     }
     const unavailableReason = createAppointmentSelectedSlot?.unavailable_staff_reasons?.[String(createAppointmentAssignedStaffId)] ?? ''
-    if (POS_HARD_AVAILABILITY_REASONS.has(unavailableReason)) {
-      reportCreateAppointmentError(unavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (unavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+    if (POS_HARD_AVAILABILITY_REASONS.has(unavailableReason) && !POS_SCHEDULE_OVERRIDE_REASONS.has(unavailableReason)) {
+      reportCreateAppointmentError(formatPosAvailabilityErrorMessage({
+        reasonCode: unavailableReason,
+        staffName: activeStaffs.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name,
+        startAt: createAppointmentSlotValue,
+        endAt: createAppointmentSelectedSlot?.end_at,
+      }))
       return
     }
 
@@ -1232,8 +1280,19 @@ export default function PosAppointmentsWorkspace({
         const availabilityRes = await fetch(`/api/proxy/pos/availability/check?${params.toString()}`, { cache: 'no-store' })
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
-        if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
-          reportCreateAppointmentError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+        if (
+          (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason))
+          && !POS_SCHEDULE_OVERRIDE_REASONS.has(reason)
+          && !availabilityJson?.data?.is_outside_staff_schedule
+        ) {
+          reportCreateAppointmentError(formatPosAvailabilityErrorMessage({
+            reasonCode: reason,
+            staffName: activeStaffs.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name,
+            startAt: createAppointmentSlotValue,
+            endAt: createAppointmentSelectedSlot.end_at,
+            conflictDebug: availabilityJson?.data?.conflict_debug ?? null,
+            backendMessage: availabilityJson?.data?.message ?? availabilityJson?.message ?? null,
+          }))
           return
         }
       }
@@ -1316,7 +1375,14 @@ export default function PosAppointmentsWorkspace({
           })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        reportCreateAppointmentError(String(json?.message ?? 'Unable to create appointment.'))
+        reportCreateAppointmentError(formatPosAvailabilityErrorMessage({
+          reasonCode: String(json?.data?.reason_code ?? json?.data?.validation_reason ?? 'booking_conflict'),
+          staffName: activeStaffs.find((staff) => staff.id === createAppointmentAssignedStaffId)?.name,
+          startAt: createAppointmentSlotValue,
+          endAt: createAppointmentSelectedSlot?.end_at,
+          conflictDebug: json?.data?.conflict_debug ?? null,
+          backendMessage: json?.message ?? null,
+        }))
         return
       }
 
@@ -1382,6 +1448,7 @@ export default function PosAppointmentsWorkspace({
       setCreateAppointmentSubmitting(false)
     }
   }, [
+    activeStaffs,
     createAppointmentAssignedStaffId,
     appointmentQrProofFile,
     appointmentLineStaffSplits,
@@ -1401,6 +1468,7 @@ export default function PosAppointmentsWorkspace({
     createAppointmentQuestions,
     createAppointmentSelectedOptionIds,
     createAppointmentSelectedServiceIds,
+    createAppointmentSelectedSlot,
     createAppointmentServiceDraft,
     createAppointmentSlotValue,
     closeCreateAppointmentMemberPicker,
@@ -2024,8 +2092,12 @@ export default function PosAppointmentsWorkspace({
     if (!appointmentDetail?.id) return
     reportEditSettlementError(null)
     if (editSettlementAvailability?.is_hard_block) {
-      const reason = editSettlementAvailability.reason_code
-      reportEditSettlementError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Updated appointment time conflicts with staff availability.'))
+      reportEditSettlementError(formatPosAvailabilityErrorMessage({
+        reasonCode: String(editSettlementAvailability.reason_code ?? 'booking_conflict'),
+        staffName: appointmentDetail.staff?.name ?? activeStaffs.find((staff) => staff.id === appointmentDetail.staff?.id)?.name,
+        startAt: appointmentDetail.appointment_start_at,
+        endAt: appointmentDetail.appointment_end_at,
+      }))
       return
     }
     setEditSettlementLoading(true)
@@ -2314,7 +2386,12 @@ export default function PosAppointmentsWorkspace({
       return
     }
     if (appointmentRescheduleSelectedSlot?.unavailable_reason && POS_HARD_AVAILABILITY_REASONS.has(appointmentRescheduleSelectedSlot.unavailable_reason)) {
-      showMsg(appointmentRescheduleSelectedSlot.unavailable_reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (appointmentRescheduleSelectedSlot.unavailable_reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'), 'error')
+      showMsg(formatPosAvailabilityErrorMessage({
+        reasonCode: appointmentRescheduleSelectedSlot.unavailable_reason,
+        staffName: activeStaffs.find((staff) => staff.id === appointmentRescheduleStaffId)?.name,
+        startAt: appointmentRescheduleSlotValue,
+        endAt: appointmentRescheduleSelectedSlot.end_at,
+      }), 'error')
       return
     }
 
@@ -2506,23 +2583,6 @@ export default function PosAppointmentsWorkspace({
     createAppointmentModalOpen,
     createAppointmentServiceDraft?.duration_min,
     createAppointmentServiceDraft?.id,
-  ])
-
-  useEffect(() => {
-    if (!createAppointmentModalOpen || !createAppointmentDate || !createAppointmentSlotValue) {
-      setCreateAppointmentAssignedStaffId(null)
-      return
-    }
-
-    setCreateAppointmentAssignedStaffId((prev) => {
-      if (prev && createAppointmentAllowedStaffs.some((staff) => staff.id === prev)) return prev
-      return createAppointmentAllowedStaffs[0]?.id ?? null
-    })
-  }, [
-    createAppointmentAllowedStaffs,
-    createAppointmentDate,
-    createAppointmentModalOpen,
-    createAppointmentSlotValue,
   ])
 
   useEffect(() => {
@@ -3380,13 +3440,13 @@ export default function PosAppointmentsWorkspace({
                           {formatDateTimeRange(appointmentDetail.appointment_start_at, appointmentDetail.appointment_end_at)}
                         </span>
                       </div>
-                      {appointmentDetail.schedule_override?.used ? (
+                      {/* {appointmentDetail.schedule_override?.used ? (
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                           <p className="font-semibold">Schedule override</p>
                           <p>Staff schedule: {formatTimeRange(appointmentDetail.schedule_override.scheduled_staff_start_at, appointmentDetail.schedule_override.scheduled_staff_end_at)}</p>
                           <p>Booking time: {formatTimeRange(appointmentDetail.schedule_override.actual_booking_start_at, appointmentDetail.schedule_override.actual_booking_end_at)}</p>
                         </div>
-                      ) : null}
+                      ) : null} */}
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Duration</span>
                         <span className="font-medium tabular-nums text-slate-900">
@@ -3932,14 +3992,13 @@ export default function PosAppointmentsWorkspace({
                             <label key={option.id} className="flex cursor-pointer items-start justify-between gap-2 rounded-md px-1 py-1 hover:bg-gray-50">
                               <div className="flex items-start gap-2">
                                 <input
-                                  type={question.question_type === 'multi_choice' ? 'checkbox' : 'radio'}
-                                  name={`create-question-${question.id}`}
+                                  type="checkbox"
                                   checked={checked}
                                   onChange={() => {
                                     setCreateAppointmentSelectedOptionIds((prev) => {
                                       if (question.question_type === 'single_choice') {
-                                        const keep = prev.filter((id) => !question.options.some((opt) => opt.id === id))
-                                        return checked ? keep : [...keep, option.id]
+                                        const withoutQuestion = prev.filter((id) => !question.options.some((opt) => opt.id === id))
+                                        return checked ? withoutQuestion : [...withoutQuestion, option.id]
                                       }
                                       return checked ? prev.filter((id) => id !== option.id) : [...prev, option.id]
                                     })
@@ -4232,7 +4291,10 @@ export default function PosAppointmentsWorkspace({
                       <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
                       <select
                         value={createAppointmentSlotValue}
-                        onChange={(e) => setCreateAppointmentSlotValue(e.target.value)}
+                        onChange={(e) => {
+                          setCreateAppointmentSlotValue(e.target.value)
+                          setCreateAppointmentAssignedStaffId(null)
+                        }}
                         disabled={!createAppointmentDate || createAppointmentSlotsLoading}
                         className="mt-1 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm disabled:bg-gray-100"
                       >
@@ -4246,12 +4308,6 @@ export default function PosAppointmentsWorkspace({
                       {/* <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; save still blocks leave, inactive staff, and booking conflicts.</p> */}
                     </div>
                   </div>
-
-                  {createAppointmentOutsideStaffSchedule ? (
-                    <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                      Selected time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
-                    </div>
-                  ) : null}
 
                   <div>
                     <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
@@ -4278,6 +4334,11 @@ export default function PosAppointmentsWorkspace({
                         }
                       />
                     </div>
+                    {createAppointmentStaffScheduleWarningMessage ? (
+                      <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                        {createAppointmentStaffScheduleWarningMessage}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div>

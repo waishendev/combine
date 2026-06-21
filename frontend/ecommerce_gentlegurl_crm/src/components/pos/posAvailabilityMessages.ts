@@ -1,0 +1,140 @@
+export type PosAvailabilityConflictDebug = {
+  conflicting_appointments?: Array<{
+    id?: number
+    booking_code?: string | null
+    start_at?: string | null
+    end_at?: string | null
+  }>
+  conflicting_cart_items?: Array<{
+    id?: number
+    start_at?: string | null
+    end_at?: string | null
+  }>
+  detected_blocks?: Array<{
+    id?: number
+    scope?: string | null
+    start_at?: string | null
+    end_at?: string | null
+  }>
+  detected_leaves?: Array<{
+    leave_type?: string | null
+    start_at?: string | null
+    end_at?: string | null
+  }>
+  requested_start?: string | null
+  requested_end?: string | null
+}
+
+export const POS_SCHEDULE_OVERRIDE_REASONS = new Set([
+  'no_staff_schedule',
+  'outside_staff_schedule',
+  'hits_staff_break',
+])
+
+function formatPosAvailabilityTimeLabel(startAt?: string | null, endAt?: string | null): string {
+  if (!startAt) return 'the selected time'
+  const start = new Date(startAt)
+  if (Number.isNaN(start.getTime())) return 'the selected time'
+  const datePart = start.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
+  const startTime = start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  if (!endAt) return `${datePart}, ${startTime}`
+  const end = new Date(endAt)
+  if (Number.isNaN(end.getTime())) return `${datePart}, ${startTime}`
+  const endTime = end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
+  return `${datePart}, ${startTime} – ${endTime}`
+}
+
+function formatPosAvailabilityWeekdayLabel(startAt?: string | null): string {
+  if (!startAt) return 'this day'
+  const start = new Date(startAt)
+  if (Number.isNaN(start.getTime())) return 'this day'
+  return start.toLocaleDateString(undefined, { weekday: 'long' })
+}
+
+function buildConflictDetailParts(conflictDebug?: PosAvailabilityConflictDebug | null): string[] {
+  const parts: string[] = []
+
+  for (const appt of conflictDebug?.conflicting_appointments ?? []) {
+    const code = (appt.booking_code ?? '').trim() || `Booking #${appt.id ?? '?'}`
+    parts.push(`appointment ${code} (${formatPosAvailabilityTimeLabel(appt.start_at, appt.end_at)})`)
+  }
+
+  for (const cart of conflictDebug?.conflicting_cart_items ?? []) {
+    parts.push(`active POS cart hold #${cart.id ?? '?'} (${formatPosAvailabilityTimeLabel(cart.start_at, cart.end_at)})`)
+  }
+
+  for (const block of conflictDebug?.detected_blocks ?? []) {
+    const scope = String(block.scope ?? '').toUpperCase() === 'STORE' ? 'store blocked time' : 'staff blocked time'
+    parts.push(`${scope} #${block.id ?? '?'} (${formatPosAvailabilityTimeLabel(block.start_at, block.end_at)})`)
+  }
+
+  return parts
+}
+
+export function formatPosAvailabilityErrorMessage(params: {
+  reasonCode: string
+  staffName?: string | null
+  startAt?: string | null
+  endAt?: string | null
+  conflictDebug?: PosAvailabilityConflictDebug | null
+  backendMessage?: string | null
+}): string {
+  const { reasonCode, staffName, startAt, endAt, conflictDebug, backendMessage } = params
+  const staff = (staffName ?? '').trim() || 'Selected staff'
+  const slotStart = startAt ?? conflictDebug?.requested_start ?? null
+  const slotEnd = endAt ?? conflictDebug?.requested_end ?? null
+  const slotLabel = formatPosAvailabilityTimeLabel(slotStart, slotEnd)
+  const weekdayLabel = formatPosAvailabilityWeekdayLabel(slotStart)
+  const conflictParts = buildConflictDetailParts(conflictDebug)
+
+  if (backendMessage?.trim()) {
+    const trimmed = backendMessage.trim()
+    const looksGeneric =
+      trimmed === 'Selected slot conflicts with another booking or blocked time.'
+      || trimmed === 'Selected staff has a conflict for this time.'
+      || trimmed === 'Selected staff is not available on this day.'
+      || (trimmed.includes('overlaps with another appointment') && reasonCode === 'no_staff_schedule')
+    if (!looksGeneric) {
+      return trimmed
+    }
+  }
+
+  if (reasonCode === 'staff_inactive') {
+    return `${staff} is inactive and cannot take appointments. Please assign another staff member.`
+  }
+
+  if (reasonCode === 'staff_off_day') {
+    return `${staff} is on approved off day for this date. Please pick another date or assign a different staff member.`
+  }
+
+  if (reasonCode === 'staff_leave') {
+    return `${staff} is on approved leave during ${slotLabel}. Please pick another time or assign a different staff member.`
+  }
+
+  if (reasonCode === 'no_staff_schedule') {
+    return `${staff} is not rostered to work on ${weekdayLabel} (no staff schedule is set for this weekday). Add their schedule in staff settings, pick another date, assign another staff member, or continue for walk-in / overtime.`
+  }
+
+  if (reasonCode === 'schedule_inactive') {
+    return `${staff} has an inactive schedule on ${weekdayLabel}. Please update staff schedule settings or choose another date or staff member.`
+  }
+
+  if (reasonCode === 'hits_staff_break') {
+    return `${slotLabel} overlaps with ${staff}'s break time. If this is a walk-in or overtime booking, you can continue with schedule override.`
+  }
+
+  if (reasonCode === 'outside_staff_schedule') {
+    return `${slotLabel} is outside ${staff}'s regular working hours. If this is a walk-in or overtime booking, you can continue with schedule override.`
+  }
+
+  if (conflictParts.length > 0) {
+    return `Cannot book ${slotLabel} for ${staff} because it overlaps with: ${conflictParts.join('; ')}. Please choose a different time or staff member.`
+  }
+
+  if (reasonCode === 'booking_conflict') {
+    return `Cannot book ${slotLabel} for ${staff}. This time overlaps with another appointment, an active cart hold, or blocked time. Please pick a different slot or staff member.`
+  }
+
+  return backendMessage?.trim()
+    || `${staff} is not available for ${slotLabel}. Please choose another time or staff member.`
+}

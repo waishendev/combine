@@ -17,6 +17,7 @@ import {
   validateSettlementAmountInput,
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
+import { POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -3549,12 +3550,54 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return Array.isArray(bookingSelectedSlot?.scheduled_staff_ids) ? bookingSelectedSlot.scheduled_staff_ids : []
   }, [bookingSelectedSlot])
 
-  const bookingOutsideStaffSchedule = Boolean(
-    bookingDate
-    && bookingSlotValue
-    && bookingAssignedStaffId
-    && !bookingSelectedSlotScheduleIds.includes(bookingAssignedStaffId),
-  )
+  const bookingStaffScheduleWarning = useMemo(() => {
+    if (!bookingAssignedStaffId || !bookingSlotValue || bookingSlotsLoading) {
+      return null
+    }
+
+    const unavailableReason = bookingSelectedSlot?.unavailable_staff_reasons?.[String(bookingAssignedStaffId)] ?? ''
+    if (POS_SCHEDULE_OVERRIDE_REASONS.has(unavailableReason)) {
+      return unavailableReason
+    }
+
+    if (
+      bookingSelectedSlotScheduleIds.length > 0
+      && !bookingSelectedSlotScheduleIds.includes(bookingAssignedStaffId)
+    ) {
+      return 'outside_staff_schedule'
+    }
+
+    return null
+  }, [
+    bookingAssignedStaffId,
+    bookingSelectedSlot,
+    bookingSelectedSlotScheduleIds,
+    bookingSlotValue,
+    bookingSlotsLoading,
+  ])
+
+  const bookingStaffScheduleWarningMessage = useMemo(() => {
+    if (!bookingStaffScheduleWarning || !bookingAssignedStaffId) return null
+    const staffName =
+      bookingStaffPickerOptions.find((staff) => staff.id === bookingAssignedStaffId)?.name
+      ?? activeStaffs.find((staff) => staff.id === bookingAssignedStaffId)?.name
+      ?? 'Selected staff'
+
+    if (bookingStaffScheduleWarning === 'no_staff_schedule') {
+      return `${staffName} is not rostered on this weekday (no staff schedule for this day). Add their schedule, pick another date/staff, or continue for walk-in / overtime.`
+    }
+
+    if (bookingStaffScheduleWarning === 'hits_staff_break') {
+      return `${staffName} is scheduled for a break at this time. POS can continue for walk-in / overtime.`
+    }
+
+    return `${staffName} is outside their regular working hours for this time. POS can continue for walk-in / overtime.`
+  }, [
+    activeStaffs,
+    bookingAssignedStaffId,
+    bookingStaffPickerOptions,
+    bookingStaffScheduleWarning,
+  ])
 
   const bookingStaffPickerReady = Boolean(bookingDate && bookingSlotValue)
 
@@ -3835,18 +3878,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     void loadSlots()
   }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.duration_min, bookingServiceDraft?.id, buildPosFullDaySlots])
-
-  useEffect(() => {
-    if (!bookingModalOpen || !bookingDate || !bookingSlotValue) {
-      setBookingAssignedStaffId(null)
-      return
-    }
-
-    setBookingAssignedStaffId((prev) => {
-      if (prev && bookingAllowedStaffs.some((staff) => staff.id === prev)) return prev
-      return bookingAllowedStaffs[0]?.id ?? null
-    })
-  }, [bookingAllowedStaffs, bookingDate, bookingModalOpen, bookingSlotValue])
 
   const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
     let staffs = activeStaffs
@@ -10978,7 +11009,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     <label className="text-xs font-semibold text-gray-600">Appointment Slot / Time</label>
                     <select
                       value={bookingSlotValue}
-                      onChange={(e) => setBookingSlotValue(e.target.value)}
+                      onChange={(e) => {
+                        setBookingSlotValue(e.target.value)
+                        setBookingAssignedStaffId(null)
+                      }}
                       disabled={!bookingDate || bookingSlotsLoading}
                       className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
                     >
@@ -10989,15 +11023,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </option>
                       ))}
                     </select>
-                    <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; checkout still blocks leave, inactive staff, and booking conflicts.</p>
+                    {/* <p className="mt-1 text-[11px] text-gray-500">POS shows the full day; checkout still blocks leave, inactive staff, and booking conflicts.</p> */}
                   </div>
                 </div>
-
-                {bookingOutsideStaffSchedule ? (
-                  <div className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                    Selected time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
-                  </div>
-                ) : null}
 
                 <div>
                   <label className="text-xs font-semibold text-gray-600">Assigned Staff</label>
@@ -11023,6 +11051,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       }
                     />
                   </div>
+                  {bookingStaffScheduleWarningMessage ? (
+                    <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                      {bookingStaffScheduleWarningMessage}
+                    </div>
+                  ) : null}
                 </div>
 
                 <PosModalRemarkField

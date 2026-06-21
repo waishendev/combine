@@ -1575,8 +1575,8 @@ class PosController extends Controller
         $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($targetStaffId, $newStart, $newEnd);
         $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
         if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-            return $this->respondError(__('Selected staff is not available on this day.'), 409, ['reason_code' => $scheduleFailureReason ?: 'staff_unavailable']);
+            && ! in_array($scheduleFailureReason, $this->posScheduleSoftFailureReasons(), true)) {
+            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', Staff::query()->findOrFail($targetStaffId), $newStart, $newEnd, $scheduleDiagnostics);
         }
 
         $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking);
@@ -1992,21 +1992,29 @@ class PosController extends Controller
 
         $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
         $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin, $ignoreBooking?->id, $ignoreBooking);
+        $conflictPayload = array_merge($conflictDiagnostics, [
+            'staff_id' => (int) $staff->id,
+            'staff_schedule' => $scheduleDiagnostics,
+        ]);
         $reasonCode = null;
         if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-            $reasonCode = $this->posAvailabilityReasonCode($conflictDiagnostics);
+            $reasonCode = $this->posAvailabilityReasonCode($conflictPayload);
         } elseif (! (bool) ($scheduleDiagnostics['is_available'] ?? false)) {
             $reasonCode = (string) ($scheduleDiagnostics['failure_reason'] ?? 'staff_unavailable');
         }
 
-        $isOutsideSchedule = $reasonCode === 'outside_staff_schedule';
-        $isHardBlock = $reasonCode !== null && ! $isOutsideSchedule;
+        $isScheduleOverrideAllowed = $this->isPosScheduleOverrideReason($reasonCode);
+        $isHardBlock = $reasonCode !== null && ! $isScheduleOverrideAllowed;
+        $userMessage = $reasonCode !== null && $isHardBlock
+            ? $this->formatPosUserFacingAvailabilityMessage($conflictPayload, $staff, $reasonCode)
+            : null;
 
         return $this->respond([
-            'is_available' => $reasonCode === null || $isOutsideSchedule,
+            'is_available' => $reasonCode === null || $isScheduleOverrideAllowed,
             'is_hard_block' => $isHardBlock,
-            'is_outside_staff_schedule' => $isOutsideSchedule,
+            'is_outside_staff_schedule' => $isScheduleOverrideAllowed,
             'reason_code' => $reasonCode,
+            'message' => $userMessage,
             'staff_schedule' => $scheduleDiagnostics,
             'conflict_debug' => $conflictDiagnostics,
         ]);
@@ -2095,11 +2103,16 @@ class PosController extends Controller
                 $diagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $endAt);
                 if ((bool) ($diagnostics['is_available'] ?? false)) {
                     $scheduledStaffIds[] = $staffId;
+                } else {
+                    $scheduleFailure = (string) ($diagnostics['failure_reason'] ?? 'staff_unavailable');
+                    $unavailableStaffReasons[(string) $staffId] = $scheduleFailure;
                 }
 
                 $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($staffId, $startAt, $endAt, (int) $service->buffer_min);
                 if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-                    $unavailableStaffReasons[(string) $staffId] = $this->posAvailabilityReasonCode($conflictDiagnostics);
+                    $unavailableStaffReasons[(string) $staffId] = $this->posAvailabilityReasonCode(array_merge($conflictDiagnostics, [
+                        'staff_schedule' => $diagnostics,
+                    ]));
                 }
             }
 
@@ -2335,8 +2348,8 @@ class PosController extends Controller
         $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
         $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
         if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-            return $this->respondError(__('Selected staff is not available on this day.'), 409, ['reason_code' => $scheduleFailureReason ?: 'staff_unavailable']);
+            && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
+            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
         }
 
         $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin);
@@ -2761,8 +2774,8 @@ class PosController extends Controller
         $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
         $scheduleFailureReason = (string) ($scheduleDiagnostics['failure_reason'] ?? '');
         if (! (bool) ($scheduleDiagnostics['is_available'] ?? false)
-            && ! in_array($scheduleFailureReason, ['outside_staff_schedule', 'hits_staff_break'], true)) {
-            return $this->respondError(__('Selected staff is not available on this day.'), 409, ['reason_code' => $scheduleFailureReason ?: 'staff_unavailable']);
+            && ! $this->posScheduleFailureAllowsOverride($scheduleFailureReason, (bool) $request->boolean('availability_override'))) {
+            return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
         }
 
         $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin);
@@ -7682,6 +7695,39 @@ class PosController extends Controller
 
 
 
+    protected function posScheduleSoftFailureReasons(): array
+    {
+        return ['outside_staff_schedule', 'hits_staff_break', 'no_staff_schedule'];
+    }
+
+    protected function isPosScheduleOverrideReason(?string $reasonCode): bool
+    {
+        return in_array((string) $reasonCode, $this->posScheduleSoftFailureReasons(), true);
+    }
+
+    protected function posScheduleFailureAllowsOverride(string $failureReason, bool $overrideRequested): bool
+    {
+        return $overrideRequested && $this->isPosScheduleOverrideReason($failureReason);
+    }
+
+    protected function respondPosScheduleFailure(string $failureReason, Staff $staff, Carbon $startAt, Carbon $endAt, array $scheduleDiagnostics, int $status = 409)
+    {
+        return $this->respondError(
+            $this->formatPosUserFacingAvailabilityMessage([
+                'staff_id' => (int) $staff->id,
+                'staff_schedule' => $scheduleDiagnostics,
+                'requested_start' => $startAt->toDateTimeString(),
+                'requested_end' => $endAt->toDateTimeString(),
+            ], $staff, $failureReason),
+            $status,
+            [
+                'reason_code' => $failureReason,
+                'validation_reason' => $failureReason,
+                'staff_schedule' => $scheduleDiagnostics,
+            ],
+        );
+    }
+
     protected function posAvailabilityReasonCode(array $diagnostics): string
     {
         $leaveTypes = collect($diagnostics['detected_leave_types'] ?? [])->map(fn ($type) => (string) $type)->all();
@@ -7697,9 +7743,9 @@ class PosController extends Controller
             return 'booking_conflict';
         }
 
-        $schedule = (array) ($diagnostics['staff_schedule'] ?? []);
-        if ((string) ($schedule['failure_reason'] ?? '') === 'outside_staff_schedule') {
-            return 'outside_staff_schedule';
+        $scheduleFailure = (string) (($diagnostics['staff_schedule'] ?? [])['failure_reason'] ?? ($diagnostics['failure_reason'] ?? ''));
+        if ($scheduleFailure !== '') {
+            return $scheduleFailure;
         }
 
         return 'booking_conflict';
@@ -7719,11 +7765,147 @@ class PosController extends Controller
     protected function respondPosAvailabilityError(array $diagnostics, int $status = 409)
     {
         $reasonCode = $this->posAvailabilityReasonCode($diagnostics);
+        $staff = null;
+        $staffId = (int) ($diagnostics['staff_id'] ?? 0);
+        if ($staffId > 0) {
+            $staff = Staff::query()->find($staffId);
+        }
 
-        return $this->respondError($this->posAvailabilityMessage($reasonCode), $status, [
+        return $this->respondError($this->formatPosUserFacingAvailabilityMessage($diagnostics, $staff, $reasonCode), $status, [
             'reason_code' => $reasonCode,
             'validation_reason' => $reasonCode,
             'conflict_debug' => $diagnostics,
+        ]);
+    }
+
+    protected function formatPosUserFacingAvailabilityMessage(array $diagnostics, ?Staff $staff = null, ?string $reasonCode = null): string
+    {
+        $reasonCode = $reasonCode ?? $this->posAvailabilityReasonCode($diagnostics);
+        $staffLabel = trim((string) ($staff?->name ?? ''));
+        $staffLabel = $staffLabel !== '' ? $staffLabel : __('Selected staff');
+
+        $requestedStartRaw = (string) ($diagnostics['requested_start'] ?? $diagnostics['requested_start_original_timezone'] ?? '');
+        $requestedEndRaw = (string) ($diagnostics['requested_end'] ?? $diagnostics['requested_end_original_timezone'] ?? '');
+        $requestedStart = $requestedStartRaw !== '' ? Carbon::parse($requestedStartRaw) : null;
+        $timeLabel = null;
+        if ($requestedStart && $requestedStart->isValid()) {
+            $requestedEnd = $requestedEndRaw !== '' ? Carbon::parse($requestedEndRaw) : null;
+            $timeLabel = $requestedEnd && $requestedEnd->isValid()
+                ? $requestedStart->format('d M Y, g:i A') . ' – ' . $requestedEnd->format('g:i A')
+                : $requestedStart->format('d M Y, g:i A');
+        }
+        $slotLabel = $timeLabel ?? __('the selected time');
+        $weekdayLabel = ($requestedStart && $requestedStart->isValid()) ? $requestedStart->format('l') : __('this day');
+
+        if ($reasonCode === 'staff_inactive') {
+            return __(':staff is inactive and cannot take appointments. Please assign another staff member.', ['staff' => $staffLabel]);
+        }
+
+        if ($reasonCode === 'staff_off_day') {
+            return __(':staff is on approved off day for this date. Please pick another date or assign a different staff member.', ['staff' => $staffLabel]);
+        }
+
+        if ($reasonCode === 'staff_leave') {
+            return __(':staff is on approved leave during :time. Please pick another time or assign a different staff member.', [
+                'staff' => $staffLabel,
+                'time' => $slotLabel,
+            ]);
+        }
+
+        if ($reasonCode === 'no_staff_schedule') {
+            return __(':staff is not rostered to work on :day (no staff schedule is set for this weekday). Add their schedule in staff settings, pick another date, assign another staff member, or continue for walk-in / overtime.', [
+                'staff' => $staffLabel,
+                'day' => $weekdayLabel,
+            ]);
+        }
+
+        if ($reasonCode === 'schedule_inactive') {
+            return __(':staff has an inactive schedule on :day. Please update staff schedule settings or choose another date or staff member.', [
+                'staff' => $staffLabel,
+                'day' => $weekdayLabel,
+            ]);
+        }
+
+        if ($reasonCode === 'hits_staff_break') {
+            return __(':time overlaps with :staff break time. If this is a walk-in or overtime booking, you can continue with schedule override.', [
+                'staff' => $staffLabel,
+                'time' => $slotLabel,
+            ]);
+        }
+
+        if ($reasonCode === 'outside_staff_schedule') {
+            return __(':time is outside :staff regular working hours. If this is a walk-in or overtime booking, you can continue with schedule override.', [
+                'staff' => $staffLabel,
+                'time' => $slotLabel,
+            ]);
+        }
+
+        $conflictParts = [];
+        foreach ((array) ($diagnostics['conflicting_appointments'] ?? []) as $appointment) {
+            if (! is_array($appointment)) {
+                continue;
+            }
+            $code = trim((string) ($appointment['booking_code'] ?? ''));
+            $label = $code !== '' ? $code : ('Booking #' . (int) ($appointment['id'] ?? 0));
+            $startRaw = (string) ($appointment['start_at'] ?? '');
+            $endRaw = (string) ($appointment['end_at'] ?? '');
+            if ($startRaw !== '') {
+                $start = Carbon::parse($startRaw);
+                $end = $endRaw !== '' ? Carbon::parse($endRaw) : null;
+                $range = $end && $end->isValid()
+                    ? $start->format('d M, g:i A') . ' – ' . $end->format('g:i A')
+                    : $start->format('d M, g:i A');
+                $conflictParts[] = __('appointment :code (:time)', ['code' => $label, 'time' => $range]);
+            } else {
+                $conflictParts[] = __('appointment :code', ['code' => $label]);
+            }
+        }
+
+        foreach ((array) ($diagnostics['conflicting_cart_items'] ?? []) as $cartItem) {
+            if (! is_array($cartItem)) {
+                continue;
+            }
+            $startRaw = (string) ($cartItem['start_at'] ?? '');
+            $endRaw = (string) ($cartItem['end_at'] ?? '');
+            $range = $startRaw !== ''
+                ? Carbon::parse($startRaw)->format('d M, g:i A') . ($endRaw !== '' ? ' – ' . Carbon::parse($endRaw)->format('g:i A') : '')
+                : __('unknown time');
+            $conflictParts[] = __('active POS cart hold #:id (:time)', [
+                'id' => (int) ($cartItem['id'] ?? 0),
+                'time' => $range,
+            ]);
+        }
+
+        foreach ((array) ($diagnostics['detected_blocks'] ?? []) as $block) {
+            if (! is_array($block)) {
+                continue;
+            }
+            $scope = strtoupper((string) ($block['scope'] ?? '')) === 'STORE'
+                ? __('store blocked time')
+                : __('staff blocked time');
+            $startRaw = (string) ($block['start_at'] ?? '');
+            $endRaw = (string) ($block['end_at'] ?? '');
+            $range = $startRaw !== ''
+                ? Carbon::parse($startRaw)->format('d M, g:i A') . ($endRaw !== '' ? ' – ' . Carbon::parse($endRaw)->format('g:i A') : '')
+                : __('unknown time');
+            $conflictParts[] = __(':scope #:id (:time)', [
+                'scope' => $scope,
+                'id' => (int) ($block['id'] ?? 0),
+                'time' => $range,
+            ]);
+        }
+
+        if ($conflictParts !== []) {
+            return __('Cannot book :time for :staff because it overlaps with: :conflicts. Please choose a different time or staff member.', [
+                'time' => $slotLabel,
+                'staff' => $staffLabel,
+                'conflicts' => implode('; ', $conflictParts),
+            ]);
+        }
+
+        return __('Cannot book :time for :staff. This time overlaps with another appointment, an active cart hold, or blocked time. Please pick a different slot or staff member.', [
+            'time' => $slotLabel,
+            'staff' => $staffLabel,
         ]);
     }
 
@@ -7795,24 +7977,28 @@ class PosController extends Controller
         $scheduleEndRaw = $scheduleDiagnostics['schedule_end'] ?? null;
         $scheduleStart = $scheduleStartRaw ? Carbon::parse((string) $scheduleStartRaw) : null;
         $scheduleEnd = $scheduleEndRaw ? Carbon::parse((string) $scheduleEndRaw) : null;
-        $overrideUsed = $failureReason === 'outside_staff_schedule' && $scheduleStart && $scheduleEnd;
+        $overrideUsed = in_array($failureReason, $this->posScheduleSoftFailureReasons(), true);
         $overrideType = null;
 
         if ($overrideUsed) {
-            if ($startAt->lt($scheduleStart)) {
+            if ($failureReason === 'no_staff_schedule') {
+                $overrideType = 'no_roster_day';
+            } elseif ($failureReason === 'hits_staff_break') {
+                $overrideType = 'hits_staff_break';
+            } elseif ($scheduleStart && $scheduleEnd && $startAt->lt($scheduleStart)) {
                 $overrideType = 'before_staff_working_hours';
-            } elseif ($endAt->gt($scheduleEnd)) {
+            } elseif ($scheduleStart && $scheduleEnd && $endAt->gt($scheduleEnd)) {
                 $overrideType = 'after_staff_working_hours';
             } else {
-                $overrideType = 'outside_staff_schedule';
+                $overrideType = $failureReason !== '' ? $failureReason : 'outside_staff_schedule';
             }
         }
 
         return [
             'schedule_override_used' => $overrideUsed,
             'schedule_override_type' => $overrideUsed ? $overrideType : null,
-            'scheduled_staff_start_at' => $overrideUsed ? $scheduleStart : null,
-            'scheduled_staff_end_at' => $overrideUsed ? $scheduleEnd : null,
+            'scheduled_staff_start_at' => $overrideUsed && $scheduleStart ? $scheduleStart : null,
+            'scheduled_staff_end_at' => $overrideUsed && $scheduleEnd ? $scheduleEnd : null,
             'actual_booking_start_at' => $startAt,
             'actual_booking_end_at' => $endAt,
             'schedule_override_by' => $overrideUsed ? $actorUserId : null,
