@@ -274,11 +274,11 @@ body {
     }
 
     .pos-checkout-page {
-      --pos-cart-panel-height: min(68svh, calc(100svh - 11rem));
+      --pos-cart-panel-height: min(72dvh, calc(100dvh - 9.5rem));
     }
 
     .pos-appt-page {
-      --pos-settlement-panel-height: min(68svh, calc(100svh - 11rem));
+      --pos-settlement-panel-height: min(72dvh, calc(100dvh - 9.5rem));
     }
 
     .pos-split-layout {
@@ -394,11 +394,12 @@ body {
     .pos-appt-right-host > .pos-appt-right {
       position: static;
       display: flex;
-      flex: 1 1 auto;
+      flex: 1 1 0%;
       flex-direction: column;
       width: auto;
-      max-height: inherit;
-      height: auto;
+      height: 100%;
+      max-height: 100%;
+      min-height: 0;
       transform: none;
       visibility: visible;
       pointer-events: auto;
@@ -456,10 +457,10 @@ body {
 
     .pos-appt-right > .pos-appt-panel {
       display: flex;
-      flex: 1 1 auto;
+      flex: 1 1 0%;
       flex-direction: column;
-      height: auto;
-      max-height: inherit;
+      height: 100%;
+      max-height: 100%;
       min-height: 0;
       overflow: hidden;
     }
@@ -491,9 +492,11 @@ body {
     }
 
     .pos-appt-settlement-scroll {
-      flex: 1 1 auto;
+      flex: 1 1 0%;
       min-height: 0;
       overflow-y: auto;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
     }
 
     /* Wide layout: inline panels only — hide floating controls */
@@ -686,11 +689,23 @@ body {
       }
 
       .pos-checkout-page {
-        --pos-cart-panel-height: min(62svh, calc(100svh - 5.5rem));
+        /* Fill iPad landscape viewport; 84dvh cap keeps small tablets from overshooting */
+        --pos-cart-panel-height: min(calc(100dvh - 5rem), 84dvh);
       }
 
       .pos-appt-page {
-        --pos-settlement-panel-height: min(62svh, calc(100svh - 5.5rem));
+        --pos-settlement-panel-height: min(calc(100dvh - 5rem), 84dvh);
+      }
+    }
+
+    /* Large desktop: use a bit more vertical space when viewport is tall */
+    @media (min-width: 1280px) and (min-height: 860px) {
+      .pos-checkout-page {
+        --pos-cart-panel-height: min(78dvh, calc(100dvh - 8rem));
+      }
+
+      .pos-appt-page {
+        --pos-settlement-panel-height: min(78dvh, calc(100dvh - 8rem));
       }
     }
   }

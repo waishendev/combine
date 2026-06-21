@@ -25,9 +25,10 @@ type ProfileResponse = {
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter()
   const hasRedirected = useRef(false)
-  // Mobile: start collapsed (hidden), Desktop: start expanded
+  // Sidebar always overlays content — hidden until hamburger is tapped (all screen sizes).
   const [collapsed, setCollapsed] = useState(true)
-  const [overlaySidebar, setOverlaySidebar] = useState(true)
+
+  const toggleSidebar = () => setCollapsed((c) => !c)
   const [userEmail, setUserEmail] = useState('')
   const [checkingAuth, setCheckingAuth] = useState(true)
   const [permissions, setPermissions] = useState<string[]>([])
@@ -151,23 +152,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     }
   }, [router])
 
-  // Phone uses overlay drawer; iPad+ keeps a persistent scrollable sidebar (all menu items stay available).
-  useEffect(() => {
-    const mq = window.matchMedia('(max-width: 767px)')
-
-    const applySidebarMode = () => {
-      const shouldOverlay = mq.matches
-      setOverlaySidebar(shouldOverlay)
-      setCollapsed(shouldOverlay)
-    }
-
-    applySidebarMode()
-    mq.addEventListener('change', applySidebarMode)
-    return () => mq.removeEventListener('change', applySidebarMode)
-  }, [])
-
-  const toggleSidebar = () => setCollapsed((c) => !c)
-
   const clearSessionCookiesOnClient = () => {
     const names = ['connect.sid', 'laravel-session', 'gentlegurl-api-session']
     names.forEach((name) => {
@@ -211,7 +195,6 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <div className="crm-dashboard-shell flex min-h-0 flex-1 pt-16">
           <Sidebar
             collapsed={collapsed}
-            overlayMode={overlaySidebar}
             permissions={permissions}
             staffId={staffId}
             onToggleSidebar={toggleSidebar}

@@ -8,7 +8,6 @@ import { getWorkspace, type Workspace } from '@/lib/workspace'
 
 type SidebarProps = {
   collapsed: boolean
-  overlayMode: boolean
   permissions: string[]
   staffId?: number | null
   onToggleSidebar?: () => void
@@ -50,7 +49,7 @@ function filterVisibleMenuChildren(children: MenuChild[], permissions: string[])
     .filter((c): c is MenuChild => c !== null)
 }
 
-export default function Sidebar({ collapsed, overlayMode, permissions, staffId, onToggleSidebar }: SidebarProps) {
+export default function Sidebar({ collapsed, permissions, staffId, onToggleSidebar }: SidebarProps) {
   const pathname = usePathname()
   const [workspace, setWorkspaceState] = useState<Workspace>(() => getWorkspace())
 
@@ -939,20 +938,6 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
   }, [visibleItems, pathname])
 
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({})
-  const [isLargeDesktop, setIsLargeDesktop] = useState(false)
-
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)')
-    const sync = () => setIsLargeDesktop(mq.matches)
-    sync()
-    mq.addEventListener('change', sync)
-    return () => mq.removeEventListener('change', sync)
-  }, [])
-
-  /** Icon-only narrow sidebar — desktop (lg+) only; iPad always shows full labels + scroll. */
-  const compactSidebar = collapsed && !overlayMode && isLargeDesktop
-  /** iPad / tablet: hamburger hides the full sidebar to free horizontal space (e.g. POS portrait). */
-  const tabletSidebarHidden = collapsed && !overlayMode && !isLargeDesktop
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- keep active sidebar parents expanded after route/workspace changes.
@@ -971,7 +956,7 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
   }, [activeParentKeys, pathname])
 
   const closeOverlayDrawer = () => {
-    if (overlayMode && !collapsed) {
+    if (!collapsed) {
       onToggleSidebar?.()
     }
   }
@@ -987,28 +972,21 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
 
   return (
     <>
-      {/* Mobile / tablet overlay backdrop */}
-      {!collapsed && overlayMode && (
+      {!collapsed && (
         <div
-          className="fixed inset-x-0 bottom-0 top-16 z-[45] bg-black/50"
+          className="fixed inset-x-0 bottom-0 top-16 z-[45] bg-black/50 backdrop-blur-[1px]"
           onClick={onToggleSidebar}
           aria-hidden="true"
         />
       )}
       <aside
-        className={`fixed top-16 left-0 z-[50] flex min-h-0 flex-col border-r border-slate-200 bg-white shadow-sm transition-[transform,width,visibility] duration-300 ease-in-out ${
-          overlayMode
-            ? collapsed
-              ? 'pointer-events-none invisible h-[calc(100dvh-4rem)] w-64 -translate-x-full'
-              : 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-64 translate-x-0'
-            : tabletSidebarHidden
-              ? 'pointer-events-none invisible h-[calc(100dvh-4rem)] w-64 -translate-x-full'
-            : compactSidebar
-              ? 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-20 translate-x-0 md:static md:shrink-0'
-              : 'pointer-events-auto visible h-[calc(100dvh-4rem)] w-64 translate-x-0 md:static md:shrink-0'
+        className={`fixed top-16 left-0 z-[50] flex h-[calc(100dvh-4rem)] min-h-0 w-64 flex-col border-r border-slate-200 bg-white shadow-sm transition-[transform,visibility] duration-300 ease-in-out ${
+          collapsed
+            ? 'pointer-events-none invisible -translate-x-full'
+            : 'pointer-events-auto visible translate-x-0 shadow-xl'
         }`}
       >
-        <nav className="crm-sidebar-nav min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 text-sm text-slate-600 [-webkit-overflow-scrolling:touch] touch-pan-y md:py-6">
+        <nav className="crm-sidebar-nav min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-3 py-4 text-sm text-slate-600 [-webkit-overflow-scrolling:touch] touch-pan-y lg:py-6">
           <div className="space-y-1">
             {visibleItems.map((item) => {
               if (item.children) {
@@ -1029,22 +1007,19 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                         isChildActive
                           ? 'bg-blue-50 text-blue-600'
                           : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                      } ${compactSidebar ? 'justify-center' : ''}`}
-                      title={compactSidebar ? item.label : undefined}
+                      }`}
                     >
                       <i className={`${item.icon} ${iconClass} text-lg`} />
-                      {!compactSidebar && (
-                        <>
-                          <span className="ml-3 font-medium">{item.label}</span>
-                          <i
-                            className={`fa-solid fa-chevron-down ${iconClass} ml-auto text-xs transition-transform ${
-                              isExpanded ? 'rotate-180' : ''
-                            }`}
-                          />
-                        </>
-                      )}
+                      <>
+                        <span className="ml-3 font-medium">{item.label}</span>
+                        <i
+                          className={`fa-solid fa-chevron-down ${iconClass} ml-auto text-xs transition-transform ${
+                            isExpanded ? 'rotate-180' : ''
+                          }`}
+                        />
+                      </>
                     </button>
-                    {!compactSidebar && isExpanded && (
+                    {isExpanded && (
                       <div className="space-y-1 pl-9">
                         {item.children.map((child) => {
                           if (child.children) {
@@ -1139,11 +1114,10 @@ export default function Sidebar({ collapsed, overlayMode, permissions, staffId, 
                     isActive
                       ? 'bg-blue-50 text-blue-600'
                       : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
-                  } ${compactSidebar ? 'justify-center' : ''}`}
-                  title={compactSidebar ? item.label : undefined}
+                  }`}
                 >
                   <i className={`${item.icon} ${iconClass} text-lg`} />
-                  {!compactSidebar && <span className="ml-3 font-medium">{item.label}</span>}
+                  <span className="ml-3 font-medium">{item.label}</span>
                 </Link>
               )
             })}
