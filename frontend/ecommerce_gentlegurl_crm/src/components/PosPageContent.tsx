@@ -33,7 +33,7 @@ import {
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
 
 
-const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_leave', 'booking_conflict', 'staff_inactive'])
+const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_off_day', 'staff_leave', 'booking_conflict', 'staff_inactive'])
 
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'cash', label: 'Cash' },
@@ -3489,7 +3489,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     const bookingUnavailableReason = bookingSelectedSlot?.unavailable_staff_reasons?.[String(bookingAssignedStaffId)] ?? ''
     if (POS_HARD_AVAILABILITY_REASONS.has(bookingUnavailableReason)) {
-      setBookingModalError(bookingUnavailableReason === 'staff_leave' ? 'Selected staff is on leave/off day for this time.' : 'Selected staff has a conflict for this time.')
+      setBookingModalError(bookingUnavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (bookingUnavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
       return
     }
 

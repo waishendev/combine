@@ -7428,6 +7428,11 @@ class PosController extends Controller
 
     protected function posAvailabilityReasonCode(array $diagnostics): string
     {
+        $leaveTypes = collect($diagnostics['detected_leave_types'] ?? [])->map(fn ($type) => (string) $type)->all();
+        if (in_array('off_day', $leaveTypes, true)) {
+            return 'staff_off_day';
+        }
+
         if (! empty($diagnostics['detected_leave_ids'] ?? [])) {
             return 'staff_leave';
         }
@@ -7448,7 +7453,8 @@ class PosController extends Controller
     {
         return match ($reasonCode) {
             'staff_inactive' => __('Selected staff is inactive.'),
-            'staff_leave' => __('Selected staff is on approved leave or off day.'),
+            'staff_off_day' => __('Selected staff is on approved off day.'),
+            'staff_leave' => __('Selected staff is on approved leave.'),
             'outside_staff_schedule' => __('Selected time is outside staff schedule.'),
             default => __('Selected slot conflicts with another booking or blocked time.'),
         };

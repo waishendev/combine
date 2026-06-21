@@ -72,7 +72,7 @@ function durationMinutesFromRange(startAt?: string | null, endAt?: string | null
 }
 
 
-const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_leave', 'booking_conflict', 'staff_inactive'])
+const POS_HARD_AVAILABILITY_REASONS = new Set(['staff_off_day', 'staff_leave', 'booking_conflict', 'staff_inactive'])
 
 const POS_SLOT_INTERVAL_MIN = 15
 
@@ -1111,7 +1111,7 @@ export default function PosAppointmentsWorkspace({
     }
     const unavailableReason = createAppointmentSelectedSlot?.unavailable_staff_reasons?.[String(createAppointmentAssignedStaffId)] ?? ''
     if (POS_HARD_AVAILABILITY_REASONS.has(unavailableReason)) {
-      setCreateAppointmentError(unavailableReason === 'staff_leave' ? 'Selected staff is on leave/off day for this time.' : 'Selected staff has a conflict for this time.')
+      setCreateAppointmentError(unavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (unavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
       return
     }
 
@@ -2084,7 +2084,7 @@ export default function PosAppointmentsWorkspace({
       return
     }
     if (appointmentRescheduleSelectedSlot?.unavailable_reason && POS_HARD_AVAILABILITY_REASONS.has(appointmentRescheduleSelectedSlot.unavailable_reason)) {
-      showMsg(appointmentRescheduleSelectedSlot.unavailable_reason === 'staff_leave' ? 'Selected staff is on leave/off day for this time.' : 'Selected staff has a conflict for this time.', 'error')
+      showMsg(appointmentRescheduleSelectedSlot.unavailable_reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (appointmentRescheduleSelectedSlot.unavailable_reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'), 'error')
       return
     }
 
