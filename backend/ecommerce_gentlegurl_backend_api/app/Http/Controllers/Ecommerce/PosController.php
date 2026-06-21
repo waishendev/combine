@@ -1925,10 +1925,17 @@ class PosController extends Controller
             $endAt = $startAt->copy()->addMinutes($durationMin);
             $key = $startAt->format('Y-m-d\TH:i:s');
             $scheduledStaffIds = [];
+            $unavailableStaffReasons = [];
             foreach ($staffIds as $staffId) {
-                $diagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staffId, $startAt, $endAt);
+                $staffId = (int) $staffId;
+                $diagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $endAt);
                 if ((bool) ($diagnostics['is_available'] ?? false)) {
-                    $scheduledStaffIds[] = (int) $staffId;
+                    $scheduledStaffIds[] = $staffId;
+                }
+
+                $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($staffId, $startAt, $endAt, (int) $service->buffer_min);
+                if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                    $unavailableStaffReasons[(string) $staffId] = $this->posAvailabilityReasonCode($conflictDiagnostics);
                 }
             }
 
@@ -1937,6 +1944,7 @@ class PosController extends Controller
                 'end_at' => $endAt->format('Y-m-d\TH:i:s'),
                 'available_staff_ids' => array_values(array_unique($mergedByStart[$key]['available_staff_ids'] ?? [])),
                 'scheduled_staff_ids' => array_values(array_unique($scheduledStaffIds)),
+                'unavailable_staff_reasons' => $unavailableStaffReasons,
             ];
         }
 
