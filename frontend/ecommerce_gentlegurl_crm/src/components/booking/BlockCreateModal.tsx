@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useEffect, useState } from 'react'
 
 import type { BlockRowData } from './BlockRow'
-import { mapBlockApiItemToRow, type BlockApiItem, type StaffOption } from './blockUtils'
+import { mapBlockApiItemToRow, toApiDateTime, type BlockApiItem, type StaffOption } from './blockUtils'
 import { useI18n } from '@/lib/i18n'
 
 interface BlockCreateModalProps {
@@ -101,8 +101,8 @@ export default function BlockCreateModal({
         body: JSON.stringify({
           scope: form.scope,
           staff_id: form.scope === 'STAFF' ? Number(form.staff_id) : null,
-          start_at: new Date(form.start_at).toISOString(),
-          end_at: new Date(form.end_at).toISOString(),
+          start_at: toApiDateTime(form.start_at),
+          end_at: toApiDateTime(form.end_at),
           reason: form.reason.trim() || null,
         }),
       })
