@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
@@ -250,7 +250,6 @@ export default function PosAppointmentsWorkspace({
     },
     [dismissToast],
   )
-  const showMsg = useCallback((text: string, kind: ToastKind = 'info') => pushToast(kind, text), [pushToast])
   const { hasOpenShift, cashShiftLoading, requireOpenShiftMessage } = usePosCashShift()
   const { isCompactLayout } = usePosWideLayout()
   const cashShiftActionDisabled = cashShiftLoading || !hasOpenShift
@@ -438,6 +437,115 @@ export default function PosAppointmentsWorkspace({
   const [appointmentReschedulePolicyWarnings, setAppointmentReschedulePolicyWarnings] = useState<string[]>([])
   /** Staff IDs with approved leave covering the selected day (DAY view). */
   const [staffOffTodayIds, setStaffOffTodayIds] = useState<number[]>([])
+  const [appointmentRescheduleError, setAppointmentRescheduleError] = useState<string | null>(null)
+
+  const createAppointmentErrorRef = useRef<HTMLDivElement>(null)
+  const editSettlementErrorRef = useRef<HTMLDivElement>(null)
+  const appointmentCheckoutErrorRef = useRef<HTMLDivElement>(null)
+  const appointmentRescheduleErrorRef = useRef<HTMLDivElement>(null)
+  const appointmentLineSplitErrorRef = useRef<HTMLDivElement>(null)
+  const cancellationRequestsErrorRef = useRef<HTMLDivElement>(null)
+
+  const scrollToModalError = useCallback((ref: RefObject<HTMLDivElement | null>) => {
+    requestAnimationFrame(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }, [])
+
+  const reportCreateAppointmentError = useCallback(
+    (message: string | null) => {
+      setCreateAppointmentError(message)
+      if (message) scrollToModalError(createAppointmentErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportEditSettlementError = useCallback(
+    (message: string | null) => {
+      setEditSettlementError(message)
+      if (message) scrollToModalError(editSettlementErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportAppointmentCheckoutError = useCallback(
+    (message: string | null) => {
+      setAppointmentCheckoutError(message)
+      if (message) scrollToModalError(appointmentCheckoutErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportAppointmentRescheduleError = useCallback(
+    (message: string | null) => {
+      setAppointmentRescheduleError(message)
+      if (message) scrollToModalError(appointmentRescheduleErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportAppointmentLineSplitError = useCallback(
+    (message: string | null) => {
+      setAppointmentLineSplitError(message)
+      if (message) scrollToModalError(appointmentLineSplitErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportCancellationRequestsError = useCallback(
+    (message: string | null) => {
+      setCancellationRequestsError(message)
+      if (message) scrollToModalError(cancellationRequestsErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const showMsg = useCallback(
+    (text: string, kind: ToastKind = 'info') => {
+      if (kind === 'error') {
+        if (appointmentLineSplitTarget) {
+          reportAppointmentLineSplitError(text)
+          return
+        }
+        if (editSettlementOpen) {
+          reportEditSettlementError(text)
+          return
+        }
+        if (appointmentCheckoutConfirmationOpen) {
+          reportAppointmentCheckoutError(text)
+          return
+        }
+        if (appointmentRescheduleOpen) {
+          reportAppointmentRescheduleError(text)
+          return
+        }
+        if (createAppointmentModalOpen) {
+          reportCreateAppointmentError(text)
+          return
+        }
+        if (cancellationRequestsModalOpen) {
+          reportCancellationRequestsError(text)
+          return
+        }
+      }
+      pushToast(kind, text)
+    },
+    [
+      appointmentCheckoutConfirmationOpen,
+      appointmentLineSplitTarget,
+      appointmentRescheduleOpen,
+      cancellationRequestsModalOpen,
+      createAppointmentModalOpen,
+      editSettlementOpen,
+      pushToast,
+      reportAppointmentCheckoutError,
+      reportAppointmentLineSplitError,
+      reportAppointmentRescheduleError,
+      reportCancellationRequestsError,
+      reportCreateAppointmentError,
+      reportEditSettlementError,
+    ],
+  )
 
   const appointmentReceiptQrImageUrl = useMemo(() => {
     if (!appointmentSettlementResult?.receipt_public_url) return null
@@ -570,7 +678,7 @@ export default function PosAppointmentsWorkspace({
     setAppointmentLineSplitDraftRows(existingSplits.length ? existingSplits.map((split) => ({ staff_id: split.staff_id, share_percent: String(split.share_percent) })) : [{ staff_id: null, share_percent: '100' }])
     setAppointmentLineSplitAutoBalance(true)
     setAppointmentLineSplitOverwrite(false)
-    setAppointmentLineSplitError(null)
+    reportAppointmentLineSplitError(null)
   }, [activeStaffs, appointmentLineStaffSplits, fetchStaffOptions])
 
   const openAppointmentBulkLineSplitEditor = useCallback(async (title: string, lineKeys: string[], inheritedSplits: AppointmentLineStaffSplit[] = []) => {
@@ -584,7 +692,7 @@ export default function PosAppointmentsWorkspace({
     setAppointmentLineSplitDraftRows(inheritedSplits.length ? inheritedSplits.map((split) => ({ staff_id: split.staff_id, share_percent: String(split.share_percent) })) : [{ staff_id: null, share_percent: '100' }])
     setAppointmentLineSplitAutoBalance(true)
     setAppointmentLineSplitOverwrite(false)
-    setAppointmentLineSplitError(null)
+    reportAppointmentLineSplitError(null)
   }, [activeStaffs, fetchStaffOptions])
 
   const saveAppointmentLineSplitEditor = useCallback(() => {
@@ -594,13 +702,13 @@ export default function PosAppointmentsWorkspace({
       share_percent: Number.parseInt(row.share_percent || '0', 10),
     }))
     if (mappedSplits.length < 1 || mappedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
-      setAppointmentLineSplitError('Please select staff and enter valid split percentages.')
+      reportAppointmentLineSplitError('Please select staff and enter valid split percentages.')
       return
     }
     const uniqueIds = new Set(mappedSplits.map((row) => row.staff_id))
     const splitSum = mappedSplits.reduce((sum, row) => sum + row.share_percent, 0)
     if (uniqueIds.size !== mappedSplits.length || splitSum !== 100) {
-      setAppointmentLineSplitError(`Staff split must use unique staff and total 100% (current: ${splitSum}%).`)
+      reportAppointmentLineSplitError(`Staff split must use unique staff and total 100% (current: ${splitSum}%).`)
       return
     }
     if (appointmentLineSplitTarget.type === 'line') {
@@ -885,7 +993,7 @@ export default function PosAppointmentsWorkspace({
       showMsg(requireOpenShiftMessage, 'warning')
       return
     }
-    setCreateAppointmentError(null)
+    reportCreateAppointmentError(null)
     setCreateAppointmentSubmitting(false)
     setCreateAppointmentServiceDraft(null)
     setCreateAppointmentSelectedOptionIds([])
@@ -1050,7 +1158,7 @@ export default function PosAppointmentsWorkspace({
 
   const submitCreateAppointment = useCallback(async () => {
     if (!createAppointmentServiceDraft) {
-      setCreateAppointmentError('Please select service first.')
+      reportCreateAppointmentError('Please select service first.')
       return
     }
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -1058,66 +1166,66 @@ export default function PosAppointmentsWorkspace({
 
     if (createAppointmentIdentityMode === 'member') {
       if (!createAppointmentCustomerId) {
-        setCreateAppointmentError('Please assign member.')
+        reportCreateAppointmentError('Please assign member.')
         return
       }
     } else {
       if (normalizeInternationalPhone(createAppointmentGuestPhone) && !phonePattern.test(normalizeInternationalPhone(createAppointmentGuestPhone))) {
-        setCreateAppointmentError('Please enter a valid guest phone (8-15 digits, optional +).')
+        reportCreateAppointmentError('Please enter a valid guest phone (8-15 digits, optional +).')
         return
       }
       if (createAppointmentGuestEmail.trim() && !emailPattern.test(createAppointmentGuestEmail.trim())) {
-        setCreateAppointmentError('Please enter a valid guest email.')
+        reportCreateAppointmentError('Please enter a valid guest email.')
         return
       }
     }
 
     if (!createAppointmentAssignedStaffId) {
-      setCreateAppointmentError('Please select assigned staff.')
+      reportCreateAppointmentError('Please select assigned staff.')
       return
     }
     if (!createAppointmentDate) {
-      setCreateAppointmentError('Please select appointment date.')
+      reportCreateAppointmentError('Please select appointment date.')
       return
     }
     if (!createAppointmentSlotValue) {
-      setCreateAppointmentError('Please select appointment slot/time.')
+      reportCreateAppointmentError('Please select appointment slot/time.')
       return
     }
     if (new Set(createAppointmentSelectedServiceIds).size !== createAppointmentSelectedServiceIds.length) {
-      setCreateAppointmentError('Duplicate main services are not allowed in the same appointment.')
+      reportCreateAppointmentError('Duplicate main services are not allowed in the same appointment.')
       return
     }
     for (const question of createAppointmentQuestions) {
       if (!question.is_required) continue
       const hasSelection = question.options.some((option) => createAppointmentSelectedOptionIds.includes(option.id))
       if (!hasSelection) {
-        setCreateAppointmentError(`Please answer required question: ${question.title}`)
+        reportCreateAppointmentError(`Please answer required question: ${question.title}`)
         return
       }
     }
     for (const block of createAppointmentExtraServiceBlocks) {
       if (!block.service) {
-        setCreateAppointmentError('Please select service for every added main service block.')
+        reportCreateAppointmentError('Please select service for every added main service block.')
         return
       }
       for (const question of block.questions) {
         if (!question.is_required) continue
         const hasSelection = question.options.some((option) => block.selectedOptionIds.includes(option.id))
         if (!hasSelection) {
-          setCreateAppointmentError(`Please answer required question: ${question.title}`)
+          reportCreateAppointmentError(`Please answer required question: ${question.title}`)
           return
         }
       }
     }
     const unavailableReason = createAppointmentSelectedSlot?.unavailable_staff_reasons?.[String(createAppointmentAssignedStaffId)] ?? ''
     if (POS_HARD_AVAILABILITY_REASONS.has(unavailableReason)) {
-      setCreateAppointmentError(unavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (unavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+      reportCreateAppointmentError(unavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (unavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
       return
     }
 
     setCreateAppointmentSubmitting(true)
-    setCreateAppointmentError(null)
+    reportCreateAppointmentError(null)
     try {
       if (createAppointmentSelectedSlot?.end_at) {
         const params = new URLSearchParams({ staff_id: String(createAppointmentAssignedStaffId), start_at: createAppointmentSlotValue, end_at: createAppointmentSelectedSlot.end_at })
@@ -1125,7 +1233,7 @@ export default function PosAppointmentsWorkspace({
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
         if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
-          setCreateAppointmentError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+          reportCreateAppointmentError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
           return
         }
       }
@@ -1185,7 +1293,7 @@ export default function PosAppointmentsWorkspace({
           })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        setCreateAppointmentError(String(json?.message ?? 'Unable to create appointment.'))
+        reportCreateAppointmentError(String(json?.message ?? 'Unable to create appointment.'))
         return
       }
 
@@ -1307,7 +1415,7 @@ export default function PosAppointmentsWorkspace({
       const payload = (await res.json().catch(() => null)) as { data?: { data?: unknown }; message?: string } | null
       if (!res.ok) {
         setCancellationRequestsRows([])
-        setCancellationRequestsError(
+        reportCancellationRequestsError(
           typeof payload?.message === 'string' ? payload.message : 'Failed to load cancellation requests.',
         )
         return
@@ -1316,11 +1424,11 @@ export default function PosAppointmentsWorkspace({
       setCancellationRequestsRows(Array.isArray(rows) ? (rows as PosCancellationRequestRow[]) : [])
     } catch {
       setCancellationRequestsRows([])
-      setCancellationRequestsError('Failed to load cancellation requests.')
+      reportCancellationRequestsError('Failed to load cancellation requests.')
     } finally {
       setCancellationRequestsLoading(false)
     }
-  }, [])
+  }, [reportCancellationRequestsError])
 
   useEffect(() => {
     if (!cancellationRequestsModalOpen) return
@@ -1401,15 +1509,15 @@ export default function PosAppointmentsWorkspace({
     const grossDueAmount = Number(appointmentDetail.amount_due_now ?? appointmentDetail.balance_due ?? 0)
     const discountDraftValue = Number(appointmentDiscountValueDraft || 0)
     if (!Number.isFinite(discountDraftValue) || discountDraftValue < 0) {
-      setAppointmentCheckoutError('Discount value must be 0 or higher.')
+      reportAppointmentCheckoutError('Discount value must be 0 or higher.')
       return
     }
     if (appointmentDiscountTypeDraft === 'percentage' && discountDraftValue > 100) {
-      setAppointmentCheckoutError('Percentage discount must be between 0 and 100.')
+      reportAppointmentCheckoutError('Percentage discount must be between 0 and 100.')
       return
     }
     if (appointmentDiscountTypeDraft === 'fixed' && discountDraftValue > grossDueAmount) {
-      setAppointmentCheckoutError('Fixed discount must not exceed settlement amount due.')
+      reportAppointmentCheckoutError('Fixed discount must not exceed settlement amount due.')
       return
     }
     const discountAmount =
@@ -1438,18 +1546,18 @@ export default function PosAppointmentsWorkspace({
     const settlementChange = settlementCashOnlyOverpaid ? Math.max(0, (settlementTotalPaidCents - dueCents) / 100) : 0
 
     if (!isZeroPackageFinalize && dueAmount <= 0) {
-      setAppointmentCheckoutError('No balance due for this appointment.')
+      reportAppointmentCheckoutError('No balance due for this appointment.')
       return
     }
 
     if (!isZeroPackageFinalize) {
       if (paymentRows.length === 0 || (settlementTotalPaidCents !== dueCents && !settlementCashOnlyOverpaid)) {
-        setAppointmentCheckoutError(settlementMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal the amount due.')
+        reportAppointmentCheckoutError(settlementMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal the amount due.')
         return
       }
     }
 
-    setAppointmentCheckoutError(null)
+    reportAppointmentCheckoutError(null)
     setAppointmentActionLoading(true)
     try {
       const payload = {
@@ -1479,12 +1587,12 @@ export default function PosAppointmentsWorkspace({
           })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        setAppointmentCheckoutError(String(json?.message ?? 'Unable to collect payment.'))
+        reportAppointmentCheckoutError(String(json?.message ?? 'Unable to collect payment.'))
         return
       }
 
       showMsg(isZeroPackageFinalize ? 'Appointment finalised.' : 'Appointment payment collected.', 'success')
-      setAppointmentCheckoutError(null)
+      reportAppointmentCheckoutError(null)
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentSettlementResult({
         order_id: Number(json?.data?.order_id ?? 0),
@@ -1549,7 +1657,7 @@ export default function PosAppointmentsWorkspace({
 
   const openEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.service?.id) return
-    setEditSettlementError(null)
+    reportEditSettlementError(null)
     setEditSettlementLoading(false)
 
     const originalMainService = appointmentDisplayMainServices.find((service) => service.is_original)
@@ -1677,7 +1785,7 @@ export default function PosAppointmentsWorkspace({
 
   const selectEditOriginalService = useCallback(async (service: BookingServiceOption) => {
     if (!service?.id) return
-    setEditSettlementError(null)
+    reportEditSettlementError(null)
     setEditOriginalService(service)
     setEditOriginalServicePriceOverride(Number(service.service_price ?? service.price ?? 0))
     setEditAddonPriceOverrides({})
@@ -1785,7 +1893,7 @@ export default function PosAppointmentsWorkspace({
   }, [addEditMainServiceBlock, selectEditOriginalService])
 
   const updateEditSettlementSplitShare = useCallback((index: number, value: string) => {
-    setEditSettlementError(null)
+    reportEditSettlementError(null)
     setEditStaffSplits((prev) => {
       const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
       if (!editStaffSplitAutoBalance || index === 0) return next
@@ -1794,7 +1902,7 @@ export default function PosAppointmentsWorkspace({
   }, [editStaffSplitAutoBalance, rebalanceEditSettlementPrimaryShare])
 
   const removeEditSettlementSplitRow = useCallback((index: number) => {
-    setEditSettlementError(null)
+    reportEditSettlementError(null)
     setEditStaffSplits((prev) => {
       const next = prev.filter((_, rowIdx) => rowIdx !== index)
       if (!editStaffSplitAutoBalance) return next
@@ -1809,10 +1917,10 @@ export default function PosAppointmentsWorkspace({
 
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
-    setEditSettlementError(null)
+    reportEditSettlementError(null)
     if (editSettlementAvailability?.is_hard_block) {
       const reason = editSettlementAvailability.reason_code
-      setEditSettlementError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Updated appointment time conflicts with staff availability.'))
+      reportEditSettlementError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Updated appointment time conflicts with staff availability.'))
       return
     }
     setEditSettlementLoading(true)
@@ -1846,7 +1954,7 @@ export default function PosAppointmentsWorkspace({
       if (needsSettledAmount) {
         const amountCheck = validateSettlementAmountInput(editSettledAmount, editOriginalSettlementSource)
         if (!amountCheck.ok) {
-          setEditSettlementError(amountCheck.message)
+          reportEditSettlementError(amountCheck.message)
           return
         }
         payload.settled_service_amount = amountCheck.amount
@@ -1856,17 +1964,17 @@ export default function PosAppointmentsWorkspace({
         share_percent: Number.parseInt(row.share_percent || '0', 10),
       }))
       if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
-        setEditSettlementError('Please select at least one staff and enter valid split percentages.')
+        reportEditSettlementError('Please select at least one staff and enter valid split percentages.')
         return
       }
       const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
       if (uniqueIds.size !== normalizedSplits.length) {
-        setEditSettlementError('Duplicate staff is not allowed in split.')
+        reportEditSettlementError('Duplicate staff is not allowed in split.')
         return
       }
       const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
       if (splitSum !== 100) {
-        setEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
+        reportEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
         return
       }
       payload.staff_splits = normalizedSplits
@@ -1877,13 +1985,13 @@ export default function PosAppointmentsWorkspace({
           share_percent: Number.parseInt(row.share_percent || '0', 10),
         }))
         if (blockSplits.length < 1 || blockSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
-          setEditSettlementError(`Please complete staff split for ${block.service_name}.`)
+          reportEditSettlementError(`Please complete staff split for ${block.service_name}.`)
           return
         }
         const blockUnique = new Set(blockSplits.map((row) => row.staff_id))
         const blockSum = blockSplits.reduce((sum, row) => sum + row.share_percent, 0)
         if (blockUnique.size !== blockSplits.length || blockSum !== 100) {
-          setEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
+          reportEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
           return
         }
       }
@@ -1895,7 +2003,7 @@ export default function PosAppointmentsWorkspace({
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        setEditSettlementError(json?.message ?? 'Failed to update settlement.')
+        reportEditSettlementError(json?.message ?? 'Failed to update settlement.')
         return
       }
       const updatedAppointment = (json?.data?.appointment ?? null) as Partial<PosAppointmentDetail> | null
@@ -1941,12 +2049,12 @@ export default function PosAppointmentsWorkspace({
     const rawValue = appointmentPriceEditMode === 'line' ? appointmentPriceEditLineTotalDraft : appointmentPriceEditValueDraft
     const amount = Number(rawValue)
     if (!Number.isFinite(amount) || amount < 0) {
-      setEditSettlementError('Price cannot be negative.')
+      reportEditSettlementError('Price cannot be negative.')
       return
     }
     const unitPrice = appointmentPriceEditMode === 'line' ? amount / qty : amount
     if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      setEditSettlementError('Price cannot be negative.')
+      reportEditSettlementError('Price cannot be negative.')
       return
     }
     const rounded = Number(unitPrice.toFixed(2))
@@ -1962,7 +2070,7 @@ export default function PosAppointmentsWorkspace({
     } else if (appointmentPriceEditTarget.kind === 'addedAddon') {
       setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded } } : block))
     }
-    setEditSettlementError(null)
+    reportEditSettlementError(null)
     setAppointmentPriceEditTarget(null)
   }, [appointmentPriceEditLineTotalDraft, appointmentPriceEditMode, appointmentPriceEditTarget, appointmentPriceEditValueDraft, editOriginalSettlementSource])
 
@@ -2082,6 +2190,7 @@ export default function PosAppointmentsWorkspace({
     setAppointmentRescheduleSlotValue('')
     setAppointmentRescheduleReason('')
     setAppointmentRescheduleSlots([])
+    setAppointmentRescheduleError(null)
     setAppointmentRescheduleOpen(true)
   }, [appointmentDetail])
 
@@ -2411,7 +2520,7 @@ export default function PosAppointmentsWorkspace({
     }
     const url = URL.createObjectURL(file)
     setAppointmentQrProofFile(file)
-    setAppointmentCheckoutError(null)
+    reportAppointmentCheckoutError(null)
     setAppointmentQrProofFileName(file.name)
     setAppointmentQrProofPreviewUrl(url)
     event.currentTarget.value = ''
@@ -2421,7 +2530,7 @@ export default function PosAppointmentsWorkspace({
     if (appointmentQrProofPreviewUrl) {
       URL.revokeObjectURL(appointmentQrProofPreviewUrl)
     }
-    setAppointmentCheckoutError(null)
+    reportAppointmentCheckoutError(null)
     setAppointmentQrProofFile(null)
     setAppointmentQrProofPreviewUrl(null)
     setAppointmentQrProofFileName(null)
@@ -3298,7 +3407,7 @@ export default function PosAppointmentsWorkspace({
                               setAppointmentDiscountTypeDraft('fixed')
                               setAppointmentDiscountValueDraft('')
                               setAppointmentDiscountRemarkDraft('')
-                              setAppointmentCheckoutError(null)
+                              reportAppointmentCheckoutError(null)
                               setAppointmentCheckoutConfirmationOpen(true)
                             }}
                             className="min-h-[44px] rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:pointer-events-none disabled:opacity-50"
@@ -3601,6 +3710,16 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {createAppointmentError ? (
+                <div
+                  ref={createAppointmentErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800"
+                >
+                  {createAppointmentError}
+                </div>
+              ) : null}
               <div className="grid gap-4 lg:grid-cols-2">
                 <div className="space-y-3 rounded-xl border border-gray-200 bg-gray-50/50 p-4">
                   <div className="flex items-center justify-between">
@@ -4075,7 +4194,7 @@ export default function PosAppointmentsWorkspace({
                               value={createAppointmentDepositPayments[method]}
                               onChange={(e) => {
                                 setCreateAppointmentDepositPayments((prev) => ({ ...prev, [method]: e.target.value }))
-                                setCreateAppointmentError(null)
+                                reportCreateAppointmentError(null)
                               }}
                               className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
                               placeholder="0.00"
@@ -4112,12 +4231,6 @@ export default function PosAppointmentsWorkspace({
                 </div>
               </div>
             </div>
-
-            {createAppointmentError ? (
-              <div className="mx-5 mb-3 shrink-0 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
-                {createAppointmentError}
-              </div>
-            ) : null}
 
             <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
               <button
@@ -4280,7 +4393,12 @@ export default function PosAppointmentsWorkspace({
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
               {cancellationRequestsError ? (
-                <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+                <div
+                  ref={cancellationRequestsErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-800"
+                >
                   {cancellationRequestsError}
                 </div>
               ) : null}
@@ -4475,6 +4593,16 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5">
+            {appointmentRescheduleError ? (
+              <div
+                ref={appointmentRescheduleErrorRef}
+                role="alert"
+                tabIndex={-1}
+                className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+              >
+                {appointmentRescheduleError}
+              </div>
+            ) : null}
             <div className="space-y-3">
               {activeStaffs.length === 0 ? (
                 <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
@@ -4585,6 +4713,16 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {editSettlementError ? (
+                <div
+                  ref={editSettlementErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+                >
+                  {editSettlementError}
+                </div>
+              ) : null}
               <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div>
@@ -4625,7 +4763,7 @@ export default function PosAppointmentsWorkspace({
                       autoComplete="off"
                       value={editSettledAmount}
                       onChange={(e) => {
-                        setEditSettlementError(null)
+                        reportEditSettlementError(null)
                         setEditSettledAmount(e.target.value)
                       }}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -4743,7 +4881,7 @@ export default function PosAppointmentsWorkspace({
                           value={split.staff_id != null ? String(split.staff_id) : ''}
                           onChange={(next) => {
                             const value = next ? Number(next) : null
-                            setEditSettlementError(null)
+                            reportEditSettlementError(null)
                             setEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
                           }}
                           disabled={editSettlementLoading}
@@ -5100,9 +5238,6 @@ export default function PosAppointmentsWorkspace({
             </div>
 
             <div className="shrink-0 border-t border-gray-200 bg-gray-50 px-5 py-4">
-              {editSettlementError ? (
-                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">{editSettlementError}</p>
-              ) : null}
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -5208,7 +5343,16 @@ export default function PosAppointmentsWorkspace({
                 ))}
               </div>
               <button type="button" onClick={() => setAppointmentLineSplitDraftRows((prev) => [...prev, { staff_id: null, share_percent: '' }])} className="rounded-md border border-indigo-200 px-3 py-1.5 text-xs font-semibold text-indigo-700">+ Add Staff</button>
-              {appointmentLineSplitError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{appointmentLineSplitError}</p> : null}
+              {appointmentLineSplitError ? (
+                <div
+                  ref={appointmentLineSplitErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+                >
+                  {appointmentLineSplitError}
+                </div>
+              ) : null}
             </div>
             <div className="flex shrink-0 gap-3 border-t border-gray-200 bg-gray-50 px-5 py-4">
               <button type="button" onClick={() => setAppointmentLineSplitTarget(null)} className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700">Cancel</button>
@@ -5313,7 +5457,7 @@ export default function PosAppointmentsWorkspace({
               <button
                 type="button"
                 onClick={() => {
-                  setAppointmentCheckoutError(null)
+                  reportAppointmentCheckoutError(null)
                   setAppointmentCheckoutConfirmationOpen(false)
                 }}
                 className="rounded-lg p-1.5 text-gray-500 hover:bg-gray-100"
@@ -5326,7 +5470,9 @@ export default function PosAppointmentsWorkspace({
             <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
               {appointmentCheckoutError ? (
                 <div
+                  ref={appointmentCheckoutErrorRef}
                   role="alert"
+                  tabIndex={-1}
                   className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
                 >
                   {appointmentCheckoutError}
@@ -5363,7 +5509,7 @@ export default function PosAppointmentsWorkspace({
                       <select
                         value={appointmentDiscountTypeDraft}
                         onChange={(event) => {
-                          setAppointmentCheckoutError(null)
+                          reportAppointmentCheckoutError(null)
                           setAppointmentDiscountTypeDraft(event.target.value as 'percentage' | 'fixed')
                         }}
                         className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm text-gray-900"
@@ -5381,7 +5527,7 @@ export default function PosAppointmentsWorkspace({
                         step="0.01"
                         value={appointmentDiscountValueDraft}
                         onChange={(event) => {
-                          setAppointmentCheckoutError(null)
+                          reportAppointmentCheckoutError(null)
                           setAppointmentDiscountValueDraft(event.target.value)
                         }}
                         className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm text-gray-900"
@@ -5394,7 +5540,7 @@ export default function PosAppointmentsWorkspace({
                     <textarea
                       value={appointmentDiscountRemarkDraft}
                       onChange={(event) => {
-                        setAppointmentCheckoutError(null)
+                        reportAppointmentCheckoutError(null)
                         setAppointmentDiscountRemarkDraft(event.target.value)
                       }}
                       rows={2}
@@ -5416,7 +5562,7 @@ export default function PosAppointmentsWorkspace({
                         <button
                           type="button"
                           onClick={() => {
-                            setAppointmentCheckoutError(null)
+                            reportAppointmentCheckoutError(null)
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                             setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '', [method]: appointmentDueAfterDiscount.toFixed(2) })
                           }}
@@ -5431,7 +5577,7 @@ export default function PosAppointmentsWorkspace({
                           step="0.01"
                           value={appointmentSettlementPaymentAmounts[method]}
                           onChange={(e) => {
-                            setAppointmentCheckoutError(null)
+                            reportAppointmentCheckoutError(null)
                             setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
                             setAppointmentSettlementPaymentAmounts((prev) => ({ ...prev, [method]: e.target.value }))
                           }}
@@ -5479,7 +5625,7 @@ export default function PosAppointmentsWorkspace({
                 <button
                   type="button"
                   onClick={() => {
-                    setAppointmentCheckoutError(null)
+                    reportAppointmentCheckoutError(null)
                     setAppointmentCheckoutConfirmationOpen(false)
                   }}
                   className="rounded-md border border-gray-300 px-3 py-2 text-xs font-semibold text-gray-700 hover:bg-gray-50"

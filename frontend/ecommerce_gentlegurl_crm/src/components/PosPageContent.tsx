@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler } from 'react'
+import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
@@ -1707,6 +1707,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     change_amount: number
   }>(null)
   const [checkoutError, setCheckoutError] = useState<string | null>(null)
+  const [discountModalError, setDiscountModalError] = useState<string | null>(null)
+  const [priceEditError, setPriceEditError] = useState<string | null>(null)
+  const [voucherModalError, setVoucherModalError] = useState<string | null>(null)
   const [qrCodeFullscreen, setQrCodeFullscreen] = useState(false)
   const [receiptEmail, setReceiptEmail] = useState('')
   const [receiptEmailError, setReceiptEmailError] = useState<string | null>(null)
@@ -2153,6 +2156,146 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     window.setTimeout(() => dismissToast(id), 3200)
   }, [dismissToast])
 
+  const bookingModalErrorRef = useRef<HTMLDivElement>(null)
+  const packageModalErrorRef = useRef<HTMLDivElement>(null)
+  const cartEditSettlementErrorRef = useRef<HTMLDivElement>(null)
+  const checkoutErrorRef = useRef<HTMLDivElement>(null)
+  const checkoutStandaloneErrorRef = useRef<HTMLDivElement>(null)
+  const itemSplitErrorRef = useRef<HTMLDivElement>(null)
+  const discountModalErrorRef = useRef<HTMLDivElement>(null)
+  const priceEditErrorRef = useRef<HTMLDivElement>(null)
+  const voucherModalErrorRef = useRef<HTMLDivElement>(null)
+
+  const scrollToModalError = useCallback((ref: RefObject<HTMLDivElement | null>) => {
+    requestAnimationFrame(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    })
+  }, [])
+
+  const reportBookingModalError = useCallback(
+    (message: string | null) => {
+      setBookingModalError(message)
+      if (message) scrollToModalError(bookingModalErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportPackageModalError = useCallback(
+    (message: string | null) => {
+      setPackageModalError(message)
+      if (message) scrollToModalError(packageModalErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportCartEditSettlementError = useCallback(
+    (message: string | null) => {
+      setCartEditSettlementError(message)
+      if (message) scrollToModalError(cartEditSettlementErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportCheckoutError = useCallback(
+    (message: string | null) => {
+      setCheckoutError(message)
+      if (message) {
+        scrollToModalError(checkoutConfirmationOpen ? checkoutErrorRef : checkoutStandaloneErrorRef)
+      }
+    },
+    [checkoutConfirmationOpen, scrollToModalError],
+  )
+
+  const reportItemSplitError = useCallback(
+    (message: string | null) => {
+      setItemSplitError(message)
+      if (message) scrollToModalError(itemSplitErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportDiscountModalError = useCallback(
+    (message: string | null) => {
+      setDiscountModalError(message)
+      if (message) scrollToModalError(discountModalErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportPriceEditError = useCallback(
+    (message: string | null) => {
+      setPriceEditError(message)
+      if (message) scrollToModalError(priceEditErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const reportVoucherModalError = useCallback(
+    (message: string | null) => {
+      setVoucherModalError(message)
+      if (message) scrollToModalError(voucherModalErrorRef)
+    },
+    [scrollToModalError],
+  )
+
+  const showMsg = useCallback(
+    (text: string, kind: ToastKind = 'info') => {
+      if (kind === 'error') {
+        if (priceEditTarget) {
+          reportPriceEditError(text)
+          return
+        }
+        if (itemSplitEditorOpen) {
+          reportItemSplitError(text)
+          return
+        }
+        if (discountModalOpen) {
+          reportDiscountModalError(text)
+          return
+        }
+        if (cartEditSettlementOpen) {
+          reportCartEditSettlementError(text)
+          return
+        }
+        if (checkoutConfirmationOpen) {
+          reportCheckoutError(text)
+          return
+        }
+        if (bookingModalOpen) {
+          reportBookingModalError(text)
+          return
+        }
+        if (packageModalOpen) {
+          reportPackageModalError(text)
+          return
+        }
+        if (voucherModalOpen) {
+          reportVoucherModalError(text)
+          return
+        }
+      }
+      pushToast(kind, text)
+    },
+    [
+      bookingModalOpen,
+      cartEditSettlementOpen,
+      checkoutConfirmationOpen,
+      discountModalOpen,
+      itemSplitEditorOpen,
+      packageModalOpen,
+      priceEditTarget,
+      pushToast,
+      reportBookingModalError,
+      reportCartEditSettlementError,
+      reportCheckoutError,
+      reportDiscountModalError,
+      reportItemSplitError,
+      reportPackageModalError,
+      reportPriceEditError,
+      reportVoucherModalError,
+      voucherModalOpen,
+    ],
+  )
 
   const handleConnectBtPrinter = async () => {
     setBtConnecting(true)
@@ -2203,8 +2346,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       scannerInputRef.current.value = ''
     }
   }
-
-  const showMsg = (text: string, kind: ToastKind = 'info') => pushToast(kind, text)
 
   const formatVoucherLabel = (item: PosVoucherOption) => {
     const voucher = item.voucher
@@ -3261,7 +3402,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setBookingExtraServiceBlocks([])
     setBookingExtraServiceCategoryIds({})
     setBookingExtraServiceQueries({})
-    setBookingModalError(null)
+    reportBookingModalError(null)
     setBookingGuestPhoneValue(guestContactCache.phone)
     if (selectedMember?.id) {
       setBookingIdentityMode('member')
@@ -3427,13 +3568,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const submitBooking = useCallback(async () => {
     if (!bookingServiceDraft) return
-    setBookingModalError(null)
+    reportBookingModalError(null)
     const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     const phonePattern = /^\+?[0-9]{8,15}$/
 
     if (bookingIdentityMode === 'member') {
       if (!selectedMember?.id) {
-        setBookingModalError('Please assign member.')
+        reportBookingModalError('Please assign member.')
         return
       }
     } else {
@@ -3441,55 +3582,55 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const guestPhone = normalizeInternationalPhone(bookingGuestPhoneValue)
       const guestEmail = bookingGuestEmailRef.current?.value ?? ''
       if (guestPhone.trim() && !phonePattern.test(guestPhone.trim())) {
-        setBookingModalError('Please enter a valid phone number (8-15 digits, optional + prefix).')
+        reportBookingModalError('Please enter a valid phone number (8-15 digits, optional + prefix).')
         return
       }
       if (guestEmail.trim() && !emailPattern.test(guestEmail.trim())) {
-        setBookingModalError('Please enter a valid email address.')
+        reportBookingModalError('Please enter a valid email address.')
         return
       }
     }
     if (!bookingAssignedStaffId) {
-      setBookingModalError('Please select assigned staff.')
+      reportBookingModalError('Please select assigned staff.')
       return
     }
     if (!bookingDate) {
-      setBookingModalError('Please select appointment date.')
+      reportBookingModalError('Please select appointment date.')
       return
     }
     if (!bookingSlotValue) {
-      setBookingModalError('Please select appointment slot/time.')
+      reportBookingModalError('Please select appointment slot/time.')
       return
     }
     if (new Set(bookingSelectedServiceIds).size !== bookingSelectedServiceIds.length) {
-      setBookingModalError('Duplicate main services are not allowed in the same booking.')
+      reportBookingModalError('Duplicate main services are not allowed in the same booking.')
       return
     }
     for (const question of bookingQuestions) {
       if (!question.is_required) continue
       const hasSelection = question.options.some((option) => bookingSelectedOptionIds.includes(option.id))
       if (!hasSelection) {
-        setBookingModalError(`Please answer required question: ${question.title}`)
+        reportBookingModalError(`Please answer required question: ${question.title}`)
         return
       }
     }
     for (const block of bookingExtraServiceBlocks) {
       if (!block.service) {
-        setBookingModalError('Please select service for every added main service block.')
+        reportBookingModalError('Please select service for every added main service block.')
         return
       }
       for (const question of block.questions) {
         if (!question.is_required) continue
         const hasSelection = question.options.some((option) => block.selectedOptionIds.includes(option.id))
         if (!hasSelection) {
-          setBookingModalError(`Please answer required question: ${question.title}`)
+          reportBookingModalError(`Please answer required question: ${question.title}`)
           return
         }
       }
     }
     const bookingUnavailableReason = bookingSelectedSlot?.unavailable_staff_reasons?.[String(bookingAssignedStaffId)] ?? ''
     if (POS_HARD_AVAILABILITY_REASONS.has(bookingUnavailableReason)) {
-      setBookingModalError(bookingUnavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (bookingUnavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+      reportBookingModalError(bookingUnavailableReason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (bookingUnavailableReason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
       return
     }
 
@@ -3500,7 +3641,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         const availabilityJson = await availabilityRes.json().catch(() => null)
         const reason = String(availabilityJson?.data?.reason_code ?? '')
         if (availabilityJson?.data?.is_hard_block || POS_HARD_AVAILABILITY_REASONS.has(reason)) {
-          setBookingModalError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
+          reportBookingModalError(reason === 'staff_off_day' ? 'Selected staff is off day for this date.' : (reason === 'staff_leave' ? 'Selected staff is on leave for this time.' : 'Selected staff has a conflict for this time.'))
           setBookingSubmitting(false)
           return
         }
@@ -3551,7 +3692,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      setBookingModalError(json?.message ?? 'Unable to add service to cart.')
+      reportBookingModalError(json?.message ?? 'Unable to add service to cart.')
       setBookingSubmitting(false)
       return
     }
@@ -3566,7 +3707,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
     showMsg('Service added to cart. Continue with checkout to collect payment.', 'success')
     setBookingModalOpen(false)
-    setBookingModalError(null)
+    reportBookingModalError(null)
     setBookingSubmitting(false)
   }, [
     bookingAssignedStaffId,
@@ -3683,7 +3824,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setPackageMembers([])
     setPackageMembersLoading(false)
     setPackageMemberPickerOpen(false)
-    setPackageModalError(null)
+    reportPackageModalError(null)
     setPackageModalOpen(true)
   }, [activeStaffs, fetchStaffOptions, hasCartAppointmentSettlements, selectedMember])
 
@@ -3692,7 +3833,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     const selectedModalMember = packageSelectedMember
     if (!selectedModalMember?.id) {
-      setPackageModalError('Please select member.')
+      reportPackageModalError('Please select member.')
       return
     }
 
@@ -3710,7 +3851,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const json = await res.json().catch(() => null)
 
     if (!res.ok) {
-      setPackageModalError(json?.message ?? 'Unable to add package.')
+      reportPackageModalError(json?.message ?? 'Unable to add package.')
       setPackageSubmitting(false)
       return
     }
@@ -3719,7 +3860,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setSelectedMember(selectedModalMember)
     setPackageModalOpen(false)
     setPackageSubmitting(false)
-    setPackageModalError(null)
+    reportPackageModalError(null)
     showMsg('Package added to cart.', 'success')
   }, [packageDraft?.id, packageSelectedMember, showMsg])
 
@@ -3868,6 +4009,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setPriceEditLineTotalDraft(Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2))
     setPriceEditMode('unit')
     setPriceEditReasonDraft('')
+    setPriceEditError(null)
   }
 
   const submitPriceEditModal = async () => {
@@ -3927,6 +4069,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const nextValue = Number(target.discountValue ?? 0)
     setDiscountValueDraft(nextValue > 0 ? String(nextValue) : '')
     setDiscountRemarkDraft(target.discountRemark ?? '')
+    setDiscountModalError(null)
     setDiscountModalOpen(true)
   }
 
@@ -4030,7 +4173,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const updateCartEditSplitShare = (index: number, value: string) => {
-    setCartEditSettlementError(null)
+    reportCartEditSettlementError(null)
     setCartEditStaffSplits((prev) => {
       const next = prev.map((row, rowIdx) => (rowIdx === index ? { ...row, share_percent: value } : row))
       if (!cartEditStaffSplitAutoBalance || index === 0) return next
@@ -4039,7 +4182,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const removeCartEditSplitRow = (index: number) => {
-    setCartEditSettlementError(null)
+    reportCartEditSettlementError(null)
     setCartEditStaffSplits((prev) => {
       const next = prev.filter((_, rowIdx) => rowIdx !== index)
       if (!cartEditStaffSplitAutoBalance) return next
@@ -4048,7 +4191,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const openCartEditSettlement = async (settlement: AppointmentSettlementCartItem) => {
-    setCartEditSettlementError(null)
+    reportCartEditSettlementError(null)
     setCartEditSettlementLoading(false)
     setCartEditSettlementItem(settlement)
     setCartEditSettlementBookingId(settlement.booking_id)
@@ -4195,7 +4338,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const selectCartEditOriginalService = async (service: BookingServiceOption) => {
     if (!service?.id) return
-    setCartEditSettlementError(null)
+    reportCartEditSettlementError(null)
     setCartEditOriginalService(service)
     setCartEditSettlementServiceId(service.id)
     setCartEditSelectedAddonIds(new Set())
@@ -4314,7 +4457,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const saveCartEditSettlement = async () => {
     if (!cartEditSettlementBookingId) return
-    setCartEditSettlementError(null)
+    reportCartEditSettlementError(null)
     setCartEditSettlementLoading(true)
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
@@ -4342,7 +4485,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       if (needsSettledAmount) {
         const amountCheck = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
         if (!amountCheck.ok) {
-          setCartEditSettlementError(amountCheck.message)
+          reportCartEditSettlementError(amountCheck.message)
           return
         }
         payload.settled_service_amount = amountCheck.amount
@@ -4352,17 +4495,17 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         share_percent: Number.parseInt(row.share_percent || '0', 10),
       }))
       if (normalizedSplits.length < 1 || normalizedSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
-        setCartEditSettlementError('Please select at least one staff and enter valid split percentages.')
+        reportCartEditSettlementError('Please select at least one staff and enter valid split percentages.')
         return
       }
       const uniqueIds = new Set(normalizedSplits.map((row) => row.staff_id))
       if (uniqueIds.size !== normalizedSplits.length) {
-        setCartEditSettlementError('Duplicate staff is not allowed in split.')
+        reportCartEditSettlementError('Duplicate staff is not allowed in split.')
         return
       }
       const splitSum = normalizedSplits.reduce((sum, row) => sum + row.share_percent, 0)
       if (splitSum !== 100) {
-        setCartEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
+        reportCartEditSettlementError(`Staff split total must equal 100% (current: ${splitSum}%).`)
         return
       }
       payload.staff_splits = normalizedSplits
@@ -4373,13 +4516,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           share_percent: Number.parseInt(row.share_percent || '0', 10),
         }))
         if (blockSplits.length < 1 || blockSplits.some((row) => row.staff_id <= 0 || row.share_percent <= 0)) {
-          setCartEditSettlementError(`Please complete staff split for ${block.service_name}.`)
+          reportCartEditSettlementError(`Please complete staff split for ${block.service_name}.`)
           return
         }
         const blockUnique = new Set(blockSplits.map((row) => row.staff_id))
         const blockSum = blockSplits.reduce((sum, row) => sum + row.share_percent, 0)
         if (blockUnique.size !== blockSplits.length || blockSum !== 100) {
-          setCartEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
+          reportCartEditSettlementError(`Staff split for ${block.service_name} must be valid and total 100%.`)
           return
         }
       }
@@ -4391,7 +4534,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        setCartEditSettlementError(json?.message ?? 'Failed to update settlement.')
+        reportCartEditSettlementError(json?.message ?? 'Failed to update settlement.')
         return
       }
       const warnings = Array.isArray(json?.data?.policy_warnings)
@@ -5371,27 +5514,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const finalizeCheckout = async (meta: CheckoutMeta) => {
     if (!cart || !hasCartItems || checkingOut) return
     if (cartPackageItems.length > 0 && !selectedMember?.id) {
-      setCheckoutError('Please assign member before purchasing service package.')
+      reportCheckoutError('Please assign member before purchasing service package.')
       return
     }
     if (hasCartBookServices && !hasCartPackages) {
       if (checkoutIdentityMode === 'member' && !selectedMember?.id) {
-        setCheckoutError('Please assign a member, or switch to guest details for checkout.')
+        reportCheckoutError('Please assign a member, or switch to guest details for checkout.')
         return
       }
       if (checkoutIdentityMode === 'guest' && !guestContactIsComplete && !checkoutGuestIsUnknown) {
-        setCheckoutError('Please complete guest name, phone, and email before checkout.')
+        reportCheckoutError('Please complete guest name, phone, and email before checkout.')
         return
       }
     }
 
     setCheckingOut(true)
-    setCheckoutError(null)
+    reportCheckoutError(null)
 
     for (const packageItem of cartPackageItems) {
       const rows = packageCheckoutSplits[packageItem.id] ?? []
       if (rows.length === 0) {
-        setCheckoutError(`Please assign at least one staff split for package ${packageItem.package_name}.`)
+        reportCheckoutError(`Please assign at least one staff split for package ${packageItem.package_name}.`)
         setCheckingOut(false)
         return
       }
@@ -5399,12 +5542,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       let total = 0
       for (const row of rows) {
         if (!row.staff_id || row.staff_id <= 0) {
-          setCheckoutError(`Please select staff for all splits of package ${packageItem.package_name}.`)
+          reportCheckoutError(`Please select staff for all splits of package ${packageItem.package_name}.`)
           setCheckingOut(false)
           return
         }
         if (ids.has(row.staff_id)) {
-          setCheckoutError(`Duplicate staff found in package split for ${packageItem.package_name}.`)
+          reportCheckoutError(`Duplicate staff found in package split for ${packageItem.package_name}.`)
           setCheckingOut(false)
           return
         }
@@ -5412,7 +5555,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         total += Number(row.share_percent || 0)
       }
       if (total !== 100) {
-        setCheckoutError(`Total split for package ${packageItem.package_name} must be 100%.`)
+        reportCheckoutError(`Total split for package ${packageItem.package_name} must be 100%.`)
         setCheckingOut(false)
         return
       }
@@ -5539,7 +5682,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const json = await res.json()
 
     if (!res.ok) {
-      setCheckoutError(json?.message ?? 'Checkout failed. Please try again.')
+      reportCheckoutError(json?.message ?? 'Checkout failed. Please try again.')
       setCheckingOut(false)
       return
     }
@@ -5681,18 +5824,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const confirmCheckout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
-    setCheckoutError(null)
+    reportCheckoutError(null)
     if (cartPackageItems.length > 0 && !selectedMember?.id) {
-      setCheckoutError('Please assign member before purchasing service package.')
+      reportCheckoutError('Please assign member before purchasing service package.')
       return
     }
     if (hasCartBookServices && !hasCartPackages) {
       if (checkoutIdentityMode === 'member' && !selectedMember?.id) {
-        setCheckoutError('Please assign a member, or switch to guest details.')
+        reportCheckoutError('Please assign a member, or switch to guest details.')
         return
       }
       if (checkoutIdentityMode === 'guest' && !guestContactIsComplete && !checkoutGuestIsUnknown) {
-        setCheckoutError('Please complete guest name, phone, and email.')
+        reportCheckoutError('Please complete guest name, phone, and email.')
         return
       }
     }
@@ -5711,7 +5854,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     if (!splitPaymentValid) {
-      setCheckoutError(splitMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal grand total.')
+      reportCheckoutError(splitMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal grand total.')
       return
     }
 
@@ -5721,7 +5864,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const checkout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
     if (cartPackageItems.length > 0 && !selectedMember?.id) {
-      setCheckoutError('Please assign member before purchasing service package.')
+      reportCheckoutError('Please assign member before purchasing service package.')
       return
     }
     await openCheckoutConfirmation()
@@ -5874,7 +6017,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setSelectedMember(null)
     setGuestContactCache({ name: '', phone: '', email: '' })
     setCheckoutIdentityMode('member')
-    setCheckoutError(null)
+    reportCheckoutError(null)
     showMsg('Customer details cleared.', 'info')
   }, [appliedVoucher, removeVoucher, showMsg])
 
@@ -6034,7 +6177,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
     setItemSplitEditorTarget({ type: 'product', id: cartItemId })
     setItemSplitAutoBalance(true)
-    setItemSplitError(null)
+    reportItemSplitError(null)
     setItemSplitEditorOpen(true)
   }
 
@@ -6146,7 +6289,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
     setItemSplitEditorTarget({ type: 'bulk', id: 0, lineKeys: Array.from(new Set(lineKeys)), productCartItemIds, packageItemIds, title })
     setItemSplitAutoBalance(true)
-    setItemSplitError(null)
+    reportItemSplitError(null)
     setItemSplitEditorOpen(true)
   }
 
@@ -6172,7 +6315,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
     setItemSplitEditorTarget({ type: 'line', id: 0, lineKey, title })
     setItemSplitAutoBalance(true)
-    setItemSplitError(null)
+    reportItemSplitError(null)
     setItemSplitEditorOpen(true)
   }
 
@@ -6197,7 +6340,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
     setItemSplitEditorTarget({ type: 'package', id: packageItemId })
     setItemSplitAutoBalance(true)
-    setItemSplitError(null)
+    reportItemSplitError(null)
     setItemSplitEditorOpen(true)
   }
 
@@ -6226,7 +6369,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
     setItemSplitEditorTarget({ type: 'settlement', id: settlement.id })
     setItemSplitAutoBalance(true)
-    setItemSplitError(null)
+    reportItemSplitError(null)
     setItemSplitEditorOpen(true)
   }
 
@@ -6246,7 +6389,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const saveItemSplitEditor = () => {
     const validation = validateSplitDraft(itemSplitDraftRows)
     if (!validation.valid) {
-      setItemSplitError(validation.error)
+      reportItemSplitError(validation.error)
       return
     }
 
@@ -6329,7 +6472,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const othersTotal = next.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
       return next.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
     })
-    setItemSplitError(null)
+    reportItemSplitError(null)
   }
 
   const onRemoveDraftSplitRow = (rowId: string) => {
@@ -6339,12 +6482,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const othersTotal = next.slice(1).reduce((sum, row) => sum + Math.max(0, row.share_percent), 0)
       return next.map((row, idx) => (idx === 0 ? { ...row, share_percent: Math.max(0, 100 - othersTotal) } : row))
     })
-    setItemSplitError(null)
+    reportItemSplitError(null)
   }
 
   const onChangeDraftShare = (rowId: string, rawValue: number) => {
     const nextValue = Math.max(0, Math.min(100, Math.round(rawValue || 0)))
-    setItemSplitError(null)
+    reportItemSplitError(null)
 
     setItemSplitDraftRows((prev) => {
       if (!itemSplitAutoBalance) {
@@ -6359,7 +6502,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const othersTotal = next.slice(1).reduce((sum, row) => sum + row.share_percent, 0)
       const primaryShare = 100 - othersTotal
       if (primaryShare < 0) {
-        setItemSplitError('Total share cannot exceed 100% when Auto Balance is on.')
+        reportItemSplitError('Total share cannot exceed 100% when Auto Balance is on.')
         return prev
       }
 
@@ -6369,7 +6512,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }
 
   const openCheckoutConfirmation = async () => {
-    setCheckoutError(null)
+    reportCheckoutError(null)
     await syncCheckoutAssignments()
 
     const guestLine = cartServiceItems.find(
@@ -8193,6 +8336,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+              {cartEditSettlementError ? (
+                <div
+                  ref={cartEditSettlementErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+                >
+                  {cartEditSettlementError}
+                </div>
+              ) : null}
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
               {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) ? (
@@ -8210,7 +8363,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       autoComplete="off"
                       value={cartEditSettledAmount}
                       onChange={(e) => {
-                        setCartEditSettlementError(null)
+                        reportCartEditSettlementError(null)
                         setCartEditSettledAmount(e.target.value)
                       }}
                       className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
@@ -8314,7 +8467,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         value={split.staff_id ?? ''}
                         onChange={(e) => {
                           const value = e.target.value ? Number(e.target.value) : null
-                          setCartEditSettlementError(null)
+                          reportCartEditSettlementError(null)
                           setCartEditStaffSplits((prev) => prev.map((row, rowIdx) => (rowIdx === idx ? { ...row, staff_id: value } : row)))
                         }}
                         className="rounded-lg border border-gray-300 px-3 py-2 text-sm"
@@ -8647,9 +8800,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">
                 Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment. Save will still be blocked for another booking conflict, staff leave, inactive staff, or missing required date/time/staff.
               </p>
-              {cartEditSettlementError ? (
-                <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">{cartEditSettlementError}</p>
-              ) : null}
               <div className="flex gap-3">
                 <button
                   type="button"
@@ -8758,6 +8908,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-6 sm:p-8">
+              {checkoutError ? (
+                <div
+                  ref={checkoutErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-800"
+                >
+                  {checkoutError}
+                </div>
+              ) : null}
 
               <div className="mb-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3">
                 {selectedCheckoutBulkKeys.length > 0 ? (
@@ -9528,7 +9688,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         disabled={Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member')}
                         onClick={() => {
                           setCheckoutIdentityMode('member')
-                          setCheckoutError(null)
+                          reportCheckoutError(null)
                         }}
                         className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member' ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'member' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
@@ -9540,7 +9700,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         onClick={() => {
                           setCheckoutIdentityMode('guest')
                           setSelectedMember(null)
-                          setCheckoutError(null)
+                          reportCheckoutError(null)
                         }}
                         className={`rounded-md px-3 py-1.5 text-[11px] font-semibold transition-all ${(checkoutRequiresMemberOnly || (settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')) ? 'cursor-not-allowed opacity-60' : ''} ${checkoutIdentityMode === 'guest' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-600 hover:text-gray-900'}`}
                       >
@@ -9585,7 +9745,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           value={guestContactCache.name}
                           onChange={(e) => {
                             setGuestContactCache((prev) => ({ ...prev, name: e.target.value }))
-                            setCheckoutError(null)
+                            reportCheckoutError(null)
                           }}
                           className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                           placeholder="Name *"
@@ -9598,7 +9758,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           value={guestContactCache.phone}
                           onChange={(phone) => {
                             setGuestContactCache((prev) => ({ ...prev, phone }))
-                            setCheckoutError(null)
+                            reportCheckoutError(null)
                           }}
                           placeholder={checkoutGuestIsUnknown ? 'Phone (optional)' : 'Phone *'}
                           required={!checkoutGuestIsUnknown}
@@ -9614,7 +9774,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           value={guestContactCache.email}
                           onChange={(e) => {
                             setGuestContactCache((prev) => ({ ...prev, email: e.target.value }))
-                            setCheckoutError(null)
+                            reportCheckoutError(null)
                           }}
                           className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                           placeholder={checkoutGuestIsUnknown ? 'Email (optional)' : 'Email *'}
@@ -9638,7 +9798,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         onClick={() => {
                           setSplitPaymentAmounts({ cash: '', qrpay: '', credit_card: '', [method]: cartTotal.toFixed(2) })
                           setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
-                          setCheckoutError(null)
+                          reportCheckoutError(null)
                         }}
                         className="mb-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
                       >
@@ -9653,7 +9813,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         onChange={(e) => {
                           setSplitPaymentAmounts((prev) => ({ ...prev, [method]: e.target.value }))
                           setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
-                          setCheckoutError(null)
+                          reportCheckoutError(null)
                         }}
                         className="mt-1 h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                         placeholder="0.00"
@@ -9865,16 +10025,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 )}
               </div>
 
-              {checkoutError ? (
-                <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">{checkoutError}</div>
-              ) : null}
-
               <div className="mt-8 flex gap-4 pt-2 flex-shrink-0">
                 <button
                   type="button"
                   className="flex-1 rounded-xl border-2 border-gray-300 bg-white px-6 py-3.5 text-base font-semibold text-gray-700 transition-all hover:border-gray-400 hover:bg-gray-50 active:scale-95 shadow-sm"
                   onClick={() => {
-                    setCheckoutError(null)
+                    reportCheckoutError(null)
                     setCheckoutConfirmationOpen(false)
                   }}
                 >
@@ -9904,6 +10060,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             <div className="min-h-0 flex-1 overflow-y-auto">
             <div className="space-y-3 p-5">
+              {itemSplitError ? (
+                <div
+                  ref={itemSplitErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"
+                >
+                  {itemSplitError}
+                </div>
+              ) : null}
               {itemSplitEditorTarget.type === 'bulk' ? (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                   <input type="checkbox" checked={bulkSplitOverwrite} onChange={(event) => setBulkSplitOverwrite(event.target.checked)} className="h-4 w-4" />
@@ -10018,7 +10184,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <span className="text-sm font-bold text-gray-900">{itemSplitDraftRows.reduce((sum, row) => sum + row.share_percent, 0)}%</span>
               </div>
 
-              {itemSplitError && <p className="text-xs font-medium text-red-600">{itemSplitError}</p>}
             </div>
             </div>
 
@@ -10042,6 +10207,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            {priceEditError ? (
+              <div
+                ref={priceEditErrorRef}
+                role="alert"
+                tabIndex={-1}
+                className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+              >
+                {priceEditError}
+              </div>
+            ) : null}
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-sm">
@@ -10082,6 +10257,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/45 p-4">
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            {discountModalError ? (
+              <div
+                ref={discountModalErrorRef}
+                role="alert"
+                tabIndex={-1}
+                className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+              >
+                {discountModalError}
+              </div>
+            ) : null}
             <h4 className="text-lg font-bold text-gray-900">Line Item Discount</h4>
             <p className="mt-1 text-sm text-gray-600">{discountTarget.name}</p>
             <p className="mt-1 text-xs text-gray-500">Line total: RM {Number(discountTarget.lineTotal ?? 0).toFixed(2)}</p>
@@ -10122,6 +10307,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
           <div className="relative mx-auto flex w-full max-w-3xl lg:max-w-5xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
+            {packageModalError ? (
+              <div
+                ref={packageModalErrorRef}
+                role="alert"
+                tabIndex={-1}
+                className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-600"
+              >
+                {packageModalError}
+              </div>
+            ) : null}
             <h3 className="text-xl font-bold text-gray-900">Add Package to Cart</h3>
             <p className="mt-1 text-base text-gray-600">{packageDraft.name}</p>
             {hasCartAppointmentSettlements ? (
@@ -10195,7 +10390,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               Staff split and commission preview will be configured in Checkout Confirmation.
             </div>
 
-            {packageModalError ? <p className="mt-3 text-sm font-medium text-red-600">{packageModalError}</p> : null}
             </div>
 
             <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 p-5 pt-4">
@@ -10320,7 +10514,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-5 overscroll-contain">
             {bookingModalError ? (
-              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              <div
+                ref={bookingModalErrorRef}
+                role="alert"
+                tabIndex={-1}
+                className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-700"
+              >
                 {bookingModalError}
               </div>
             ) : null}
@@ -10603,7 +10802,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       disabled={Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'member')}
                       onClick={() => {
                         setBookingIdentityMode('member')
-                        setBookingModalError(null)
+                        reportBookingModalError(null)
                       }}
                       role="tab"
                       aria-selected={bookingIdentityMode === 'member'}
@@ -10624,7 +10823,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       disabled={checkoutRequiresMemberOnly || Boolean(settlementLockedIdentityMode && settlementLockedIdentityMode !== 'guest')}
                       onClick={() => {
                         setBookingIdentityMode('guest')
-                        setBookingModalError(null)
+                        reportBookingModalError(null)
                       }}
                       role="tab"
                       aria-selected={bookingIdentityMode === 'guest'}
@@ -10787,7 +10986,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 type="button"
                 onClick={() => {
                   setBookingModalOpen(false)
-                  setBookingModalError(null)
+                  reportBookingModalError(null)
                 }}
                 className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700"
               >
@@ -11069,6 +11268,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
+              {voucherModalError ? (
+                <div
+                  ref={voucherModalErrorRef}
+                  role="alert"
+                  tabIndex={-1}
+                  className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800"
+                >
+                  {voucherModalError}
+                </div>
+              ) : null}
               <p className="mb-3 text-xs text-gray-600">
                 {selectedMember ? 'Showing member vouchers.' : 'Showing public vouchers (non-reward).'}
               </p>
@@ -11288,8 +11497,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       )}
 
-      {/* Checkout Error Modal */}
-      {checkoutError && (
+      {/* Checkout Error Modal (when confirmation modal is not open) */}
+      {checkoutError && !checkoutConfirmationOpen ? (
         <div className={`fixed inset-0 ${bookingModalOpen ? 'z-[130]' : 'z-50'} flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4`}>
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="shrink-0 bg-gradient-to-r from-red-600 to-red-700 px-6 py-5">
@@ -11301,10 +11510,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </h4>
             </div>
             <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4">
-              <p className="text-gray-700">{checkoutError}</p>
+              <p ref={checkoutStandaloneErrorRef} role="alert" tabIndex={-1} className="text-gray-700">{checkoutError}</p>
               <button
                 onClick={() => {
-                  setCheckoutError(null)
+                  reportCheckoutError(null)
                   focusScanner()
                 }}
                 className="w-full rounded-xl bg-gradient-to-r from-gray-600 to-gray-700 px-4 py-3 text-sm font-bold text-white shadow-lg transition-all hover:from-gray-700 hover:to-gray-800 hover:shadow-xl active:scale-95"
@@ -11314,7 +11523,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
       {/* Bottom-right Toasts (commercial POS style) */}
       {toasts.length > 0 && (
