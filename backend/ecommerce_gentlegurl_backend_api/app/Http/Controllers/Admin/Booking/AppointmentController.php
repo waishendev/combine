@@ -320,7 +320,8 @@ class AppointmentController extends Controller
             'completed_at' => optional($booking->completed_at)?->toIso8601String(),
             'cancelled_at' => optional($booking->cancelled_at)?->toIso8601String(),
             'status' => (string) $booking->status,
-            'payment_status' => (string) $booking->payment_status,
+            'booking_payment_status' => (string) $booking->payment_status,
+            'payment_status' => (string) ($financial['computed_payment_status'] ?? $booking->payment_status),
             ...$financial,
         ];
     }
@@ -334,6 +335,13 @@ class AppointmentController extends Controller
         $totalAmount = round(max(0, $serviceTotal + $addonTotal), 2);
 
         $orderItems = OrderItem::query()
+            ->whereHas('order', function ($query) {
+                $query->whereIn(DB::raw('LOWER(payment_status)'), ['paid'])
+                    ->where(function ($statusQuery) {
+                        $statusQuery->whereNull('status')
+                            ->orWhereNotIn(DB::raw('LOWER(status)'), ['cancelled', 'failed']);
+                    });
+            })
             ->where('booking_id', (int) $booking->id)
             ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
             ->get(['line_type', 'line_total', 'variant_name_snapshot']);
@@ -421,8 +429,33 @@ class AppointmentController extends Controller
     private function mapAddonItems($rawItems, array $mainStaffSplits = []): array
     {
         return collect(is_array($rawItems) ? $rawItems : [])
+            ->flatMap(function ($item) {
+                if (! is_array($item)) {
+                    return [null];
+                }
+
+                $itemKind = strtolower((string) ($item['item_kind'] ?? $item['line_type'] ?? 'addon'));
+                if ($itemKind === 'main_service') {
+                    return collect($item['addon_items'] ?? [])
+                        ->filter(fn ($addon) => is_array($addon))
+                        ->map(fn (array $addon) => [
+                            ...$addon,
+                            'parent_service_ref' => $item['is_original'] ?? false ? 'original' : (string) ($item['name'] ?? $item['label'] ?? 'Service'),
+                            'service_ref' => null,
+                        ])
+                        ->values()
+                        ->all();
+                }
+
+                return [$item];
+            })
             ->map(function ($item) use ($mainStaffSplits) {
                 if (!is_array($item)) {
+                    return null;
+                }
+
+                $itemKind = strtolower((string) ($item['item_kind'] ?? $item['line_type'] ?? 'addon'));
+                if ($itemKind === 'main_service') {
                     return null;
                 }
 
@@ -445,6 +478,9 @@ class AppointmentController extends Controller
                     'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
                     'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                    'service_ref' => strtolower((string) ($item['service_ref'] ?? '')) === 'original' ? null : ($item['service_ref'] ?? null),
+                    'parent_service_ref' => $item['parent_service_ref'] ?? null,
+                    'item_kind' => $itemKind,
                     'staff_splits' => ! empty($explicitSplits) ? $explicitSplits : $mainStaffSplits,
                     'staff_split_source' => ! empty($explicitSplits) ? 'explicit' : 'inherited',
                 ];
