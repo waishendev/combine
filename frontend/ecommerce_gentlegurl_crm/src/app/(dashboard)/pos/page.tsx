@@ -19,7 +19,7 @@ export default async function PosPage() {
   }
 
   return (
-    <div className="crm-page-shell min-h-0 px-3 py-4 sm:px-4 sm:py-5 md:px-6 md:py-6 lg:px-8 xl:px-10">
+    <div className="crm-page-shell pos-checkout-page min-h-0 px-3 py-3 sm:px-4 sm:py-4 md:px-5 md:py-4 lg:px-6">
       <PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
         <PosPageContent
           currentUser={{

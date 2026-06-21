@@ -6735,11 +6735,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [modalGalleryImages, modalPreviewImageUrl, selectedProduct])
 
   return (
-    <div className="min-h-screen space-y-4 overflow-x-hidden bg-gray-50 p-3 sm:space-y-5 sm:p-4 lg:space-y-6 lg:p-6">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
+    <div className="pos-checkout-workspace min-h-0 flex-1 space-y-3 overflow-x-hidden bg-gray-50 sm:space-y-4">
+      <div className="pos-checkout-page-header flex shrink-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between lg:gap-4">
         <div className="min-w-0 flex-1">
-          <h2 className="text-2xl font-bold text-gray-900 sm:text-3xl">POS Checkout</h2>
-          <p className="mt-2 flex flex-col gap-1.5 text-sm text-gray-600 lg:flex-row lg:items-start lg:gap-2">
+          <h2 className="text-xl font-bold text-gray-900 sm:text-2xl lg:text-3xl">POS Checkout</h2>
+          <p className="pos-checkout-subtitle mt-1.5 flex flex-col gap-1.5 text-sm text-gray-600 lg:mt-2 lg:flex-row lg:items-start lg:gap-2">
             <span className="inline-flex shrink-0 items-center gap-2">
               <svg className="h-4 w-4 shrink-0 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
@@ -6768,10 +6768,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       </div>
 
-      <div className="pos-split-layout grid min-w-0 grid-cols-1 gap-5">
+      <div className="pos-split-layout grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-3 sm:gap-4 lg:gap-5">
         <div
           className={[
-            'pos-split-catalog min-w-0 space-y-5',
+            'pos-split-catalog flex min-h-0 min-w-0 flex-1 flex-col space-y-3 sm:space-y-4 lg:space-y-5',
             isCompactLayout === true && hasCartItems && 'pb-[calc(5.75rem+env(safe-area-inset-bottom,0px))]',
           ]
             .filter(Boolean)
@@ -6792,8 +6792,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           />
 
           {/* Products / Services Section */}
-          <div className="@container pos-split-panel flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-6">
-            <h3 className="mb-5 text-xl font-bold text-gray-900 flex items-center gap-2">
+          <div className="@container pos-split-panel flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-3 shadow-md sm:p-4 lg:p-5">
+            <h3 className="pos-split-panel-title mb-3 flex shrink-0 items-center gap-2 text-lg font-bold text-gray-900 sm:mb-4 sm:text-xl">
               <svg className="h-6 w-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
               </svg>
@@ -7338,7 +7338,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
         <div
           className={[
-            'pos-split-cart min-w-0 space-y-5',
+            'pos-split-cart flex min-h-0 min-w-0 flex-1 flex-col space-y-3 sm:space-y-4 lg:space-y-5',
             isCompactLayout === true && 'fixed inset-x-0 bottom-0 z-[130] max-h-[92dvh] transition-transform duration-300 ease-out',
             isCompactLayout === true && (cartSheetOpen ? 'translate-y-0 pointer-events-auto visible pos-cart-sheet-open' : 'translate-y-full pointer-events-none invisible'),
           ]
@@ -7356,7 +7356,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
             <div
               className={[
-                'pos-split-panel relative z-[1] flex min-h-[420px] w-full min-w-0 max-w-full flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-4 shadow-md sm:p-5',
+                'pos-split-panel relative z-[1] flex min-h-0 w-full min-w-0 max-w-full flex-1 flex-col overflow-hidden rounded-xl border-2 border-gray-200 bg-white p-3 shadow-md sm:p-4 lg:p-5',
                 isCompactLayout === true && 'max-h-[92dvh] min-h-0 rounded-b-none rounded-t-2xl border-b-0 shadow-[0_-12px_40px_rgba(15,23,42,0.18)]',
               ]
                 .filter(Boolean)

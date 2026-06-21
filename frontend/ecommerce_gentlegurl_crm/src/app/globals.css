@@ -238,27 +238,76 @@ body {
 @layer utilities {
   @media (min-width: 1024px) and (min-height: 640px),
     (orientation: landscape) and (min-width: 768px) and (min-height: 500px) {
+    /* Fill viewport below header; scroll inside catalog / appointments panels. */
+    .crm-dashboard-main:has(.pos-checkout-page),
+    .crm-dashboard-main:has(.pos-appt-page) {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      padding-bottom: 0;
+    }
+
+    .crm-page-shell.pos-checkout-page,
+    .crm-page-shell.pos-appt-page {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      min-height: 0;
+      max-height: 100%;
+      overflow: hidden;
+    }
+
+    .pos-checkout-page .pos-cash-shift-gate-host,
+    .pos-appt-page .pos-cash-shift-gate-host {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    .pos-checkout-workspace,
+    .pos-appt-workspace {
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      min-height: 0;
+      overflow: hidden;
+    }
+
     .pos-split-layout {
       grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+      flex: 1 1 0%;
       min-height: 0;
+      align-items: stretch;
     }
     .pos-split-catalog {
       grid-column: span 3 / span 3;
+      display: flex;
+      flex-direction: column;
       min-height: 0;
     }
     .pos-split-cart {
       grid-column: span 2 / span 2;
+      display: flex;
+      flex-direction: column;
       min-height: 0;
     }
     .pos-split-panel {
-      height: calc(80vh - 5rem);
-      max-height: calc(100dvh - 6rem);
+      display: flex;
+      flex: 1 1 0%;
+      flex-direction: column;
+      height: 100%;
+      max-height: 100%;
       min-height: 0;
+      overflow: hidden;
     }
     .pos-split-product-grid {
+      flex: 1 1 0%;
       min-height: 0;
     }
     .pos-split-cart-scroll {
+      flex: 1 1 0%;
       min-height: 0;
     }
 
@@ -289,33 +338,6 @@ body {
       visibility: visible;
       pointer-events: auto;
       transition: none;
-    }
-
-    /* POS appointments: equal-height panels, scroll inside each column. */
-    .crm-page-shell.pos-appt-page {
-      display: flex;
-      flex-direction: column;
-      height: calc(100dvh - 4rem);
-      max-height: calc(100dvh - 4rem);
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    .pos-appt-page .pos-cash-shift-gate-host {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      min-height: 0;
-      overflow: hidden;
-    }
-
-    .pos-appt-workspace {
-      display: flex;
-      flex: 1 1 0%;
-      flex-direction: column;
-      gap: 0.75rem;
-      min-height: 0;
-      overflow: hidden;
     }
 
     .pos-appt-layout {
@@ -395,6 +417,25 @@ body {
       overflow-y: auto;
     }
 
+    /* iPad / tablet landscape: tighter chrome so catalog + schedule get more height. */
+    @media (orientation: landscape) and (min-width: 768px) and (max-height: 920px) {
+      .pos-checkout-subtitle {
+        display: none;
+      }
+
+      .pos-checkout-page-header h2 {
+        font-size: 1.25rem;
+        line-height: 1.75rem;
+      }
+
+      .pos-split-panel-title,
+      .pos-appt-panel-header {
+        margin-bottom: 0.5rem !important;
+        font-size: 1rem !important;
+        line-height: 1.5rem !important;
+      }
+    }
+
     /* Wide layout: inline panels only — hide floating controls */
     .pos-floating-cart-bar,
     .pos-cart-sheet-backdrop,
@@ -417,6 +458,10 @@ body {
     (orientation: landscape) and (max-height: 499px) {
     .pos-split-layout {
       grid-template-columns: minmax(0, 1fr) !important;
+    }
+
+    .pos-split-panel {
+      min-height: 360px;
     }
 
     .pos-split-catalog--floating-bar {
@@ -552,16 +597,27 @@ body {
 
     .crm-page-shell.pos-appt-page {
       display: block;
+      flex: none;
       height: auto;
       max-height: none;
       overflow: visible;
     }
 
+    .crm-page-shell.pos-checkout-page {
+      display: block;
+      flex: none;
+      height: auto;
+      max-height: none;
+      overflow: visible;
+    }
+
+    .pos-checkout-page .pos-cash-shift-gate-host,
     .pos-appt-page .pos-cash-shift-gate-host {
       display: block;
       overflow: visible;
     }
 
+    .pos-checkout-workspace,
     .pos-appt-workspace {
       display: block;
       overflow: visible;
