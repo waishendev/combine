@@ -5783,7 +5783,7 @@ class PosController extends Controller
                 foreach (collect($serviceItem->addon_items_json ?? [])->filter(fn ($row) => strtolower((string) ($row['item_kind'] ?? '')) === 'main_service' && ! (bool) ($row['is_original'] ?? false))->values() as $extraMainRow) {
                     $extraMainName = (string) ($extraMainRow['name'] ?? $extraMainRow['label'] ?? 'Service');
                     $extraMainServiceId = (int) ($extraMainRow['linked_booking_service_id'] ?? 0);
-                    OrderItem::create([
+                    $extraMainOrderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'line_type' => 'booking_deposit',
                         'product_id' => null,
@@ -5799,6 +5799,31 @@ class PosController extends Controller
                         'locked' => true,
                         'booking_id' => $booking->id,
                         'booking_service_id' => $extraMainServiceId > 0 ? $extraMainServiceId : $serviceItem->booking_service_id,
+                    ]);
+
+                    $extraMainLineKey = 'main_service:' . (string) ($extraMainServiceId > 0 ? $extraMainServiceId : ($extraMainRow['id'] ?? $extraMainName));
+                    $extraMainStoredSplits = collect($extraMainRow['staff_splits'] ?? [])
+                        ->map(fn ($split) => [
+                            'staff_id' => (int) ($split['staff_id'] ?? 0),
+                            'share_percent' => (int) ($split['share_percent'] ?? 0),
+                        ])
+                        ->filter(fn ($split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+                        ->values();
+                    $extraMainDepositSplits = $resolveLineSplits(
+                        $serviceLinePayloads,
+                        $extraMainLineKey,
+                        $extraMainStoredSplits->isNotEmpty() ? $extraMainStoredSplits->all() : $splits->values()->all()
+                    );
+                    $persistOrderItemLineSplits($extraMainOrderItem, $extraMainDepositSplits, 'service_deposit', $extraMainLineKey, 0.0, [
+                        'cart_service_item_id' => (int) $serviceItem->id,
+                        'booking_id' => (int) $booking->id,
+                        'line_type' => 'service_deposit',
+                        'line_key' => $extraMainLineKey,
+                        'staff_split_source' => $lineSplitSource(
+                            $serviceLinePayloads,
+                            $extraMainLineKey,
+                            $extraMainStoredSplits->isNotEmpty() ? 'line' : 'parent'
+                        ),
                     ]);
                 }
 
