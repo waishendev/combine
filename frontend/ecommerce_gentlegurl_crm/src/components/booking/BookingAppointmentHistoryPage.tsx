@@ -72,6 +72,23 @@ const emptyFilters: Filters = {
   q: '',
 }
 
+const APPOINTMENT_HISTORY_TABLE_MIN_WIDTH = '78rem'
+
+const APPOINTMENT_HISTORY_COLUMN_WIDTHS = [
+  '9.5rem', // Booking No
+  '11rem', // Customer / Guest
+  '7rem', // Service
+  '6.5rem', // Staff
+  '10.5rem', // Appointment date & time
+  '7rem', // Status
+  '6.5rem', // Payment status
+  '6.5rem', // Total amount
+  '6.5rem', // Paid amount
+  '6.5rem', // Balance due
+  '9rem', // Created at
+  '4.5rem', // Actions
+] as const
+
 const STATUS_OPTIONS = ['HOLD', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED']
 const PAYMENT_OPTIONS = [
   { value: 'paid', label: 'Paid' },
@@ -426,22 +443,31 @@ export default function BookingAppointmentHistoryPage() {
 
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-        <table className="min-w-[1200px] divide-y divide-slate-200 text-sm">
+      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="w-full overflow-x-auto">
+        <table
+          className="w-full border-collapse text-sm"
+          style={{ minWidth: APPOINTMENT_HISTORY_TABLE_MIN_WIDTH, tableLayout: 'fixed' }}
+        >
+          <colgroup>
+            {APPOINTMENT_HISTORY_COLUMN_WIDTHS.map((width, index) => (
+              <col key={`appointment-history-col-${index}`} style={{ width }} />
+            ))}
+          </colgroup>
           <thead className="bg-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
             <tr>
-              <th className="px-3 py-3">Booking No</th>
+              <th className="px-3 py-3 whitespace-nowrap">Booking No</th>
               <th className="px-3 py-3">Customer / Guest / Walk-in</th>
               <th className="px-3 py-3">Service</th>
               <th className="px-3 py-3">Staff</th>
-              <th className="px-3 py-3">Appointment Date & Time</th>
-              <th className="px-3 py-3">Status</th>
-              <th className="px-3 py-3">Payment Status</th>
-              <th className="px-3 py-3 text-right">Total Amount</th>
-              <th className="px-3 py-3 text-right text-emerald-700">Paid Amount</th>
-              <th className="px-3 py-3 text-right text-amber-700">Balance Due</th>
-              <th className="px-3 py-3">Created At</th>
-              <th className="px-3 py-3">Actions</th>
+              <th className="px-3 py-3 whitespace-nowrap">Appointment Date & Time</th>
+              <th className="px-3 py-3 whitespace-nowrap">Status</th>
+              <th className="px-3 py-3 whitespace-nowrap">Payment Status</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap">Total Amount</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap text-emerald-700">Paid Amount</th>
+              <th className="px-3 py-3 text-right whitespace-nowrap text-amber-700">Balance Due</th>
+              <th className="px-3 py-3 whitespace-nowrap">Created At</th>
+              <th className="px-3 py-3 whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -449,21 +475,21 @@ export default function BookingAppointmentHistoryPage() {
               <TableLoadingRow colSpan={12} />
             ) : rows.length > 0 ? rows.map((row) => (
               <tr key={row.id} className="hover:bg-slate-50">
-                <td className="px-3 py-3 font-semibold text-slate-900">{row.booking_code}</td>
-                <td className="px-3 py-3">
-                  <div className="font-medium text-slate-900">{row.customer_display_name || 'Walk-in / Unknown'}</div>
-                  <div className="text-xs text-slate-500">{row.customer?.phone ?? row.guest_phone ?? row.customer?.email ?? row.guest_email ?? '—'}</div>
+                <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{row.booking_code}</td>
+                <td className="px-3 py-3 align-top">
+                  <div className="font-medium text-slate-900 break-words">{row.customer_display_name || 'Walk-in / Unknown'}</div>
+                  <div className="text-xs text-slate-500 break-all">{row.customer?.phone ?? row.guest_phone ?? row.customer?.email ?? row.guest_email ?? '—'}</div>
                 </td>
-                <td className="px-3 py-3">{row.service?.name ?? '—'}</td>
-                <td className="px-3 py-3">{row.staff?.name ?? '—'}</td>
-                <td className="px-3 py-3 text-xs tabular-nums">{formatDateTime(row.start_at)}<br /><span className="text-slate-500">to {formatDateTime(row.end_at)}</span></td>
-                <td className="px-3 py-3"><BookingStatusBadge status={row.status} label={row.status} /></td>
-                <td className="px-3 py-3"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>{formatPaymentStatus(resolvedPaymentStatus(row))}</span></td>
-                <td className="px-3 py-3 text-right tabular-nums">{formatMoney(row.total_amount)}</td>
-                <td className={`px-3 py-3 text-right tabular-nums ${paidAmountClass(row.paid_amount)}`}>{formatMoney(row.paid_amount)}</td>
-                <td className={`px-3 py-3 text-right tabular-nums ${balanceDueClass(row.balance_due)}`}>{formatMoney(row.balance_due)}</td>
-                <td className="px-3 py-3 text-xs tabular-nums">{formatDateTime(row.created_at)}</td>
-                <td className="px-3 py-3">
+                <td className="px-3 py-3 align-top break-words">{row.service?.name ?? '—'}</td>
+                <td className="px-3 py-3 align-top break-words">{row.staff?.name ?? '—'}</td>
+                <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap align-top">{formatDateTime(row.start_at)}<br /><span className="text-slate-500">to {formatDateTime(row.end_at)}</span></td>
+                <td className="px-3 py-3 whitespace-nowrap align-top"><BookingStatusBadge status={row.status} label={row.status} /></td>
+                <td className="px-3 py-3 whitespace-nowrap align-top"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>{formatPaymentStatus(resolvedPaymentStatus(row))}</span></td>
+                <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap align-top">{formatMoney(row.total_amount)}</td>
+                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${paidAmountClass(row.paid_amount)}`}>{formatMoney(row.paid_amount)}</td>
+                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${balanceDueClass(row.balance_due)}`}>{formatMoney(row.balance_due)}</td>
+                <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap align-top">{formatDateTime(row.created_at)}</td>
+                <td className="px-3 py-3 whitespace-nowrap align-top">
                   <ReportViewDetailsButton onClick={() => { setDetail(row); setDetailId(row.id) }} title={`View details for ${row.booking_code}`} />
                 </td>
               </tr>
@@ -472,6 +498,7 @@ export default function BookingAppointmentHistoryPage() {
             )}
           </tbody>
         </table>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">

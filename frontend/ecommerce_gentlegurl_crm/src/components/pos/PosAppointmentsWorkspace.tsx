@@ -1,7 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type ReactNode, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
+
+function renderPosBodyModalPortal(node: ReactNode, root: HTMLElement | null | undefined) {
+  if (!node || typeof document === 'undefined') return null
+  return createPortal(node, root ?? document.body)
+}
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
@@ -15,6 +20,7 @@ import {
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
+import PaymentProofModal from '@/components/payment/PaymentProofModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
@@ -237,6 +243,7 @@ export default function PosAppointmentsWorkspace({
   const { isCompactLayout } = usePosWideLayout()
   const settlementColumnRef = useRef<HTMLDivElement>(null)
   const settlementHostRef = useRef<HTMLDivElement>(null)
+  const [bodyModalRoot, setBodyModalRoot] = useState<HTMLDivElement | null>(null)
   const cashShiftActionDisabled = cashShiftLoading || !hasOpenShift
   const cashShiftActionTitle = cashShiftActionDisabled ? requireOpenShiftMessage : undefined
 
@@ -356,6 +363,12 @@ export default function PosAppointmentsWorkspace({
   const [appointmentActionLoading, setAppointmentActionLoading] = useState(false)
   const [sendingConfirmationEmail, setSendingConfirmationEmail] = useState(false)
   const [confirmationEmailCooldownUntil, setConfirmationEmailCooldownUntil] = useState(0)
+  const [holdApproveConfirmOpen, setHoldApproveConfirmOpen] = useState(false)
+  const [holdCancelConfirmOpen, setHoldCancelConfirmOpen] = useState(false)
+  const [holdRejectConfirmOpen, setHoldRejectConfirmOpen] = useState(false)
+  const [holdReviewNote, setHoldReviewNote] = useState('')
+  const [holdCancelReason, setHoldCancelReason] = useState('')
+  const [holdRejectNote, setHoldRejectNote] = useState('')
 
   const [editSettlementOpen, setEditSettlementOpen] = useState(false)
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
@@ -2379,6 +2392,83 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.id, fetchAppointments, refreshOpenedAppointmentDetail, showMsg],
   )
 
+  const approveHoldAppointment = useCallback(async () => {
+    if (!appointmentDetail?.id) return
+    setAppointmentActionLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/approve-hold`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_note: holdReviewNote.trim() || null }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to approve booking.', 'error')
+        return
+      }
+      setHoldApproveConfirmOpen(false)
+      setHoldReviewNote('')
+      showMsg('Booking approved and confirmed.', 'success')
+      await fetchAppointments({ silent: true })
+      await refreshOpenedAppointmentDetail()
+    } finally {
+      setAppointmentActionLoading(false)
+    }
+  }, [appointmentDetail?.id, fetchAppointments, holdReviewNote, refreshOpenedAppointmentDetail, showMsg])
+
+  const cancelHoldAppointment = useCallback(async () => {
+    if (!appointmentDetail?.id) return
+    setAppointmentActionLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/cancel-hold`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: holdCancelReason.trim() || null }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to cancel hold booking.', 'error')
+        return
+      }
+      setHoldCancelConfirmOpen(false)
+      setHoldCancelReason('')
+      showMsg('Hold booking cancelled.', 'success')
+      await fetchAppointments({ silent: true })
+      await refreshOpenedAppointmentDetail()
+    } finally {
+      setAppointmentActionLoading(false)
+    }
+  }, [appointmentDetail?.id, fetchAppointments, holdCancelReason, refreshOpenedAppointmentDetail, showMsg])
+
+  const rejectHoldPaymentProof = useCallback(async () => {
+    if (!appointmentDetail?.id) return
+    const note = holdRejectNote.trim()
+    if (!note) {
+      showMsg('Please enter a reason for rejecting the payment proof.', 'error')
+      return
+    }
+    setAppointmentActionLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/reject-hold-payment-proof`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_note: note }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg(json?.message ?? 'Unable to reject payment proof.', 'error')
+        return
+      }
+      setHoldRejectConfirmOpen(false)
+      setHoldRejectNote('')
+      showMsg('Payment proof rejected. Customer can upload again.', 'success')
+      await fetchAppointments({ silent: true })
+      await refreshOpenedAppointmentDetail()
+    } finally {
+      setAppointmentActionLoading(false)
+    }
+  }, [appointmentDetail?.id, fetchAppointments, holdRejectNote, refreshOpenedAppointmentDetail, showMsg])
+
   const openAppointmentRescheduleModal = useCallback(() => {
     if (!appointmentDetail) return
     setAppointmentReschedulePolicyWarnings([])
@@ -2874,6 +2964,15 @@ export default function PosAppointmentsWorkspace({
   const appointmentPackageDisabledReason = appointmentDetail?.package_disabled_reason ?? 'No eligible package available.'
   const appointmentCanApplyPackage = Boolean(appointmentDetail?.can_apply_package)
   const appointmentStatusUpper = String(appointmentDetail?.status ?? '').toUpperCase()
+  const appointmentIsHold = appointmentStatusUpper === 'HOLD'
+  const appointmentHoldProofCount = appointmentDetail?.payment_proofs?.length ?? 0
+  const appointmentHoldDepositOrder = appointmentDetail?.hold_deposit_order ?? null
+  const canRejectHoldPaymentProof = Boolean(
+    appointmentIsHold &&
+      ((appointmentHoldDepositOrder?.status === 'processing' &&
+        appointmentHoldDepositOrder.payment_status !== 'paid') ||
+        (appointmentHoldProofCount > 0 && !appointmentHoldDepositOrder)),
+  )
   /** Cancelled / no-show / late cancel — no checkout or “complete visit” CTAs. */
   const appointmentIsTerminalCancelled = ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION'].includes(appointmentStatusUpper)
 
@@ -2971,6 +3070,39 @@ export default function PosAppointmentsWorkspace({
   }, [isCompactLayout])
 
   useEffect(() => {
+    if (typeof document === 'undefined') return
+    const root = document.createElement('div')
+    root.className = 'pos-appt-body-modals'
+    root.setAttribute('data-pos-appt-body-modals', '')
+    document.body.appendChild(root)
+    setBodyModalRoot(root)
+    return () => {
+      root.remove()
+      setBodyModalRoot(null)
+    }
+  }, [])
+
+  const compactPosBodyModalOpen = useMemo(
+    () =>
+      appointmentCheckoutConfirmationOpen ||
+      holdApproveConfirmOpen ||
+      holdRejectConfirmOpen ||
+      holdCancelConfirmOpen ||
+      cancellationConfirmOpen ||
+      appointmentSettlementResult != null ||
+      appointmentQrCodeFullscreen,
+    [
+      appointmentCheckoutConfirmationOpen,
+      holdApproveConfirmOpen,
+      holdRejectConfirmOpen,
+      holdCancelConfirmOpen,
+      cancellationConfirmOpen,
+      appointmentSettlementResult,
+      appointmentQrCodeFullscreen,
+    ],
+  )
+
+  useEffect(() => {
     if (!settlementSheetOpen || typeof document === 'undefined') return
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
@@ -2980,6 +3112,12 @@ export default function PosAppointmentsWorkspace({
   }, [settlementSheetOpen])
 
   useLayoutEffect(() => {
+    if (typeof document === 'undefined') return
+    if (!bodyModalRoot) return
+    document.body.appendChild(bodyModalRoot)
+  }, [compactPosBodyModalOpen, bodyModalRoot])
+
+  useLayoutEffect(() => {
     if (typeof document === 'undefined' || isCompactLayout === null) return
     const node = settlementColumnRef.current
     const host = settlementHostRef.current
@@ -2987,7 +3125,13 @@ export default function PosAppointmentsWorkspace({
 
     if (isCompactLayout === true) {
       if (node.parentNode !== document.body) {
-        document.body.appendChild(node)
+        if (bodyModalRoot?.parentNode === document.body) {
+          document.body.insertBefore(node, bodyModalRoot)
+        } else {
+          document.body.appendChild(node)
+        }
+      } else if (bodyModalRoot?.parentNode === document.body && node.nextSibling !== bodyModalRoot) {
+        document.body.insertBefore(node, bodyModalRoot)
       }
       return
     }
@@ -2995,7 +3139,7 @@ export default function PosAppointmentsWorkspace({
     if (host && node.parentNode !== host) {
       host.appendChild(node)
     }
-  }, [isCompactLayout])
+  }, [isCompactLayout, bodyModalRoot])
 
   const appointmentActiveFilterCount = useMemo(
     () =>
@@ -3257,6 +3401,7 @@ export default function PosAppointmentsWorkspace({
           className={[
             'pos-appt-right min-w-0',
             settlementSheetOpen && 'pos-appt-settlement-sheet-open',
+            isCompactLayout === true && compactPosBodyModalOpen && 'pos-appt-settlement-sheet-under-modal',
           ]
             .filter(Boolean)
             .join(' ')}
@@ -3350,6 +3495,94 @@ export default function PosAppointmentsWorkspace({
                         </p>
                       ))}
                     </div>
+
+                    {appointmentIsHold ? (
+                      <div className="mt-4 rounded-xl border border-violet-200 bg-gradient-to-br from-violet-50/90 to-white p-4 shadow-sm ring-1 ring-violet-100">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-violet-900">Deposit review</p>
+                            <p className="mt-1 text-sm leading-snug text-violet-950/90">
+                              Verify payment proof, then approve to confirm this booking — no need to open shop orders.
+                            </p>
+                            {appointmentDetail.hold_expires_at ? (
+                              <p className="mt-2 text-xs font-medium text-violet-800/90">
+                                Hold expires {formatDateTime12Hour(appointmentDetail.hold_expires_at)}
+                              </p>
+                            ) : null}
+                            {appointmentHoldDepositOrder ? (
+                              <p className="mt-2 text-xs text-violet-900/80">
+                                <span className="font-semibold">{appointmentHoldDepositOrder.order_number}</span>
+                                {' · '}
+                                RM {Number(appointmentHoldDepositOrder.grand_total ?? 0).toFixed(2)}
+                                {' · '}
+                                {appointmentHoldDepositOrder.status === 'processing'
+                                  ? 'Waiting for verification'
+                                  : appointmentHoldDepositOrder.status === 'reject_payment_proof'
+                                    ? 'Payment proof rejected'
+                                    : appointmentHoldDepositOrder.status.replaceAll('_', ' ')}
+                              </p>
+                            ) : (
+                              <p className="mt-2 text-xs text-violet-800/80">No pending deposit order — approve if no deposit is required.</p>
+                            )}
+                          </div>
+                          <PaymentProofModal
+                            proofs={appointmentDetail.payment_proofs}
+                            bookingCode={appointmentDetail.booking_code}
+                            layout="icon"
+                            className="shrink-0"
+                          />
+                        </div>
+                        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+                          <button
+                            type="button"
+                            disabled={appointmentActionLoading}
+                            onClick={() => {
+                              setHoldCancelReason('')
+                              setHoldCancelConfirmOpen(true)
+                            }}
+                            className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={appointmentActionLoading || !canRejectHoldPaymentProof}
+                            title={
+                              canRejectHoldPaymentProof
+                                ? 'Reject invalid payment proof — customer can re-upload'
+                                : 'Available when slip is uploaded and waiting for verification'
+                            }
+                            onClick={() => {
+                              setHoldRejectNote('')
+                              setHoldRejectConfirmOpen(true)
+                            }}
+                            className="min-h-[48px] rounded-xl border border-amber-300 bg-amber-50 px-3 py-2.5 text-sm font-semibold text-amber-950 shadow-sm transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-45"
+                          >
+                            Reject proof
+                          </button>
+                          <button
+                            type="button"
+                            disabled={appointmentActionLoading}
+                            onClick={() => {
+                              setHoldReviewNote('')
+                              setHoldApproveConfirmOpen(true)
+                            }}
+                            className="min-h-[48px] rounded-xl bg-emerald-600 px-3 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            Approve
+                          </button>
+                        </div>
+                        {appointmentHoldProofCount === 0 && appointmentHoldDepositOrder?.status === 'processing' ? (
+                          <p className="mt-2 text-[11px] font-medium text-amber-800">
+                            Waiting for customer slip — tap the eye icon to check; it opens even when empty.
+                          </p>
+                        ) : appointmentHoldProofCount === 0 ? (
+                          <p className="mt-2 text-[11px] font-medium text-violet-800/80">
+                            Tap the eye icon — proof shows after customer uploads a transfer slip (Manual Transfer orders only).
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : null}
 
                     {/* <div className="mt-4 rounded-lg border border-indigo-100 bg-gradient-to-br from-indigo-50/90 to-white px-3 py-3 shadow-sm ring-1 ring-indigo-100/80">
                       <p className="text-[11px] font-bold uppercase tracking-wide text-indigo-900">Services</p>
@@ -3914,7 +4147,12 @@ export default function PosAppointmentsWorkspace({
             ) : null}
             {hasAppointmentSettlementTarget && settlementSheetOpen ? (
               <div
-                className="pos-settlement-sheet-backdrop pos-settlement-sheet-backdrop--open"
+                className={[
+                  'pos-settlement-sheet-backdrop pos-settlement-sheet-backdrop--open',
+                  compactPosBodyModalOpen && 'pos-settlement-sheet-backdrop--under-modal',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
                 onClick={() => setSettlementSheetOpen(false)}
                 aria-hidden={false}
               />
@@ -4730,8 +4968,187 @@ export default function PosAppointmentsWorkspace({
         </div>
       ) : null}
 
-      {cancellationConfirmOpen && cancellationConfirmRow && cancellationConfirmAction ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
+      {renderPosBodyModalPortal(
+        holdApproveConfirmOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
+          <div
+            className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-hold-approve-title"
+          >
+            <div className="shrink-0 border-b border-gray-200 px-5 py-4">
+              <h3 id="pos-hold-approve-title" className="text-lg font-bold text-gray-900">Approve booking?</h3>
+              <p className="mt-1 text-sm text-gray-600">
+                This confirms the deposit and changes <span className="font-mono font-semibold">{appointmentDetail.booking_code}</span> to{' '}
+                <span className="font-semibold text-emerald-700">CONFIRMED</span>.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div>
+                <label htmlFor="pos-hold-approve-note" className="text-xs font-semibold text-gray-600">
+                  Internal note (optional)
+                </label>
+                <textarea
+                  id="pos-hold-approve-note"
+                  rows={2}
+                  value={holdReviewNote}
+                  onChange={(e) => setHoldReviewNote(e.target.value)}
+                  disabled={appointmentActionLoading}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                  placeholder="e.g. Verified QRPay slip"
+                />
+              </div>
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                type="button"
+                disabled={appointmentActionLoading}
+                onClick={() => {
+                  setHoldApproveConfirmOpen(false)
+                  setHoldReviewNote('')
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={appointmentActionLoading}
+                onClick={() => void approveHoldAppointment()}
+                className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {appointmentActionLoading ? 'Approving…' : 'Confirm approve'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null,
+        bodyModalRoot,
+      )}
+
+      {renderPosBodyModalPortal(
+        holdRejectConfirmOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
+          <div
+            className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-hold-reject-title"
+          >
+            <div className="shrink-0 border-b border-gray-200 px-5 py-4">
+              <h3 id="pos-hold-reject-title" className="text-lg font-bold text-gray-900">Reject payment proof?</h3>
+              <p className="mt-1 text-sm text-gray-600">
+                The deposit order stays open and <span className="font-mono font-semibold">{appointmentDetail.booking_code}</span> remains on{' '}
+                <span className="font-semibold text-violet-700">HOLD</span>. The customer can upload a new slip from their account.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div>
+                <label htmlFor="pos-hold-reject-note" className="text-xs font-semibold text-gray-600">
+                  Reason for rejection <span className="text-rose-600">*</span>
+                </label>
+                <textarea
+                  id="pos-hold-reject-note"
+                  rows={3}
+                  value={holdRejectNote}
+                  onChange={(e) => setHoldRejectNote(e.target.value)}
+                  disabled={appointmentActionLoading}
+                  required
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                  placeholder="e.g. Slip amount does not match deposit"
+                />
+              </div>
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                type="button"
+                disabled={appointmentActionLoading}
+                onClick={() => {
+                  setHoldRejectConfirmOpen(false)
+                  setHoldRejectNote('')
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={appointmentActionLoading || !holdRejectNote.trim()}
+                onClick={() => void rejectHoldPaymentProof()}
+                className="rounded-lg bg-amber-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {appointmentActionLoading ? 'Rejecting…' : 'Reject payment proof'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null,
+        bodyModalRoot,
+      )}
+
+      {renderPosBodyModalPortal(
+        holdCancelConfirmOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
+          <div
+            className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-hold-cancel-title"
+          >
+            <div className="shrink-0 border-b border-gray-200 px-5 py-4">
+              <h3 id="pos-hold-cancel-title" className="text-lg font-bold text-gray-900">Cancel hold booking?</h3>
+              <p className="mt-1 text-sm text-gray-600">
+                This cancels <span className="font-mono font-semibold">{appointmentDetail.booking_code}</span> and releases the slot.
+                {appointmentHoldDepositOrder ? ' The pending deposit order will be cancelled too.' : ''}
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div>
+                <label htmlFor="pos-hold-cancel-reason" className="text-xs font-semibold text-gray-600">
+                  Reason (optional)
+                </label>
+                <textarea
+                  id="pos-hold-cancel-reason"
+                  rows={2}
+                  value={holdCancelReason}
+                  onChange={(e) => setHoldCancelReason(e.target.value)}
+                  disabled={appointmentActionLoading}
+                  className="mt-1 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm disabled:bg-gray-100"
+                  placeholder="e.g. Invalid payment proof"
+                />
+              </div>
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                type="button"
+                disabled={appointmentActionLoading}
+                onClick={() => {
+                  setHoldCancelConfirmOpen(false)
+                  setHoldCancelReason('')
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={appointmentActionLoading}
+                onClick={() => void cancelHoldAppointment()}
+                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {appointmentActionLoading ? 'Cancelling…' : 'Confirm cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null,
+        bodyModalRoot,
+      )}
+
+      {renderPosBodyModalPortal(
+        cancellationConfirmOpen && cancellationConfirmRow && cancellationConfirmAction ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
           <div
             className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
             role="dialog"
@@ -4802,7 +5219,9 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {appointmentRescheduleOpen && appointmentDetail && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
@@ -5676,8 +6095,9 @@ export default function PosAppointmentsWorkspace({
         </div>
       ) : null}
 
-      {appointmentCheckoutConfirmationOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[55] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+      {renderPosBodyModalPortal(
+        appointmentCheckoutConfirmationOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
           <div className="relative mx-auto flex w-full max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-6 py-4">
               <div>
@@ -5882,10 +6302,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
-      {appointmentSettlementResult && (
-        <div className="fixed inset-0 z-[56] flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
+      {renderPosBodyModalPortal(
+        appointmentSettlementResult ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
           <div className={`relative mx-auto flex w-full max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl ${appointmentSettlementHasCashChange ? 'max-w-4xl' : 'max-w-lg'}`}>
             <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-green-600 to-green-700 px-6 py-5">
               <h4 className="flex items-center gap-2 text-xl font-bold text-white">
@@ -6013,11 +6436,14 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
-      {appointmentQrCodeFullscreen && appointmentSettlementResult?.receipt_public_url ? (
+      {renderPosBodyModalPortal(
+        appointmentQrCodeFullscreen && appointmentSettlementResult?.receipt_public_url ? (
         <div
-          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/90 p-4 backdrop-blur-sm"
+          className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/90 p-4 backdrop-blur-sm"
           onClick={() => setAppointmentQrCodeFullscreen(false)}
         >
           <div className="relative">
@@ -6032,7 +6458,9 @@ export default function PosAppointmentsWorkspace({
             <p className="mt-4 text-center text-sm text-white">Tap anywhere to close</p>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {toasts.length > 0 && (
         <div className="fixed bottom-5 right-5 z-40 flex w-[min(380px,calc(100vw-2.5rem))] flex-col gap-3">

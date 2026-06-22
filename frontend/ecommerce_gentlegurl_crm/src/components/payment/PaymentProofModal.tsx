@@ -48,7 +48,7 @@ type Props = {
   proofs?: PaymentProof[] | null
   bookingCode?: string | null
   className?: string
-  layout?: 'default' | 'tile'
+  layout?: 'default' | 'tile' | 'icon'
 }
 
 export default function PaymentProofModal({
@@ -82,6 +82,7 @@ export default function PaymentProofModal({
   const imageItems = useMemo(() => items.filter((item) => item.isImage), [items])
   const proofCount = items.length
   const isTile = layout === 'tile'
+  const isIcon = layout === 'icon'
 
   const openGallery = () => {
     setPreviewIndex(0)
@@ -104,12 +105,35 @@ export default function PaymentProofModal({
       <button
         type="button"
         onClick={openGallery}
+        title={
+          isIcon
+            ? proofCount > 0
+              ? `View ${proofCount} payment proof${proofCount === 1 ? '' : 's'}`
+              : 'No payment proof uploaded yet — tap for details'
+            : undefined
+        }
         className={
-          isTile
+          isIcon
+            ? `relative inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-violet-200 bg-white text-violet-800 shadow-sm transition hover:border-violet-300 hover:bg-violet-50 ${className}`
+            : isTile
             ? `group flex w-full min-h-[5.5rem] flex-col items-center justify-center gap-2 rounded-xl border border-amber-200/80 bg-gradient-to-b from-white to-amber-50/60 px-2 py-3 text-center shadow-sm transition hover:border-amber-300 hover:shadow-md ${className}`
             : `group flex w-full items-center gap-3 rounded-xl border border-amber-200/80 bg-gradient-to-r from-white to-amber-50/50 px-3.5 py-2.5 text-left shadow-sm transition hover:border-amber-300 hover:shadow-md ${className}`
         }
       >
+        {isIcon ? (
+          <>
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth={1.75} viewBox="0 0 24 24" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1 1 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            {proofCount > 0 ? (
+              <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-violet-700 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                {proofCount > 9 ? '9+' : proofCount}
+              </span>
+            ) : null}
+          </>
+        ) : (
+        <>
         <span
           className={
             isTile
@@ -153,6 +177,8 @@ export default function PaymentProofModal({
             )}
           </>
         )}
+        </>
+        )}
       </button>
 
       {open ? (
@@ -180,7 +206,11 @@ export default function PaymentProofModal({
                   <h3 id="payment-proof-modal-title" className="text-lg font-semibold tracking-tight text-stone-800">
                     Payment proof
                   </h3>
-                  <p className="mt-0.5 text-sm text-stone-600">Optional payment receipts or transfer screenshots.</p>
+                  <p className="mt-0.5 text-sm text-stone-600">
+                    {isIcon
+                      ? 'Transfer slip or QRPay screenshot uploaded by the customer.'
+                      : 'Optional payment receipts or transfer screenshots.'}
+                  </p>
                   {bookingCode ? (
                     <span className="mt-2 inline-flex items-center rounded-full bg-white/70 px-2.5 py-0.5 text-xs font-medium text-stone-600 ring-1 ring-stone-200/60">
                       {bookingCode}
@@ -268,8 +298,10 @@ export default function PaymentProofModal({
                     <i className="fa-regular fa-file-lines text-2xl" aria-hidden />
                   </div>
                   <p className="text-sm font-semibold text-stone-800">No payment proof</p>
-                  <p className="mt-1 max-w-[260px] text-xs leading-relaxed text-stone-500">
-                    No payment proof has been uploaded for this booking.
+                  <p className="mt-1 max-w-[280px] text-xs leading-relaxed text-stone-500">
+                    {isIcon
+                      ? 'Customer has not uploaded a slip yet. Proof appears after Manual Transfer upload on shop Orders, or after booking deposit slip upload.'
+                      : 'No payment proof has been uploaded for this booking.'}
                   </p>
                 </div>
               )}

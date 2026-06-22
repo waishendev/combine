@@ -120,8 +120,27 @@ export type PosAppointmentDetail = {
   can_apply_package?: boolean
   package_disabled_reason?: string | null
   eligible_package_count?: number
-  payment_history?: Array<{ order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
+  payment_history?: Array<{ order_id?: number; order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
+  hold_expires_at?: string | null
+  hold_deposit_order?: {
+    id: number
+    order_number: string
+    status: string
+    payment_status: string
+    payment_method?: string
+    grand_total?: number
+  } | null
+  payment_proofs?: Array<{
+    id?: string | number
+    file_url?: string | null
+    url?: string | null
+    payment_proof_url?: string | null
+    uploaded_at?: string | null
+    payment_method?: string | null
+    note?: string | null
+    status?: string | null
+  }>
   uploaded_item_photos?: Array<{ id: number; image_path?: string | null; image_url?: string | null; created_at?: string | null }>
   service_photos?: Array<{ id: number; booking_id?: number | null; image_path?: string | null; image_url?: string | null; caption?: string | null; created_at?: string | null }>
 }

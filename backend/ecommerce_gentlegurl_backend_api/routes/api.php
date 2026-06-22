@@ -480,6 +480,9 @@ $protectedRoutes = function () {
             ->middleware('permission:booking.appointments.update_status');
         Route::get('/appointments/{id}', [PosController::class, 'appointmentDetail']);
         Route::post('/appointments/{id}/status', [PosController::class, 'updateAppointmentStatus']);
+        Route::post('/appointments/{id}/approve-hold', [PosController::class, 'approveHoldAppointment']);
+        Route::post('/appointments/{id}/cancel-hold', [PosController::class, 'cancelHoldAppointment']);
+        Route::post('/appointments/{id}/reject-hold-payment-proof', [PosController::class, 'rejectHoldPaymentProof']);
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
         Route::post('/appointments/{id}/finalize-zero-settlement', [PosController::class, 'finalizeAppointmentZeroSettlement']);
         Route::post('/appointments/{id}/edit-settlement', [PosController::class, 'editAppointmentSettlement']);

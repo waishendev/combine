@@ -39,6 +39,7 @@ use App\Models\Ecommerce\PosCartServiceItem;
 use App\Models\Ecommerce\ServicePackageStaffSplit;
 use App\Models\Staff;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\Booking\BookingCancellationService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\SettingService;
@@ -60,6 +61,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 
@@ -72,6 +74,8 @@ class PosController extends Controller
         protected CustomerServicePackageService $customerServicePackageService,
         protected BookingAvailabilityService $availabilityService,
         protected StaffCommissionService $staffCommissionService,
+        protected OrderPaymentService $orderPaymentService,
+        protected BookingCancellationService $bookingCancellationService,
     ) {}
 
     public function memberSearch(Request $request)
@@ -453,12 +457,15 @@ class PosController extends Controller
                 'staff:id,name',
                 'itemPhotos:id,booking_id,file_path,created_at',
                 'servicePhotos:id,booking_id,image_path,caption,sort_order,created_at',
+                'payments',
+                'orderItems.order.uploads',
             ])
             ->findOrFail($id);
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
         $history = $this->resolveAppointmentPaymentHistory((int) $booking->id);
         $staffSplits = $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0));
+        $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
 
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
@@ -468,6 +475,17 @@ class PosController extends Controller
             'id' => (int) $booking->id,
             'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
             'status' => (string) $booking->status,
+            'payment_status' => $this->calculateAppointmentPaymentStatus($summary),
+            'hold_expires_at' => optional($booking->hold_expires_at)?->toIso8601String(),
+            'hold_deposit_order' => $holdOrder ? [
+                'id' => (int) $holdOrder->id,
+                'order_number' => (string) $holdOrder->order_number,
+                'status' => (string) $holdOrder->status,
+                'payment_status' => (string) $holdOrder->payment_status,
+                'payment_method' => (string) ($holdOrder->payment_method ?? ''),
+                'grand_total' => (float) ($holdOrder->grand_total ?? 0),
+            ] : null,
+            'payment_proofs' => $this->mapAppointmentPaymentProofs($booking),
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'schedule_override' => $this->serializeScheduleOverride($booking),
@@ -1516,6 +1534,208 @@ class PosController extends Controller
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
         ], __('Appointment status updated.'));
+    }
+
+    public function approveHoldAppointment(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'admin_note' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
+        if ((string) $booking->status !== 'HOLD') {
+            return $this->respondError(__('Only HOLD appointments can be approved here.'), 422);
+        }
+
+        $confirmedBookingIds = [];
+
+        try {
+            DB::transaction(function () use ($booking, $validated, $request, &$confirmedBookingIds) {
+                $holdOrder = $this->resolveHoldDepositOrder($booking);
+
+                if ($holdOrder) {
+                    $lockedOrder = Order::query()->lockForUpdate()->findOrFail($holdOrder->id);
+                    if ((string) $lockedOrder->payment_status !== 'paid') {
+                        $lockedOrder->payment_status = 'paid';
+                        $lockedOrder->status = 'completed';
+                        $lockedOrder->paid_at = Carbon::now();
+                        if (! empty($validated['admin_note'])) {
+                            $lockedOrder->admin_note = trim(($lockedOrder->admin_note ?? '') . "\n" . $validated['admin_note']);
+                        }
+                        $lockedOrder->save();
+                        $this->orderPaymentService->handlePaid($lockedOrder);
+                    }
+
+                    $confirmedBookingIds = $this->confirmHoldOrderBookings($lockedOrder);
+                } elseif ((float) ($booking->deposit_amount ?? 0) <= 0.0001) {
+                    $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+                    $lockedBooking->status = 'CONFIRMED';
+                    $lockedBooking->hold_expires_at = null;
+                    $lockedBooking->save();
+                    $confirmedBookingIds = [(int) $lockedBooking->id];
+
+                    BookingLog::create([
+                        'booking_id' => (int) $lockedBooking->id,
+                        'actor_type' => 'STAFF',
+                        'actor_id' => optional($request->user())->id,
+                        'action' => 'HOLD_APPROVED',
+                        'meta' => [
+                            'source' => 'pos_hold_approve',
+                            'admin_note' => $validated['admin_note'] ?? null,
+                        ],
+                        'created_at' => now(),
+                    ]);
+                } else {
+                    throw new \RuntimeException(__('No pending deposit order found. Customer may still need to pay or upload payment proof.'));
+                }
+            });
+        } catch (\RuntimeException $exception) {
+            return $this->respondError(__($exception->getMessage()), 422);
+        }
+
+        $this->dispatchBookingConfirmationEmails($confirmedBookingIds);
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Booking approved and confirmed.'));
+    }
+
+    public function cancelHoldAppointment(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'reason' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        $reason = trim((string) ($validated['reason'] ?? '')) ?: 'Cancelled from POS';
+
+        $booking = Booking::query()->findOrFail($id);
+        if ((string) $booking->status !== 'HOLD') {
+            return $this->respondError(__('Only HOLD appointments can be cancelled here.'), 422);
+        }
+
+        try {
+            DB::transaction(function () use ($booking, $request, $reason) {
+                $holdOrder = $this->resolveHoldDepositOrder($booking);
+
+                if ($holdOrder) {
+                    $lockedOrder = Order::query()->lockForUpdate()->findOrFail($holdOrder->id);
+                    if ((string) $lockedOrder->payment_status === 'paid') {
+                        throw new \RuntimeException(__('Deposit order is already paid.'));
+                    }
+                    if (! in_array((string) $lockedOrder->status, ['pending', 'processing'], true)) {
+                        throw new \RuntimeException(__('Deposit order cannot be cancelled in current status.'));
+                    }
+
+                    $lockedOrder->status = 'cancelled';
+                    $lockedOrder->admin_note = trim(($lockedOrder->admin_note ?? '') . "\n" . $reason);
+                    $lockedOrder->save();
+
+                    $this->cancelHoldLinkedBookings($lockedOrder, $request, $reason);
+                } else {
+                    $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+                    $this->bookingCancellationService->cancel(
+                        $lockedBooking,
+                        optional($request->user())->id,
+                        $reason,
+                        'ADMIN',
+                        ['HOLD'],
+                        ['source' => 'pos_hold_cancel'],
+                    );
+                }
+            });
+        } catch (\RuntimeException $exception) {
+            return $this->respondError(__($exception->getMessage()), 422);
+        }
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Hold booking cancelled.'));
+    }
+
+    public function rejectHoldPaymentProof(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'admin_note' => ['required', 'string', 'max:2000'],
+        ]);
+
+        $booking = Booking::query()->findOrFail($id);
+        if ((string) $booking->status !== 'HOLD') {
+            return $this->respondError(__('Only HOLD appointments can reject payment proof here.'), 422);
+        }
+
+        try {
+            DB::transaction(function () use ($booking, $validated, $request) {
+                $holdOrder = $this->resolveHoldDepositOrderForReview($booking);
+
+                if ($holdOrder) {
+                    $lockedOrder = Order::query()->lockForUpdate()->findOrFail($holdOrder->id);
+                    if ((string) $lockedOrder->payment_status === 'paid') {
+                        throw new \RuntimeException(__('Order already paid.'));
+                    }
+                    if ((string) $lockedOrder->status !== 'processing') {
+                        throw new \RuntimeException(__('Payment proof can only be rejected while waiting for verification.'));
+                    }
+
+                    $lockedOrder->status = 'reject_payment_proof';
+                    $lockedOrder->payment_proof_rejected_at = now();
+                    $lockedOrder->admin_note = trim(($lockedOrder->admin_note ?? '') . "\n" . $validated['admin_note']);
+                    $lockedOrder->save();
+
+                    BookingLog::create([
+                        'booking_id' => (int) $booking->id,
+                        'actor_type' => 'STAFF',
+                        'actor_id' => optional($request->user())->id,
+                        'action' => 'PAYMENT_PROOF_REJECTED',
+                        'meta' => [
+                            'source' => 'pos_hold_reject_proof',
+                            'order_id' => (int) $lockedOrder->id,
+                            'order_no' => (string) $lockedOrder->order_number,
+                            'admin_note' => $validated['admin_note'],
+                        ],
+                        'created_at' => now(),
+                    ]);
+
+                    return;
+                }
+
+                $payment = BookingPayment::query()
+                    ->where('booking_id', (int) $booking->id)
+                    ->latest('id')
+                    ->first();
+
+                $raw = $payment?->raw_response ?? [];
+                if (! $payment || empty(data_get($raw, 'manual_slip_url'))) {
+                    throw new \RuntimeException(__('No payment proof to reject.'));
+                }
+
+                $raw['manual_slip_path'] = null;
+                $raw['manual_slip_url'] = null;
+                $raw['payment_status'] = 'slip_rejected';
+                $raw['slip_rejected_at'] = now()->toIso8601String();
+                $raw['slip_reject_note'] = $validated['admin_note'];
+                $payment->raw_response = $raw;
+                $payment->save();
+
+                BookingLog::create([
+                    'booking_id' => (int) $booking->id,
+                    'actor_type' => 'STAFF',
+                    'actor_id' => optional($request->user())->id,
+                    'action' => 'PAYMENT_PROOF_REJECTED',
+                    'meta' => [
+                        'source' => 'pos_hold_reject_proof',
+                        'payment_id' => (int) $payment->id,
+                        'admin_note' => $validated['admin_note'],
+                    ],
+                    'created_at' => now(),
+                ]);
+            });
+        } catch (\RuntimeException $exception) {
+            return $this->respondError(__($exception->getMessage()), 422);
+        }
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
+        ], __('Payment proof rejected.'));
     }
 
     public function rescheduleAppointment(Request $request, int $id)
@@ -8155,6 +8375,189 @@ class PosController extends Controller
                 'paid_at' => optional($item->order?->paid_at ?? $item->order?->created_at)?->toIso8601String(),
                 'receipt_public_url' => $item->order ? $this->buildReceiptUrlForOrder((int) $item->order->id) : null,
             ])->values()->all();
+    }
+
+    protected function resolveHoldDepositOrder(Booking $booking): ?Order
+    {
+        $orderIds = OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_deposit')
+            ->pluck('order_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($orderIds->isEmpty()) {
+            return null;
+        }
+
+        return Order::query()
+            ->whereIn('id', $orderIds)
+            ->where('payment_status', '!=', 'paid')
+            ->whereIn('status', ['pending', 'processing'])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    protected function resolveHoldDepositOrderForReview(Booking $booking): ?Order
+    {
+        $orderIds = OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_deposit')
+            ->pluck('order_id')
+            ->filter()
+            ->unique()
+            ->values();
+
+        if ($orderIds->isEmpty()) {
+            return null;
+        }
+
+        return Order::query()
+            ->whereIn('id', $orderIds)
+            ->where('payment_status', '!=', 'paid')
+            ->whereIn('status', ['pending', 'processing', 'reject_payment_proof'])
+            ->orderByDesc('id')
+            ->first();
+    }
+
+    /**
+     * @return int[]
+     */
+    protected function confirmHoldOrderBookings(Order $order): array
+    {
+        $bookingIds = $order->items()
+            ->whereNotNull('booking_id')
+            ->pluck('booking_id')
+            ->unique()
+            ->filter()
+            ->values();
+
+        if ($bookingIds->isEmpty()) {
+            return [];
+        }
+
+        Booking::query()
+            ->whereIn('id', $bookingIds)
+            ->where('payment_status', '!=', 'PAID')
+            ->update([
+                'status' => 'CONFIRMED',
+                'payment_status' => 'PAID',
+                'hold_expires_at' => null,
+                'updated_at' => now(),
+            ]);
+
+        foreach ($bookingIds as $bookingId) {
+            BookingLog::create([
+                'booking_id' => (int) $bookingId,
+                'actor_type' => 'SYSTEM',
+                'actor_id' => null,
+                'action' => 'PAYMENT_CONFIRMED',
+                'meta' => [
+                    'order_id' => $order->id,
+                    'order_no' => $order->order_number,
+                    'source' => 'pos_hold_approve',
+                ],
+                'created_at' => now(),
+            ]);
+        }
+
+        return $bookingIds->map(fn ($id) => (int) $id)->all();
+    }
+
+    protected function cancelHoldLinkedBookings(Order $order, Request $request, string $reason): void
+    {
+        $bookingIds = $order->items()
+            ->whereNotNull('booking_id')
+            ->pluck('booking_id')
+            ->unique()
+            ->filter()
+            ->values();
+
+        if ($bookingIds->isEmpty()) {
+            return;
+        }
+
+        $bookings = Booking::query()
+            ->whereIn('id', $bookingIds)
+            ->lockForUpdate()
+            ->get();
+
+        foreach ($bookings as $booking) {
+            if ((string) $booking->status === 'CANCELLED') {
+                continue;
+            }
+
+            if ((string) $booking->payment_status === 'PAID') {
+                throw new \RuntimeException('Linked paid booking cannot be cancelled from this flow.');
+            }
+
+            $this->bookingCancellationService->cancel(
+                $booking,
+                optional($request->user())->id,
+                $reason,
+                'ADMIN',
+                ['HOLD', 'CONFIRMED', 'PENDING'],
+                [
+                    'order_id' => $order->id,
+                    'order_no' => $order->order_number,
+                    'source' => 'pos_hold_cancel',
+                ]
+            );
+        }
+    }
+
+    protected function mapAppointmentPaymentProofs(Booking $booking): array
+    {
+        $proofs = collect();
+
+        $booking->payments->each(function (BookingPayment $payment) use ($proofs) {
+            $raw = $payment->raw_response ?? [];
+            $manualUrl = data_get($raw, 'manual_slip_url');
+            $proofPath = data_get($raw, 'proof_path');
+            $fileUrl = $manualUrl ?: ($proofPath ? Storage::disk('public')->url((string) $proofPath) : null);
+
+            if (! $fileUrl) {
+                return;
+            }
+
+            $proofs->push([
+                'id' => 'booking-payment-' . $payment->id,
+                'file_url' => (string) $fileUrl,
+                'uploaded_at' => optional($payment->updated_at ?? $payment->created_at)?->toIso8601String(),
+                'payment_method' => (string) data_get($raw, 'payment_method', $payment->provider),
+                'note' => data_get($raw, 'manual_slip_note'),
+                'status' => (string) ($payment->status ?? data_get($raw, 'payment_status', '')),
+            ]);
+        });
+
+        $booking->orderItems
+            ->pluck('order')
+            ->filter()
+            ->unique('id')
+            ->each(function ($order) use ($proofs) {
+                $order->uploads
+                    ->where('type', 'payment_slip')
+                    ->each(function ($upload) use ($proofs, $order) {
+                        if (! $upload->file_url) {
+                            return;
+                        }
+
+                        $proofs->push([
+                            'id' => 'order-upload-' . $upload->id,
+                            'file_url' => $upload->file_url,
+                            'uploaded_at' => optional($upload->created_at)?->toIso8601String(),
+                            'payment_method' => (string) ($order->payment_method ?? ''),
+                            'note' => $upload->note,
+                            'status' => $upload->status,
+                        ]);
+                    });
+            });
+
+        return $proofs
+            ->unique(fn (array $proof) => $proof['file_url'])
+            ->values()
+            ->all();
     }
 
     protected function buildReceiptUrlForOrder(int $orderId): ?string

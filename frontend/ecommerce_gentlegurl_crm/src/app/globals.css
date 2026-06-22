@@ -2,6 +2,22 @@
 
 @import "react-international-phone/style.css";
 
+/* POS body-level modals — above mobile settlement sheet (z-index 130). */
+.pos-appt-body-modals {
+  position: relative;
+  z-index: 200;
+  pointer-events: none;
+}
+
+.pos-appt-body-modals > * {
+  pointer-events: auto;
+}
+
+.pos-body-stack-modal {
+  position: fixed;
+  inset: 0;
+}
+
 .gg-international-phone {
   width: 100%;
   --react-international-phone-height: 42px;
@@ -942,6 +958,15 @@ body {
       visibility: visible;
       height: min(96dvh, calc(100dvh - 0.5rem));
       max-height: min(96dvh, calc(100dvh - 0.5rem));
+    }
+
+    .pos-appt-right.pos-appt-settlement-sheet-under-modal,
+    body > .pos-appt-right.pos-appt-settlement-sheet-under-modal {
+      z-index: 110 !important;
+    }
+
+    .pos-settlement-sheet-backdrop.pos-settlement-sheet-backdrop--under-modal {
+      z-index: 105 !important;
     }
 
     .pos-appt-right .pos-appt-panel,
