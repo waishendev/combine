@@ -2046,14 +2046,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return name === 'UNKNOWN' && phone === '' && email === ''
   }, [checkoutIdentityMode, guestContactCache.email, guestContactCache.name, guestContactCache.phone])
 
-  const guestContactIsComplete = useMemo(() => {
-    const name = guestContactCache.name.trim()
-    const phone = normalizeInternationalPhone(guestContactCache.phone)
-    const email = guestContactCache.email.trim()
-    const phoneOk = /^\+?[0-9]{8,15}$/.test(phone)
-    const emailOk = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    return Boolean(name && phoneOk && emailOk)
-  }, [guestContactCache.email, guestContactCache.name, guestContactCache.phone])
+  const guestContactHasIdentity = useMemo(() => {
+    return Boolean(guestContactCache.name.trim())
+  }, [guestContactCache.name])
 
   const totalItems = useMemo(() => {
     const productQty = cartItems.reduce((sum, item) => sum + item.qty, 0)
@@ -5682,8 +5677,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         reportCheckoutError('Please assign a member, or switch to guest details for checkout.')
         return
       }
-      if (checkoutIdentityMode === 'guest' && !guestContactIsComplete && !checkoutGuestIsUnknown) {
-        reportCheckoutError('Please complete guest name, phone, and email before checkout.')
+      if (checkoutIdentityMode === 'guest' && !guestContactHasIdentity) {
+        reportCheckoutError('Please enter guest name before checkout.')
         return
       }
     }
@@ -5722,11 +5717,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     const guestCheckoutPayload =
-      !selectedMember?.id && checkoutIdentityMode === 'guest' && (guestContactIsComplete || checkoutGuestIsUnknown)
+      !selectedMember?.id && checkoutIdentityMode === 'guest' && guestContactHasIdentity
         ? {
             guest_name: checkoutGuestIsUnknown ? 'UNKNOWN' : guestContactCache.name.trim(),
-            guest_phone: checkoutGuestIsUnknown ? null : normalizeInternationalPhone(guestContactCache.phone),
-            guest_email: checkoutGuestIsUnknown ? null : guestContactCache.email.trim(),
+            guest_phone: checkoutGuestIsUnknown ? null : normalizeInternationalPhone(guestContactCache.phone) || null,
+            guest_email: checkoutGuestIsUnknown ? null : guestContactCache.email.trim() || null,
           }
         : {}
 
@@ -5994,8 +5989,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         reportCheckoutError('Please assign a member, or switch to guest details.')
         return
       }
-      if (checkoutIdentityMode === 'guest' && !guestContactIsComplete && !checkoutGuestIsUnknown) {
-        reportCheckoutError('Please complete guest name, phone, and email.')
+      if (checkoutIdentityMode === 'guest' && !guestContactHasIdentity) {
+        reportCheckoutError('Please enter guest name.')
         return
       }
     }
@@ -6006,7 +6001,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           const synced = await syncPosCartCustomerContext({ mode: 'member', memberId: selectedMember.id })
           if (!synced) return
         }
-      } else if (checkoutIdentityMode === 'guest' && (guestContactIsComplete || checkoutGuestIsUnknown)) {
+      } else if (checkoutIdentityMode === 'guest' && guestContactHasIdentity) {
         setSelectedMember(null)
         const synced = await syncPosCartCustomerContext({ mode: 'guest' })
         if (!synced) return
@@ -6039,8 +6034,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             : {
                 mode: 'guest',
                 guest_name: checkoutGuestIsUnknown ? 'UNKNOWN' : guestContactCache.name.trim(),
-                guest_phone: checkoutGuestIsUnknown ? null : normalizeInternationalPhone(guestContactCache.phone),
-                guest_email: checkoutGuestIsUnknown ? null : guestContactCache.email.trim(),
+                guest_phone: checkoutGuestIsUnknown ? null : normalizeInternationalPhone(guestContactCache.phone) || null,
+                guest_email: checkoutGuestIsUnknown ? null : guestContactCache.email.trim() || null,
               }
         const res = await fetch('/api/proxy/pos/cart/sync-customer-context', {
           method: 'POST',
@@ -6732,7 +6727,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       } else if (checkoutAllowsGuestToggle) {
         if (checkoutIdentityMode === 'member') {
           if (!selectedMember?.id) return false
-        } else if (!guestContactIsComplete && !checkoutGuestIsUnknown) {
+        } else if (!guestContactHasIdentity) {
           return false
         }
       }
@@ -6746,8 +6741,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     checkoutIdentityMode,
     checkoutRequiresMemberOnly,
     checkoutRequiresCustomerValidation,
-    guestContactIsComplete,
-    checkoutGuestIsUnknown,
+    guestContactHasIdentity,
     selectedMember?.id,
   ])
 
@@ -9935,22 +9929,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         />
                       </div>
                       <div>
-                        <label className="text-[11px] font-semibold text-gray-600">Phone{checkoutGuestIsUnknown ? '' : ' *'}</label>
+                        <label className="text-[11px] font-semibold text-gray-600">Phone (optional)</label>
                         <InternationalPhoneInput
                           value={guestContactCache.phone}
                           onChange={(phone) => {
                             setGuestContactCache((prev) => ({ ...prev, phone }))
                             reportCheckoutError(null)
                           }}
-                          placeholder={checkoutGuestIsUnknown ? 'Phone (optional)' : 'Phone *'}
-                          required={!checkoutGuestIsUnknown}
+                          placeholder="Phone (optional)"
                         />
                       </div>
                       {checkoutGuestIsUnknown ? (
                         <p className="text-[11px] text-amber-700">Walk-in / Unknown customer — no contact details required.</p>
                       ) : null}
                       <div>
-                        <label className="text-[11px] font-semibold text-gray-600">Email{checkoutGuestIsUnknown ? '' : ' *'}</label>
+                        <label className="text-[11px] font-semibold text-gray-600">Email (optional)</label>
                         <input
                           type="email"
                           value={guestContactCache.email}
@@ -9959,7 +9952,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             reportCheckoutError(null)
                           }}
                           className="mt-0.5 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
-                          placeholder={checkoutGuestIsUnknown ? 'Email (optional)' : 'Email *'}
+                          placeholder="Email (optional)"
                           autoComplete="email"
                         />
                       </div>
@@ -11062,22 +11055,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-semibold text-gray-600">Phone *</label>
+                      <label className="text-[11px] font-semibold text-gray-600">Phone (optional)</label>
                       <InternationalPhoneInput
                         value={bookingGuestPhoneValue}
                         onChange={setBookingGuestPhoneValue}
-                        placeholder="Phone *"
-                        required
+                        placeholder="Phone (optional)"
                       />
                     </div>
                     <div>
-                      <label className="text-[11px] font-semibold text-gray-600">Email *</label>
+                      <label className="text-[11px] font-semibold text-gray-600">Email (optional)</label>
                       <input
                         type="email"
                         ref={bookingGuestEmailRef}
                         defaultValue={guestContactCache.email}
                         className="mt-0.5 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
-                        placeholder="Email *"
+                        placeholder="Email (optional)"
                         autoComplete="email"
                       />
                     </div>
