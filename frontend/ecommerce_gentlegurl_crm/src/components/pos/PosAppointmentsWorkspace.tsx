@@ -25,6 +25,7 @@ import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
   posAppointmentBlocksActiveSchedule,
+  posAppointmentShowOnScheduleCalendar,
   formatAppointmentCustomerDisplayName,
   formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
@@ -35,6 +36,7 @@ import {
   formatPosPaymentHistoryLineType,
   formatTimeRange,
   normalizePosAppointmentListItem,
+  type PosAppointmentScheduleScope,
 } from './posAppointmentHelpers'
 import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem, ServiceAddonQuestion, ServiceAddonOption } from './posAppointmentTypes'
 
@@ -240,6 +242,7 @@ export default function PosAppointmentsWorkspace({
 
   const [activeStaffs, setActiveStaffs] = useState<StaffOption[]>([])
   const [posApptViewMode, setPosApptViewMode] = useState<'month' | 'day'>('month')
+  const [scheduleScope, setScheduleScope] = useState<PosAppointmentScheduleScope>('active')
   const [posApptCalendarMonth, setPosApptCalendarMonth] = useState(() => {
     const n = new Date()
     return new Date(n.getFullYear(), n.getMonth(), 1)
@@ -2694,6 +2697,11 @@ export default function PosAppointmentsWorkspace({
     [activeStaffs],
   )
 
+  const scheduleAppointments = useMemo(
+    () => appointments.filter((row) => posAppointmentShowOnScheduleCalendar(row, scheduleScope)),
+    [appointments, scheduleScope],
+  )
+
   const onSelectAppointmentQrProof: ChangeEventHandler<HTMLInputElement> = (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -3156,8 +3164,10 @@ export default function PosAppointmentsWorkspace({
                 if (y && m) setPosApptCalendarMonth(new Date(y, m - 1, 1))
                 setPosApptViewMode('day')
               }}
-              appointments={appointments}
+              appointments={scheduleAppointments}
               appointmentsLoading={appointmentsLoading}
+              scheduleScope={scheduleScope}
+              onScheduleScopeChange={setScheduleScope}
               onOpenAppointment={(id) => void openAppointmentDetail(id)}
               scheduleStaff={scheduleStaffForDayGrid}
               staffOffTodayIds={staffOffTodayIds}

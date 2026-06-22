@@ -306,6 +306,18 @@ export function posAppointmentBlocksActiveSchedule(row: PosAppointmentListItem):
   return tone !== 'inactive'
 }
 
+export type PosAppointmentScheduleScope = 'active' | 'all'
+
+/** Calendar display filter — Active hides completed·paid so freed slots stay readable. */
+export function posAppointmentShowOnScheduleCalendar(
+  row: PosAppointmentListItem,
+  scope: PosAppointmentScheduleScope = 'active',
+): boolean {
+  if (!posAppointmentBlocksActiveSchedule(row)) return false
+  if (scope === 'all') return true
+  return posAppointmentVisualToneFromRow(row) !== 'completedPaid'
+}
+
 /** When only `status` is known (no payment fields); completed is shown as unpaid until row data loads. */
 export function posAppointmentVisualTone(status: string | null | undefined): PosAppointmentVisualTone {
   const s = String(status ?? '').toUpperCase()

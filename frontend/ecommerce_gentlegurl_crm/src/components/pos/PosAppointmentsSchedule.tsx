@@ -2,7 +2,7 @@
 
 import { useMemo, type ReactNode } from 'react'
 
-import { formatPosScheduleTimeLabel, parsePosAppointmentScheduleYmd, posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow } from './posAppointmentHelpers'
+import { formatPosScheduleTimeLabel, parsePosAppointmentScheduleYmd, posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow, type PosAppointmentScheduleScope } from './posAppointmentHelpers'
 import { formatPosAppointmentScheduleRangeLabel } from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 import PosAppointmentsDayGrid from './PosAppointmentsDayGrid'
@@ -12,6 +12,8 @@ export type { PosScheduleStaff }
 export type PosAppointmentRow = PosAppointmentListItem
 
 export type PosApptViewMode = 'month' | 'day'
+
+export type { PosAppointmentScheduleScope } from './posAppointmentHelpers'
 
 const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
@@ -30,6 +32,8 @@ type Props = {
   onMonthDayNavigateToDay: (ymd: string) => void
   appointments: PosAppointmentRow[]
   appointmentsLoading: boolean
+  scheduleScope: PosAppointmentScheduleScope
+  onScheduleScopeChange: (scope: PosAppointmentScheduleScope) => void
   onOpenAppointment: (id: number) => void
   /** All active staff columns for DAY grid (not only those with bookings). */
   scheduleStaff?: PosScheduleStaff[]
@@ -48,6 +52,8 @@ export default function PosAppointmentsSchedule({
   onMonthDayNavigateToDay,
   appointments,
   appointmentsLoading,
+  scheduleScope,
+  onScheduleScopeChange,
   onOpenAppointment,
   scheduleStaff = [],
   staffOffTodayIds = [],
@@ -132,6 +138,29 @@ export default function PosAppointmentsSchedule({
           </button>
         </div>
 
+        <div className="inline-flex rounded-md border border-slate-200 bg-white p-0.5">
+          <button
+            type="button"
+            onClick={() => onScheduleScopeChange('active')}
+            className={`rounded px-3 py-1.5 text-xs font-semibold transition ${
+              scheduleScope === 'active' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Hide completed·paid — keeps the schedule clear for open slots"
+          >
+            Active
+          </button>
+          <button
+            type="button"
+            onClick={() => onScheduleScopeChange('all')}
+            className={`rounded px-3 py-1.5 text-xs font-semibold transition ${
+              scheduleScope === 'all' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Show all bookings including completed·paid"
+          >
+            All
+          </button>
+        </div>
+
         {viewMode === 'month' ? (
           <div className="ml-auto flex items-center gap-2">
             <button
@@ -199,10 +228,14 @@ export default function PosAppointmentsSchedule({
           <span className="h-3 w-5 shrink-0 rounded border-2 border-amber-900 bg-amber-600" aria-hidden />
           Completed · unpaid
         </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="h-3 w-5 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
-          Completed · paid
-        </span>
+        {scheduleScope === 'all' ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="h-3 w-5 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
+            Completed · paid
+          </span>
+        ) : (
+          <span className="text-slate-400">Completed · paid hidden in Active view</span>
+        )}
       </div>
 
       {viewMode === 'month' ? (
