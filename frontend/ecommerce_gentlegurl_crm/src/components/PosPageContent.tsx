@@ -34,14 +34,74 @@ import {
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
 
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
-  { method: 'cash', label: 'Cash' },
   { method: 'qrpay', label: 'QRPay' },
+  { method: 'cash', label: 'Cash' },
   { method: 'credit_card', label: 'Credit Card' },
 ]
 
 const toPaymentCents = (value: number | string | null | undefined) => {
   const numeric = Number(value ?? 0)
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
+}
+
+const formatSplitPaymentAmount = (cents: number) => (cents > 0 ? (cents / 100).toFixed(2) : '')
+
+const buildDefaultSplitForTotal = (total: number): Record<SplitPaymentMethod, string> => ({
+  cash: '',
+  qrpay: total > 0 ? total.toFixed(2) : '',
+  credit_card: '',
+})
+
+const isSplitManuallyLocked = (amounts: Record<SplitPaymentMethod, string>) =>
+  toPaymentCents(amounts.cash) > 0 && toPaymentCents(amounts.qrpay) > 0
+
+const applyAutoSplitEdit = (
+  prev: Record<SplitPaymentMethod, string>,
+  editedMethod: SplitPaymentMethod,
+  rawValue: string,
+  cartTotalCents: number,
+): Record<SplitPaymentMethod, string> => {
+  const next: Record<SplitPaymentMethod, string> = { ...prev, [editedMethod]: rawValue }
+  const editedCents = toPaymentCents(rawValue)
+  const remainingCents = Math.max(0, cartTotalCents - editedCents)
+  const otherMethods = SPLIT_PAYMENT_METHODS.map(({ method }) => method).filter((method) => method !== editedMethod)
+  const othersWithValues = otherMethods.filter((method) => toPaymentCents(prev[method]) > 0)
+
+  if (othersWithValues.length === 0) {
+    if (editedCents === 0 && remainingCents > 0) {
+      const restoreMethod: SplitPaymentMethod = otherMethods.includes('qrpay') ? 'qrpay' : otherMethods[0]
+      next[restoreMethod] = formatSplitPaymentAmount(remainingCents)
+    }
+    return next
+  }
+
+  if (othersWithValues.length === 1) {
+    const [otherMethod] = othersWithValues
+    next[otherMethod] = formatSplitPaymentAmount(remainingCents)
+    return next
+  }
+
+  const otherTotalCents = othersWithValues.reduce((sum, method) => sum + toPaymentCents(prev[method]), 0)
+  if (otherTotalCents <= 0) {
+    if (editedCents === 0 && remainingCents > 0) {
+      const restoreMethod: SplitPaymentMethod = otherMethods.includes('qrpay') ? 'qrpay' : otherMethods[0]
+      next[restoreMethod] = formatSplitPaymentAmount(remainingCents)
+    }
+    return next
+  }
+
+  let allocatedCents = 0
+  othersWithValues.forEach((method, index) => {
+    if (index === othersWithValues.length - 1) {
+      next[method] = formatSplitPaymentAmount(Math.max(0, remainingCents - allocatedCents))
+      return
+    }
+    const shareCents = Math.round((toPaymentCents(prev[method]) / otherTotalCents) * remainingCents)
+    next[method] = formatSplitPaymentAmount(shareCents)
+    allocatedCents += shareCents
+  })
+
+  return next
 }
 
 type CartItem = {
@@ -1702,8 +1762,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [discountRemarkDraft, setDiscountRemarkDraft] = useState('')
   const staffSearchTimerRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('cash')
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('qrpay')
   const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
+  const [autoCalculateSplit, setAutoCalculateSplit] = useState(true)
   const [qrProofFile, setQrProofFile] = useState<File | null>(null)
   const [qrProofFileName, setQrProofFileName] = useState<string | null>(null)
   const [qrProofPreviewUrl, setQrProofPreviewUrl] = useState<string | null>(null)
@@ -5557,6 +5618,37 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const splitPaymentMatchesTotal = splitTotalPaidCents === cartTotalCents
   const splitPaymentValid = checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
 
+  const handleSplitPaymentAmountChange = useCallback((method: SplitPaymentMethod, rawValue: string) => {
+    reportCheckoutError(null)
+    setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
+    setSplitPaymentAmounts((prev) => {
+      if (!autoCalculateSplit) {
+        return { ...prev, [method]: rawValue }
+      }
+      return applyAutoSplitEdit(prev, method, rawValue, cartTotalCents)
+    })
+  }, [autoCalculateSplit, cartTotalCents, reportCheckoutError])
+
+  const handleSplitPaymentMethodShortcut = useCallback((method: SplitPaymentMethod) => {
+    reportCheckoutError(null)
+    setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
+    setSplitPaymentAmounts({
+      cash: '',
+      qrpay: '',
+      credit_card: '',
+      [method]: cartTotal > 0 ? cartTotal.toFixed(2) : '',
+    })
+  }, [cartTotal, reportCheckoutError])
+
+  useEffect(() => {
+    if (!checkoutConfirmationOpen) return
+    setSplitPaymentAmounts((prev) => {
+      if (isSplitManuallyLocked(prev)) return prev
+      return buildDefaultSplitForTotal(cartTotal)
+    })
+    setPaymentMethod('qrpay')
+  }, [checkoutConfirmationOpen, cartTotal])
+
   const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
   const cashShiftBlocksCheckout = cashShiftLoading || !hasOpenShift
   const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart && !cashShiftBlocksCheckout
@@ -6713,7 +6805,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       return next
     })
 
-    setSplitPaymentAmounts({ cash: cartTotal > 0 ? cartTotal.toFixed(2) : '', qrpay: '', credit_card: '' })
+    setSplitPaymentAmounts(buildDefaultSplitForTotal(cartTotal))
+    setPaymentMethod('qrpay')
     setCheckoutConfirmationOpen(true)
   }
 
@@ -9961,20 +10054,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 </div>
 
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <p className="text-sm font-bold text-gray-800">Split Payment</p>
-                  <p className="text-xs font-semibold text-gray-500">Enter paid amount per method</p>
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-bold text-gray-800">Split Payment</p>
+                    <p className="text-xs font-semibold text-gray-500">Defaults to QRPay. Edit price/discount updates amounts unless Cash and QRPay are both filled.</p>
+                  </div>
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
+                    <input
+                      type="checkbox"
+                      checked={autoCalculateSplit}
+                      onChange={(e) => setAutoCalculateSplit(e.target.checked)}
+                      className="h-4 w-4 rounded border-blue-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    Auto Calculate Split
+                  </label>
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
                     <div key={method} className="rounded-xl border-2 border-gray-200 bg-white p-4 shadow-sm">
                       <button
                         type="button"
-                        onClick={() => {
-                          setSplitPaymentAmounts({ cash: '', qrpay: '', credit_card: '', [method]: cartTotal.toFixed(2) })
-                          setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
-                          reportCheckoutError(null)
-                        }}
+                        onClick={() => handleSplitPaymentMethodShortcut(method)}
                         className="mb-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
                       >
                         {label}
@@ -9985,11 +10085,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         min="0"
                         step="0.01"
                         value={splitPaymentAmounts[method]}
-                        onChange={(e) => {
-                          setSplitPaymentAmounts((prev) => ({ ...prev, [method]: e.target.value }))
-                          setPaymentMethod(method === 'credit_card' ? 'billplz_credit_card' : method)
-                          reportCheckoutError(null)
-                        }}
+                        onChange={(e) => handleSplitPaymentAmountChange(method, e.target.value)}
                         className="mt-1 h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                         placeholder="0.00"
                       />
