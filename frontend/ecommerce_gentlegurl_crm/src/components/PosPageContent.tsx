@@ -18,7 +18,7 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
-import { formatDateTimeRange, formatTimeRange } from '@/components/pos/posAppointmentHelpers'
+import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -1804,27 +1804,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [wifiTestOk, setWifiTestOk] = useState<boolean | null>(null)
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
-
-  const makeLocalDateTimeValue = useCallback((date: string, minutesFromMidnight: number) => {
-    const hours = Math.floor(minutesFromMidnight / 60)
-    const minutes = minutesFromMidnight % 60
-    return `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
-  }, [])
-
-  const buildPosFullDaySlots = useCallback((date: string, durationMin: number, stepMin = 15) => {
-    const safeDurationMin = Math.max(1, durationMin)
-    const lastStartMinute = Math.max(0, (24 * 60) - safeDurationMin)
-    const slots: Array<{ start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> }> = []
-
-    for (let minute = 0; minute <= lastStartMinute; minute += stepMin) {
-      slots.push({
-        start_at: makeLocalDateTimeValue(date, minute),
-        end_at: makeLocalDateTimeValue(date, minute + safeDurationMin),
-      })
-    }
-
-    return slots
-  }, [makeLocalDateTimeValue])
 
   const formatSettlementStaffLabel = useCallback((settlement: AppointmentSettlementCartItem): string => {
     const splits = (settlement.staff_splits ?? [])
@@ -3932,7 +3911,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> } => row !== null)
 
         const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
-        const fullDaySlots = buildPosFullDaySlots(
+        const fullDaySlots = buildPosAppointmentSlots(
           bookingDate,
           Math.max(
             1,
@@ -3951,7 +3930,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
 
     void loadSlots()
-  }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.duration_min, bookingServiceDraft?.id, buildPosFullDaySlots])
+  }, [bookingAddonDurationTotal, bookingDate, bookingExtraTotals.addonDuration, bookingExtraTotals.baseDuration, bookingModalOpen, bookingServiceDraft?.duration_min, bookingServiceDraft?.id])
 
   const openPackageModal = useCallback(async (servicePackage: ServicePackageOption) => {
     let staffs = activeStaffs

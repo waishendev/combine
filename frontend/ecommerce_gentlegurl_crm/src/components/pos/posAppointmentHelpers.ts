@@ -1,6 +1,11 @@
 import type { PosAppointmentDetail, PosAppointmentListItem } from './posAppointmentTypes'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
-import { POS_SCHEDULE_TZ } from './posAppointmentScheduleConfig'
+import {
+  POS_APPOINTMENT_DAY_END_MIN,
+  POS_APPOINTMENT_DAY_START_MIN,
+  POS_APPOINTMENT_SLOT_MINUTES,
+  POS_SCHEDULE_TZ,
+} from './posAppointmentScheduleConfig'
 
 export type { PosAppointmentListItem as PosAppointmentRow } from './posAppointmentTypes'
 
@@ -28,6 +33,32 @@ export function formatPosScheduleTimeLabel(iso?: string | null): string {
   const date = parsePosDateTime(iso)
   if (!date) return ''
   return formatTime12FromDate(date)
+}
+
+function makePosLocalDateTimeValue(date: string, minutesFromMidnight: number) {
+  const hours = Math.floor(minutesFromMidnight / 60)
+  const minutes = minutesFromMidnight % 60
+  return `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
+}
+
+/** Bookable slots for POS dropdowns (9 am – midnight, 15-minute steps by default). */
+export function buildPosAppointmentSlots(
+  date: string,
+  durationMin: number,
+  stepMin = POS_APPOINTMENT_SLOT_MINUTES,
+): Array<{ start_at: string; end_at: string }> {
+  const safeDurationMin = Math.max(1, durationMin)
+  const lastStartMinute = Math.max(POS_APPOINTMENT_DAY_START_MIN, POS_APPOINTMENT_DAY_END_MIN - safeDurationMin)
+  const slots: Array<{ start_at: string; end_at: string }> = []
+
+  for (let minute = POS_APPOINTMENT_DAY_START_MIN; minute <= lastStartMinute; minute += stepMin) {
+    slots.push({
+      start_at: makePosLocalDateTimeValue(date, minute),
+      end_at: makePosLocalDateTimeValue(date, minute + safeDurationMin),
+    })
+  }
+
+  return slots
 }
 
 /** Display payment history `line_type` without underscores (e.g. booking_deposit → booking deposit). */

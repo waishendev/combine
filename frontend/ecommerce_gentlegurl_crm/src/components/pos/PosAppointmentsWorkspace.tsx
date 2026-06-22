@@ -29,6 +29,7 @@ import {
   formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
   formatBookingAddonSummary,
+  buildPosAppointmentSlots,
   formatDateTimeRange,
   formatDurationFromRange,
   formatPosPaymentHistoryLineType,
@@ -75,27 +76,6 @@ function durationMinutesFromRange(startAt?: string | null, endAt?: string | null
 
 
 const POS_SLOT_INTERVAL_MIN = 15
-
-function makeLocalDateTimeValue(date: string, minutesFromMidnight: number) {
-  const hours = Math.floor(minutesFromMidnight / 60)
-  const minutes = minutesFromMidnight % 60
-  return `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
-}
-
-function buildPosFullDaySlots(date: string, durationMin: number, stepMin = POS_SLOT_INTERVAL_MIN) {
-  const safeDurationMin = Math.max(1, durationMin)
-  const lastStartMinute = Math.max(0, (24 * 60) - safeDurationMin)
-  const slots: Array<{ start_at: string; end_at: string }> = []
-
-  for (let minute = 0; minute <= lastStartMinute; minute += stepMin) {
-    slots.push({
-      start_at: makeLocalDateTimeValue(date, minute),
-      end_at: makeLocalDateTimeValue(date, minute + safeDurationMin),
-    })
-  }
-
-  return slots
-}
 
 type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
 
@@ -2507,7 +2487,7 @@ export default function PosAppointmentsWorkspace({
           })
           .filter((row): row is { start_at: string; end_at: string; is_in_schedule: boolean; unavailable_reason: string } => Boolean(row))
         const metaByStart = new Map(slotMeta.map((slot) => [slot.start_at, slot]))
-        const fullDaySlots = buildPosFullDaySlots(appointmentRescheduleDate, durationMin)
+        const fullDaySlots = buildPosAppointmentSlots(appointmentRescheduleDate, durationMin, POS_SLOT_INTERVAL_MIN)
           .map((slot) => {
             const meta = metaByStart.get(slot.start_at)
             return { ...slot, is_in_schedule: meta?.is_in_schedule ?? false, unavailable_reason: meta?.unavailable_reason ?? '' }
@@ -2580,7 +2560,7 @@ export default function PosAppointmentsWorkspace({
           })
           .filter((row): row is { start_at: string; end_at: string; available_staff_ids?: number[]; scheduled_staff_ids?: number[]; unavailable_staff_reasons?: Record<string, string> } => row !== null)
         const slotByStart = new Map(slots.map((slot) => [slot.start_at, slot]))
-        const fullDaySlots = buildPosFullDaySlots(
+        const fullDaySlots = buildPosAppointmentSlots(
           createAppointmentDate,
           Math.max(
             1,
