@@ -39,17 +39,12 @@ export const POS_HARD_AVAILABILITY_REASONS = new Set([
   'schedule_inactive',
 ])
 
+import { formatDateTimeRange } from './posAppointmentHelpers'
+
 function formatPosAvailabilityTimeLabel(startAt?: string | null, endAt?: string | null): string {
   if (!startAt) return 'the selected time'
-  const start = new Date(startAt)
-  if (Number.isNaN(start.getTime())) return 'the selected time'
-  const datePart = start.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })
-  const startTime = start.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-  if (!endAt) return `${datePart}, ${startTime}`
-  const end = new Date(endAt)
-  if (Number.isNaN(end.getTime())) return `${datePart}, ${startTime}`
-  const endTime = end.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
-  return `${datePart}, ${startTime} – ${endTime}`
+  const label = formatDateTimeRange(startAt, endAt ?? undefined)
+  return label === '-' ? 'the selected time' : label
 }
 
 function formatPosAvailabilityWeekdayLabel(startAt?: string | null): string {

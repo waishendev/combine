@@ -5,6 +5,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react'
 import {
   posAppointmentDayBlockClass,
   posAppointmentDayBlockSubtextClass,
+  formatPosScheduleTimeLabel,
   posAppointmentVisualToneFromRow,
 } from './posAppointmentHelpers'
 import {
@@ -12,6 +13,7 @@ import {
   POS_APPOINTMENT_DAY_START_MIN,
   POS_APPOINTMENT_SLOT_MINUTES,
   POS_APPOINTMENT_SLOT_PX,
+  POS_SCHEDULE_TZ,
 } from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 
@@ -19,7 +21,7 @@ const SLOT_MINUTES = POS_APPOINTMENT_SLOT_MINUTES
 const DAY_START_MIN = POS_APPOINTMENT_DAY_START_MIN
 const DAY_END_MIN = POS_APPOINTMENT_DAY_END_MIN
 const SLOT_PX = POS_APPOINTMENT_SLOT_PX
-const SCHEDULE_TZ = process.env.NEXT_PUBLIC_TIMEZONE || 'Asia/Kuala_Lumpur'
+const SCHEDULE_TZ = POS_SCHEDULE_TZ
 
 const parseIsoToLocalYmd = (iso: string | null | undefined): string | null => {
   if (!iso) return null
@@ -58,13 +60,6 @@ const durationMinutesFromIsoRange = (startIso: string, endIso: string) => {
   const end = new Date(endIso)
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
   return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
-}
-
-const formatTimeLabel = (iso: string | null | undefined) => {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit', timeZone: SCHEDULE_TZ })
 }
 
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
@@ -293,9 +288,10 @@ export default function PosAppointmentsDayGrid({
             const slotStart = DAY_START_MIN + i * SLOT_MINUTES
             const showLabel = slotStart % 60 === 0
             const label = showLabel
-              ? new Date(2000, 0, 1, Math.floor(slotStart / 60), slotStart % 60, 0).toLocaleTimeString(undefined, {
+              ? new Date(2000, 0, 1, Math.floor(slotStart / 60), slotStart % 60, 0).toLocaleTimeString('en-GB', {
                   hour: 'numeric',
                   minute: '2-digit',
+                  hour12: true,
                 })
               : ''
             return (
@@ -381,7 +377,7 @@ export default function PosAppointmentsDayGrid({
                       width: `calc(${widthPct}% - 2px)`,
                     }}
                   >
-                    <span className="block truncate font-bold">{formatTimeLabel(row.appointment_start_at)}</span>
+                    <span className="block truncate font-bold">{formatPosScheduleTimeLabel(row.appointment_start_at)}</span>
                     <span className={posAppointmentDayBlockSubtextClass(tone)}>
                       {truncate(row.customer_name, 14)} · {truncate(svc, 18)}
                     </span>

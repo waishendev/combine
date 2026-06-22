@@ -18,6 +18,7 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatDateTimeRange, formatTimeRange } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -1804,15 +1805,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [lastScanValue, setLastScanValue] = useState('')
   const [lastScanVisible, setLastScanVisible] = useState(false)
 
-  const formatTimeRange = useCallback((startAt?: string | null, endAt?: string | null) => {
-    if (!startAt) return '-'
-    const start = new Date(startAt)
-    if (!endAt) return start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    const end = new Date(endAt)
-    return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-  }, [])
-
-
   const makeLocalDateTimeValue = useCallback((date: string, minutesFromMidnight: number) => {
     const hours = Math.floor(minutesFromMidnight / 60)
     const minutes = minutesFromMidnight % 60
@@ -1850,13 +1842,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const fallbackName = (settlement.staff_name ?? '').trim()
     return fallbackName ? `${fallbackName} (100%)` : '—'
   }, [activeStaffs])
-
-  const formatDateTimeRange = useCallback((startAt?: string | null, endAt?: string | null) => {
-    if (!startAt) return '-'
-    const start = new Date(startAt)
-    if (!endAt) return start.toLocaleString()
-    return `${start.toLocaleString()} - ${new Date(endAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
-  }, [])
 
   const getSettlementDurationMin = useCallback((settlement: AppointmentSettlementCartItem): number => {
     const mainDuration = (settlement.main_services ?? []).reduce((sum, service) => {

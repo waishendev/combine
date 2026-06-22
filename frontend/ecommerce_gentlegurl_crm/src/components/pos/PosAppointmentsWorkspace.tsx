@@ -17,6 +17,7 @@ import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/com
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
@@ -204,7 +205,7 @@ function PosCancellationRequestSummary({ row }: { row: PosCancellationRequestRow
       </p>
       {row.requested_at ? (
         <p>
-          <span className="font-semibold text-gray-600">Requested at:</span> {new Date(row.requested_at).toLocaleString()}
+          <span className="font-semibold text-gray-600">Requested at:</span> {formatDateTime12Hour(row.requested_at)}
         </p>
       ) : null}
       <p>
@@ -3779,7 +3780,7 @@ export default function PosAppointmentsWorkspace({
                             </span>
                             <div className="mt-0.5 text-[11px] text-slate-500">
                               {(item.payment_method ?? '').toUpperCase()}
-                              {item.paid_at ? ` · ${new Date(item.paid_at).toLocaleString()}` : ''}
+                              {item.paid_at ? ` · ${formatDateTime12Hour(item.paid_at)}` : ''}
                             </div>
                           </li>
                         ))}

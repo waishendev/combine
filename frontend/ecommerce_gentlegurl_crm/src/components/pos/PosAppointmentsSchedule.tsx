@@ -2,7 +2,7 @@
 
 import { useMemo, type ReactNode } from 'react'
 
-import { posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow } from './posAppointmentHelpers'
+import { formatPosScheduleTimeLabel, posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow } from './posAppointmentHelpers'
 import { formatPosAppointmentScheduleRangeLabel } from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 import PosAppointmentsDayGrid from './PosAppointmentsDayGrid'
@@ -23,13 +23,6 @@ const parseIsoToLocalYmd = (iso: string | null | undefined): string | null => {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return null
   return formatYmd(d)
-}
-
-const formatTimeLabel = (iso: string | null | undefined) => {
-  if (!iso) return ''
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
 }
 
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
@@ -109,7 +102,7 @@ export default function PosAppointmentsSchedule({
   const previewLinesForYmd = (ymd: string) => {
     const list = byYmd.get(ymd) ?? []
     const lines = list.slice(0, 3).map((row) => {
-      const t = formatTimeLabel(row.appointment_start_at)
+      const t = formatPosScheduleTimeLabel(row.appointment_start_at)
       const who = truncate(row.customer_name.trim() || '—', 10)
       return {
         text: `${t} · ${who}`,

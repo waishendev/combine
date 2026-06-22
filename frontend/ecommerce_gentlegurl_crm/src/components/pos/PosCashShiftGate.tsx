@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 
 import PosModalShell from '@/components/pos/PosModalShell'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type PosCashShift = {
   id: number
@@ -55,7 +56,7 @@ export function usePosCashShift() {
 }
 
 const currency = (value: number | null | undefined) => `RM ${Number(value ?? 0).toFixed(2)}`
-const formatDateTime = (value?: string | null) => (value ? new Date(value.replace(' ', 'T')).toLocaleString() : '—')
+const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 
 function normalizeStaffOptions(raw: unknown): StaffOption[] {
   const list: unknown[] = Array.isArray(raw) ? raw : []

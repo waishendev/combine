@@ -1,4 +1,4 @@
-export function formatDateTime12Hour(value?: string | null): string {
+export function formatDateTime12Hour(value?: string | null, timeZone?: string): string {
   if (!value?.trim()) return ''
 
   const trimmed = value.trim()
@@ -15,6 +15,7 @@ export function formatDateTime12Hour(value?: string | null): string {
     hour: 'numeric',
     minute: '2-digit',
     hour12: true,
+    ...(timeZone ? { timeZone } : {}),
   }).format(date)
 }
 

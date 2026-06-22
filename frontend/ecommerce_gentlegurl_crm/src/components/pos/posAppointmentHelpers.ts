@@ -1,6 +1,34 @@
 import type { PosAppointmentDetail, PosAppointmentListItem } from './posAppointmentTypes'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { POS_SCHEDULE_TZ } from './posAppointmentScheduleConfig'
 
 export type { PosAppointmentListItem as PosAppointmentRow } from './posAppointmentTypes'
+
+function parsePosDateTime(value: string): Date | null {
+  const trimmed = value.trim()
+  const normalized = trimmed.includes('T')
+    ? trimmed
+    : trimmed.replace(/^(\d{4}-\d{2}-\d{2})[ T]/, '$1T')
+  const date = new Date(normalized)
+  return Number.isNaN(date.getTime()) ? null : date
+}
+
+function formatTime12FromDate(date: Date, timeZone = POS_SCHEDULE_TZ): string {
+  return date.toLocaleTimeString('en-GB', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  })
+}
+
+/** Time-only label for schedule grid / month preview (12-hour, business timezone). */
+export function formatPosScheduleTimeLabel(iso?: string | null): string {
+  if (!iso) return ''
+  const date = parsePosDateTime(iso)
+  if (!date) return ''
+  return formatTime12FromDate(date)
+}
 
 /** Display payment history `line_type` without underscores (e.g. booking_deposit → booking deposit). */
 export function formatPosPaymentHistoryLineType(raw: string | null | undefined): string {
@@ -72,22 +100,27 @@ export function extractPaged<T>(json: unknown): PageResponse<T> {
 
 export function formatTimeRange(startAt?: string | null, endAt?: string | null) {
   if (!startAt) return '-'
-  const start = new Date(startAt)
-  if (!endAt) return start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  const end = new Date(endAt)
-  return `${start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} - ${end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+  const start = parsePosDateTime(startAt)
+  if (!start) return '-'
+  if (!endAt) return formatTime12FromDate(start)
+  const end = parsePosDateTime(endAt)
+  if (!end) return formatTime12FromDate(start)
+  return `${formatTime12FromDate(start)} - ${formatTime12FromDate(end)}`
 }
 
 export function formatDateTimeRange(startAt?: string | null, endAt?: string | null) {
   if (!startAt) return '-'
-  const start = new Date(startAt)
-  if (Number.isNaN(start.getTime())) return '-'
-  const date = start.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' })
-  const startTime = start.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-  if (!endAt) return `${date}, ${startTime}`
-  const end = new Date(endAt)
-  const endTime = Number.isNaN(end.getTime()) ? '' : end.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })
-  return endTime ? `${date}, ${startTime} - ${endTime}` : `${date}, ${startTime}`
+  const formattedStart = formatDateTime12Hour(startAt, POS_SCHEDULE_TZ)
+  if (!formattedStart) return '-'
+  if (!endAt) return formattedStart
+  const end = parsePosDateTime(endAt)
+  if (!end) return formattedStart
+  const endTime = formatTime12FromDate(end)
+  const commaIndex = formattedStart.indexOf(',')
+  if (commaIndex === -1) return `${formattedStart} - ${endTime}`
+  const datePart = formattedStart.slice(0, commaIndex).trim()
+  const startTime = formattedStart.slice(commaIndex + 1).trim()
+  return `${datePart}, ${startTime} - ${endTime}`
 }
 
 /** Visual grouping for schedule blocks (month preview + day grid). */
