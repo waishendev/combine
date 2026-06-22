@@ -2,6 +2,8 @@
 
 import { FormEvent, useEffect, useMemo, useState } from 'react'
 
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
+
 type LoyaltySetting = {
   id: number
   base_multiplier: string
@@ -177,7 +179,7 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
             <div className="text-right">
               <p className="text-[11px] uppercase tracking-[0.16em] text-slate-400">Last updated</p>
               <p className="text-sm font-medium text-slate-700">
-                {new Date(formState.updated_at).toLocaleString()}
+                {formatDateTime12Hour(formState.updated_at)}
               </p>
             </div>
           )}
@@ -395,7 +397,7 @@ export default function LoyaltySettingsForm({ canEdit }: LoyaltySettingsFormProp
                   {history.map((entry) => (
                     <tr key={`${entry.id}-${entry.updated_at}`} className="border-b border-slate-100 last:border-0">
                       <td className="py-3 pr-4 text-slate-600">
-                        {entry.updated_at ? new Date(entry.updated_at).toLocaleString() : '—'}
+                        {entry.updated_at ? formatDateTime12Hour(entry.updated_at) : '—'}
                       </td>
                       <td className="py-3 pr-4 font-semibold text-slate-900">{entry.base_multiplier}</td>
                       <td className="py-3 pr-4">{entry.expiry_months}</td>

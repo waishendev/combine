@@ -6,6 +6,7 @@ import CrmFormModalShell from './CrmFormModalShell'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import PaginationControls from './PaginationControls'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type ActivityLogRow = {
   id: number
@@ -217,7 +218,7 @@ function StatCard({ icon, label, value, color }: { icon: string; label: string; 
 function TimeAgo({ dateStr }: { dateStr: string | null }) {
   if (!dateStr) return <span className="text-slate-400">—</span>
 
-  const date = new Date(dateStr.replace(' ', 'T'))
+  const formatted = formatDateTime12Hour(dateStr) || dateStr
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMin = Math.floor(diffMs / 60000)
@@ -229,12 +230,12 @@ function TimeAgo({ dateStr }: { dateStr: string | null }) {
   else if (diffMin < 60) relative = `${diffMin}m ago`
   else if (diffHr < 24) relative = `${diffHr}h ago`
   else if (diffDay < 7) relative = `${diffDay}d ago`
-  else relative = dateStr
+  else relative = formatted
 
   return (
     <div className="flex flex-col">
       <span className="text-xs font-medium text-slate-700">{relative}</span>
-      <span className="text-[11px] text-slate-400">{dateStr}</span>
+      <span className="text-[11px] text-slate-400">{formatted}</span>
     </div>
   )
 }
@@ -675,7 +676,7 @@ export default function ActivityLogTable() {
           <div className="space-y-5 px-6 py-5">
               {/* Meta Info Cards */}
               <div className="grid grid-cols-2 gap-3">
-                <InfoCard icon="fa-regular fa-clock" label="Time" value={detailLog.created_at ?? '—'} />
+                <InfoCard icon="fa-regular fa-clock" label="Time" value={formatDateTime12Hour(detailLog.created_at) || '—'} />
                 <InfoCard icon="fa-regular fa-user" label="User" value={detailLog.user_name ?? 'System'} />
                 <InfoCard icon="fa-solid fa-bolt" label="Action">
                   <ActionBadge action={detailLog.action} />

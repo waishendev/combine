@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 import TableEmptyState from '../TableEmptyState'
 import PaginationControls from '../PaginationControls'
@@ -425,7 +426,7 @@ export default function BookingLeaveLogsPage() {
             ) : (
               rows.map((row) => (
                 <tr key={row.id} className="border-b border-slate-100 align-top">
-                  <td className="px-4 py-2">{new Date(row.created_at).toLocaleString()}</td>
+                  <td className="px-4 py-2">{formatDateTime12Hour(row.created_at) || '—'}</td>
                   <td className="px-4 py-2">{row.staff?.name ?? `Staff #${row.staff_id}`}</td>
                   <td className="px-4 py-2">
                     {(() => {
@@ -497,7 +498,7 @@ export default function BookingLeaveLogsPage() {
                     <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                       <div>
                         <p className="text-xs text-slate-500">Created at</p>
-                        <p className="font-medium">{new Date(detailsRow.created_at).toLocaleString()}</p>
+                        <p className="font-medium">{formatDateTime12Hour(detailsRow.created_at) || '—'}</p>
                       </div>
                       <div>
                         <p className="text-xs text-slate-500">Staff</p>

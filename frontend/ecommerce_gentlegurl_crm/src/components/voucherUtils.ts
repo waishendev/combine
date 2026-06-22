@@ -1,4 +1,5 @@
 import type { VoucherRowData } from './VoucherRow'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export type VoucherApiItem = {
   id: number | string
@@ -45,8 +46,8 @@ export const mapVoucherApiItemToRow = (item: VoucherApiItem): VoucherRowData => 
     maxUsesPerCustomer: item.max_uses_per_customer != null ? String(item.max_uses_per_customer) : '-',
     minOrderAmount: formatAmount(item.min_order_amount),
     scopeType: item.scope_type ?? 'all',
-    startAt: item.start_at ?? '', // Direct from API
-    endAt: item.end_at ?? '', // Direct from API
+    startAt: formatDateTime12Hour(item.start_at),
+    endAt: formatDateTime12Hour(item.end_at),
     isActive,
   }
 }

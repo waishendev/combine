@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
+
 type CashShiftRow = {
   id: number
   opening_amount: number
@@ -20,7 +22,7 @@ type CashShiftRow = {
 }
 
 const currency = (value: number | null | undefined) => `RM ${Number(value ?? 0).toFixed(2)}`
-const formatDateTime = (value?: string | null) => (value ? new Date(value.replace(' ', 'T')).toLocaleString() : '—')
+const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 const formatDate = (value?: string | null) => (value ? value.slice(0, 10) : '—')
 
 function defaultDateRange() {

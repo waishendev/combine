@@ -11,6 +11,7 @@ import RewardVoucherEditModal, { type RewardVoucherRow } from './RewardVoucherEd
 import StatusBadge from './StatusBadge'
 import VoucherDetailsModal from './vouchers/VoucherDetailsModal'
 import { useI18n } from '@/lib/i18n'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type Meta = {
   current_page: number
@@ -170,8 +171,8 @@ export default function RewardVoucherTable({ permissions }: RewardVoucherTablePr
             code: item.voucher?.code ?? '-',
             value: formatCurrency(item.voucher?.value),
             minOrderAmount: formatCurrency(item.voucher?.min_order_amount),
-            startAt: item.voucher?.start_at ?? '',
-            endAt: item.voucher?.end_at ?? '',
+            startAt: formatDateTime12Hour(item.voucher?.start_at),
+            endAt: formatDateTime12Hour(item.voucher?.end_at),
           }
         })
         .filter(Boolean) as RewardVoucherRow[]

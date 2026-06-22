@@ -1,4 +1,5 @@
 import type { MarqueeRowData } from './MarqueeRow'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export type MarqueeApiItem = {
   id: number | string
@@ -28,8 +29,8 @@ export const mapMarqueeApiItemToRow = (item: MarqueeApiItem): MarqueeRowData => 
   return {
     id: normalizedId,
     text: item.text ?? '-',
-    startAt: item.start_at ?? '', // Direct from API
-    endAt: item.end_at ?? '', // Direct from API
+    startAt: formatDateTime12Hour(item.start_at),
+    endAt: formatDateTime12Hour(item.end_at),
     isActive,
     sortOrder: item.sort_order ?? null,
     createdAt: item.created_at ?? '', // Direct from API

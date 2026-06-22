@@ -9,6 +9,7 @@ import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
 import { ReportViewDetailsButton } from './reports/ReportActions'
 import { VariantNameStack } from './NameStack'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type Summary = {
   orders_count: number
@@ -132,22 +133,14 @@ const getStaffDropdownPrimary = (staff: StaffOption) => {
 
 const formatDateTimeForTable = (dateString: string) => {
   if (!dateString) return { time: '—', date: '—' }
-  const date = new Date(dateString)
-  if (Number.isNaN(date.getTime())) {
-    return { time: '—', date: '—' }
+  const formatted = formatDateTime12Hour(dateString)
+  if (!formatted) return { time: '—', date: '—' }
+  const commaIndex = formatted.indexOf(',')
+  if (commaIndex === -1) return { time: '—', date: formatted }
+  return {
+    date: formatted.slice(0, commaIndex).trim(),
+    time: formatted.slice(commaIndex + 1).trim(),
   }
-  const time = date.toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-  })
-  const dateStr = date.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  })
-  return { time, date: dateStr }
 }
 
 const DEFAULT_PAGE_SIZE = 15

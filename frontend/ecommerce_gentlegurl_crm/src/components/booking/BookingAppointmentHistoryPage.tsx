@@ -7,6 +7,7 @@ import PaginationControls from '@/components/PaginationControls'
 import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type StaffOption = { id: number; name: string }
 type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
@@ -78,12 +79,7 @@ const PAYMENT_OPTIONS = [
   { value: 'partial', label: 'Partial' },
 ]
 
-const formatDateTime = (value?: string | null) => {
-  if (!value) return '—'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return String(value)
-  return date.toLocaleString()
-}
+const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 
 const formatMoney = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`
 

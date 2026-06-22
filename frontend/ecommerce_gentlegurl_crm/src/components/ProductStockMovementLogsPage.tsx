@@ -8,6 +8,7 @@ import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import { NameStack, VariantNameStack } from './NameStack'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type ProductOption = {
   id: number
@@ -88,12 +89,7 @@ const DEFAULT_META: ApiMeta = {
 const toCurrency = (value: number | null | undefined) =>
   `RM ${(Number(value ?? 0) || 0).toFixed(2)}`
 
-const toDateTime = (value?: string | null) => {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
-}
+const toDateTime = (value?: string | null) => formatDateTime12Hour(value) || '-'
 
 const movementTypeLabel = (movementType: MovementRow['type']) => {
   if (movementType === 'stock_in') return 'Add Stock'

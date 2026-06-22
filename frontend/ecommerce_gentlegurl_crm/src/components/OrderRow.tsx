@@ -2,6 +2,7 @@
 
 import type { OrderType } from './orderUtils'
 import StatusBadge from './StatusBadge'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export interface OrderRowData {
   id: number
@@ -48,11 +49,8 @@ export default function OrderRow({
 
   const formatDate = (dateString: string) => {
     if (!dateString) return '—'
-    try {
-      return new Date(dateString).toLocaleString()
-    } catch {
-      return dateString
-    }
+    const formatted = formatDateTime12Hour(dateString)
+    return formatted || dateString
   }
 
   const formatReturnStatus = (status: string) => {

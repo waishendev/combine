@@ -1,4 +1,5 @@
 import type { AnnouncementRowData } from './AnnouncementRow'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export type AnnouncementApiItem = {
   id: number | string
@@ -49,14 +50,14 @@ export const mapAnnouncementApiItemToRow = (item: AnnouncementApiItem): Announce
     buttonLabel: item.button_label ?? '-',
     buttonLink: item.button_link ?? '-',
     isActive,
-    startAt: item.start_at ?? '', // Direct from API
-    endAt: item.end_at ?? '', // Direct from API
+    startAt: formatDateTime12Hour(item.start_at),
+    endAt: formatDateTime12Hour(item.end_at),
     sortOrder,
-    createdAt: item.created_at ?? '', // Direct from API
-    updatedAt: item.updated_at ?? '', // Direct from API
-    formattedStartAt: item.start_at ?? '', // Direct from API (no longer formatted)
-    formattedEndAt: item.end_at ?? '', // Direct from API (no longer formatted)
-    formattedCreatedAt: item.created_at ?? '', // Direct from API (no longer formatted)
-    formattedUpdatedAt: item.updated_at ?? '', // Direct from API (no longer formatted)
+    createdAt: item.created_at ?? '',
+    updatedAt: item.updated_at ?? '',
+    formattedStartAt: formatDateTime12Hour(item.start_at),
+    formattedEndAt: formatDateTime12Hour(item.end_at),
+    formattedCreatedAt: formatDateTime12Hour(item.created_at),
+    formattedUpdatedAt: formatDateTime12Hour(item.updated_at),
   }
 }

@@ -7,6 +7,7 @@ import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
 type LogAction = 'FREEZE' | 'REOPEN' | 'OVERRIDE' | 'RECALCULATE'
@@ -188,12 +189,7 @@ export default function CommissionLogsPage() {
     return badges
   }, [filters, staffs])
 
-  const formatDateTime = (value: string) => {
-    const date = new Date(value)
-    if (Number.isNaN(date.getTime())) return value
-
-    return date.toLocaleString()
-  }
+  const formatDateTime = (value: string) => formatDateTime12Hour(value) || value
 
   const handleFilterSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()

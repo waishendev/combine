@@ -1,3 +1,5 @@
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
+
 export type TierDiscountType =
   | 'bundle_fixed_price'
   | 'percentage_discount'
@@ -168,14 +170,6 @@ export async function fetchPromotionProductOptions(
 
 export function formatPromotionDateTime(value?: string | null): string {
   if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const y = date.getFullYear()
-  const m = pad(date.getMonth() + 1)
-  const d = pad(date.getDate())
-  const h = pad(date.getHours())
-  const min = pad(date.getMinutes())
-  const s = pad(date.getSeconds())
-  return `${y}-${m}-${d} ${h}:${min}:${s}`
+  const formatted = formatDateTime12Hour(value)
+  return formatted || value
 }

@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type PointsAdjustmentLogRow = {
   id: number
@@ -39,19 +40,7 @@ type PointsAdjustmentLogResponse = {
 
 const DEFAULT_PAGE_SIZE = 20
 
-const formatDateTime = (value?: string | null) => {
-  if (!value) return '—'
-  const date = new Date(value.replace(' ', 'T'))
-  if (Number.isNaN(date.getTime())) return value
-
-  return new Intl.DateTimeFormat('en-GB', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date)
-}
+const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 
 const normalizeActionType = (value?: string | null) => {
   if (value === 'add_points') return 'add'

@@ -1,6 +1,7 @@
 'use client'
 
 import { useI18n } from '@/lib/i18n'
+import { formatTime12Hour } from '@/lib/formatDateTime'
 
 const DAYS: Array<{ value: number; label: string }> = [
   { value: 0, label: 'Sunday' },
@@ -70,10 +71,12 @@ export default function StaffScheduleRow({
       )}
       <td className="px-4 py-2 border border-gray-200">{schedule.staff_name}</td>
       <td className="px-4 py-2 border border-gray-200">{formatDay(schedule.day_of_week)}</td>
-      <td className="px-4 py-2 border border-gray-200">{schedule.start_time}</td>
-      <td className="px-4 py-2 border border-gray-200">{schedule.end_time}</td>
+      <td className="px-4 py-2 border border-gray-200">{formatTime12Hour(schedule.start_time) || schedule.start_time || '—'}</td>
+      <td className="px-4 py-2 border border-gray-200">{formatTime12Hour(schedule.end_time) || schedule.end_time || '—'}</td>
       <td className="px-4 py-2 border border-gray-200">
-        {schedule.break_start && schedule.break_end ? `${schedule.break_start} - ${schedule.break_end}` : '-'}
+        {schedule.break_start && schedule.break_end
+          ? `${formatTime12Hour(schedule.break_start) || schedule.break_start} - ${formatTime12Hour(schedule.break_end) || schedule.break_end}`
+          : '-'}
       </td>
       <td className="px-4 py-2 border border-gray-200">
         <div className="flex items-center gap-2">

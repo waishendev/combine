@@ -9,6 +9,7 @@ import TableLoadingRow from '@/components/TableLoadingRow'
 import BookingCommissionOverrideModal from '@/components/booking/BookingCommissionOverrideModal'
 import CrmFilterModalShell from '@/components/CrmFilterModalShell'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type CommissionType = 'BOOKING' | 'ECOMMERCE'
 type CommissionStatus = 'OPEN' | 'FROZEN'
@@ -69,9 +70,7 @@ const formatAmount = (amount: number) =>
 
 const formatDateTime = (value?: string | null) => {
   if (!value) return '—'
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) return value
-  return parsed.toLocaleString()
+  return formatDateTime12Hour(value) || '—'
 }
 
 type Props = {

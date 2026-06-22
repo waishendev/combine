@@ -1,4 +1,5 @@
 import type { AdminRowData } from './AdminRow'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export type AdminApiRole = {
   id?: number | string | null
@@ -68,7 +69,7 @@ export const mapAdminApiItemToRow = (item: AdminApiItem): AdminRowData => {
     isActive,
     roleName,
     roleId: normalizedRoleId,
-    createdAt: item.created_at ?? '',
+    createdAt: formatDateTime12Hour(item.created_at),
     updatedAt: item.updated_at ?? '',
   }
 }

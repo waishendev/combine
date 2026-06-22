@@ -1,4 +1,5 @@
 import type { CustomerRowData } from './CustomerRow'
+import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export type CustomerApiItem = {
   id: number | string
@@ -111,7 +112,7 @@ export const mapCustomerApiItemToRow = (item: CustomerApiItem): CustomerRowData 
       }
       return Number(rawPoints) || 0
     })(),
-    createdAt: item.created_at ?? '',
+    createdAt: formatDateTime12Hour(item.created_at),
     updatedAt: item.updated_at ?? '',
   }
 }
