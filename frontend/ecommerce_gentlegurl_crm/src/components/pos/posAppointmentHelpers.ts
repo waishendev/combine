@@ -9,8 +9,44 @@ import {
 
 export type { PosAppointmentListItem as PosAppointmentRow } from './posAppointmentTypes'
 
+const NAIVE_WALL_CLOCK_RE = /^(\d{4}-\d{2}-\d{2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?/
+const HAS_TZ_OFFSET_RE = /(?:Z|[+-]\d{2}:?\d{2})$/i
+
+function readNaiveWallClock(value: string): { ymd: string; hour: number; minute: number; second: number } | null {
+  const match = value.trim().match(NAIVE_WALL_CLOCK_RE)
+  if (!match || HAS_TZ_OFFSET_RE.test(value.trim())) return null
+  const hour = Number(match[2])
+  const minute = Number(match[3])
+  const second = Number(match[4] ?? '0')
+  if (!Number.isFinite(hour) || !Number.isFinite(minute) || !Number.isFinite(second)) return null
+  return { ymd: match[1], hour, minute, second }
+}
+
+function wallClockInTimeZoneToDate(ymd: string, hour: number, minute: number, second: number, timeZone = POS_SCHEDULE_TZ): Date {
+  const [y, m, d] = ymd.split('-').map(Number)
+  let candidate = Date.UTC(y, m - 1, d, hour, minute, second)
+  for (let i = 0; i < 4; i += 1) {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone,
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    }).formatToParts(new Date(candidate))
+    const read = (type: string) => Number(parts.find((part) => part.type === type)?.value ?? '0')
+    const diffSec = (hour * 3600 + minute * 60 + second) - (read('hour') * 3600 + read('minute') * 60 + read('second'))
+    if (diffSec === 0) break
+    candidate += diffSec * 1000
+  }
+  return new Date(candidate)
+}
+
 function parsePosDateTime(value: string): Date | null {
   const trimmed = value.trim()
+  const naive = readNaiveWallClock(trimmed)
+  if (naive) {
+    return wallClockInTimeZoneToDate(naive.ymd, naive.hour, naive.minute, naive.second)
+  }
   const normalized = trimmed.includes('T')
     ? trimmed
     : trimmed.replace(/^(\d{4}-\d{2}-\d{2})[ T]/, '$1T')
@@ -25,6 +61,85 @@ function formatTime12FromDate(date: Date, timeZone = POS_SCHEDULE_TZ): string {
     hour12: true,
     timeZone,
   })
+}
+
+/** YYYY-MM-DD in business timezone (month/day schedule grouping). */
+export function parsePosAppointmentScheduleYmd(iso?: string | null): string | null {
+  if (!iso) return null
+  const naive = readNaiveWallClock(iso)
+  if (naive) return naive.ymd
+  const date = parsePosDateTime(iso)
+  if (!date) return null
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: POS_SCHEDULE_TZ,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date)
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${read('year')}-${read('month')}-${read('day')}`
+}
+
+/** Minutes from midnight in business timezone (day-grid positioning). */
+export function minutesFromPosAppointmentSchedule(iso?: string | null): number | null {
+  if (!iso) return null
+  const naive = readNaiveWallClock(iso)
+  if (naive) return naive.hour * 60 + naive.minute
+  const date = parsePosDateTime(iso)
+  if (!date) return null
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone: POS_SCHEDULE_TZ,
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(date)
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? NaN)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? NaN)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null
+  return hour * 60 + minute
+}
+
+/** Normalize list rows from API (supports legacy `start_at` / `end_at` keys). */
+export function normalizePosAppointmentListItem(row: PosAppointmentListItem): PosAppointmentListItem {
+  const legacy = row as PosAppointmentListItem & { start_at?: string | null; end_at?: string | null }
+  return {
+    ...row,
+    appointment_start_at: row.appointment_start_at ?? legacy.start_at ?? null,
+    appointment_end_at: row.appointment_end_at ?? legacy.end_at ?? null,
+  }
+}
+
+export function getPosAppointmentStartAt(
+  row: Pick<PosAppointmentListItem, 'appointment_start_at'> & { start_at?: string | null },
+): string | null {
+  return row.appointment_start_at ?? row.start_at ?? null
+}
+
+export function getPosAppointmentEndAt(
+  row: Pick<PosAppointmentListItem, 'appointment_end_at'> & { end_at?: string | null },
+): string | null {
+  return row.appointment_end_at ?? row.end_at ?? null
+}
+
+/** Add minutes to a schedule timestamp (naive wall-clock or ISO). */
+export function addMinutesToPosAppointmentScheduleIso(iso: string, deltaMin: number): string {
+  const naive = readNaiveWallClock(iso)
+  if (naive) {
+    let total = naive.hour * 60 + naive.minute + deltaMin
+    const dayMinutes = 24 * 60
+    total = ((total % dayMinutes) + dayMinutes) % dayMinutes
+    const hour = Math.floor(total / 60)
+    const minute = total % 60
+    return `${naive.ymd} ${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}:${String(naive.second).padStart(2, '0')}`
+  }
+  const date = parsePosDateTime(iso)
+  if (!date) return iso
+  return new Date(date.getTime() + deltaMin * 60 * 1000).toISOString()
+}
+
+export function resolvePosAppointmentEndIso(startIso: string, endIso?: string | null, defaultDurationMin = 30): string {
+  if (endIso && endIso !== startIso) return endIso
+  return addMinutesToPosAppointmentScheduleIso(startIso, defaultDurationMin)
 }
 
 /** Time-only label for schedule grid / month preview (12-hour, business timezone). */
@@ -185,10 +300,10 @@ export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): Po
   return 'active'
 }
 
-/** Rows that should still occupy the active POS schedule calendar. Historical/terminal rows stay queryable elsewhere. */
+/** Rows shown on the POS schedule calendar (includes completed paid/unpaid; excludes terminal statuses). */
 export function posAppointmentBlocksActiveSchedule(row: PosAppointmentListItem): boolean {
   const tone = posAppointmentVisualToneFromRow(row)
-  return tone !== 'inactive' && tone !== 'completedPaid'
+  return tone !== 'inactive'
 }
 
 /** When only `status` is known (no payment fields); completed is shown as unpaid until row data loads. */
@@ -203,7 +318,7 @@ export function posAppointmentVisualTone(status: string | null | undefined): Pos
 /** Tailwind classes for a day-grid appointment block button. */
 export function posAppointmentDayBlockClass(tone: PosAppointmentVisualTone): string {
   const base =
-    'absolute overflow-hidden rounded-md border-2 px-1 py-0.5 text-left text-[10px] font-semibold leading-tight shadow-md transition hover:z-10 focus:outline-none focus-visible:ring-2'
+    'absolute z-[2] overflow-hidden rounded-md border-2 px-1 py-0.5 text-left text-[10px] font-semibold leading-tight shadow-md transition hover:z-10 focus:outline-none focus-visible:ring-2'
   switch (tone) {
     case 'completedPaid':
       return `${base} border-emerald-900 bg-emerald-600 text-white ring-1 ring-emerald-950/30 hover:bg-emerald-500 hover:ring-2 hover:ring-emerald-300 focus-visible:ring-emerald-300`

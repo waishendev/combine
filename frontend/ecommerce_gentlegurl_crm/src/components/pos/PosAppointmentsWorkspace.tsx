@@ -34,6 +34,7 @@ import {
   formatDurationFromRange,
   formatPosPaymentHistoryLineType,
   formatTimeRange,
+  normalizePosAppointmentListItem,
 } from './posAppointmentHelpers'
 import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem, ServiceAddonQuestion, ServiceAddonOption } from './posAppointmentTypes'
 
@@ -773,17 +774,27 @@ export default function PosAppointmentsWorkspace({
     }
     try {
       const params = new URLSearchParams({ page: '1' })
+      const ymdFromDate = (d: Date) =>
+        `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
       if (posApptViewMode === 'month') {
         const start = new Date(posApptCalendarMonth.getFullYear(), posApptCalendarMonth.getMonth(), 1)
         const end = new Date(posApptCalendarMonth.getFullYear(), posApptCalendarMonth.getMonth() + 1, 0)
-        const ymd = (d: Date) =>
-          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-        params.set('from_date', ymd(start))
-        params.set('to_date', ymd(end))
+        params.set('from_date', ymdFromDate(start))
+        params.set('to_date', ymdFromDate(end))
         params.set('per_page', '500')
       } else {
-        params.set('per_page', '100')
-        if (appointmentDateFilter) params.set('date', appointmentDateFilter)
+        const parts = appointmentDateFilter.split('-').map(Number)
+        if (parts.length === 3 && parts[0] && parts[1]) {
+          const start = new Date(parts[0], parts[1] - 1, 1)
+          const end = new Date(parts[0], parts[1], 0)
+          params.set('from_date', ymdFromDate(start))
+          params.set('to_date', ymdFromDate(end))
+          params.set('per_page', '500')
+        } else if (appointmentDateFilter) {
+          params.set('date', appointmentDateFilter)
+          params.set('per_page', '100')
+        }
       }
       if (appointmentQuery.trim()) params.set('q', appointmentQuery.trim())
       if (appointmentCustomerFilter.trim()) params.set('customer_id', appointmentCustomerFilter.trim())
@@ -799,7 +810,11 @@ export default function PosAppointmentsWorkspace({
       }
 
       const paged = extractPaged<PosAppointmentListItem>(json)
-      setAppointments(paged.data.filter(posAppointmentBlocksActiveSchedule))
+      setAppointments(
+        paged.data
+          .map(normalizePosAppointmentListItem)
+          .filter(posAppointmentBlocksActiveSchedule),
+      )
       setPendingCancellationRequestsCount(paged.pending_cancellation_requests_count)
     } catch {
       setAppointments([])
@@ -3106,9 +3121,23 @@ export default function PosAppointmentsWorkspace({
               onViewModeChange={(mode) => {
                 setPosApptViewMode(mode)
                 if (mode === 'day') {
+                  const cal = posApptCalendarMonth
                   const n = new Date()
                   const todayYmd = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`
-                  setAppointmentDateFilter(appointmentDateFilter || todayYmd)
+                  const [filterY, filterM] = appointmentDateFilter.split('-').map(Number)
+                  const filterInCalendarMonth =
+                    filterY === cal.getFullYear() && filterM === cal.getMonth() + 1 && appointmentDateFilter
+
+                  if (filterInCalendarMonth) {
+                    return
+                  }
+
+                  const isViewingCurrentMonth = cal.getFullYear() === n.getFullYear() && cal.getMonth() === n.getMonth()
+                  setAppointmentDateFilter(
+                    isViewingCurrentMonth
+                      ? todayYmd
+                      : `${cal.getFullYear()}-${String(cal.getMonth() + 1).padStart(2, '0')}-01`,
+                  )
                 } else {
                   const parts = appointmentDateFilter.split('-').map(Number)
                   const [y, m] = parts

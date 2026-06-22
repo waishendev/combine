@@ -3,17 +3,21 @@
 import { useLayoutEffect, useMemo, useRef } from 'react'
 
 import {
+  formatPosScheduleTimeLabel,
+  getPosAppointmentEndAt,
+  getPosAppointmentStartAt,
+  minutesFromPosAppointmentSchedule,
+  parsePosAppointmentScheduleYmd,
   posAppointmentDayBlockClass,
   posAppointmentDayBlockSubtextClass,
-  formatPosScheduleTimeLabel,
   posAppointmentVisualToneFromRow,
+  resolvePosAppointmentEndIso,
 } from './posAppointmentHelpers'
 import {
   POS_APPOINTMENT_DAY_END_MIN,
   POS_APPOINTMENT_DAY_START_MIN,
   POS_APPOINTMENT_SLOT_MINUTES,
   POS_APPOINTMENT_SLOT_PX,
-  POS_SCHEDULE_TZ,
 } from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 
@@ -21,46 +25,6 @@ const SLOT_MINUTES = POS_APPOINTMENT_SLOT_MINUTES
 const DAY_START_MIN = POS_APPOINTMENT_DAY_START_MIN
 const DAY_END_MIN = POS_APPOINTMENT_DAY_END_MIN
 const SLOT_PX = POS_APPOINTMENT_SLOT_PX
-const SCHEDULE_TZ = POS_SCHEDULE_TZ
-
-const parseIsoToLocalYmd = (iso: string | null | undefined): string | null => {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: SCHEDULE_TZ,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(d)
-  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
-  return `${read('year')}-${read('month')}-${read('day')}`
-}
-
-const getTimePartsInScheduleTz = (iso: string) => {
-  const parts = new Intl.DateTimeFormat('en-GB', {
-    timeZone: SCHEDULE_TZ,
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  }).formatToParts(new Date(iso))
-
-  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? '0')
-  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? '0')
-  return { hour, minute }
-}
-
-const minutesFromIsoInScheduleTz = (iso: string) => {
-  const { hour, minute } = getTimePartsInScheduleTz(iso)
-  return hour * 60 + minute
-}
-
-const durationMinutesFromIsoRange = (startIso: string, endIso: string) => {
-  const start = new Date(startIso)
-  const end = new Date(endIso)
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
-  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60000))
-}
 
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 
@@ -103,6 +67,26 @@ function assignLanes(
   return out
 }
 
+function buildDayGridInterval(
+  row: PosAppointmentListItem,
+): { id: number; start: number; end: number; row: PosAppointmentListItem } | null {
+  const startIso = getPosAppointmentStartAt(row)
+  if (!startIso) return null
+
+  const effectiveEndIso = resolvePosAppointmentEndIso(startIso, getPosAppointmentEndAt(row))
+  const rawStartMin = minutesFromPosAppointmentSchedule(startIso)
+  const rawEndMin = minutesFromPosAppointmentSchedule(effectiveEndIso)
+  if (rawStartMin == null || rawEndMin == null) return null
+
+  if (rawEndMin <= DAY_START_MIN || rawStartMin >= DAY_END_MIN) return null
+
+  const startMin = Math.max(DAY_START_MIN, rawStartMin)
+  const endMin = Math.min(DAY_END_MIN, Math.max(rawEndMin, startMin + SLOT_MINUTES))
+  if (endMin <= startMin) return null
+
+  return { id: row.id, start: startMin, end: endMin, row }
+}
+
 type ColumnDef = {
   key: StaffColumnKey
   label: string
@@ -128,8 +112,14 @@ export default function PosAppointmentsDayGrid({
   staffOffTodayIds,
 }: Props) {
   const dayRows = useMemo(() => {
-    return appointments.filter((row) => parseIsoToLocalYmd(row.appointment_start_at ?? null) === dayYmd)
+    return appointments.filter(
+      (row) => parsePosAppointmentScheduleYmd(getPosAppointmentStartAt(row)) === dayYmd,
+    )
   }, [appointments, dayYmd])
+
+  const visibleIntervalCount = useMemo(() => {
+    return dayRows.filter((row) => buildDayGridInterval(row) != null).length
+  }, [dayRows])
 
   const staffIdsFromSchedule = useMemo(() => new Set(scheduleStaff.map((s) => s.id)), [scheduleStaff])
 
@@ -207,20 +197,11 @@ export default function PosAppointmentsDayGrid({
     autoScrolledDayRef.current = dayYmd
 
     const now = new Date()
-    const todayParts = new Intl.DateTimeFormat('en-CA', {
-      timeZone: SCHEDULE_TZ,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-    }).formatToParts(now)
-    const read = (type: string) => todayParts.find((part) => part.type === type)?.value ?? ''
-    const todayYmd = `${read('year')}-${read('month')}-${read('day')}`
-
+    const todayYmd = parsePosAppointmentScheduleYmd(now.toISOString())
     let targetMin = DAY_START_MIN
-    if (dayYmd === todayYmd) {
-      const { hour, minute } = getTimePartsInScheduleTz(now.toISOString())
-      const nowMin = hour * 60 + minute
-      if (nowMin > DAY_START_MIN && nowMin < DAY_END_MIN) {
+    if (todayYmd === dayYmd) {
+      const nowMin = minutesFromPosAppointmentSchedule(now.toISOString())
+      if (nowMin != null && nowMin > DAY_START_MIN && nowMin < DAY_END_MIN) {
         targetMin = Math.max(DAY_START_MIN, nowMin - SLOT_MINUTES * 2)
       }
     }
@@ -252,144 +233,131 @@ export default function PosAppointmentsDayGrid({
   const HEADER_H = 44
 
   return (
-    <div className="pos-appt-day-grid-root flex flex-col overflow-visible">
+    <div className="pos-appt-day-grid-root flex min-h-[280px] flex-col overflow-visible">
       <div
         ref={scrollRef}
         className="pos-appt-day-grid-scroll rounded-lg border border-slate-200 bg-white shadow-sm [scrollbar-gutter:stable]"
       >
         <div className="min-w-max">
           <div className="flex min-w-full shrink-0 border-b border-slate-200 bg-slate-100">
-        <div
-          className="sticky left-0 z-[2] w-14 shrink-0 border-r border-slate-200 bg-slate-100"
-          style={{ minHeight: HEADER_H }}
-        />
-        {staffColumns.map((col) => (
-          <div
-            key={`h-${col.key}`}
-            className={`flex min-w-[132px] max-w-[200px] flex-1 flex-col items-center justify-center border-l px-1 py-1.5 text-center ${
-              col.isOff
-                ? 'border-red-300 bg-red-100 text-red-950'
-                : 'border-slate-200 bg-slate-100 text-slate-800'
-            }`}
-            style={{ minHeight: HEADER_H }}
-          >
-            <span className="text-[11px] font-bold leading-tight">{truncate(col.label, 24)}</span>
-            {col.isOff ? <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-red-800">Off / Leave</span> : null}
-          </div>
-        ))}
-      </div>
-
-      <div className="inline-flex min-w-full">
-        <div
-          className="sticky left-0 z-[1] w-14 shrink-0 border-r border-slate-200 bg-slate-50"
-          style={{ height: gridHeight }}
-        >
-          {Array.from({ length: totalSlots }, (_, i) => {
-            const slotStart = DAY_START_MIN + i * SLOT_MINUTES
-            const showLabel = slotStart % 60 === 0
-            const label = showLabel
-              ? new Date(2000, 0, 1, Math.floor(slotStart / 60), slotStart % 60, 0).toLocaleTimeString('en-GB', {
-                  hour: 'numeric',
-                  minute: '2-digit',
-                  hour12: true,
-                })
-              : ''
-            return (
-              <div
-                key={slotStart}
-                className="border-b border-slate-100 text-[10px] leading-none text-slate-500"
-                style={{ height: SLOT_PX, paddingTop: 2, paddingLeft: 4 }}
-              >
-                {label}
-              </div>
-            )
-          })}
-        </div>
-
-        {staffColumns.map((col) => {
-          const rows = blocksByStaff.get(col.key) ?? []
-          const intervals = rows
-            .map((row) => {
-              const startIso = row.appointment_start_at
-              const endIso = row.appointment_end_at ?? row.appointment_start_at
-              if (!startIso) return null
-              const startD = new Date(startIso)
-              const effectiveEndIso = endIso || new Date(startD.getTime() + 30 * 60 * 1000).toISOString()
-              const endD = new Date(effectiveEndIso)
-              if (Number.isNaN(startD.getTime()) || Number.isNaN(endD.getTime())) return null
-              const actualDurationMin = durationMinutesFromIsoRange(startIso, effectiveEndIso)
-              if (actualDurationMin <= 0) return null
-              let startMin = minutesFromIsoInScheduleTz(startIso)
-              const unclampedEndMin = startMin + actualDurationMin
-              startMin = Math.max(DAY_START_MIN, startMin)
-              const endMin = Math.min(DAY_END_MIN, unclampedEndMin)
-              if (endMin <= startMin) return null
-              return {
-                id: row.id,
-                start: startMin,
-                end: endMin,
-                row,
-              }
-            })
-            .filter((x): x is NonNullable<typeof x> => x != null)
-
-          const laneMeta = assignLanes(intervals.map((x) => ({ id: x.id, start: x.start, end: x.end })))
-          const laneCountFor = (id: number) => laneMeta.get(id)?.laneCount ?? 1
-          const laneFor = (id: number) => laneMeta.get(id)?.lane ?? 0
-
-          const colBg = col.isOff ? 'bg-red-50/70' : 'bg-white'
-
-          return (
             <div
-              key={col.key}
-              className={`relative min-w-[132px] max-w-[200px] flex-1 border-l ${col.isOff ? 'border-red-200' : 'border-slate-200'} ${colBg}`}
+              className="sticky left-0 z-[2] w-14 shrink-0 border-r border-slate-200 bg-slate-100"
+              style={{ minHeight: HEADER_H }}
+            />
+            {staffColumns.map((col) => (
+              <div
+                key={`h-${col.key}`}
+                className={`flex min-w-[132px] max-w-[200px] flex-1 flex-col items-center justify-center border-l px-1 py-1.5 text-center ${
+                  col.isOff
+                    ? 'border-red-300 bg-red-100 text-red-950'
+                    : 'border-slate-200 bg-slate-100 text-slate-800'
+                }`}
+                style={{ minHeight: HEADER_H }}
+              >
+                <span className="text-[11px] font-bold leading-tight">{truncate(col.label, 24)}</span>
+                {col.isOff ? <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-red-800">Off / Leave</span> : null}
+              </div>
+            ))}
+          </div>
+
+          <div className="inline-flex min-w-full">
+            <div
+              className="sticky left-0 z-[1] w-14 shrink-0 border-r border-slate-200 bg-slate-50"
               style={{ height: gridHeight }}
             >
-              {Array.from({ length: totalSlots }, (_, i) => (
-                <div
-                  key={i}
-                  className={`border-b ${col.isOff ? 'border-red-100/80' : 'border-slate-100'}`}
-                  style={{ height: SLOT_PX }}
-                />
-              ))}
-              {intervals.map(({ id, start, end, row }) => {
-                const top = ((start - DAY_START_MIN) / SLOT_MINUTES) * SLOT_PX
-                const height = Math.max(((end - start) / SLOT_MINUTES) * SLOT_PX, SLOT_PX * 0.75)
-                const lc = laneCountFor(id)
-                const lane = laneFor(id)
-                const widthPct = 100 / lc
-                const leftPct = lane * widthPct
-                const svc = (row.service_names ?? [])[0] ?? ''
-                const title = `${row.customer_name} · ${svc}`
-                const tone = posAppointmentVisualToneFromRow(row)
-
+              {Array.from({ length: totalSlots }, (_, i) => {
+                const slotStart = DAY_START_MIN + i * SLOT_MINUTES
+                const showLabel = slotStart % 60 === 0
+                const label = showLabel
+                  ? new Date(2000, 0, 1, Math.floor(slotStart / 60), slotStart % 60, 0).toLocaleTimeString('en-GB', {
+                      hour: 'numeric',
+                      minute: '2-digit',
+                      hour12: true,
+                    })
+                  : ''
                 return (
-                  <button
-                    key={id}
-                    type="button"
-                    title={title}
-                    onClick={() => onBlockClick(id)}
-                    className={posAppointmentDayBlockClass(tone)}
-                    style={{
-                      top,
-                      height,
-                      left: `calc(${leftPct}% + 1px)`,
-                      width: `calc(${widthPct}% - 2px)`,
-                    }}
+                  <div
+                    key={slotStart}
+                    className="border-b border-slate-100 text-[10px] leading-none text-slate-500"
+                    style={{ height: SLOT_PX, paddingTop: 2, paddingLeft: 4 }}
                   >
-                    <span className="block truncate font-bold">{formatPosScheduleTimeLabel(row.appointment_start_at)}</span>
-                    <span className={posAppointmentDayBlockSubtextClass(tone)}>
-                      {truncate(row.customer_name, 14)} · {truncate(svc, 18)}
-                    </span>
-                  </button>
+                    {label}
+                  </div>
                 )
               })}
             </div>
-          )
-        })}
-      </div>
+
+            {staffColumns.map((col) => {
+              const rows = blocksByStaff.get(col.key) ?? []
+              const intervals = rows
+                .map((row) => buildDayGridInterval(row))
+                .filter((x): x is NonNullable<typeof x> => x != null)
+
+              const laneMeta = assignLanes(intervals.map((x) => ({ id: x.id, start: x.start, end: x.end })))
+              const laneCountFor = (id: number) => laneMeta.get(id)?.laneCount ?? 1
+              const laneFor = (id: number) => laneMeta.get(id)?.lane ?? 0
+
+              const colBg = col.isOff ? 'bg-red-50/70' : 'bg-white'
+
+              return (
+                <div
+                  key={col.key}
+                  className={`relative min-w-[132px] max-w-[200px] flex-1 border-l ${col.isOff ? 'border-red-200' : 'border-slate-200'} ${colBg}`}
+                  style={{ height: gridHeight }}
+                >
+                  {Array.from({ length: totalSlots }, (_, i) => (
+                    <div
+                      key={i}
+                      className={`border-b ${col.isOff ? 'border-red-100/80' : 'border-slate-100'}`}
+                      style={{ height: SLOT_PX }}
+                    />
+                  ))}
+                  {intervals.map(({ id, start, end, row }) => {
+                    const top = ((start - DAY_START_MIN) / SLOT_MINUTES) * SLOT_PX
+                    const height = Math.max(((end - start) / SLOT_MINUTES) * SLOT_PX, SLOT_PX * 0.75)
+                    const lc = laneCountFor(id)
+                    const lane = laneFor(id)
+                    const widthPct = 100 / lc
+                    const leftPct = lane * widthPct
+                    const svc = (row.service_names ?? [])[0] ?? ''
+                    const startLabel = formatPosScheduleTimeLabel(getPosAppointmentStartAt(row))
+                    const title = `${startLabel} · ${row.customer_name} · ${svc}`
+                    const tone = posAppointmentVisualToneFromRow(row)
+
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        title={title}
+                        onClick={() => onBlockClick(id)}
+                        className={posAppointmentDayBlockClass(tone)}
+                        style={{
+                          top,
+                          height,
+                          left: `calc(${leftPct}% + 1px)`,
+                          width: `calc(${widthPct}% - 2px)`,
+                        }}
+                      >
+                        <span className="block truncate font-bold">{startLabel}</span>
+                        <span className={posAppointmentDayBlockSubtextClass(tone)}>
+                          {truncate(row.customer_name, 14)} · {truncate(svc, 18)}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+              )
+            })}
+          </div>
         </div>
       </div>
+      {dayRows.length === 0 ? (
+        <p className="mt-2 text-center text-xs text-slate-500">No bookings on this date.</p>
+      ) : visibleIntervalCount === 0 ? (
+        <p className="mt-2 text-center text-xs text-slate-500">
+          Bookings before 9 am are not shown on the day schedule. Check MONTH view for earlier times.
+        </p>
+      ) : null}
     </div>
   )
 }

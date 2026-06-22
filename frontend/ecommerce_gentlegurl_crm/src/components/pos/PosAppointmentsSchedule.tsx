@@ -2,7 +2,7 @@
 
 import { useMemo, type ReactNode } from 'react'
 
-import { formatPosScheduleTimeLabel, posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow } from './posAppointmentHelpers'
+import { formatPosScheduleTimeLabel, parsePosAppointmentScheduleYmd, posAppointmentMonthPreviewChipClass, posAppointmentVisualToneFromRow } from './posAppointmentHelpers'
 import { formatPosAppointmentScheduleRangeLabel } from './posAppointmentScheduleConfig'
 import type { PosAppointmentListItem, PosScheduleStaff } from './posAppointmentTypes'
 import PosAppointmentsDayGrid from './PosAppointmentsDayGrid'
@@ -17,13 +17,6 @@ const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const
 
 const formatYmd = (d: Date) =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-
-const parseIsoToLocalYmd = (iso: string | null | undefined): string | null => {
-  if (!iso) return null
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return null
-  return formatYmd(d)
-}
 
 const truncate = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, n - 1)}…`)
 
@@ -76,7 +69,7 @@ export default function PosAppointmentsSchedule({
   const byYmd = useMemo(() => {
     const map = new Map<string, PosAppointmentRow[]>()
     appointments.forEach((row) => {
-      const key = parseIsoToLocalYmd(row.appointment_start_at ?? null)
+      const key = parsePosAppointmentScheduleYmd(row.appointment_start_at ?? null)
       if (!key) return
       const list = map.get(key) ?? []
       list.push(row)
@@ -206,7 +199,10 @@ export default function PosAppointmentsSchedule({
           <span className="h-3 w-5 shrink-0 rounded border-2 border-amber-900 bg-amber-600" aria-hidden />
           Completed · unpaid
         </span>
-        <span className="pos-appt-legend-extra hidden text-slate-500 xl:inline">Paid / closed bookings are hidden from this schedule.</span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="h-3 w-5 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
+          Completed · paid
+        </span>
       </div>
 
       {viewMode === 'month' ? (

@@ -346,7 +346,7 @@ class PosController extends Controller
                 $statusFilterNeedsActiveCheck = true;
             }
         } else {
-            // POS appointments is the active schedule: hide completed+paid and terminal statuses.
+            // POS appointments schedule: show completed paid/unpaid; terminal statuses stay hidden.
             // Completed paid/unpaid is decided from financial fields after resolving the appointment summary.
             $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED']);
             $statusFilterNeedsActiveCheck = true;
@@ -399,8 +399,8 @@ class PosController extends Controller
                 'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
                 'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
             ];
-        })->when($statusFilterNeedsActiveCheck, function ($rows) {
-            return $rows->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row));
+        })->when($statusFilterNeedsActiveCheck, function ($rows) use ($unpaidOnly) {
+            return $rows->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row, $unpaidOnly));
         })->values();
 
         $totalRows = $allRows->count();
@@ -1934,7 +1934,7 @@ class PosController extends Controller
     }
 
 
-    protected function appointmentRowBlocksActiveSchedule(array $row): bool
+    protected function appointmentRowBlocksActiveSchedule(array $row, bool $unpaidOnly = false): bool
     {
         $status = strtoupper((string) ($row['status'] ?? ''));
         if (in_array($status, ['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'], true)) {
@@ -1945,6 +1945,15 @@ class PosController extends Controller
             return in_array($status, ['HOLD', 'CONFIRMED', 'PENDING'], true);
         }
 
+        if ($unpaidOnly) {
+            return $this->appointmentCompletedRowNeedsSettlement($row);
+        }
+
+        return true;
+    }
+
+    protected function appointmentCompletedRowNeedsSettlement(array $row): bool
+    {
         $amountDueNow = (float) ($row['amount_due_now'] ?? 0);
         $balanceDue = (float) ($row['balance_due'] ?? 0);
         $settlementPaid = (float) ($row['settlement_paid'] ?? 0);
