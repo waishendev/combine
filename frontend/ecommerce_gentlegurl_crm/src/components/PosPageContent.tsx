@@ -1968,12 +1968,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const hasCartPackages = cartPackageItems.length > 0
   const hasCartAppointmentSettlements = cartAppointmentSettlementItems.length > 0
   const hasCartGuestSettlement = useMemo(() => {
-    return cartAppointmentSettlementItems.some((row) => {
-      if (row.customer_id) return false
-      const guestEmail = row.guest_email?.trim() ?? ''
-      const guestName = row.guest_name?.trim().toUpperCase() ?? ''
-      return Boolean(guestEmail) || guestName === 'UNKNOWN'
-    })
+    return cartAppointmentSettlementItems.some((row) => !row.customer_id)
   }, [cartAppointmentSettlementItems])
   const settlementLockedIdentityMode = useMemo<'member' | 'guest' | null>(() => {
     if (!hasCartAppointmentSettlements) return null

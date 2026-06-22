@@ -3174,9 +3174,8 @@ class PosController extends Controller
         $guestPhone = trim((string) ($booking->guest_phone ?? ''));
         $guestEmail = trim((string) ($booking->guest_email ?? ''));
         $isUnknownGuest = str_starts_with(strtoupper($guestName), 'UNKNOWN');
-        $hasCompleteGuest = $guestName !== '' && ($guestPhone !== '' || $guestEmail !== '');
-        if (! $hasMember && ! $isUnknownGuest && ! $hasCompleteGuest) {
-            return $this->respondError(__('Settlement appointment must have a member or complete guest details.'), 422);
+        if (! $hasMember && ! $isUnknownGuest && $guestName === '') {
+            return $this->respondError(__('Settlement appointment must have a member or guest details.'), 422);
         }
 
         if ($isUnknownGuest) {
@@ -3226,13 +3225,14 @@ class PosController extends Controller
             ->filter(fn (int $id) => $id > 0)
             ->unique()
             ->values();
-        $existingSettlementGuestEmails = $cart->appointmentSettlementItems
-            ->map(fn (PosCartAppointmentSettlementItem $row) => strtolower(trim((string) ($row->booking?->guest_email ?? ''))))
-            ->filter(fn (string $email) => $email !== '')
+        $existingSettlementGuestKeys = $cart->appointmentSettlementItems
+            ->map(fn (PosCartAppointmentSettlementItem $row) => $this->resolvePosGuestIdentityKey($row->booking))
+            ->filter(fn (?string $key) => ! empty($key))
             ->unique()
             ->values();
+        $currentGuestKey = $hasMember ? null : $this->resolvePosGuestIdentityKey($booking);
 
-        if ($existingSettlementCustomerIds->isNotEmpty() && $existingSettlementGuestEmails->isNotEmpty()) {
+        if ($existingSettlementCustomerIds->isNotEmpty() && $existingSettlementGuestKeys->isNotEmpty()) {
             return $this->respondError(__('Appointment settlement items cannot mix member and guest in one cart.'), 422);
         }
         if ($existingSettlementCustomerIds->isNotEmpty()) {
@@ -3246,18 +3246,16 @@ class PosController extends Controller
             if ($lockedCustomerId > 0 && $lockedCustomerId !== (int) $booking->customer_id) {
                 return $this->respondError(__('This settlement belongs to a different member. Remove the current settlement item(s) to change member.'), 422);
             }
-        } elseif ($existingSettlementGuestEmails->isNotEmpty()) {
-            if ($existingSettlementGuestEmails->count() !== 1) {
+        } elseif ($existingSettlementGuestKeys->isNotEmpty()) {
+            if ($existingSettlementGuestKeys->count() !== 1) {
                 return $this->respondError(__('All appointment settlement items in one cart must belong to the same guest.'), 422);
             }
             if ($hasMember) {
                 return $this->respondError(__('This cart already has guest settlement. Remove settlement to switch to member.'), 422);
             }
-            if (! $isUnknownGuest) {
-                $lockedEmail = (string) $existingSettlementGuestEmails->first();
-                if ($lockedEmail !== strtolower($guestEmail)) {
-                    return $this->respondError(__('This settlement belongs to a different guest. Remove the current settlement item(s) to change guest.'), 422);
-                }
+            $lockedGuestKey = (string) $existingSettlementGuestKeys->first();
+            if ($currentGuestKey !== null && $currentGuestKey !== $lockedGuestKey) {
+                return $this->respondError(__('This settlement belongs to a different guest. Remove the current settlement item(s) to change guest.'), 422);
             }
         }
 
@@ -5172,29 +5170,7 @@ class PosController extends Controller
                         abort(422, __('Cannot checkout guest settlement together with service packages.'));
                     }
                     $guestKeys = $cart->appointmentSettlementItems
-                        ->map(function (PosCartAppointmentSettlementItem $row) {
-                            $booking = $row->booking;
-                            if (! $booking || ! empty($booking->customer_id)) {
-                                return null;
-                            }
-
-                            $guestName = strtoupper(trim((string) ($booking->guest_name ?? '')));
-                            if (str_starts_with($guestName, 'UNKNOWN')) {
-                                return 'unknown';
-                            }
-
-                            $guestEmail = strtolower(trim((string) ($booking->guest_email ?? '')));
-                            if ($guestEmail !== '') {
-                                return 'email:' . $guestEmail;
-                            }
-
-                            $guestPhone = trim((string) ($booking->guest_phone ?? ''));
-                            if ($guestName !== '' && $guestPhone !== '') {
-                                return 'guest:' . $guestName . '|' . $guestPhone;
-                            }
-
-                            return null;
-                        })
+                        ->map(fn (PosCartAppointmentSettlementItem $row) => $this->resolvePosGuestIdentityKey($row->booking))
                         ->filter(fn (?string $key) => ! empty($key))
                         ->unique()
                         ->values();
@@ -5326,7 +5302,7 @@ class PosController extends Controller
                     ->filter()
                     ->first(function (Booking $booking) {
                         return empty($booking->customer_id)
-                            && (trim((string) ($booking->guest_email ?? '')) !== '' || str_starts_with(strtoupper(trim((string) ($booking->guest_name ?? ''))), 'UNKNOWN'));
+                            && $this->resolvePosGuestIdentityKey($booking) !== null;
                     });
                 if ($guestBooking) {
                     $guestName = trim((string) ($guestBooking->guest_name ?? ''));
@@ -5337,6 +5313,8 @@ class PosController extends Controller
                         $guestEmail = '';
                         $hasGuestPayload = true;
                     } elseif ($guestName !== '' && $guestPhone !== '' && $guestEmail !== '' && preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                        $hasGuestPayload = true;
+                    } elseif ($guestName !== '') {
                         $hasGuestPayload = true;
                     }
                 }
@@ -8762,5 +8740,33 @@ class PosController extends Controller
     protected function generateOrderNumber(): string
     {
         return 'POS-' . Carbon::now()->format('YmdHis') . '-' . str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+    }
+
+    protected function resolvePosGuestIdentityKey(?Booking $booking): ?string
+    {
+        if (! $booking || ! empty($booking->customer_id)) {
+            return null;
+        }
+
+        $guestName = strtoupper(trim((string) ($booking->guest_name ?? '')));
+        if (str_starts_with($guestName, 'UNKNOWN')) {
+            return 'unknown';
+        }
+
+        $guestEmail = strtolower(trim((string) ($booking->guest_email ?? '')));
+        if ($guestEmail !== '') {
+            return 'email:' . $guestEmail;
+        }
+
+        $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+        if ($guestName !== '' && $guestPhone !== '') {
+            return 'guest:' . $guestName . '|' . $guestPhone;
+        }
+
+        if ($guestName !== '') {
+            return 'name:' . $guestName;
+        }
+
+        return null;
     }
 }
