@@ -219,6 +219,7 @@ function TimeAgo({ dateStr }: { dateStr: string | null }) {
   if (!dateStr) return <span className="text-slate-400">—</span>
 
   const formatted = formatDateTime12Hour(dateStr) || dateStr
+  const date = new Date(dateStr)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMin = Math.floor(diffMs / 60000)
