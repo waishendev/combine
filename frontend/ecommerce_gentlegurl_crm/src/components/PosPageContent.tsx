@@ -4276,6 +4276,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }
 
+  const renderCheckoutRemoveButton = (onRemove: () => void, label = 'Remove item') => (
+    <button
+      type="button"
+      onClick={() => void onRemove()}
+      className="inline-flex items-center justify-center rounded-md p-2 text-red-600 transition-colors hover:bg-red-50"
+      title={label}
+      aria-label={label}
+    >
+      <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+      </svg>
+    </button>
+  )
+
   const addAppointmentSettlementToCart = async (bookingId: number) => {
     const res = await fetch('/api/proxy/pos/cart/add-appointment-settlement', {
       method: 'POST',
@@ -4997,6 +5011,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   useEffect(() => {
     if (!hasCartItems) {
       setCartSheetOpen(false)
+      setCheckoutConfirmationOpen(false)
       cartActivitySignatureRef.current = ''
       cartPulseReadyRef.current = false
       return
@@ -9168,6 +9183,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <table className="min-w-[720px] w-full text-sm">
                   <colgroup>
                     <col className="w-12" />
+                    <col />
+                    <col />
+                    <col />
+                    <col />
+                    <col className="w-12" />
                   </colgroup>
                   <thead className="sticky top-0 z-10 bg-gradient-to-r from-slate-100 via-gray-50 to-slate-100 shadow-sm">
                     <tr>
@@ -9180,6 +9200,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:min-w-[220px]">Details</th>
                       <th className="px-4 py-3.5 text-left font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:min-w-[160px]">Unit / Deposit</th>
                       <th className="px-4 py-3.5 text-right font-bold text-gray-800 uppercase tracking-wider text-[11px] sm:px-5">Line total</th>
+                      <th className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center">
+                        <span className="sr-only">Remove</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="divide-y-2 divide-slate-300/90">
@@ -9335,6 +9358,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <p className="font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductBaseNetLineTotal : item.line_total).toFixed(2)}</p>
                             )}
                           </td>
+                          <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center align-top">
+                            {renderCheckoutRemoveButton(() => removeItem(item.id))}
+                          </td>
                         </tr>
                         {selectedBookingProductOptions.map((opt, optIdx) => {
                           const optionGross = getBookingProductOptionGrossLineTotal(item, opt)
@@ -9397,6 +9423,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <>RM {optionGross.toFixed(2)}</>
                               )}
                             </td>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
                           </tr>
                           )
                         })}
@@ -9442,9 +9469,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <td className="px-4 py-3.5 text-right align-top tabular-nums text-xs text-gray-400 sm:px-5">
                               —
                             </td>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center align-top">
+                              {renderCheckoutRemoveButton(() => removeServiceItem(serviceItem.id), 'Remove service')}
+                            </td>
                           </tr>
                           <tr className={`${svcRowClass} align-top`}>
-                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8" colSpan={5}>
+                            <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8" colSpan={6}>
                               <div className="rounded-lg bg-white/80 p-3 ring-1 ring-emerald-100">
                                 <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Deposit Service</p>
                                 <div className="mt-2 space-y-2 text-[11px]">
@@ -9584,6 +9614,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <td className="px-4 py-3.5 text-right align-top tabular-nums sm:px-5">
                               <p className="text-xs text-gray-400">—</p>
                             </td>
+                            <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center align-top">
+                              {renderCheckoutRemoveButton(() => removeAppointmentSettlementItem(settlement.id), 'Remove settlement')}
+                            </td>
                           </tr>
 
                           {hasServiceBlocks ? (
@@ -9646,6 +9679,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>
                                         )}
                                       </td>
+                                      <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
                                     </tr>
                                     {/* <tr className={`${stRowClass} align-top`}>
                                       <td className="px-4 py-2 pl-8 text-xs font-semibold text-gray-700 sm:px-5 sm:pl-10">Block Subtotal</td>
@@ -9683,6 +9717,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     </td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <>RM {due.toFixed(2)}</>}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
+                                    <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
                               }) : null}
@@ -9690,6 +9725,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           ) : (
                             <>
                               <tr className={`${stRowClass} align-top`}>
+                                <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
                                 <td className="px-4 py-2.5 pl-7 sm:px-5 sm:pl-8">
                                   <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Settlement</p>
                                   <p className="mt-1 text-xs text-gray-700">Service</p>
@@ -9714,16 +9750,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <p className="text-lg font-bold leading-tight text-orange-700">{stServiceLabel}</p>
                                   )}
                                 </td>
+                                <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
                               </tr>
 
                               {addonCount > 0 ? (
                             <>
                               <tr className={`${stRowClass} align-top`}>
+                                <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-1.5" aria-hidden />
                                 <td className="px-4 py-1.5 pl-7 sm:px-5 sm:pl-8">
                                   <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-ons</p>
                                 </td>
                                 <td className="min-w-[260px] px-4 py-1.5" aria-hidden />
                                 <td className="px-4 py-1.5" colSpan={2} aria-hidden />
+                                <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-1.5" aria-hidden />
                               </tr>
                               {addons.map((addon, idx) => {
                                 const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
@@ -9734,6 +9773,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     key={`chk-st-addon-${settlement.id}-${addon.id ?? addon.name}-${idx}`}
                                     className={`${stRowClass} align-top`}
                                   >
+                                    <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
                                       <span className="text-gray-500">+</span> {addon.name}
                                       {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
@@ -9741,6 +9781,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                     <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
+                                    <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
                               })}
@@ -9748,11 +9789,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <tr className={`${stRowClass} align-top`}>
                                   <td
                                     className="px-4 py-2 pl-7 text-[10px] leading-snug text-gray-600 sm:px-5 sm:pl-8"
-                                    colSpan={4}
+                                    colSpan={5}
                                   >
                                     Your package covers the <span className="font-semibold text-gray-900">main service</span>{' '}
                                     only. Add-ons above are still due at checkout.
                                   </td>
+                                  <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                 </tr>
                               ) : null}
                             </>
@@ -9762,6 +9804,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                           {depositCredit > 0.0001 ? (
                             <tr className={`${stRowClass} align-top`}>
+                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                               <td className="px-4 py-2 pl-7 text-xs text-gray-700 sm:px-5 sm:pl-8">
                                 Deposit
                               </td>
@@ -9770,6 +9813,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
                                 <p className="text-lg font-bold leading-tight text-orange-700">− RM {depositCredit.toFixed(2)}</p>
                               </td>
+                              <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                             </tr>
                           ) : null}
                         </Fragment>
@@ -9837,6 +9881,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             ) : (
                               <p className="text-lg font-bold tabular-nums text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
                             )}
+                          </td>
+                          <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-3.5 text-center align-top">
+                            {renderCheckoutRemoveButton(() => removePackageCartItem(packageItem.id), 'Remove package')}
                           </td>
                         </tr>
                       )
