@@ -11033,7 +11033,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {packageMemberPickerOpen ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
+        <div className={`fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4 ${assignMemberContext === 'cartEditSettlement' || cartEditSettlementOpen ? 'z-[150]' : 'z-[130]'}`}>
           <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
