@@ -344,11 +344,11 @@ class AppointmentController extends Controller
             })
             ->where('booking_id', (int) $booking->id)
             ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
-            ->get(['line_type', 'line_total', 'variant_name_snapshot']);
+            ->get(['line_type', 'line_total', 'line_total_snapshot', 'variant_name_snapshot']);
         $orderDepositPaid = (float) $orderItems->where('line_type', 'booking_deposit')->sum(fn (OrderItem $item) => (float) ($item->line_total ?? 0));
         $settlementPaid = (float) $orderItems
             ->filter(fn (OrderItem $item) => in_array((string) $item->line_type, ['booking_settlement', 'booking_addon'], true))
-            ->sum(fn (OrderItem $item) => (float) ($item->line_total ?? 0));
+            ->sum(fn (OrderItem $item) => $this->resolveOrderItemSettlementGrossAmount($item));
         $bookingPaymentPaid = (float) BookingPayment::query()
             ->where('booking_id', (int) $booking->id)
             ->where('status', 'PAID')
@@ -728,5 +728,16 @@ class AppointmentController extends Controller
         ]);
 
         return $this->respond($photo);
+    }
+
+    private function resolveOrderItemSettlementGrossAmount(OrderItem $item): float
+    {
+        $lineTotal = (float) ($item->line_total ?? 0);
+        $snapshot = (float) ($item->line_total_snapshot ?? 0);
+        if ($snapshot > $lineTotal + 0.0001) {
+            return round($snapshot, 2);
+        }
+
+        return round($lineTotal, 2);
     }
 }

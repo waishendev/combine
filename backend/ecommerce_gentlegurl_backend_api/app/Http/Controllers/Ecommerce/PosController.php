@@ -939,15 +939,12 @@ class PosController extends Controller
             return [$order, $receipt];
         });
 
-        // Match POS cart settlement checkout: once nothing is owed, the booking must not stay UNPAID or it
-        // keeps appearing under GET /pos/appointments?unpaid_only=1 (balance can show RM 0.00 from orders).
+        // Match POS cart settlement checkout: keep booking payment_status aligned with resolved balances.
         $booking = $booking->fresh(['service', 'customer']);
         $freshSummary = $this->resolveAppointmentFinancialSummary($booking);
 
-        if ((float) ($freshSummary['balance_due'] ?? 0) <= 0.0001) {
-            $booking->payment_status = 'PAID';
-            $booking->save();
-        }
+        $booking->payment_status = $this->calculateAppointmentPaymentStatus($freshSummary);
+        $booking->save();
 
         $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
 
@@ -3398,8 +3395,9 @@ class PosController extends Controller
             return $this->respondError(__('Only COMPLETED appointments can be settled from POS cart.'), 422);
         }
 
-        if ((string) ($booking->payment_status ?? '') !== 'UNPAID') {
-            return $this->respondError(__('Only UNPAID completed appointments can be settled from POS cart.'), 422);
+        $settlementSummary = $this->resolveAppointmentFinancialSummary($booking);
+        if ((float) ($settlementSummary['balance_due'] ?? 0) <= 0.0001) {
+            return $this->respondError(__('No balance due for this appointment settlement.'), 422);
         }
 
         $hasMember = !empty($booking->customer_id);
@@ -8575,6 +8573,21 @@ class PosController extends Controller
         return $frontendUrl . '/api/proxy/public/receipt/' . $receiptToken->token . '/invoice';
     }
 
+    /**
+     * POS cart settlement stores net amounts in line_total and pre-discount gross in line_total_snapshot.
+     * Appointment collect-payment stores gross in line_total. Balance math must credit the gross value.
+     */
+    protected function resolveOrderItemSettlementGrossAmount(OrderItem|array $item): float
+    {
+        $lineTotal = (float) (is_array($item) ? ($item['line_total'] ?? 0) : ($item->line_total ?? 0));
+        $snapshot = (float) (is_array($item) ? ($item['line_total_snapshot'] ?? 0) : ($item->line_total_snapshot ?? 0));
+        if ($snapshot > $lineTotal + 0.0001) {
+            return round($snapshot, 2);
+        }
+
+        return round($lineTotal, 2);
+    }
+
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
         $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
@@ -8677,10 +8690,10 @@ class PosController extends Controller
         $addonPaidRows = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_addon')
-            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'variant_name_snapshot']);
+            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'line_total_snapshot', 'variant_name_snapshot']);
         $addonPaidByName = $addonPaidRows
             ->groupBy(fn (OrderItem $row) => (string) ($row->display_name_snapshot ?: $row->product_name_snapshot ?: 'Add-on'))
-            ->map(fn ($rows) => (float) $rows->sum(fn ($row) => (float) ($row->line_total ?? 0)));
+            ->map(fn ($rows) => (float) $rows->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row)));
         $usedPaidByName = [];
         $addonSettlementItems = $addonItems->map(function (array $addon, int $idx) use ($addonPaidByName, &$usedPaidByName) {
             $name = ((string) ($addon['service_ref'] ?? 'original')) . '::' . (string) ($addon['name'] ?? 'Add-on');
@@ -8793,17 +8806,15 @@ class PosController extends Controller
             $linkedBookingDeposit = $actualAppointmentDepositCollected;
         }
 
-        $serviceSettlementPaid = (float) OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_settlement')
-            ->sum('line_total');
         $mainSettlementPaidRows = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_settlement')
-            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total']);
+            ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'line_total_snapshot']);
+        $serviceSettlementPaid = (float) $mainSettlementPaidRows
+            ->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row));
         $mainPaidByName = $mainSettlementPaidRows
             ->groupBy(fn (OrderItem $row) => (string) ($row->display_name_snapshot ?: $row->product_name_snapshot ?: 'Service'))
-            ->map(fn ($rows) => (float) $rows->sum(fn ($row) => (float) ($row->line_total ?? 0)));
+            ->map(fn ($rows) => (float) $rows->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row)));
         $usedMainPaidByName = [];
         $mainSettlementItems = $mainServices->map(function (array $main) use ($mainPaidByName, &$usedMainPaidByName) {
             $displayName = 'Final Settlement - ' . (string) ($main['name'] ?? 'Service');
@@ -8824,7 +8835,7 @@ class PosController extends Controller
         $addonPaid = (float) $addonSettlementItems->sum('paid_amount');
         $addonPaidSettlement = (float) $addonPaidRows
             ->filter(fn (OrderItem $row) => strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Settlement') === 0)
-            ->sum(fn (OrderItem $row) => (float) ($row->line_total ?? 0));
+            ->sum(fn (OrderItem $row) => $this->resolveOrderItemSettlementGrossAmount($row));
 
         $packageUsage = CustomerServicePackageUsage::query()
             ->where('booking_id', (int) $booking->id)
