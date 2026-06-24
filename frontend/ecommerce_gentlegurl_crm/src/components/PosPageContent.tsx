@@ -230,6 +230,8 @@ type AppointmentSettlementCartItem = {
   main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   addon_total_price?: number
   deposit_contribution?: number
+  deposit_previously_collected?: boolean
+  deposit_previously_collected_amount?: number
   package_offset?: number
   amount_due_now?: number
   balance_due_snapshot?: number
@@ -1702,6 +1704,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementGuestName, setCartEditSettlementGuestName] = useState('')
   const [cartEditSettlementGuestPhone, setCartEditSettlementGuestPhone] = useState('')
   const [cartEditSettlementGuestEmail, setCartEditSettlementGuestEmail] = useState('')
+  const [cartEditSettlementDepositOpen, setCartEditSettlementDepositOpen] = useState(false)
+  const [cartEditSettlementDepositSaving, setCartEditSettlementDepositSaving] = useState(false)
+  const [cartEditSettlementDepositOriginal, setCartEditSettlementDepositOriginal] = useState(0)
+  const [cartEditSettlementDepositDraft, setCartEditSettlementDepositDraft] = useState('')
+  const [cartEditSettlementDepositRemarkDraft, setCartEditSettlementDepositRemarkDraft] = useState('')
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -2092,6 +2099,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const packageQty = cartPackageItems.reduce((sum, item) => sum + item.qty, 0)
     return productQty + serviceQty + packageQty + cartAppointmentSettlementItems.length
   }, [cartAppointmentSettlementItems.length, cartItems, cartPackageItems, cartServiceItems])
+  const cartEditSettlementPreviouslyCollected = useMemo(
+    () => Number(cartEditSettlementItem?.deposit_previously_collected_amount ?? cartEditSettlementItem?.deposit_contribution ?? 0),
+    [cartEditSettlementItem?.deposit_contribution, cartEditSettlementItem?.deposit_previously_collected_amount],
+  )
+  const cartEditSettlementDepositPreview = useMemo(() => {
+    if (!cartEditSettlementDepositOpen) return cartEditSettlementPreviouslyCollected
+    const parsed = Number(cartEditSettlementDepositDraft)
+    return Number.isFinite(parsed) ? Math.max(0, parsed) : cartEditSettlementPreviouslyCollected
+  }, [cartEditSettlementDepositDraft, cartEditSettlementDepositOpen, cartEditSettlementPreviouslyCollected])
   const cartSubtotal = Number(cart?.subtotal ?? cart?.grand_total ?? 0)
   const cartTotal = Number(cart?.grand_total ?? 0)
   const bookingDepositTotal = Number(cart?.booking_deposit_total ?? 0)
@@ -4424,6 +4440,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setCartEditSettlementGuestEmail(String(settlement.guest_email ?? ''))
     }
 
+    setCartEditSettlementDepositOpen(false)
+    setCartEditSettlementDepositOriginal(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0))
+    setCartEditSettlementDepositDraft(String(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0)))
+    setCartEditSettlementDepositRemarkDraft('')
+
     setCartEditAddonOptionsLoading(true)
     setCartEditMainServiceCatalogLoading(true)
     setCartEditSettlementOpen(true)
@@ -4622,6 +4643,62 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const next = Number(raw)
     if (!Number.isFinite(next) || next < 0) return
     setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next } : block))
+  }
+
+  const saveCartEditSettlementDeposit = async () => {
+    if (!cartEditSettlementBookingId) return
+    reportCartEditSettlementError(null)
+    const parsedDeposit = Number(cartEditSettlementDepositDraft)
+    if (!Number.isFinite(parsedDeposit) || parsedDeposit < 0) {
+      reportCartEditSettlementError('Please enter a valid deposit amount.')
+      return
+    }
+    const nextDeposit = Math.max(0, parsedDeposit)
+    if (Math.abs(nextDeposit - cartEditSettlementDepositOriginal) <= 0.0001 && !cartEditSettlementDepositRemarkDraft.trim()) {
+      setCartEditSettlementDepositOpen(false)
+      return
+    }
+
+    setCartEditSettlementDepositSaving(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${cartEditSettlementBookingId}/edit-settlement`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adjusted_deposit_amount: nextDeposit,
+          deposit_adjustment_remark: cartEditSettlementDepositRemarkDraft.trim() || null,
+        }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        reportCartEditSettlementError(json?.message ?? 'Failed to update deposit.')
+        return
+      }
+
+      const updatedAppointment = (json?.data?.appointment ?? null) as Partial<AppointmentSettlementCartItem> | null
+      const savedDeposit = Number(
+        updatedAppointment?.deposit_contribution
+        ?? updatedAppointment?.deposit_previously_collected_amount
+        ?? nextDeposit,
+      )
+      if (updatedAppointment) {
+        setCartEditSettlementItem((current) => current ? {
+          ...current,
+          ...updatedAppointment,
+          deposit_contribution: savedDeposit,
+          deposit_previously_collected_amount: Number(updatedAppointment.deposit_previously_collected_amount ?? savedDeposit),
+        } : current)
+      }
+
+      setCartEditSettlementDepositOriginal(savedDeposit)
+      setCartEditSettlementDepositDraft(String(savedDeposit))
+      setCartEditSettlementDepositRemarkDraft('')
+      setCartEditSettlementDepositOpen(false)
+      showMsg('Deposit updated.', 'success')
+      await loadCart()
+    } finally {
+      setCartEditSettlementDepositSaving(false)
+    }
   }
 
   const saveCartEditSettlement = async () => {
@@ -8967,6 +9044,107 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     })()}
                   </div>
 
+                  <div className="rounded-xl border border-blue-100 bg-blue-50/40 p-4">
+                    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <label className="text-xs font-semibold text-gray-700">Deposit Credit</label>
+                        <p className="mt-0.5 text-[11px] font-medium text-gray-500">Amount applied toward this settlement</p>
+                      </div>
+                      {!cartEditSettlementDepositOpen ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            reportCartEditSettlementError(null)
+                            setCartEditSettlementDepositOriginal(cartEditSettlementPreviouslyCollected)
+                            setCartEditSettlementDepositDraft(String(cartEditSettlementPreviouslyCollected))
+                            setCartEditSettlementDepositRemarkDraft('')
+                            setCartEditSettlementDepositOpen(true)
+                          }}
+                          className="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50"
+                        >
+                          Edit Deposit
+                        </button>
+                      ) : null}
+                    </div>
+                    {!cartEditSettlementDepositOpen ? (
+                      <p className="text-sm font-semibold text-emerald-800">
+                        Current deposit credit: RM {cartEditSettlementPreviouslyCollected.toFixed(2)}
+                      </p>
+                    ) : (
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">Previous Amount</label>
+                            <input
+                              type="text"
+                              readOnly
+                              value={`RM ${cartEditSettlementDepositOriginal.toFixed(2)}`}
+                              className="w-full rounded-lg border border-gray-200 bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">New Amount</label>
+                            <div className="relative">
+                              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                autoComplete="off"
+                                value={cartEditSettlementDepositDraft}
+                                onChange={(e) => {
+                                  reportCartEditSettlementError(null)
+                                  setCartEditSettlementDepositDraft(e.target.value)
+                                }}
+                                onFocus={(e) => e.currentTarget.select()}
+                                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm font-semibold tabular-nums"
+                                placeholder="0.00"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-600">Remark (optional)</label>
+                          <input
+                            type="text"
+                            value={cartEditSettlementDepositRemarkDraft}
+                            onChange={(e) => {
+                              reportCartEditSettlementError(null)
+                              setCartEditSettlementDepositRemarkDraft(e.target.value)
+                            }}
+                            placeholder="Reason for deposit adjustment"
+                            className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                          />
+                        </div>
+                        <p className="text-xs font-semibold text-emerald-700">
+                          Settlement offset after save: RM {cartEditSettlementDepositPreview.toFixed(2)}
+                        </p>
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            type="button"
+                            disabled={cartEditSettlementDepositSaving}
+                            onClick={() => {
+                              reportCartEditSettlementError(null)
+                              setCartEditSettlementDepositDraft(String(cartEditSettlementDepositOriginal))
+                              setCartEditSettlementDepositRemarkDraft('')
+                              setCartEditSettlementDepositOpen(false)
+                            }}
+                            className="flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={cartEditSettlementDepositSaving}
+                            onClick={() => void saveCartEditSettlementDeposit()}
+                            className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {cartEditSettlementDepositSaving ? 'Saving...' : 'Save Deposit'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
                     <button
                       type="button"
@@ -9144,7 +9322,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       ?? 0,
                   )
                 const serviceAmt = originalServiceAmt + addedMainTotal
-                const depositOffset = Number(cartEditSettlementItem.deposit_contribution ?? 0)
+                const depositOffset = cartEditSettlementDepositPreview
                 const packageOffset = Number(cartEditSettlementItem.package_offset ?? 0)
                 const finalTotal = Math.max(0, serviceAmt + addonTotal - depositOffset - packageOffset)
                 return (
