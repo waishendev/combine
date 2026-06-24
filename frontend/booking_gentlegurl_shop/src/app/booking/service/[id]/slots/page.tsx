@@ -4,7 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { BookingProgress } from "@/components/booking/BookingProgress";
-import { getAvailabilityPooled, getBookingServiceDetail, getBookingSlotsHelpNoteSettings } from "@/lib/apiClient";
+import { getAvailabilityPooled, getBookingMaxAdvanceDays, getBookingServiceDetail, getBookingSlotsHelpNoteSettings } from "@/lib/apiClient";
 import { BookingSlot, Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
@@ -44,6 +44,13 @@ function todayInTimezone() {
   return dateInTimezone(new Date());
 }
 
+function addDaysToDateString(date: string, days: number) {
+  const [year, month, day] = date.split("-").map(Number);
+  const value = new Date(year, month - 1, day);
+  value.setDate(value.getDate() + days);
+  return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+}
+
 function formatTime(iso: string) {
   return new Date(iso).toLocaleTimeString("en-MY", {
     hour: "2-digit",
@@ -74,11 +81,15 @@ function SlotPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<"all" | "morning" | "afternoon">("all");
   const [slotsHelpNote, setSlotsHelpNote] = useState({ enabled: false, text: "" });
+  const [maxAdvanceDays, setMaxAdvanceDays] = useState(0);
   const extraDuration = useMemo(
     () => (service?.questions ?? []).flatMap((q) => q.options ?? []).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0),
     [service?.questions, selectedOptionIds]
   );
-  const canLoad = Boolean(serviceId && date && service);
+  const todayDate = todayInTimezone();
+  const maxSelectableDate = maxAdvanceDays > 0 ? addDaysToDateString(todayDate, maxAdvanceDays) : null;
+  const isDateSelectable = useCallback((value: string) => value >= todayDate && (!maxSelectableDate || value <= maxSelectableDate), [maxSelectableDate, todayDate]);
+  const canLoad = Boolean(serviceId && date && service && isDateSelectable(date));
 
   const loadSlots = useCallback(async () => {
     if (!canLoad) return;
@@ -118,13 +129,15 @@ function SlotPageContent() {
   useEffect(() => {
     const run = async () => {
       try {
-        const setting = await getBookingSlotsHelpNoteSettings();
+        const [setting, advanceDays] = await Promise.all([getBookingSlotsHelpNoteSettings(), getBookingMaxAdvanceDays()]);
+        setMaxAdvanceDays(advanceDays);
         setSlotsHelpNote({
           enabled: setting.booking_slots_help_note_enabled,
           text: setting.booking_slots_help_note_text,
         });
       } catch {
         setSlotsHelpNote({ enabled: false, text: "" });
+        setMaxAdvanceDays(0);
       }
     };
     run();
@@ -189,27 +202,27 @@ function SlotPageContent() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const grid: { date: string; day: number; isCurrentMonth: boolean; isPast: boolean }[] = [];
+    const grid: { date: string; day: number; isCurrentMonth: boolean; isDisabled: boolean }[] = [];
 
     for (let i = 0; i < firstDay; i++) {
       const prevDate = new Date(year, month, -firstDay + i + 1);
       const dateStr = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, "0")}-${String(prevDate.getDate()).padStart(2, "0")}`;
-      grid.push({ date: dateStr, day: prevDate.getDate(), isCurrentMonth: false, isPast: true });
+      grid.push({ date: dateStr, day: prevDate.getDate(), isCurrentMonth: false, isDisabled: !isDateSelectable(dateStr) });
     }
     for (let d = 1; d <= daysInMonth; d++) {
       const thisDate = new Date(year, month, d);
       const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-      grid.push({ date: dateStr, day: d, isCurrentMonth: true, isPast: thisDate < today });
+      grid.push({ date: dateStr, day: d, isCurrentMonth: true, isDisabled: !isDateSelectable(dateStr) });
     }
     const total = grid.length;
     const remaining = Math.ceil(total / 7) * 7 - total;
     for (let i = 1; i <= remaining; i++) {
       const nextDate = new Date(year, month, daysInMonth + i);
       const dateStr = `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, "0")}-${String(nextDate.getDate()).padStart(2, "0")}`;
-      grid.push({ date: dateStr, day: nextDate.getDate(), isCurrentMonth: false, isPast: false });
+      grid.push({ date: dateStr, day: nextDate.getDate(), isCurrentMonth: false, isDisabled: !isDateSelectable(dateStr) });
     }
     return grid;
-  }, [calMonth]);
+  }, [calMonth, isDateSelectable]);
 
   const dateStrip = useMemo(() => {
     const today = new Date();
@@ -218,7 +231,9 @@ function SlotPageContent() {
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    for (let i = 0; i < 14; i++) {
+    const stripDays = maxAdvanceDays > 0 ? Math.min(14, maxAdvanceDays + 1) : 14;
+
+    for (let i = 0; i < stripDays; i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -238,6 +253,9 @@ function SlotPageContent() {
   const nextMonth = () => {
     setCalMonth((m) => new Date(m.getFullYear(), m.getMonth() + 1, 1));
   };
+  const nextMonthStart = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 1);
+  const nextMonthStartString = `${nextMonthStart.getFullYear()}-${String(nextMonthStart.getMonth() + 1).padStart(2, "0")}-01`;
+  const canNextMonth = !maxSelectableDate || nextMonthStartString <= maxSelectableDate;
   const today = new Date();
   const canPrevMonth = calMonth.getMonth() > today.getMonth() || calMonth.getFullYear() > today.getFullYear();
 
@@ -334,7 +352,8 @@ function SlotPageContent() {
               <button
                 type="button"
                 onClick={nextMonth}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--card-border)] transition-colors hover:border-[var(--accent)]"
+                disabled={!canNextMonth}
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--card-border)] transition-colors disabled:opacity-30 disabled:pointer-events-none hover:border-[var(--accent)]"
               >
                 <i className="fa-solid fa-chevron-right text-xs" />
               </button>
@@ -350,14 +369,14 @@ function SlotPageContent() {
                   key={cell.date}
                   type="button"
                   onClick={() => {
-                    if (cell.isPast) return;
+                    if (cell.isDisabled) return;
                     setDate(cell.date);
                   }}
-                  disabled={cell.isPast}
+                  disabled={cell.isDisabled}
                   className={`mx-auto flex h-9 w-9 items-center justify-center rounded-full text-sm transition-all ${
                     date === cell.date
                       ? "bg-[var(--accent-strong)] text-white"
-                      : cell.isPast
+                      : cell.isDisabled
                         ? "cursor-not-allowed text-[var(--text-muted)] opacity-40"
                         : cell.isCurrentMonth
                           ? "hover:bg-[var(--muted)]"

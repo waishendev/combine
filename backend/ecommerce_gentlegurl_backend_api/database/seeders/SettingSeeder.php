@@ -64,6 +64,12 @@ class SettingSeeder extends Seeder
         );
 
 
+        Setting::firstOrCreate(
+            ['type' => 'booking', 'key' => 'booking_max_advance_days'],
+            ['value' => 60]
+        );
+
+
         Setting::updateOrCreate(
             ['type' => 'booking', 'key' => 'booking_deposit_tnc_enabled'],
             ['value' => true]
