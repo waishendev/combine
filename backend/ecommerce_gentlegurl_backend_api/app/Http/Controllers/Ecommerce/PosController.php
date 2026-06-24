@@ -1109,7 +1109,51 @@ class PosController extends Controller
             'availability_override' => ['nullable', 'boolean'],
             'availability_override_type' => ['nullable', 'string', 'in:outside_staff_schedule'],
             'availability_override_reason' => ['nullable', 'string', 'max:500'],
+            'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
+            'guest_name' => ['nullable', 'string', 'max:255'],
+            'guest_phone' => ['nullable', 'string', 'max:32'],
+            'guest_email' => ['nullable', 'string', 'email', 'max:255'],
         ]);
+
+        if ($request->hasAny(['customer_id', 'guest_name', 'guest_phone', 'guest_email'])) {
+            $hasPackageUsage = CustomerServicePackageUsage::query()
+                ->where('booking_id', (int) $booking->id)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->exists();
+
+            if (! empty($validated['customer_id'])) {
+                $nextCustomerId = (int) $validated['customer_id'];
+                Customer::query()->findOrFail($nextCustomerId);
+                if ($hasPackageUsage && $nextCustomerId !== (int) ($booking->customer_id ?? 0)) {
+                    return $this->respondError(__('Cannot change member while a package is reserved or consumed on this appointment.'), 422);
+                }
+                $booking->customer_id = $nextCustomerId;
+                $booking->guest_name = null;
+                $booking->guest_phone = null;
+                $booking->guest_email = null;
+            } else {
+                if ($hasPackageUsage) {
+                    return $this->respondError(__('Cannot switch to guest while a package is reserved or consumed on this appointment.'), 422);
+                }
+
+                $guestName = trim((string) ($validated['guest_name'] ?? ''));
+                $guestPhone = trim((string) ($validated['guest_phone'] ?? ''));
+                $guestEmail = trim((string) ($validated['guest_email'] ?? ''));
+
+                if ($guestName === '' && $guestPhone === '' && $guestEmail === '') {
+                    $guestName = 'UNKNOWN';
+                }
+
+                if ($guestPhone !== '' && ! preg_match('/^\+?[0-9]{8,15}$/', $guestPhone)) {
+                    return $this->respondError(__('Please enter a valid guest phone number (8-15 digits, optional + prefix).'), 422);
+                }
+
+                $booking->customer_id = null;
+                $booking->guest_name = $guestName !== '' ? $guestName : 'UNKNOWN';
+                $booking->guest_phone = $guestPhone !== '' ? $guestPhone : null;
+                $booking->guest_email = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            }
+        }
 
         if ($effectiveService && (int) ($booking->service_id ?? 0) !== (int) $effectiveService->id) {
             $booking->service_id = (int) $effectiveService->id;

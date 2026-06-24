@@ -374,6 +374,17 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
   const [editSettlementError, setEditSettlementError] = useState<string | null>(null)
   const [editSettlementAvailability, setEditSettlementAvailability] = useState<{ reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null>(null)
+  const [editSettlementIdentityMode, setEditSettlementIdentityMode] = useState<'member' | 'guest'>('guest')
+  const [editSettlementCustomerId, setEditSettlementCustomerId] = useState<number | null>(null)
+  const [editSettlementMemberSummary, setEditSettlementMemberSummary] = useState<{
+    id: number
+    name: string
+    phone?: string | null
+  } | null>(null)
+  const [editSettlementGuestName, setEditSettlementGuestName] = useState('')
+  const [editSettlementGuestPhone, setEditSettlementGuestPhone] = useState('')
+  const [editSettlementGuestEmail, setEditSettlementGuestEmail] = useState('')
+  const [memberPickerForEditSettlement, setMemberPickerForEditSettlement] = useState(false)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
@@ -1060,6 +1071,7 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentMemberPickerOpen(false)
     setCreateAppointmentMemberQuery('')
     setCreateAppointmentMemberResults([])
+    setMemberPickerForEditSettlement(false)
   }, [])
 
   useEffect(() => {
@@ -1932,6 +1944,27 @@ export default function PosAppointmentsWorkspace({
       setEditStaffSplits(appointmentDetail.staff?.id ? [{ staff_id: appointmentDetail.staff.id, share_percent: '100' }] : [])
     }
 
+    if (appointmentDetail.customer?.id) {
+      setEditSettlementIdentityMode('member')
+      setEditSettlementCustomerId(appointmentDetail.customer.id)
+      setEditSettlementMemberSummary({
+        id: appointmentDetail.customer.id,
+        name: appointmentDetail.customer.name,
+        phone: appointmentDetail.customer.phone ?? null,
+      })
+      setEditSettlementGuestName('')
+      setEditSettlementGuestPhone('')
+      setEditSettlementGuestEmail('')
+    } else {
+      setEditSettlementIdentityMode('guest')
+      setEditSettlementCustomerId(null)
+      setEditSettlementMemberSummary(null)
+      const rawGuestName = String(appointmentDetail.guest_name ?? '').trim()
+      setEditSettlementGuestName(rawGuestName.toUpperCase().startsWith('UNKNOWN') ? '' : rawGuestName)
+      setEditSettlementGuestPhone(String(appointmentDetail.guest_phone ?? ''))
+      setEditSettlementGuestEmail(String(appointmentDetail.guest_email ?? ''))
+    }
+
     setEditAddonOptionsLoading(true)
     setEditMainServiceCatalogLoading(true)
     setEditSettlementOpen(true)
@@ -2190,6 +2223,27 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      const phonePattern = /^\+?[0-9]{8,15}$/
+      if (editSettlementIdentityMode === 'member') {
+        if (!editSettlementCustomerId) {
+          reportEditSettlementError('Please assign a member.')
+          return
+        }
+        payload.customer_id = editSettlementCustomerId
+      } else {
+        const guestName = editSettlementGuestName.trim()
+        const guestPhone = normalizeInternationalPhone(editSettlementGuestPhone)
+        const guestEmail = editSettlementGuestEmail.trim()
+        if (guestPhone && !phonePattern.test(guestPhone)) {
+          reportEditSettlementError('Please enter a valid guest phone number (8-15 digits, optional + prefix).')
+          return
+        }
+        payload.customer_id = null
+        payload.guest_name = guestName || 'UNKNOWN'
+        payload.guest_phone = guestPhone || null
+        payload.guest_email = guestEmail || null
+      }
+
       for (const block of editAddedMainBlocks) {
         const blockSplits = block.staff_splits.map((row) => ({
           staff_id: Number(row.staff_id ?? 0),
@@ -2241,7 +2295,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -4795,13 +4849,24 @@ export default function PosAppointmentsWorkspace({
                     onClick={() => {
                       const phone =
                         (member.phone && member.phone.trim()) || member.phone_masked?.trim() || null
-                      setCreateAppointmentCustomerId(member.id)
-                      setCreateAppointmentMemberSummary({
-                        id: member.id,
-                        name: member.name,
-                        phone,
-                      })
-                      showMsg('Member assigned.', 'success')
+                      if (memberPickerForEditSettlement) {
+                        setEditSettlementCustomerId(member.id)
+                        setEditSettlementMemberSummary({
+                          id: member.id,
+                          name: member.name,
+                          phone,
+                        })
+                        setEditSettlementIdentityMode('member')
+                        showMsg('Member assigned.', 'success')
+                      } else {
+                        setCreateAppointmentCustomerId(member.id)
+                        setCreateAppointmentMemberSummary({
+                          id: member.id,
+                          name: member.name,
+                          phone,
+                        })
+                        showMsg('Member assigned.', 'success')
+                      }
                       closeCreateAppointmentMemberPicker()
                     }}
                   >
@@ -5638,6 +5703,112 @@ export default function PosAppointmentsWorkspace({
               </div>
 
                 <div className="space-y-5">
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-sm font-bold text-gray-900">Customer</p>
+                    <p className="mt-0.5 text-xs text-gray-500">Update member or guest details for settlement and receipts.</p>
+                    <div
+                      className="mt-3 flex w-full rounded-lg border border-gray-300 bg-gray-100 p-1"
+                      role="tablist"
+                      aria-label="Customer type"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setEditSettlementIdentityMode('member')}
+                        role="tab"
+                        aria-selected={editSettlementIdentityMode === 'member'}
+                        className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition ${
+                          editSettlementIdentityMode === 'member'
+                            ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                            : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                      >
+                        Member
+                      </button>
+                      <button
+                        type="button"
+                        disabled={appointmentPackageApplied}
+                        title={appointmentPackageApplied ? 'Cannot switch to guest while a package is applied.' : undefined}
+                        onClick={() => {
+                          if (appointmentPackageApplied) return
+                          setEditSettlementIdentityMode('guest')
+                          setEditSettlementCustomerId(null)
+                          setEditSettlementMemberSummary(null)
+                          setMemberPickerForEditSettlement(false)
+                          closeCreateAppointmentMemberPicker()
+                        }}
+                        role="tab"
+                        aria-selected={editSettlementIdentityMode === 'guest'}
+                        className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition ${
+                          editSettlementIdentityMode === 'guest'
+                            ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                            : 'text-gray-600 hover:text-gray-800'
+                        }`}
+                      >
+                        Guest
+                      </button>
+                    </div>
+
+                    {editSettlementIdentityMode === 'member' ? (
+                      <div className="mt-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <label className="text-xs font-semibold text-gray-600">Member</label>
+                          <button
+                            type="button"
+                            disabled={appointmentPackageApplied}
+                            title={appointmentPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
+                            onClick={() => {
+                              if (appointmentPackageApplied) return
+                              setMemberPickerForEditSettlement(true)
+                              setCreateAppointmentMemberQuery('')
+                              setCreateAppointmentMemberResults([])
+                              setCreateAppointmentMemberPickerOpen(true)
+                            }}
+                            className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
+                          >
+                            {editSettlementMemberSummary ? 'change member' : 'assign member'}
+                          </button>
+                        </div>
+                        <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                          {editSettlementMemberSummary
+                            ? `${editSettlementMemberSummary.name}${
+                                editSettlementMemberSummary.phone ? ` (${editSettlementMemberSummary.phone})` : ''
+                              }`
+                            : 'No member selected'}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="mt-3 space-y-2">
+                        <input
+                          value={editSettlementGuestName}
+                          onChange={(e) => {
+                            reportEditSettlementError(null)
+                            setEditSettlementGuestName(e.target.value)
+                          }}
+                          placeholder="Guest name"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        />
+                        <InternationalPhoneInput
+                          value={editSettlementGuestPhone}
+                          onChange={(value) => {
+                            reportEditSettlementError(null)
+                            setEditSettlementGuestPhone(value)
+                          }}
+                          placeholder="Guest phone"
+                        />
+                        <input
+                          value={editSettlementGuestEmail}
+                          onChange={(e) => {
+                            reportEditSettlementError(null)
+                            setEditSettlementGuestEmail(e.target.value)
+                          }}
+                          placeholder="Guest email"
+                          className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                        />
+                        <p className="text-[11px] text-gray-500">Leave name empty for walk-in / unknown guest. Phone or email required for named guests.</p>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
                     <button
                       type="button"

@@ -165,7 +165,7 @@ export default function AnnouncementModal({ items }: AnnouncementModalProps) {
 
         {item.title && <h3 className="text-2xl font-semibold text-[var(--foreground)]">{item.title}</h3>}
         {item.content && (
-          <p className="mt-2 text-sm leading-relaxed text-[var(--foreground)]/75">{item.content}</p>
+          <p className="mt-2 whitespace-pre-line text-sm leading-relaxed text-[var(--foreground)]/75">{item.content}</p>
         )}
 
         {(item.image_url || item.image_path) && (

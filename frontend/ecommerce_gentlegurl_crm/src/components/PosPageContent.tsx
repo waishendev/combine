@@ -1630,7 +1630,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageMembers, setPackageMembers] = useState<Member[]>([])
   const [packageMembersLoading, setPackageMembersLoading] = useState(false)
   const [packageMemberPickerOpen, setPackageMemberPickerOpen] = useState(false)
-  const [assignMemberContext, setAssignMemberContext] = useState<'checkout' | 'service' | 'package'>('checkout')
+  const [assignMemberContext, setAssignMemberContext] = useState<'checkout' | 'service' | 'package' | 'cartEditSettlement'>('checkout')
   const [packageModalError, setPackageModalError] = useState<string | null>(null)
   const packageRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
@@ -1696,6 +1696,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
   const [cartEditOriginalServicePrice, setCartEditOriginalServicePrice] = useState<number | null>(null)
   const [cartEditAddonPriceOverrides, setCartEditAddonPriceOverrides] = useState<Record<number, number>>({})
+  const [cartEditSettlementIdentityMode, setCartEditSettlementIdentityMode] = useState<'member' | 'guest'>('guest')
+  const [cartEditSettlementCustomerId, setCartEditSettlementCustomerId] = useState<number | null>(null)
+  const [cartEditSettlementMemberSummary, setCartEditSettlementMemberSummary] = useState<{ id: number; name: string; phone?: string | null } | null>(null)
+  const [cartEditSettlementGuestName, setCartEditSettlementGuestName] = useState('')
+  const [cartEditSettlementGuestPhone, setCartEditSettlementGuestPhone] = useState('')
+  const [cartEditSettlementGuestEmail, setCartEditSettlementGuestEmail] = useState('')
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -4396,6 +4402,28 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setCartEditStaffSplits([{ staff_id: settlement.staff_splits?.[0]?.staff_id ?? null, share_percent: '100' }])
     }
 
+    const settlementCustomerId = Number(settlement.customer_id ?? 0)
+    if (settlementCustomerId > 0) {
+      setCartEditSettlementIdentityMode('member')
+      setCartEditSettlementCustomerId(settlementCustomerId)
+      setCartEditSettlementMemberSummary({
+        id: settlementCustomerId,
+        name: String(settlement.customer_name ?? 'Member'),
+        phone: null,
+      })
+      setCartEditSettlementGuestName('')
+      setCartEditSettlementGuestPhone('')
+      setCartEditSettlementGuestEmail('')
+    } else {
+      setCartEditSettlementIdentityMode('guest')
+      setCartEditSettlementCustomerId(null)
+      setCartEditSettlementMemberSummary(null)
+      const rawGuestName = String(settlement.guest_name ?? '').trim()
+      setCartEditSettlementGuestName(rawGuestName.toUpperCase().startsWith('UNKNOWN') ? '' : rawGuestName)
+      setCartEditSettlementGuestPhone(String(settlement.guest_phone ?? ''))
+      setCartEditSettlementGuestEmail(String(settlement.guest_email ?? ''))
+    }
+
     setCartEditAddonOptionsLoading(true)
     setCartEditMainServiceCatalogLoading(true)
     setCartEditSettlementOpen(true)
@@ -4650,6 +4678,27 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         return
       }
       payload.staff_splits = normalizedSplits
+
+      const phonePattern = /^\+?[0-9]{8,15}$/
+      if (cartEditSettlementIdentityMode === 'member') {
+        if (!cartEditSettlementCustomerId) {
+          reportCartEditSettlementError('Please assign a member.')
+          return
+        }
+        payload.customer_id = cartEditSettlementCustomerId
+      } else {
+        const guestName = cartEditSettlementGuestName.trim()
+        const guestPhone = normalizeInternationalPhone(cartEditSettlementGuestPhone)
+        const guestEmail = cartEditSettlementGuestEmail.trim()
+        if (guestPhone && !phonePattern.test(guestPhone)) {
+          reportCartEditSettlementError('Please enter a valid guest phone number (8-15 digits, optional + prefix).')
+          return
+        }
+        payload.customer_id = null
+        payload.guest_name = guestName || 'UNKNOWN'
+        payload.guest_phone = guestPhone || null
+        payload.guest_email = guestEmail || null
+      }
 
       for (const block of cartEditAddedMainBlocks) {
         const blockSplits = block.staff_splits.map((row) => ({
@@ -6162,7 +6211,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setMemberUpcomingAppointmentsMeta({ current_page: 1, last_page: 1, per_page: 2, total: 0 })
   }
 
-  const openAssignMemberModal = (context: 'checkout' | 'service' | 'package') => {
+  const openAssignMemberModal = (context: 'checkout' | 'service' | 'package' | 'cartEditSettlement') => {
     setAssignMemberContext(context)
     setPackageMemberPickerOpen(true)
     setPackageMemberQuery('')
@@ -8809,6 +8858,116 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                 <div className="space-y-5">
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
+                    <p className="text-sm font-bold text-gray-900">Customer</p>
+                    <p className="mt-0.5 text-xs text-gray-500">Update member or guest details for settlement and receipts.</p>
+                    {(() => {
+                      const cartEditSettlementPackageApplied = ['reserved', 'consumed'].includes(
+                        String(cartEditSettlementItem.package_status?.status ?? '').toLowerCase(),
+                      )
+                      return (
+                        <>
+                          <div
+                            className="mt-3 flex w-full rounded-lg border border-gray-300 bg-gray-100 p-1"
+                            role="tablist"
+                            aria-label="Customer type"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setCartEditSettlementIdentityMode('member')}
+                              role="tab"
+                              aria-selected={cartEditSettlementIdentityMode === 'member'}
+                              className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition ${
+                                cartEditSettlementIdentityMode === 'member'
+                                  ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                                  : 'text-gray-600 hover:text-gray-800'
+                              }`}
+                            >
+                              Member
+                            </button>
+                            <button
+                              type="button"
+                              disabled={cartEditSettlementPackageApplied}
+                              title={cartEditSettlementPackageApplied ? 'Cannot switch to guest while a package is applied.' : undefined}
+                              onClick={() => {
+                                if (cartEditSettlementPackageApplied) return
+                                setCartEditSettlementIdentityMode('guest')
+                                setCartEditSettlementCustomerId(null)
+                                setCartEditSettlementMemberSummary(null)
+                              }}
+                              role="tab"
+                              aria-selected={cartEditSettlementIdentityMode === 'guest'}
+                              className={`flex-1 rounded-md px-3 py-2 text-xs font-semibold transition ${
+                                cartEditSettlementIdentityMode === 'guest'
+                                  ? 'bg-white text-indigo-700 shadow-sm ring-1 ring-indigo-200'
+                                  : 'text-gray-600 hover:text-gray-800'
+                              }`}
+                            >
+                              Guest
+                            </button>
+                          </div>
+
+                          {cartEditSettlementIdentityMode === 'member' ? (
+                            <div className="mt-3">
+                              <div className="flex items-center justify-between gap-2">
+                                <label className="text-xs font-semibold text-gray-600">Member</label>
+                                <button
+                                  type="button"
+                                  disabled={cartEditSettlementPackageApplied}
+                                  title={cartEditSettlementPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
+                                  onClick={() => {
+                                    if (cartEditSettlementPackageApplied) return
+                                    openAssignMemberModal('cartEditSettlement')
+                                  }}
+                                  className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
+                                >
+                                  {cartEditSettlementMemberSummary ? 'change member' : 'assign member'}
+                                </button>
+                              </div>
+                              <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
+                                {cartEditSettlementMemberSummary
+                                  ? `${cartEditSettlementMemberSummary.name}${
+                                      cartEditSettlementMemberSummary.phone ? ` (${cartEditSettlementMemberSummary.phone})` : ''
+                                    }`
+                                  : 'No member selected'}
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="mt-3 space-y-2">
+                              <input
+                                value={cartEditSettlementGuestName}
+                                onChange={(e) => {
+                                  reportCartEditSettlementError(null)
+                                  setCartEditSettlementGuestName(e.target.value)
+                                }}
+                                placeholder="Guest name"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              />
+                              <InternationalPhoneInput
+                                value={cartEditSettlementGuestPhone}
+                                onChange={(value) => {
+                                  reportCartEditSettlementError(null)
+                                  setCartEditSettlementGuestPhone(value)
+                                }}
+                                placeholder="Guest phone"
+                              />
+                              <input
+                                value={cartEditSettlementGuestEmail}
+                                onChange={(e) => {
+                                  reportCartEditSettlementError(null)
+                                  setCartEditSettlementGuestEmail(e.target.value)
+                                }}
+                                placeholder="Guest email"
+                                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm"
+                              />
+                              <p className="text-[11px] text-gray-500">Leave name empty for walk-in / unknown guest. Phone or email required for named guests.</p>
+                            </div>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 bg-white p-4">
                     <button
                       type="button"
                       onClick={() => openCartEditMainServicePicker()}
@@ -10741,6 +10900,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       if (assignMemberContext === 'package') {
                         const fullMember = await hydrateMemberProfile(member)
                         setPackageSelectedMember(fullMember)
+                      } else if (assignMemberContext === 'cartEditSettlement') {
+                        const fullMember = await hydrateMemberProfile(member)
+                        setCartEditSettlementCustomerId(fullMember.id)
+                        setCartEditSettlementMemberSummary({
+                          id: fullMember.id,
+                          name: fullMember.name,
+                          phone: fullMember.phone_masked ?? fullMember.phone ?? null,
+                        })
+                        setCartEditSettlementIdentityMode('member')
+                        reportCartEditSettlementError(null)
                       } else {
                         await onAssignMember(member)
                       }
