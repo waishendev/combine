@@ -4870,8 +4870,9 @@ export default function PosAppointmentsWorkspace({
         </div>
       ) : null}
 
-      {createAppointmentMemberPickerOpen ? (
-        <div className="fixed inset-0 z-[145] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+      {createAppointmentMemberPickerOpen && typeof document !== 'undefined'
+        ? createPortal(
+        <div className="fixed inset-0 z-[150] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
           <button
             type="button"
             className="absolute inset-0 h-full w-full cursor-default"
@@ -4979,8 +4980,10 @@ export default function PosAppointmentsWorkspace({
               ) : null}
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+        )
+        : null}
 
       {cancellationRequestsModalOpen ? (
         <div className="fixed inset-0 z-[125] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">

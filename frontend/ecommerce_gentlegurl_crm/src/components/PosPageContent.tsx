@@ -11032,8 +11032,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         </div>
       )}
 
-      {packageMemberPickerOpen ? (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
+      {packageMemberPickerOpen && typeof document !== 'undefined'
+        ? createPortal(
+        <div className="fixed inset-0 z-[150] flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4">
           <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
@@ -11120,8 +11121,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               )}
             </div>
           </div>
-        </div>
-      ) : null}
+        </div>,
+        document.body,
+        )
+        : null}
 
       {bookingModalOpen && bookingServiceDraft && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
