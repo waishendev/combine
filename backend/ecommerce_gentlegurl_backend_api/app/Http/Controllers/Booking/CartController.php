@@ -22,6 +22,7 @@ use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -57,6 +58,9 @@ class CartController extends Controller
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
         $startAt = Carbon::parse($validated['start_at']);
+        if (! $this->isStartWithinMaxAdvanceLimit($startAt)) {
+            return $this->respondError($this->maxAdvanceErrorMessage(), 422);
+        }
         $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values()->all();
         $customerRemarks = isset($validated['notes']) ? trim((string) $validated['notes']) : '';
         $serviceQuestions = $service->questions()->where('is_active', true)->with(['options' => fn ($q) => $q->where('is_active', true)])->get();
@@ -456,6 +460,10 @@ class CartController extends Controller
 
             if ($activeItems->contains(fn ($item) => $item->expires_at->lte(now()))) {
                 return $this->respondError('Some cart items are expired. Please refresh cart.', 422);
+            }
+
+            if ($activeItems->contains(fn ($item) => ! $this->isStartWithinMaxAdvanceLimit($item->start_at))) {
+                return $this->respondError($this->maxAdvanceErrorMessage(), 422);
             }
 
             $customer = $request->user('customer');
@@ -1293,5 +1301,29 @@ class CartController extends Controller
             'deposit_base_amount_if_only_standard' => 30,
             'cart_hold_minutes' => 15,
         ]);
+    }
+    private function bookingMaxAdvanceDays(): int
+    {
+        return max(0, (int) SettingService::get('booking_max_advance_days', 0, 'booking'));
+    }
+
+    private function isStartWithinMaxAdvanceLimit(Carbon|string $startAt): bool
+    {
+        $maxDays = $this->bookingMaxAdvanceDays();
+        if ($maxDays <= 0) {
+            return true;
+        }
+
+        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $selectedDate = ($startAt instanceof Carbon ? $startAt->copy() : Carbon::parse($startAt))->setTimezone($timezone)->startOfDay();
+        $today = Carbon::now($timezone)->startOfDay();
+        $maxDate = $today->copy()->addDays($maxDays);
+
+        return $selectedDate->betweenIncluded($today, $maxDate);
+    }
+
+    private function maxAdvanceErrorMessage(): string
+    {
+        return sprintf('This salon only accepts bookings up to %d days in advance.', $this->bookingMaxAdvanceDays());
     }
 }

@@ -43,6 +43,7 @@ class ShopSettingController extends Controller
                 'booking_deposit_tnc_image' => $this->resolveStorageUrl(SettingService::get('booking_deposit_tnc_image', null, $type)),
                 'booking_slots_help_note_enabled' => (bool) SettingService::get('booking_slots_help_note_enabled', false, $type),
                 'booking_slots_help_note_text' => (string) SettingService::get('booking_slots_help_note_text', '', $type),
+                'booking_max_advance_days' => (int) SettingService::get('booking_max_advance_days', 0, $type),
             ];
 
             return response()->json([
@@ -145,6 +146,7 @@ class ShopSettingController extends Controller
             'booking_deposit_tnc_image' => null,
             'booking_slots_help_note_enabled' => false,
             'booking_slots_help_note_text' => '',
+            'booking_max_advance_days' => 0,
         ];
 
         $settingKey = $this->resolveSettingKey($key);
@@ -255,6 +257,9 @@ class ShopSettingController extends Controller
                 break;
             case 'booking_slots_help_note_text':
                 $data = $this->validateBookingSlotsHelpNoteText($request);
+                break;
+            case 'booking_max_advance_days':
+                $data = $this->validateBookingMaxAdvanceDays($request);
                 break;
 
             default:
@@ -680,6 +685,15 @@ class ShopSettingController extends Controller
         return trim((string) ($validated['value'] ?? ''));
     }
 
+    protected function validateBookingMaxAdvanceDays(Request $request): int
+    {
+        $validated = $request->validate([
+            'value' => ['required', 'integer', 'min:0', 'max:3650'],
+        ]);
+
+        return (int) $validated['value'];
+    }
+
     protected function defaultBookingPolicySetting(): array
     {
         return [
@@ -829,6 +843,7 @@ class ShopSettingController extends Controller
                 'booking_deposit_tnc_image',
                 'booking_slots_help_note_enabled',
                 'booking_slots_help_note_text',
+                'booking_max_advance_days',
             ];
         }
 
