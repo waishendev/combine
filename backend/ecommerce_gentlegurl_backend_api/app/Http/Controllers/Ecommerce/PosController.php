@@ -677,7 +677,7 @@ class PosController extends Controller
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
-            return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
+            return $this->respondError(__('This appointment needs a linked member or guest, and a service, before settlement.'), 422);
         }
 
         if (str_starts_with(strtoupper(trim((string) ($booking->guest_name ?? ''))), 'UNKNOWN')) {
@@ -967,7 +967,7 @@ class PosController extends Controller
 
         $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
         if (! $this->bookingEligibleForPosSettlement($booking)) {
-            return $this->respondError(__('This appointment needs a linked member or guest name plus phone or email, and a service, before settlement.'), 422);
+            return $this->respondError(__('This appointment needs a linked member or guest, and a service, before settlement.'), 422);
         }
 
         if (str_starts_with(strtoupper(trim((string) ($booking->guest_name ?? ''))), 'UNKNOWN')) {
@@ -7930,7 +7930,7 @@ class PosController extends Controller
     }
 
     /**
-     * Member-linked booking, or guest with name plus phone or email; service required. Used for POS settlement orders.
+     * Member-linked booking, walk-in (UNKNOWN) guest, or named guest; service required. Phone/email optional for guests.
      */
     protected function bookingEligibleForPosSettlement(Booking $booking): bool
     {
@@ -7942,11 +7942,9 @@ class PosController extends Controller
         }
 
         $name = trim((string) ($booking->guest_name ?? ''));
-        $phone = trim((string) ($booking->guest_phone ?? ''));
-        $email = trim((string) ($booking->guest_email ?? ''));
         $isUnknownGuest = str_starts_with(strtoupper($name), 'UNKNOWN');
 
-        return $isUnknownGuest || ($name !== '' && ($phone !== '' || $email !== ''));
+        return $isUnknownGuest || $name !== '';
     }
 
 
