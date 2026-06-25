@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
 use App\Models\Setting;
+use App\Services\SettingService;
 use App\Services\Booking\BookingAvailabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -40,6 +41,9 @@ class HoldController extends Controller
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
         $startAt = Carbon::parse($validated['start_at']);
+        if (! $this->isStartWithinMaxAdvanceLimit($startAt)) {
+            return $this->respondError($this->maxAdvanceErrorMessage(), 422);
+        }
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
         $holdMinutes = (int) (Setting::where('type', 'booking')->where('key', 'BOOKING_HOLD_MINUTES')->value('value') ?? 15);
@@ -90,5 +94,29 @@ class HoldController extends Controller
             'hold_expires_at' => $booking->hold_expires_at?->toIso8601String(),
             'deposit_amount' => number_format((float) $booking->deposit_amount, 2, '.', ''),
         ]);
+    }
+    private function bookingMaxAdvanceDays(): int
+    {
+        return max(0, (int) SettingService::get('booking_max_advance_days', 0, 'booking'));
+    }
+
+    private function isStartWithinMaxAdvanceLimit(Carbon|string $startAt): bool
+    {
+        $maxDays = $this->bookingMaxAdvanceDays();
+        if ($maxDays <= 0) {
+            return true;
+        }
+
+        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $selectedDate = ($startAt instanceof Carbon ? $startAt->copy() : Carbon::parse($startAt))->setTimezone($timezone)->startOfDay();
+        $today = Carbon::now($timezone)->startOfDay();
+        $maxDate = $today->copy()->addDays($maxDays);
+
+        return $selectedDate->betweenIncluded($today, $maxDate);
+    }
+
+    private function maxAdvanceErrorMessage(): string
+    {
+        return sprintf('This salon only accepts bookings up to %d days in advance.', $this->bookingMaxAdvanceDays());
     }
 }

@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
 
             GlobalSeoSeedeer::class,
             SettingSeeder::class,
+            BookingMaxAdvanceDaysSettingSeeder::class,
             ShippingSettingSeeder::class,
             InvoiceProfileSeeder::class,
             BankAccountSeeder::class,

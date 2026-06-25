@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingService;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\SettingService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
@@ -39,6 +40,10 @@ class AvailabilityController extends Controller
         }
 
         $validated = $validator->validated();
+
+        if (! $this->isDateWithinMaxAdvanceLimit($validated['date'])) {
+            return $this->respondError($this->maxAdvanceErrorMessage(), 422);
+        }
 
         $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail($validated['service_id']);
         if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
@@ -96,6 +101,11 @@ class AvailabilityController extends Controller
         }
 
         $validated = $validator->validated();
+
+        if (! $this->isDateWithinMaxAdvanceLimit($validated['date'])) {
+            return $this->respondError($this->maxAdvanceErrorMessage(), 422);
+        }
+
         $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail($validated['service_id']);
         $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
 
@@ -260,5 +270,29 @@ class AvailabilityController extends Controller
             'date' => $validated['date'],
             'time_slots' => $timeSlots,
         ]);
+    }
+    private function bookingMaxAdvanceDays(): int
+    {
+        return max(0, (int) SettingService::get('booking_max_advance_days', 0, 'booking'));
+    }
+
+    private function isDateWithinMaxAdvanceLimit(string $date): bool
+    {
+        $maxDays = $this->bookingMaxAdvanceDays();
+        if ($maxDays <= 0) {
+            return true;
+        }
+
+        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
+        $selectedDate = Carbon::parse($date, $timezone)->startOfDay();
+        $today = Carbon::now($timezone)->startOfDay();
+        $maxDate = $today->copy()->addDays($maxDays);
+
+        return $selectedDate->betweenIncluded($today, $maxDate);
+    }
+
+    private function maxAdvanceErrorMessage(): string
+    {
+        return sprintf('This salon only accepts bookings up to %d days in advance.', $this->bookingMaxAdvanceDays());
     }
 }

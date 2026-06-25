@@ -196,6 +196,7 @@ class PublicHomepageController extends Controller
                 $settings['booking_deposit_tnc_image'] = $this->resolveLogoUrl(SettingService::get('booking_deposit_tnc_image', null, $type));
                 $settings['booking_slots_help_note_enabled'] = (bool) SettingService::get('booking_slots_help_note_enabled', false, $type);
                 $settings['booking_slots_help_note_text'] = (string) SettingService::get('booking_slots_help_note_text', '', $type);
+                $settings['booking_max_advance_days'] = (int) SettingService::get('booking_max_advance_days', 0, $type);
             }
 
             $paymentGateways = PaymentGateway::query()
