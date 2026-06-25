@@ -5843,6 +5843,15 @@ class PosController extends Controller
                         ->filter(fn ($option) => is_array($option))
                         ->values();
 
+                    $bookingProductCommissionLines = $this->resolveBookingProductCommissionLines(
+                        (int) $item->id,
+                        (int) $item->qty,
+                        $lineNetTotal,
+                        $bookingProductOptionSnapshots,
+                        $itemSplits->values()->all(),
+                        $lineStaffSplitsByCartItemId->get((int) $item->id, []),
+                    );
+
                     if ($itemSplits->isNotEmpty()) {
                         $sum = (int) $itemSplits->sum(fn (array $split) => (int) ($split['share_percent'] ?? 0));
                         $uniqueCount = $itemSplits->pluck('staff_id')->filter()->unique()->count();
@@ -5850,34 +5859,37 @@ class PosController extends Controller
                             abort(422, __('Invalid staff split.'));
                         }
 
-                        $baseAmountBasis = max(0, $lineNetTotal - $bookingProductOptionSnapshots->sum(fn ($option) => (float) ($option['line_total_after_discount'] ?? (((float) ($option['extra_price'] ?? 0)) * (int) $item->qty))));
-                        foreach ($itemSplits as $split) {
+                        $baseCommissionLine = collect($bookingProductCommissionLines)
+                            ->first(fn (array $line) => ($line['line_type'] ?? '') === 'booking_product_base');
+                        foreach (($baseCommissionLine['staff_splits'] ?? []) as $split) {
                             OrderItemStaffSplit::create([
                                 'order_item_id' => $orderItem->id,
                                 'line_type' => 'booking_product_base',
                                 'line_ref_id' => (string) $item->id,
                                 'staff_id' => (int) $split['staff_id'],
                                 'share_percent' => (int) $split['share_percent'],
-                                'amount_basis' => $baseAmountBasis,
+                                'amount_basis' => (float) ($baseCommissionLine['amount_basis'] ?? 0),
                                 'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
-                                'snapshot' => ['cart_item_id' => (int) $item->id, 'line_type' => 'booking_product_base'],
+                                'snapshot' => [
+                                    'cart_item_id' => (int) $item->id,
+                                    'line_type' => 'booking_product_base',
+                                    'staff_split_source' => 'parent',
+                                ],
                             ]);
                         }
                     }
 
 
-                    foreach ($bookingProductOptionSnapshots as $optionSnapshot) {
-                        $optionId = (string) ($optionSnapshot['id'] ?? '');
+                    foreach ($bookingProductCommissionLines as $commissionLine) {
+                        if (($commissionLine['line_type'] ?? '') !== 'booking_product_option') {
+                            continue;
+                        }
+                        $optionSnapshot = $commissionLine['option'] ?? [];
+                        $optionId = (string) ($commissionLine['line_ref_id'] ?? ($optionSnapshot['id'] ?? ''));
                         if ($optionId === '') {
                             continue;
                         }
-                        $lineKey = sprintf('booking_product_option:%s', $optionId);
-                        $lineSplitPayload = $findLineSplitPayload($lineStaffSplitsByCartItemId->get((int) $item->id, []), $lineKey)
-                            ?: $findLineSplitPayload($lineStaffSplitsByCartItemId->get((int) $item->id, []), $optionId);
-                        $amountBasis = (float) ($optionSnapshot['line_total_after_discount'] ?? (((float) ($optionSnapshot['extra_price'] ?? 0)) * (int) $item->qty));
-                        $splits = $lineSplitPayload
-                            ? collect($lineSplitPayload['staff_splits'] ?? [])->values()
-                            : $itemSplits->values();
+                        $splits = collect($commissionLine['staff_splits'] ?? [])->values();
                         if ($splits->isEmpty()) {
                             continue;
                         }
@@ -5893,12 +5905,12 @@ class PosController extends Controller
                                 'line_ref_id' => $optionId,
                                 'staff_id' => (int) $split['staff_id'],
                                 'share_percent' => (int) $split['share_percent'],
-                                'amount_basis' => $amountBasis,
+                                'amount_basis' => (float) ($commissionLine['amount_basis'] ?? 0),
                                 'commission_rate_snapshot' => (float) ($staffCommissionRates[(int) $split['staff_id']] ?? 0),
                                 'snapshot' => [
                                     'cart_item_id' => (int) $item->id,
-                                    'line_key' => $lineSplitPayload['line_key'] ?? $lineKey,
-                                    'staff_split_source' => $lineSplitPayload ? 'explicit' : 'inherited',
+                                    'line_key' => $commissionLine['line_key'] ?? sprintf('booking_product_option:%s', $optionId),
+                                    'staff_split_source' => $commissionLine['staff_split_source'] ?? 'inherited',
                                     'option' => $optionSnapshot,
                                 ],
                             ]);
@@ -7911,6 +7923,66 @@ class PosController extends Controller
             'effective_line_total' => $effectiveLineTotal,
             'is_staff_free_applied' => $isStaffFreeApplied,
         ];
+    }
+
+    protected function resolveBookingProductCommissionLines(int $cartItemId, int $qty, float $lineNetTotal, $optionSnapshots, $parentSplits = [], $lineSplitPayloads = []): array
+    {
+        $qty = max(1, $qty);
+        $normalizeSplits = fn ($splits) => collect($splits ?? [])
+            ->map(fn ($split) => [
+                'staff_id' => (int) ($split['staff_id'] ?? 0),
+                'share_percent' => (int) ($split['share_percent'] ?? 0),
+            ])
+            ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+            ->values();
+        $findLineSplitPayload = function (string $lineKey, string $fallbackKey = '') use ($lineSplitPayloads) {
+            return collect($lineSplitPayloads ?? [])->first(function (array $line) use ($lineKey, $fallbackKey) {
+                $payloadKey = (string) ($line['line_key'] ?? '');
+
+                return $payloadKey === $lineKey
+                    || ($fallbackKey !== '' && $payloadKey === $fallbackKey)
+                    || str_ends_with($payloadKey, ':' . $lineKey)
+                    || ($fallbackKey !== '' && str_ends_with($payloadKey, ':' . $fallbackKey));
+            });
+        };
+
+        $parentSplitRows = $normalizeSplits($parentSplits);
+        $options = collect($optionSnapshots ?? [])
+            ->filter(fn ($option) => is_array($option))
+            ->values();
+        $optionLines = $options->map(function (array $option) use ($qty, $parentSplitRows, $findLineSplitPayload, $normalizeSplits) {
+            $optionId = (string) ($option['id'] ?? '');
+            $lineKey = sprintf('booking_product_option:%s', $optionId);
+            $lineSplitPayload = $optionId !== ''
+                ? ($findLineSplitPayload($lineKey, $optionId) ?: null)
+                : null;
+            $amountBasis = round(max(0, (float) ($option['line_total_after_discount'] ?? (((float) ($option['extra_price'] ?? 0)) * $qty))), 2);
+            $splitRows = $lineSplitPayload
+                ? $normalizeSplits($lineSplitPayload['staff_splits'] ?? [])
+                : $parentSplitRows;
+
+            return [
+                'line_type' => 'booking_product_option',
+                'line_ref_id' => $optionId,
+                'line_key' => $lineKey,
+                'amount_basis' => $amountBasis,
+                'staff_splits' => $splitRows->values()->all(),
+                'staff_split_source' => $lineSplitPayload ? 'explicit' : 'inherited',
+                'option' => $option,
+            ];
+        })->values();
+
+        $optionTotal = round((float) $optionLines->sum('amount_basis'), 2);
+        $baseAmountBasis = round(max(0, $lineNetTotal - $optionTotal), 2);
+
+        return collect([[
+            'line_type' => 'booking_product_base',
+            'line_ref_id' => (string) $cartItemId,
+            'line_key' => sprintf('booking_product_base:%d', $cartItemId),
+            'amount_basis' => $baseAmountBasis,
+            'staff_splits' => $parentSplitRows->values()->all(),
+            'staff_split_source' => 'parent',
+        ]])->merge($optionLines)->values()->all();
     }
 
 
