@@ -8,6 +8,7 @@ import { getAvailabilityPooled, getBookingMaxAdvanceDays, getBookingServiceDetai
 import { BookingSlot, Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
+const QUICK_DATE_STRIP_DAYS = 7;
 
 function getTzParts(value: Date | string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -53,10 +54,22 @@ function parseDateString(date: string) {
   return new Date(year, month - 1, day);
 }
 
-function addDaysToDateString(date: string, days: number) {
-  const value = parseDateString(date);
+function addDaysToLocalDate(date: Date, days: number) {
+  const value = new Date(date);
   value.setDate(value.getDate() + days);
-  return dateStringFromLocalDate(value);
+  return value;
+}
+
+function addDaysToDateString(date: string, days: number) {
+  return dateStringFromLocalDate(addDaysToLocalDate(parseDateString(date), days));
+}
+
+function maxLocalDate(a: Date, b: Date) {
+  return a > b ? a : b;
+}
+
+function minLocalDate(a: Date, b: Date) {
+  return a < b ? a : b;
 }
 
 function formatTime(iso: string) {
@@ -236,23 +249,34 @@ function SlotPageContent() {
   }, [calMonth, maxSelectableDate]);
 
   const dateStrip = useMemo(() => {
-    const todayStr = todayInTimezone();
     const selected = parseDateString(date);
+    const today = parseDateString(todayInTimezone());
+    const maxDate = parseDateString(maxSelectableDate);
     const monthStart = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1);
     const monthEnd = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0);
-    const startsFromSelectedMonth = selected.getFullYear() === calMonth.getFullYear() && selected.getMonth() === calMonth.getMonth();
-    const stripStart = startsFromSelectedMonth && date >= dateStringFromLocalDate(monthStart)
-      ? selected
-      : monthStart;
+    const minAllowedDate = maxLocalDate(today, monthStart);
+    const maxAllowedDate = minLocalDate(maxDate, monthEnd);
+    const selectedInActiveMonth = selected.getFullYear() === calMonth.getFullYear() && selected.getMonth() === calMonth.getMonth();
+    const anchorDate = selectedInActiveMonth ? minLocalDate(maxLocalDate(selected, minAllowedDate), maxAllowedDate) : minAllowedDate;
+    const daysBeforeAnchor = Math.floor((QUICK_DATE_STRIP_DAYS - 1) / 2);
+    let stripStart = addDaysToLocalDate(anchorDate, -daysBeforeAnchor);
+    let stripEnd = addDaysToLocalDate(stripStart, QUICK_DATE_STRIP_DAYS - 1);
+
+    if (stripStart < minAllowedDate) {
+      stripStart = minAllowedDate;
+      stripEnd = addDaysToLocalDate(stripStart, QUICK_DATE_STRIP_DAYS - 1);
+    }
+    if (stripEnd > maxAllowedDate) {
+      stripEnd = maxAllowedDate;
+      stripStart = maxLocalDate(minAllowedDate, addDaysToLocalDate(stripEnd, -(QUICK_DATE_STRIP_DAYS - 1)));
+    }
+
     const arr: { date: string; day: string; num: number; month: string }[] = [];
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    for (let i = 0; i < 14; i++) {
-      const d = new Date(stripStart);
-      d.setDate(stripStart.getDate() + i);
+    for (let d = new Date(stripStart); d <= stripEnd; d = addDaysToLocalDate(d, 1)) {
       const dateStr = dateStringFromLocalDate(d);
-      if (d > monthEnd || dateStr < todayStr || dateStr > maxSelectableDate) break;
       arr.push({
         date: dateStr,
         day: days[d.getDay()],
