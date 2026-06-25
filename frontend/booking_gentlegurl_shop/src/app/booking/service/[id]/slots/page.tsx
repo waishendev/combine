@@ -85,7 +85,7 @@ function SlotPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [timeFilter, setTimeFilter] = useState<"all" | "morning" | "afternoon">("all");
   const [slotsHelpNote, setSlotsHelpNote] = useState({ enabled: false, text: "" });
-  const [maxAdvanceDays, setMaxAdvanceDays] = useState(365);
+  const [maxAdvanceDays, setMaxAdvanceDays] = useState<number | null>(null);
   const extraDuration = useMemo(
     () => (service?.questions ?? []).flatMap((q) => q.options ?? []).filter((o) => selectedOptionIds.includes(o.id)).reduce((sum, o) => sum + Number(o.extra_duration_min || 0), 0),
     [service?.questions, selectedOptionIds]
@@ -198,7 +198,8 @@ function SlotPageContent() {
   });
   const [showCalendar, setShowCalendar] = useState(false);
 
-  const maxSelectableDate = useMemo(() => addDaysToDateString(todayInTimezone(), maxAdvanceDays), [maxAdvanceDays]);
+  const effectiveMaxAdvanceDays = maxAdvanceDays ?? 0;
+  const maxSelectableDate = useMemo(() => addDaysToDateString(todayInTimezone(), effectiveMaxAdvanceDays), [effectiveMaxAdvanceDays]);
 
   const calendarGrid = useMemo(() => {
     const year = calMonth.getFullYear();
@@ -237,7 +238,7 @@ function SlotPageContent() {
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    for (let i = 0; i < Math.min(14, maxAdvanceDays + 1); i++) {
+    for (let i = 0; i < Math.min(14, effectiveMaxAdvanceDays + 1); i++) {
       const d = new Date(today);
       d.setDate(today.getDate() + i);
       const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -249,7 +250,7 @@ function SlotPageContent() {
       });
     }
     return arr;
-  }, [maxAdvanceDays]);
+  }, [effectiveMaxAdvanceDays]);
 
   const prevMonth = () => {
     setCalMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1));
@@ -356,7 +357,7 @@ function SlotPageContent() {
                 type="button"
                 onClick={nextMonth}
                 disabled={!canNextMonth}
-                className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--card-border)] transition-colors hover:border-[var(--accent)]"
+                className="flex h-8 w-8 items-center justify-center rounded-full border border-[var(--card-border)] transition-colors disabled:pointer-events-none disabled:opacity-30 hover:border-[var(--accent)]"
               >
                 <i className="fa-solid fa-chevron-right text-xs" />
               </button>
