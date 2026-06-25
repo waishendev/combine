@@ -8,7 +8,7 @@ import { getAvailabilityPooled, getBookingMaxAdvanceDays, getBookingServiceDetai
 import { BookingSlot, Service, Staff } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
-const QUICK_DATE_STRIP_DAYS = 7;
+const QUICK_DATE_STRIP_DAYS = 14;
 
 function getTzParts(value: Date | string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
