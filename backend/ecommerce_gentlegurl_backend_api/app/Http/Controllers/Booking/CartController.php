@@ -22,6 +22,7 @@ use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -57,6 +58,9 @@ class CartController extends Controller
             return $this->respondError('Selected staff is not allowed for this service.', 422);
         }
         $startAt = Carbon::parse($validated['start_at']);
+        if ($message = $this->advanceBookingLimitError($startAt)) {
+            return $this->respondError($message, 422);
+        }
         $selectedOptionIds = collect($validated['selected_option_ids'] ?? [])->map(fn ($id) => (int) $id)->unique()->values()->all();
         $customerRemarks = isset($validated['notes']) ? trim((string) $validated['notes']) : '';
         $serviceQuestions = $service->questions()->where('is_active', true)->with(['options' => fn ($q) => $q->where('is_active', true)])->get();
@@ -521,6 +525,10 @@ class CartController extends Controller
             foreach ($activeItems as $item) {
                 $service = $item->service;
 
+                if ($message = $this->advanceBookingLimitError(Carbon::parse($item->start_at))) {
+                    return $this->respondError($message, 422);
+                }
+
                 if (! $this->isItemStillAvailable($item, (int) $service->buffer_min, $activeItemIds)) {
                     return $this->respondError('One or more selected slots are no longer available.', 409);
                 }
@@ -794,6 +802,20 @@ class CartController extends Controller
     private function generateOrderNumber(): string
     {
         return 'ORD' . now()->format('YmdHis') . rand(100, 999);
+    }
+
+
+    private function advanceBookingLimitError(Carbon $startAt): ?string
+    {
+        $limitDays = (int) SettingService::get('booking_max_advance_days', 365, 'booking');
+        $selectedDate = $startAt->copy()->startOfDay();
+        $maximumDate = now()->startOfDay()->addDays($limitDays);
+
+        if ($selectedDate->lt(now()->startOfDay()) || $selectedDate->gt($maximumDate)) {
+            return __('This salon only accepts bookings up to :days days in advance.', ['days' => $limitDays]);
+        }
+
+        return null;
     }
 
     private function resolveActiveCart(Request $request, bool $createIfMissing = true): ?BookingCart

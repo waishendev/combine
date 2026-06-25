@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Booking;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingService;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\SettingService;
 use Carbon\Carbon;
 use Carbon\CarbonPeriod;
 use Illuminate\Http\Request;
@@ -14,6 +15,20 @@ class AvailabilityController extends Controller
 {
     public function __construct(private readonly BookingAvailabilityService $availabilityService)
     {
+    }
+
+
+    private function advanceBookingLimitError(string $date): ?string
+    {
+        $limitDays = (int) SettingService::get('booking_max_advance_days', 365, 'booking');
+        $selectedDate = Carbon::createFromFormat('Y-m-d', $date)->startOfDay();
+        $maximumDate = now()->startOfDay()->addDays($limitDays);
+
+        if ($selectedDate->lt(now()->startOfDay()) || $selectedDate->gt($maximumDate)) {
+            return __('This salon only accepts bookings up to :days days in advance.', ['days' => $limitDays]);
+        }
+
+        return null;
     }
 
     public function index(Request $request)
@@ -39,6 +54,10 @@ class AvailabilityController extends Controller
         }
 
         $validated = $validator->validated();
+
+        if ($message = $this->advanceBookingLimitError($validated['date'])) {
+            return $this->respondError($message, 422);
+        }
 
         $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail($validated['service_id']);
         if (! $service->isStaffAllowed((int) $validated['staff_id'])) {
@@ -96,6 +115,10 @@ class AvailabilityController extends Controller
         }
 
         $validated = $validator->validated();
+        if ($message = $this->advanceBookingLimitError($validated['date'])) {
+            return $this->respondError($message, 422);
+        }
+
         $service = BookingService::query()->with(['allowedStaffs:id', 'primarySlots'])->findOrFail($validated['service_id']);
         $extraDurationMin = (int) ($validated['extra_duration_min'] ?? 0);
 

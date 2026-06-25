@@ -820,6 +820,15 @@ export async function getBookingSlotsHelpNoteSettings(): Promise<BookingSlotsHel
   };
 }
 
+
+export async function getBookingMaxAdvanceDays(): Promise<number> {
+  const response = await request<{ data?: { settings?: { booking_max_advance_days?: number | string | null } } }>(
+    "/public/shop/homepage?type=booking",
+  );
+  const value = Number(response?.data?.settings?.booking_max_advance_days ?? 365);
+  return Number.isFinite(value) && value >= 0 ? Math.floor(value) : 365;
+}
+
 export async function rescheduleBooking(id: number, startAt: string, reason?: string) {
   return request<{ success: boolean; message?: string }>(`/booking/${id}/reschedule`, {
     method: "POST",
