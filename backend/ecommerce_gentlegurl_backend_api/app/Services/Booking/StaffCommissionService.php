@@ -439,7 +439,11 @@ class StaffCommissionService
 
     private function effectiveLineTotalExpr(): string
     {
-        return 'COALESCE(order_item_staff_splits.amount_basis, order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+        $lineTotalExpr = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+        $optionTotalExpr = "COALESCE((SELECT SUM(COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(order_items.quantity, 1)::numeric, 0)) FROM jsonb_array_elements(COALESCE(order_items.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option)), 0)";
+        $matchingOptionExpr = "COALESCE((SELECT COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(order_items.quantity, 1)::numeric, 0) FROM jsonb_array_elements(COALESCE(order_items.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option) WHERE option_row.option->>'id' = order_item_staff_splits.line_ref_id LIMIT 1), order_item_staff_splits.amount_basis)";
+
+        return "(CASE WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_base' THEN GREATEST(0, ($lineTotalExpr) - ($optionTotalExpr)) WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_option' THEN COALESCE($matchingOptionExpr, order_item_staff_splits.amount_basis, $lineTotalExpr) ELSE COALESCE(order_item_staff_splits.amount_basis, $lineTotalExpr) END)::numeric";
     }
 
     private function resolveBookingCommissionableNetAmount(int $bookingId, float $fallback): float

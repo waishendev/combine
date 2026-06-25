@@ -876,6 +876,10 @@ class SalesVisualDailyReportService
             }
         }
 
+        $bookingProductOptionTotal = "COALESCE((SELECT SUM(COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(oi.quantity, 1)::numeric, 0)) FROM jsonb_array_elements(COALESCE(oi.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option)), 0)";
+        $bookingProductMatchingOption = "COALESCE((SELECT COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(oi.quantity, 1)::numeric, 0) FROM jsonb_array_elements(COALESCE(oi.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option) WHERE option_row.option->>'id' = sps.line_ref_id LIMIT 1), sps.amount_basis)";
+        $bookingProductSplitAmount = "(CASE WHEN sps.line_type = 'booking_product_base' THEN GREATEST(0, ($lineTotal) - ($bookingProductOptionTotal)) WHEN sps.line_type = 'booking_product_option' THEN COALESCE($bookingProductMatchingOption, sps.amount_basis, $lineTotal) ELSE COALESCE(sps.amount_basis, $lineTotal) END)";
+
         $bookingProductSplitRows = $this->applyOrderScope(
             DB::table('order_item_staff_splits as sps')
                 ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
@@ -887,7 +891,7 @@ class SalesVisualDailyReportService
             ->groupBy('sps.staff_id')
             ->selectRaw('sps.staff_id as staff_id')
             ->selectRaw('COUNT(*) as service_count')
-            ->selectRaw("COALESCE(SUM(($lineTotal) * (COALESCE(sps.share_percent, 0) / 100.0)), 0) as service_amount")
+            ->selectRaw("COALESCE(SUM(($bookingProductSplitAmount) * (COALESCE(sps.share_percent, 0) / 100.0)), 0) as service_amount")
             ->get();
 
         foreach ($bookingProductSplitRows as $row) {

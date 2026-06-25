@@ -95,7 +95,7 @@ class MyPosSummaryReportController extends Controller
         $totalStaffCommission = (float) ((clone $baseQuery())
             ->leftJoin('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn (Builder $query) => $query->where('order_item_staff_splits.staff_id', $staffId))
-            ->selectRaw("COALESCE(SUM((COALESCE(order_item_staff_splits.amount_basis, $effectiveLineTotalExpr)) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS total_staff_commission")
+            ->selectRaw("COALESCE(SUM(({$this->orderItemStaffSplitAmountExpr($effectiveLineTotalExpr)}) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS total_staff_commission")
             ->value('total_staff_commission') ?? 0);
         $totalStaffCommission += (float) ((clone $basePackageQuery())
             ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
@@ -108,7 +108,7 @@ class MyPosSummaryReportController extends Controller
             $myCommission = (float) ((clone $baseQuery())
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
                 ->where('order_item_staff_splits.staff_id', (int) $user->staff_id)
-                ->selectRaw("COALESCE(SUM((COALESCE(order_item_staff_splits.amount_basis, $effectiveLineTotalExpr)) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS my_commission")
+                ->selectRaw("COALESCE(SUM(({$this->orderItemStaffSplitAmountExpr($effectiveLineTotalExpr)}) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr)), 0) AS my_commission")
                 ->value('my_commission') ?? 0);
             $myCommission += (float) ((clone $basePackageQuery())
                 ->join('service_package_staff_splits', 'service_package_staff_splits.customer_service_package_id', '=', 'customer_service_packages.id')
@@ -253,7 +253,7 @@ class MyPosSummaryReportController extends Controller
                 ->selectRaw('order_item_staff_splits.share_percent')
                 ->selectRaw('order_item_staff_splits.amount_basis')
                 ->selectRaw('order_item_staff_splits.commission_rate_snapshot')
-                ->selectRaw("(COALESCE(order_item_staff_splits.amount_basis, $effectiveLineTotalExpr)) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_commission_amount")
+                ->selectRaw("({$this->orderItemStaffSplitAmountExpr($effectiveLineTotalExpr)}) * (order_item_staff_splits.share_percent::numeric / 100) * ($commissionRateExpr) AS staff_commission_amount")
                 ->orderBy('order_item_staff_splits.id')
                 ->get()
                 ->map(fn ($row) => [
@@ -546,6 +546,14 @@ class MyPosSummaryReportController extends Controller
     protected function effectiveLineTotalExpr(): string
     {
         return 'COALESCE(order_items.effective_line_total, order_items.line_total)::numeric';
+    }
+
+    protected function orderItemStaffSplitAmountExpr(string $lineTotalExpr): string
+    {
+        $optionTotalExpr = "COALESCE((SELECT SUM(COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(order_items.quantity, 1)::numeric, 0)) FROM jsonb_array_elements(COALESCE(order_items.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option)), 0)";
+        $matchingOptionExpr = "COALESCE((SELECT COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(order_items.quantity, 1)::numeric, 0) FROM jsonb_array_elements(COALESCE(order_items.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option) WHERE option_row.option->>'id' = order_item_staff_splits.line_ref_id LIMIT 1), order_item_staff_splits.amount_basis)";
+
+        return "(CASE WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_base' THEN GREATEST(0, ($lineTotalExpr) - ($optionTotalExpr)) WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_option' THEN COALESCE($matchingOptionExpr, order_item_staff_splits.amount_basis, $lineTotalExpr) ELSE COALESCE(order_item_staff_splits.amount_basis, $lineTotalExpr) END)::numeric";
     }
 
     protected function snapshotLineTotalExpr(): string
