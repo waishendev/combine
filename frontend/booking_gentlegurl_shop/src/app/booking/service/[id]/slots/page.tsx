@@ -48,9 +48,13 @@ function dateStringFromLocalDate(value: Date) {
   return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
 }
 
-function addDaysToDateString(date: string, days: number) {
+function parseDateString(date: string) {
   const [year, month, day] = date.split("-").map((part) => Number(part));
-  const value = new Date(year, month - 1, day);
+  return new Date(year, month - 1, day);
+}
+
+function addDaysToDateString(date: string, days: number) {
+  const value = parseDateString(date);
   value.setDate(value.getDate() + days);
   return dateStringFromLocalDate(value);
 }
@@ -152,7 +156,7 @@ function SlotPageContent() {
   }, [canLoad, loadSlots]);
 
   useEffect(() => {
-    const d = new Date(date);
+    const d = parseDateString(date);
     setCalMonth((m) => {
       if (m.getFullYear() === d.getFullYear() && m.getMonth() === d.getMonth()) return m;
       return new Date(d.getFullYear(), d.getMonth(), 1);
@@ -232,16 +236,23 @@ function SlotPageContent() {
   }, [calMonth, maxSelectableDate]);
 
   const dateStrip = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const todayStr = todayInTimezone();
+    const selected = parseDateString(date);
+    const monthStart = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1);
+    const monthEnd = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0);
+    const startsFromSelectedMonth = selected.getFullYear() === calMonth.getFullYear() && selected.getMonth() === calMonth.getMonth();
+    const stripStart = startsFromSelectedMonth && date >= dateStringFromLocalDate(monthStart)
+      ? selected
+      : monthStart;
     const arr: { date: string; day: string; num: number; month: string }[] = [];
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-    for (let i = 0; i < Math.min(14, effectiveMaxAdvanceDays + 1); i++) {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
-      const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    for (let i = 0; i < 14; i++) {
+      const d = new Date(stripStart);
+      d.setDate(stripStart.getDate() + i);
+      const dateStr = dateStringFromLocalDate(d);
+      if (d > monthEnd || dateStr < todayStr || dateStr > maxSelectableDate) break;
       arr.push({
         date: dateStr,
         day: days[d.getDay()],
@@ -250,7 +261,7 @@ function SlotPageContent() {
       });
     }
     return arr;
-  }, [effectiveMaxAdvanceDays]);
+  }, [calMonth, date, maxSelectableDate]);
 
   const prevMonth = () => {
     setCalMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1));
