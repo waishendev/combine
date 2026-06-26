@@ -62,7 +62,7 @@ class OrderController extends Controller
         }
     
         $orders = Order::with([
-            'customer:id,name,email',
+            'customer:id,name,email,phone',
             'items:id,order_id,line_type',
             'serviceItems:id,order_id',
             'returns:id,order_id,status,created_at',

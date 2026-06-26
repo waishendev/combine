@@ -2,12 +2,12 @@
 
 import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import Link from 'next/link'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
+import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   accumulatePosPriceBounds,
@@ -7144,6 +7144,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           >
             Appointments
           </Link> */}
+          <PosRequestCenter />
           <button
             type="button"
             onClick={() => void openMemberQuickLookupPanel()}

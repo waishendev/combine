@@ -38,6 +38,7 @@ import { formatDateTime12Hour } from '@/lib/formatDateTime'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
+import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
@@ -367,7 +368,6 @@ export default function PosAppointmentsWorkspace({
   const [appointmentsRefreshing, setAppointmentsRefreshing] = useState(false)
   const [appointmentListAutoRefresh, setAppointmentListAutoRefresh] = useState(true)
   const [appointmentListRefreshCountdown, setAppointmentListRefreshCountdown] = useState(5)
-  const [pendingCancellationRequestsCount, setPendingCancellationRequestsCount] = useState(0)
   const [cancellationRequestsModalOpen, setCancellationRequestsModalOpen] = useState(false)
   const [cancellationRequestsLoading, setCancellationRequestsLoading] = useState(false)
   const [cancellationRequestsRows, setCancellationRequestsRows] = useState<PosCancellationRequestRow[]>([])
@@ -897,7 +897,6 @@ export default function PosAppointmentsWorkspace({
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         setAppointments([])
-        setPendingCancellationRequestsCount(0)
         return
       }
 
@@ -907,10 +906,8 @@ export default function PosAppointmentsWorkspace({
           .map(normalizePosAppointmentListItem)
           .filter((row) => appointmentMatchesStatusFilter(row, appointmentStatusFilter)),
       )
-      setPendingCancellationRequestsCount(paged.pending_cancellation_requests_count)
     } catch {
       setAppointments([])
-      setPendingCancellationRequestsCount(0)
     } finally {
       if (silent) {
         setAppointmentsRefreshing(false)
@@ -3522,28 +3519,16 @@ export default function PosAppointmentsWorkspace({
                 >
                   Create Appointment
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setCancellationRequestsModalOpen(true)}
+                <PosRequestCenter
                   disabled={cashShiftActionDisabled}
-                  title={cashShiftActionTitle}
-                  className="relative inline-flex items-center gap-1.5 rounded-lg border-2 border-gray-300 bg-white px-3 py-1.5 text-sm font-semibold text-gray-800 shadow-sm transition hover:border-amber-500 hover:bg-amber-50 hover:text-amber-950 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label={
-                    pendingCancellationRequestsCount > 0
-                      ? `Cancellation requests, ${pendingCancellationRequestsCount} pending`
-                      : 'Cancellation requests'
-                  }
-                >
-                  Request
-                  {pendingCancellationRequestsCount > 0 ? (
-                    <span
-                      className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-600 px-1 text-[10px] font-bold leading-none text-white shadow ring-2 ring-white"
-                      aria-hidden
-                    >
-                      {pendingCancellationRequestsCount > 99 ? '99+' : pendingCancellationRequestsCount}
-                    </span>
-                  ) : null}
-                </button>
+                  disabledTitle={cashShiftActionTitle}
+                  canReviewBookingRequests={canReviewCancellationRequests}
+                  onViewBooking={(id) => void openAppointmentDetail(id)}
+                  onBookingRequestsChanged={async () => {
+                    await fetchAppointments({ silent: true })
+                    await refreshOpenedAppointmentDetail()
+                  }}
+                />
                 {cashShiftActionDisabled ? (
                   <p className="basis-full text-right text-xs font-semibold text-amber-700">{requireOpenShiftMessage}</p>
                 ) : null}
