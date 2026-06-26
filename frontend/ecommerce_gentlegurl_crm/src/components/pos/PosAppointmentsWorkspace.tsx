@@ -3523,7 +3523,6 @@ export default function PosAppointmentsWorkspace({
                   disabled={cashShiftActionDisabled}
                   disabledTitle={cashShiftActionTitle}
                   canReviewBookingRequests={canReviewCancellationRequests}
-                  onViewBooking={(id) => void openAppointmentDetail(id)}
                   onBookingRequestsChanged={async () => {
                     await fetchAppointments({ silent: true })
                     await refreshOpenedAppointmentDetail()

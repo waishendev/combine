@@ -6,12 +6,12 @@ import OrderConfirmPaymentModal from '@/components/OrderConfirmPaymentModal'
 import OrderRejectPaymentModal from '@/components/OrderRejectPaymentModal'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import { calculateOrderStatus, type OrderApiItem } from '@/components/orderUtils'
+import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
 
 export type PosRequestCenterProps = {
   disabled?: boolean
   disabledTitle?: string
   canReviewBookingRequests?: boolean
-  onViewBooking?: (bookingId: number) => void | Promise<void>
   onBookingRequestsChanged?: () => void | Promise<void>
 }
 
@@ -78,14 +78,17 @@ type BookingConfirmState =
   | null
 
 const ECOMMERCE_REQUEST_FILTERS = [
-  { status: 'pending', payment_status: 'unpaid' },
-  { status: 'processing', payment_status: 'unpaid' },
-  { status: 'reject_payment_proof', payment_status: 'unpaid' },
-  { payment_status: 'failed' },
+  { status: 'pending' },
+  { status: 'processing' },
+  { status: 'confirmed' },
+  { status: 'ready_for_pickup' },
+  { status: 'shipped' },
+  { status: 'reject_payment_proof' },
   { status: 'cancelled' },
+  { payment_status: 'failed' },
 ]
 
-const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING']
+const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION']
 
 function extractRows<T>(payload: unknown): T[] {
   const data = (payload as { data?: unknown } | null)?.data
@@ -121,6 +124,15 @@ function buildCancellationRequest(row: BookingCancellationRequestRow): BookingRe
   }
 }
 
+function Info({ label, value }: { label: string; value?: string | number | null }) {
+  return (
+    <div>
+      <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-950">{value || '—'}</p>
+    </div>
+  )
+}
+
 function buildHoldRequest(row: BookingHoldRow): BookingRequestRow {
   return {
     key: `hold-${row.id}`,
@@ -140,7 +152,6 @@ export default function PosRequestCenter({
   disabled = false,
   disabledTitle,
   canReviewBookingRequests = true,
-  onViewBooking,
   onBookingRequestsChanged,
 }: PosRequestCenterProps) {
   const [open, setOpen] = useState(false)
@@ -152,6 +163,10 @@ export default function PosRequestCenter({
   const [bookingConfirm, setBookingConfirm] = useState<BookingConfirmState>(null)
   const [adminNote, setAdminNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [viewingBooking, setViewingBooking] = useState<BookingRequestRow | null>(null)
+  const [bookingDetail, setBookingDetail] = useState<PosAppointmentDetail | null>(null)
+  const [bookingDetailLoading, setBookingDetailLoading] = useState(false)
+  const [bookingDetailError, setBookingDetailError] = useState<string | null>(null)
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
   const [confirmPaymentOrderId, setConfirmPaymentOrderId] = useState<number | null>(null)
   const [rejectPaymentOrderId, setRejectPaymentOrderId] = useState<number | null>(null)
@@ -197,7 +212,7 @@ export default function PosRequestCenter({
       const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
       const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
       const uniqueOrders = Array.from(new Map(orders.map((order) => [Number(order.id), order])).values())
-      setEcommerceRows(uniqueOrders.map((order) => ({
+      setEcommerceRows(uniqueOrders.filter((order) => String(order.status ?? '').toLowerCase() !== 'completed').map((order) => ({
         id: Number(order.id),
         orderNo: order.order_no ?? order.order_number ?? `#${order.id}`,
         customerName: order.customer?.name || '-',
@@ -222,6 +237,30 @@ export default function PosRequestCenter({
     { label: 'Ecommerce requests', value: ecommerceRows.length, className: 'border-blue-200 bg-blue-50 text-blue-900' },
     { label: 'Total pending', value: totalCount, className: 'border-slate-200 bg-slate-50 text-slate-900' },
   ], [bookingRows.length, ecommerceRows.length, totalCount])
+
+  const openBookingDetail = async (row: BookingRequestRow) => {
+    if (row.bookingId <= 0) return
+    setViewingBooking(row)
+    setBookingDetail(null)
+    setBookingDetailError(null)
+    setBookingDetailLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${row.bookingId}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(String(json?.message ?? 'Unable to load booking detail.'))
+      setBookingDetail((json?.data ?? null) as PosAppointmentDetail | null)
+    } catch (err) {
+      setBookingDetailError(err instanceof Error ? err.message : 'Unable to load booking detail.')
+    } finally {
+      setBookingDetailLoading(false)
+    }
+  }
+
+  const closeBookingDetail = () => {
+    setViewingBooking(null)
+    setBookingDetail(null)
+    setBookingDetailError(null)
+  }
 
   const submitBookingReview = async () => {
     if (!bookingConfirm) return
@@ -276,8 +315,8 @@ export default function PosRequestCenter({
             <div className="border-b border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-5 text-white">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-bold">Request Center</h3>
-                  <p className="mt-1 text-sm text-slate-200">Pending booking and ecommerce requests that need staff action.</p>
+                  <h3 className="text-xl font-bold">Pending Tasks</h3>
+                  <p className="mt-1 text-sm text-slate-200">Request Center · pending booking and ecommerce requests that need staff action.</p>
                 </div>
                 <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1 text-2xl leading-none text-slate-200 hover:bg-white/10 hover:text-white" aria-label="Close Request Center">×</button>
               </div>
@@ -319,7 +358,7 @@ export default function PosRequestCenter({
                         <div className="text-sm text-slate-600"><span className="font-semibold text-slate-800">Requested:</span> {fmtDateTime(row.requestedAt)}</div>
                         <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-700">{row.status}</span>
                         <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                          {row.bookingId > 0 && onViewBooking ? <button type="button" onClick={() => void onViewBooking(row.bookingId)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View booking</button> : null}
+                          {row.bookingId > 0 ? <button type="button" onClick={() => void openBookingDetail(row)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View booking</button> : null}
                           {canReviewBookingRequests && row.requestType === 'Cancellation request' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row, action: 'approve' })} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Approve cancel</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row, action: 'reject' })} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject cancel</button></> : null}
                           {canReviewBookingRequests && row.requestType === 'Hold confirmation' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row, action: 'approve' })} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row, action: 'reject' })} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject / cancel</button></> : null}
                         </div>
@@ -359,7 +398,7 @@ export default function PosRequestCenter({
       ) : null}
 
       {bookingConfirm ? (
-        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-4">
+        <div className="fixed inset-0 z-[105] flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-950">
               {bookingConfirm.kind === 'hold'
@@ -375,9 +414,57 @@ export default function PosRequestCenter({
           </div>
         </div>
       ) : null}
-      {viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="z-[90]" /> : null}
-      {confirmPaymentOrderId !== null ? <OrderConfirmPaymentModal orderId={confirmPaymentOrderId} onClose={() => setConfirmPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[90]" /> : null}
-      {rejectPaymentOrderId !== null ? <OrderRejectPaymentModal orderId={rejectPaymentOrderId} onClose={() => setRejectPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[90]" /> : null}
+      {viewingBooking ? (
+        <div className="fixed inset-0 z-[95] flex items-center justify-end bg-slate-950/50" role="dialog" aria-modal="true" onClick={closeBookingDetail}>
+          <aside className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-600">Booking Detail</p>
+                  <h3 className="mt-1 text-xl font-bold text-slate-950">{bookingDetail?.booking_code ?? viewingBooking.number}</h3>
+                  <p className="text-sm text-slate-500">{viewingBooking.requestType} · requested {fmtDateTime(viewingBooking.requestedAt)}</p>
+                </div>
+                <button type="button" onClick={closeBookingDetail} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="Close booking detail">×</button>
+              </div>
+            </div>
+            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
+              {bookingDetailLoading ? <p className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600">Loading booking detail...</p> : null}
+              {bookingDetailError ? <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{bookingDetailError}</p> : null}
+              {bookingDetail ? (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Info label="Customer" value={bookingDetail.customer?.name ?? bookingDetail.customer_name ?? bookingDetail.guest_name ?? viewingBooking.customerName} />
+                      <Info label="Contact" value={bookingDetail.customer?.phone ?? bookingDetail.customer_phone ?? bookingDetail.guest_phone ?? bookingDetail.customer?.email ?? bookingDetail.customer_email ?? bookingDetail.guest_email ?? viewingBooking.contact} />
+                      <Info label="Service" value={bookingDetail.service?.name ?? '—'} />
+                      <Info label="Staff" value={bookingDetail.staff?.name ?? '—'} />
+                      <Info label="Schedule" value={`${fmtDateTime(bookingDetail.appointment_start_at)}${bookingDetail.appointment_end_at ? ` - ${fmtDateTime(bookingDetail.appointment_end_at)}` : ''}`} />
+                      <Info label="Status" value={bookingDetail.status ?? viewingBooking.status} />
+                      <Info label="Payment status" value={bookingDetail.payment_status ?? '—'} />
+                      <Info label="Deposit" value={`RM ${Number(bookingDetail.deposit_paid ?? bookingDetail.deposit_contribution ?? 0).toFixed(2)}`} />
+                      <Info label="Remaining balance" value={`RM ${Number(bookingDetail.amount_due_now ?? bookingDetail.balance_due ?? 0).toFixed(2)}`} />
+                    </div>
+                  </div>
+                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Request</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${viewingBooking.badgeClassName}`}>{viewingBooking.requestType}</span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-700">{viewingBooking.status}</span></div>
+                    <p className="mt-3 text-sm text-slate-600">Request created time: <span className="font-semibold text-slate-900">{fmtDateTime(viewingBooking.requestedAt)}</span></p>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
+              <button type="button" onClick={() => void openBookingDetail(viewingBooking)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">View</button>
+              {canReviewBookingRequests && viewingBooking.requestType === 'Cancellation request' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Approve</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
+              {canReviewBookingRequests && viewingBooking.requestType === 'Hold confirmation' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
+              <button type="button" onClick={closeBookingDetail} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Close</button>
+            </div>
+          </aside>
+        </div>
+      ) : null}
+      {viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="z-[95]" /> : null}
+      {confirmPaymentOrderId !== null ? <OrderConfirmPaymentModal orderId={confirmPaymentOrderId} onClose={() => setConfirmPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[105]" /> : null}
+      {rejectPaymentOrderId !== null ? <OrderRejectPaymentModal orderId={rejectPaymentOrderId} onClose={() => setRejectPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[105]" /> : null}
     </>
   )
 }

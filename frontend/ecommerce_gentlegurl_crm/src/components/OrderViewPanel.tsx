@@ -1481,6 +1481,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowConfirmPayment(false)}
           onSuccess={handleOrderUpdated}
+          zIndexClassName="z-[110]"
         />
       )}
 
@@ -1489,6 +1490,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowRejectPayment(false)}
           onSuccess={handleOrderUpdated}
+          zIndexClassName="z-[110]"
         />
       )}
 
