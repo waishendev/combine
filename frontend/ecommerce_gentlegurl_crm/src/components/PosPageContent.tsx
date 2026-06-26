@@ -30,7 +30,7 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
-import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
+import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -224,6 +224,9 @@ type AppointmentSettlementCartItem = {
   guest_name?: string | null
   guest_phone?: string | null
   guest_email?: string | null
+  notes?: string | null
+  reschedule_reason?: string | null
+  rescheduled_at?: string | null
   service_name?: string | null
   service_cn_name?: string | null
   service_price_mode?: string | null
@@ -8211,6 +8214,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         {getGuestContactLines(settlement).map((line) => (
                           <p key={`cart-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
                         ))}
+                        {getAppointmentRemarkLines(settlement).map((line) => (
+                          <p key={`cart-settlement-remark-${settlement.id}-${line.key}`} className="whitespace-pre-wrap">
+                            {line.label}: {line.value}
+                          </p>
+                        ))}
                         <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
                         {settlement.appointment_start_at ? (
                           <>
@@ -10127,6 +10135,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <p>Name: {settlement.customer_name || '—'}</p>
                                 {getGuestContactLines(settlement).map((line) => (
                                   <p key={`checkout-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
+                                ))}
+                                {getAppointmentRemarkLines(settlement).map((line) => (
+                                  <p key={`checkout-settlement-remark-${settlement.id}-${line.key}`} className="whitespace-pre-wrap">
+                                    {line.label}: {line.value}
+                                  </p>
                                 ))}
                                 {settlement.appointment_start_at ? (
                                   <p>

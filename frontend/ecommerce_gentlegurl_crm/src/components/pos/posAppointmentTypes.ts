@@ -86,6 +86,12 @@ export type PosAppointmentDetail = {
   guest_name?: string | null
   guest_phone?: string | null
   guest_email?: string | null
+  /** Booking remarks entered at create / reschedule. */
+  notes?: string | null
+  /** Latest reschedule reason (overwritten on each reschedule). */
+  reschedule_reason?: string | null
+  rescheduled_at?: string | null
+  reschedule_count?: number
   service?: { id: number; name: string; cn_name?: string | null; service_type?: string | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; duration_min?: number | null }
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>

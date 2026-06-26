@@ -509,3 +509,30 @@ export function formatAppointmentCustomerContactLines(detail: PosAppointmentDeta
 export function formatAppointmentReceiptDefaultEmail(detail: PosAppointmentDetail | null | undefined): string {
   return detail?.customer?.email?.trim() || detail?.customer_email?.trim() || detail?.guest_email?.trim() || ''
 }
+
+export type AppointmentRemarkLine = {
+  key: string
+  label: string
+  value: string
+}
+
+/** Create-time notes and latest reschedule reason for settlement / cart display. */
+export function getAppointmentRemarkLines(source: {
+  notes?: string | null
+  reschedule_reason?: string | null
+} | null | undefined): AppointmentRemarkLine[] {
+  if (!source) return []
+
+  const lines: AppointmentRemarkLine[] = []
+  const notes = source.notes?.trim()
+  if (notes) {
+    lines.push({ key: 'notes', label: 'Remarks', value: notes })
+  }
+
+  const rescheduleReason = source.reschedule_reason?.trim()
+  if (rescheduleReason) {
+    lines.push({ key: 'reschedule_reason', label: 'Reschedule reason', value: rescheduleReason })
+  }
+
+  return lines
+}

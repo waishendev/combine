@@ -46,6 +46,7 @@ import {
   formatAppointmentCustomerDisplayName,
   formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
+  getAppointmentRemarkLines,
   formatBookingAddonSummary,
   buildPosAppointmentSlots,
   formatDateTimeRange,
@@ -3775,6 +3776,20 @@ export default function PosAppointmentsWorkspace({
                       {formatAppointmentCustomerContactLines(appointmentDetail).map((line) => (
                         <p key={`appointment-contact-${line.label}`} className="text-xs font-medium text-slate-600">
                           <span className="text-slate-500">{line.label}:</span> {line.value}
+                        </p>
+                      ))}
+                      {getAppointmentRemarkLines(appointmentDetail).map((line) => (
+                        <p key={`appointment-remark-${line.key}`} className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
+                          <span className="font-semibold text-slate-500">{line.label}:</span>{' '}
+                          {line.value}
+                          {line.key === 'reschedule_reason' && appointmentDetail.rescheduled_at ? (
+                            <span className="mt-0.5 block text-[10px] font-medium text-slate-400">
+                              Last rescheduled {formatDateTime12Hour(appointmentDetail.rescheduled_at)}
+                              {(appointmentDetail.reschedule_count ?? 0) > 1
+                                ? ` · ${appointmentDetail.reschedule_count} time(s)`
+                                : ''}
+                            </span>
+                          ) : null}
                         </p>
                       ))}
                     </div>

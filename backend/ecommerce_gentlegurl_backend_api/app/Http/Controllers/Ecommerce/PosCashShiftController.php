@@ -11,6 +11,9 @@ use Illuminate\Validation\Rule;
 
 class PosCashShiftController extends Controller
 {
+    /** Order statuses excluded from shift cash sales (void/cancelled never count toward drawer). */
+    private const EXCLUDED_ORDER_STATUSES = ['cancelled', 'draft', 'voided'];
+
     public function current(Request $request)
     {
         $shift = $this->currentOpenShiftQuery($request)->first();
@@ -159,6 +162,7 @@ class PosCashShiftController extends Controller
             ->join('orders', 'orders.id', '=', 'order_payments.order_id')
             ->where('order_payments.payment_method', 'cash')
             ->whereBetween('orders.created_at', [$start, $end])
+            ->whereNotIn('orders.status', self::EXCLUDED_ORDER_STATUSES)
             ->where(function ($query) {
                 $query->whereIn('orders.pickup_or_shipping', ['pos', 'in_store'])
                     ->orWhereNotNull('orders.created_by_user_id');
@@ -169,6 +173,7 @@ class PosCashShiftController extends Controller
         $fallbackCash = (float) DB::table('orders')
             ->where('payment_method', 'cash')
             ->whereBetween('created_at', [$start, $end])
+            ->whereNotIn('status', self::EXCLUDED_ORDER_STATUSES)
             ->where(function ($query) {
                 $query->whereIn('pickup_or_shipping', ['pos', 'in_store'])
                     ->orWhereNotNull('created_by_user_id');
