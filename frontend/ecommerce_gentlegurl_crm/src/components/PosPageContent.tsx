@@ -1702,6 +1702,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
+    price_finalized?: boolean | null
     duration_min: number
     addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
     selected_addon_ids: Set<number>
@@ -4224,10 +4225,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         const originalLineKey = (cartEditSettlementItem.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)?.line_key
         if (priceEditTarget.lineKey === originalLineKey) {
           setCartEditOriginalServicePrice(next)
+          setCartEditSettlementItem((current) => current ? {
+            ...current,
+            main_service_settlement_items: (current.main_service_settlement_items ?? []).map((line) => line.line_key === priceEditTarget.lineKey ? { ...line, gross_amount: next, balance_due: next, price_finalized: true } : line),
+          } : current)
         } else {
           const addon = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
           if (addon?.id != null) {
             setCartEditAddonPriceOverrides((prev) => ({ ...prev, [Number(addon.id)]: next }))
+            setCartEditSettlementItem((current) => current ? {
+              ...current,
+              addon_settlement_items: (current.addon_settlement_items ?? []).map((line) => line.line_key === priceEditTarget.lineKey ? { ...line, gross_amount: next, balance_due: next, price_finalized: true } : line),
+            } : current)
           }
         }
       }
@@ -4678,7 +4687,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (raw == null) return
     const next = Number(raw)
     if (!Number.isFinite(next) || next < 0) return
-    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next } : block))
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next, price_finalized: true } : block))
   }
 
   const saveCartEditSettlementDeposit = async () => {
@@ -8949,7 +8958,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
                                 <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
-                                  <span>+{formatPosPriceDisplay({ ...opt, extra_price: cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price }, { prefix: 'RM' })}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
+                                  <span>+{formatPosCurrentOrRangeDisplay({ ...opt, extra_price: cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price, price_finalized: Object.prototype.hasOwnProperty.call(cartEditAddonPriceOverrides, opt.id) }, { prefix: 'RM' })}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
                                   {checked ? (() => {
                                     const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
                                     const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)

@@ -451,6 +451,7 @@ export default function PosAppointmentsWorkspace({
     price_mode?: string | null
     price_range_min?: number | null
     price_range_max?: number | null
+    price_finalized?: boolean | null
     duration_min: number
     addon_questions: ServiceAddonQuestion[]
     selected_addon_ids: Set<number>
@@ -2481,7 +2482,7 @@ export default function PosAppointmentsWorkspace({
     } else if (appointmentPriceEditTarget.kind === 'originalAddon') {
       setEditAddonPriceOverrides((prev) => ({ ...prev, [appointmentPriceEditTarget.optionId]: rounded }))
     } else if (appointmentPriceEditTarget.kind === 'addedService') {
-      setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, price: rounded } : block))
+      setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, price: rounded, price_finalized: true } : block))
     } else if (appointmentPriceEditTarget.kind === 'addedAddon') {
       setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded } } : block))
     }
@@ -5841,7 +5842,7 @@ export default function PosAppointmentsWorkspace({
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-1">
                                   <span className="text-xs font-semibold tabular-nums text-gray-600">
-                                    +{formatPosPriceDisplay({ ...opt, extra_price: editAddonPriceOverrides[opt.id] ?? opt.extra_price }, { prefix: 'RM' })}
+                                    +{formatPosCurrentOrRangeDisplay({ ...opt, extra_price: editAddonPriceOverrides[opt.id] ?? opt.extra_price, price_finalized: Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, opt.id) }, { prefix: 'RM' })}
                                     {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
                                   </span>
                                   {checked && appointmentDetail?.id ? (() => {
@@ -5849,7 +5850,7 @@ export default function PosAppointmentsWorkspace({
                                     const inherited = editStaffSplitsToLineSplits(editStaffSplits)
                                     return (
                                       <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: opt }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: { ...opt, price_finalized: Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, opt.id) } }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                                         {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
                                         <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                       </>
@@ -6155,13 +6156,13 @@ export default function PosAppointmentsWorkspace({
                                   <PosServiceNameStack name={opt.label} cnName={opt.cn_name ?? opt.cn_label ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <span className="text-xs font-semibold text-gray-500">+{formatPosPriceDisplay({ ...opt, extra_price: block.addon_price_overrides[opt.id] ?? opt.extra_price }, { prefix: 'RM' })}</span>
+                                  <span className="text-xs font-semibold text-gray-500">+{formatPosCurrentOrRangeDisplay({ ...opt, extra_price: block.addon_price_overrides[opt.id] ?? opt.extra_price, price_finalized: Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id) }, { prefix: 'RM' })}</span>
                                   {checked && appointmentDetail?.id ? (() => {
                                     const lineKey = `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${opt.id}`
                                     const inherited = editStaffSplitsToLineSplits(block.staff_splits)
                                     return (
                                       <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: opt }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: { ...opt, price_finalized: Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id) } }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                                         {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
                                         <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                       </>
