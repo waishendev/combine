@@ -1019,9 +1019,12 @@ export default function PosAppointmentsWorkspace({
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
-                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
-                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
-                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
+                  price_range_min: option.price_range_min == null ? (option.linked_price_range_min == null ? null : Number(option.linked_price_range_min)) : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? (option.linked_price_range_max == null ? null : Number(option.linked_price_range_max)) : Number(option.price_range_max),
+                  linked_price_mode: typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null,
+                  linked_price_range_min: option.linked_price_range_min == null ? null : Number(option.linked_price_range_min),
+                  linked_price_range_max: option.linked_price_range_max == null ? null : Number(option.linked_price_range_max),
                 } as ServiceAddonOption
               })
               .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
@@ -1065,9 +1068,12 @@ export default function PosAppointmentsWorkspace({
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
-                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
-                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
-                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
+                  price_range_min: option.price_range_min == null ? (option.linked_price_range_min == null ? null : Number(option.linked_price_range_min)) : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? (option.linked_price_range_max == null ? null : Number(option.linked_price_range_max)) : Number(option.price_range_max),
+                  linked_price_mode: typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null,
+                  linked_price_range_min: option.linked_price_range_min == null ? null : Number(option.linked_price_range_min),
+                  linked_price_range_max: option.linked_price_range_max == null ? null : Number(option.linked_price_range_max),
                 } as ServiceAddonOption
               })
               .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),

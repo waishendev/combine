@@ -1560,6 +1560,13 @@ class PosController extends Controller
                 'extra_price' => $option->linkedBookingService
                     ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
                     : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                'linked_price_mode' => $option->linkedBookingService ? (string) ($option->linkedBookingService->price_mode ?? 'fixed') : null,
+                'linked_price_range_min' => $option->linkedBookingService && $option->linkedBookingService->price_range_min !== null
+                    ? (float) $option->linkedBookingService->price_range_min
+                    : null,
+                'linked_price_range_max' => $option->linkedBookingService && $option->linkedBookingService->price_range_max !== null
+                    ? (float) $option->linkedBookingService->price_range_max
+                    : null,
             ])->values(),
         ]);
 

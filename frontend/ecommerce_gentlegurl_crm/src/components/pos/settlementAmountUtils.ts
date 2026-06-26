@@ -17,10 +17,13 @@ export type PosPriceDisplaySource = {
   extra_price?: number | string | null
   price_mode?: string | null
   service_price_mode?: string | null
+  linked_price_mode?: string | null
   price_range_min?: number | string | null
   price_range_max?: number | string | null
   service_price_range_min?: number | string | null
   service_price_range_max?: number | string | null
+  linked_price_range_min?: number | string | null
+  linked_price_range_max?: number | string | null
 }
 
 type BookingServiceSettlementOption = {
@@ -75,9 +78,9 @@ function finiteNumber(value: number | string | null | undefined): number | null 
 
 export function formatPosPriceDisplay(source?: PosPriceDisplaySource | null, options?: { prefix?: string }): string {
   const prefix = options?.prefix ?? 'RM '
-  const mode = String(source?.price_mode ?? source?.service_price_mode ?? '').toLowerCase()
-  const min = finiteNumber(source?.price_range_min ?? source?.service_price_range_min)
-  const max = finiteNumber(source?.price_range_max ?? source?.service_price_range_max)
+  const mode = String(source?.price_mode ?? source?.service_price_mode ?? source?.linked_price_mode ?? '').toLowerCase()
+  const min = finiteNumber(source?.price_range_min ?? source?.service_price_range_min ?? source?.linked_price_range_min)
+  const max = finiteNumber(source?.price_range_max ?? source?.service_price_range_max ?? source?.linked_price_range_max)
 
   if (mode === 'range' && min != null && max != null) {
     const low = Math.min(min, max)

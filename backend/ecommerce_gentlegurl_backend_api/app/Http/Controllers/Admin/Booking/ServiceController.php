@@ -959,6 +959,9 @@ class ServiceController extends Controller
             'linked_booking_service_id' => $option->linked_booking_service_id ? (int) $option->linked_booking_service_id : null,
             'extra_duration_min' => $extraDuration,
             'extra_price' => $extraPrice,
+            'linked_price_mode' => $linkedService ? (string) ($linkedService->price_mode ?? 'fixed') : null,
+            'linked_price_range_min' => $linkedService && $linkedService->price_range_min !== null ? (float) $linkedService->price_range_min : null,
+            'linked_price_range_max' => $linkedService && $linkedService->price_range_max !== null ? (float) $linkedService->price_range_max : null,
             'sort_order' => (int) $option->sort_order,
             'is_active' => (bool) $option->is_active,
         ];

@@ -156,6 +156,9 @@ export type ServiceAddonOption = {
   price_mode?: string | null
   price_range_min?: number | null
   price_range_max?: number | null
+  linked_price_mode?: string | null
+  linked_price_range_min?: number | null
+  linked_price_range_max?: number | null
 }
 
 export type ServiceAddonQuestion = {

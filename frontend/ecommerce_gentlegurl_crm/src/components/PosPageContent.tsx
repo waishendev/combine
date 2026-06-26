@@ -682,6 +682,9 @@ type BookingServiceOption = {
   price_mode?: string | null
   price_range_min?: number | null
   price_range_max?: number | null
+  linked_price_mode?: string | null
+  linked_price_range_min?: number | null
+  linked_price_range_max?: number | null
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
@@ -700,6 +703,9 @@ type BookingServiceQuestionOption = {
   price_mode?: string | null
   price_range_min?: number | null
   price_range_max?: number | null
+  linked_price_mode?: string | null
+  linked_price_range_min?: number | null
+  linked_price_range_max?: number | null
   is_active?: boolean
 }
 
@@ -1675,7 +1681,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementServiceId, setCartEditSettlementServiceId] = useState<number | null>(null)
   const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
-  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }> }>>([])
+  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
@@ -1690,7 +1696,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     service_cn_name?: string | null
     price: number
     duration_min: number
-    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }> }>
+    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
     selected_addon_ids: Set<number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
@@ -3515,9 +3521,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
-                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
-                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
-                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
+                  price_range_min: option.price_range_min == null ? (option.linked_price_range_min == null ? null : Number(option.linked_price_range_min)) : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? (option.linked_price_range_max == null ? null : Number(option.linked_price_range_max)) : Number(option.price_range_max),
+                  linked_price_mode: typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null,
+                  linked_price_range_min: option.linked_price_range_min == null ? null : Number(option.linked_price_range_min),
+                  linked_price_range_max: option.linked_price_range_max == null ? null : Number(option.linked_price_range_max),
                 }
               })
               .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
@@ -3560,9 +3569,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
-                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
-                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
-                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
+                  price_range_min: option.price_range_min == null ? (option.linked_price_range_min == null ? null : Number(option.linked_price_range_min)) : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? (option.linked_price_range_max == null ? null : Number(option.linked_price_range_max)) : Number(option.price_range_max),
+                  linked_price_mode: typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null,
+                  linked_price_range_min: option.linked_price_range_min == null ? null : Number(option.linked_price_range_min),
+                  linked_price_range_max: option.linked_price_range_max == null ? null : Number(option.linked_price_range_max),
                 }
               })
               .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
