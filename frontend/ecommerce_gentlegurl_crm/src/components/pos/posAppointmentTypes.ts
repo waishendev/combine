@@ -95,7 +95,7 @@ export type PosAppointmentDetail = {
   settled_service_amount?: number | null
   is_range_priced?: boolean
   requires_settled_amount?: boolean
-  add_ons?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; service_ref?: string | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  add_ons?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; price_finalized?: boolean | null; linked_booking_service_id?: number | null; service_ref?: string | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   addon_total_duration_min?: number
   estimated_duration_min?: number
   addon_total_price?: number

@@ -394,6 +394,7 @@ class PosController extends Controller
                 'settled_service_amount' => $summary['settled_service_amount'] ?? null,
                 'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
                 'requires_settled_amount' => (bool) ($summary['requires_settled_amount'] ?? false),
+                'has_unfinalized_range_pricing' => $this->appointmentSummaryHasUnfinalizedRangePricing($summary),
                 'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
                 'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
                 'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
@@ -1094,7 +1095,7 @@ class PosController extends Controller
         ]);
         $validated = $request->validate([
             'booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
-            'settled_service_amount' => [$isRangePriced && $isEditingSettlement ? 'required' : 'nullable', 'numeric', 'min:0'],
+            'settled_service_amount' => ['nullable', 'numeric', 'min:0'],
             'main_service_ids' => ['nullable', 'array'],
             'main_service_ids.*' => ['integer'],
             'main_service_items' => ['nullable', 'array'],
@@ -2303,6 +2304,34 @@ class PosController extends Controller
         return true;
     }
 
+    protected function appointmentSummaryHasUnfinalizedRangePricing(array $summary): bool
+    {
+        if ((bool) ($summary['requires_settled_amount'] ?? false)) {
+            return true;
+        }
+
+        return collect($summary['main_services'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        ) || collect($summary['add_ons'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        );
+    }
+
+    protected function appointmentRowHasUnfinalizedRangePricing(array $row): bool
+    {
+        if ((bool) ($row['has_unfinalized_range_pricing'] ?? false)) {
+            return true;
+        }
+
+        if ((bool) ($row['requires_settled_amount'] ?? false)) {
+            return true;
+        }
+
+        return collect($row['add_ons'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        );
+    }
+
     protected function appointmentCompletedRowNeedsSettlement(array $row): bool
     {
         $amountDueNow = (float) ($row['amount_due_now'] ?? 0);
@@ -2310,6 +2339,10 @@ class PosController extends Controller
         $settlementPaid = (float) ($row['settlement_paid'] ?? 0);
         $paymentStatus = strtoupper((string) ($row['payment_status'] ?? ''));
         $packageStatus = strtolower((string) data_get($row, 'package_status.status', ''));
+
+        if ($this->appointmentRowHasUnfinalizedRangePricing($row)) {
+            return true;
+        }
 
         if ($amountDueNow > 0.0001 || $balanceDue > 0.0001) {
             return true;
@@ -3530,7 +3563,9 @@ class PosController extends Controller
         }
 
         $settlementSummary = $this->resolveAppointmentFinancialSummary($booking);
-        if ((float) ($settlementSummary['balance_due'] ?? 0) <= 0.0001) {
+        $balanceDue = (float) ($settlementSummary['balance_due'] ?? 0);
+        $hasUnfinalizedRangePricing = $this->appointmentSummaryHasUnfinalizedRangePricing($settlementSummary);
+        if ($balanceDue <= 0.0001 && ! $hasUnfinalizedRangePricing) {
             return $this->respondError(__('No balance due for this appointment settlement.'), 422);
         }
 
@@ -5140,19 +5175,33 @@ class PosController extends Controller
     {
         foreach ((array) ($summary['main_service_settlement_items'] ?? []) as $line) {
             if ((string) ($line['line_key'] ?? '') === $lineKey) {
-                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
-                return $gross > 0.0001 ? $gross : null;
+                return $this->resolveAppointmentSettlementLineReferenceGross($line);
             }
         }
 
         foreach ((array) ($summary['addon_settlement_items'] ?? []) as $line) {
             if ((string) ($line['line_key'] ?? '') === $lineKey) {
-                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
-                return $gross > 0.0001 ? $gross : null;
+                return $this->resolveAppointmentSettlementLineReferenceGross($line);
             }
         }
 
         return null;
+    }
+
+    protected function resolveAppointmentSettlementLineReferenceGross(array $line): float
+    {
+        $balanceDue = max(0.0, (float) ($line['balance_due'] ?? 0));
+        if ($balanceDue > 0.0001) {
+            return $balanceDue;
+        }
+
+        $gross = max(0.0, (float) ($line['gross_amount'] ?? $line['extra_price'] ?? 0));
+        if ($gross > 0.0001) {
+            return $gross;
+        }
+
+        // Unfinalized range / unset lines still exist — allow cart price override with zero reference.
+        return 0.0;
     }
 
     protected function resolveAppointmentSettlementLineDiscount(PosCartAppointmentSettlementItem $item, string $lineKey, float $gross): array
@@ -5510,8 +5559,15 @@ class PosController extends Controller
             if ($cart->appointmentSettlementItems->isNotEmpty()) {
                 foreach ($cart->appointmentSettlementItems as $settlementItem) {
                     $stlBooking = $settlementItem->booking;
-                    if ($stlBooking && ($stlBooking->service?->price_mode ?? 'fixed') === 'range' && $stlBooking->settled_service_amount === null) {
-                        abort(422, __('Please set the service amount for all range-priced settlement items before checkout.'));
+                    if (! $stlBooking) {
+                        continue;
+                    }
+                    $summary = $this->resolveAppointmentFinancialSummary($stlBooking);
+                    $hasUnfinalizedRangePrice = (bool) ($summary['requires_settled_amount'] ?? false)
+                        || collect($summary['main_services'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false))
+                        || collect($summary['add_ons'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false));
+                    if ($hasUnfinalizedRangePrice) {
+                        abort(422, __('Range pricing — please set final price before checkout.'));
                     }
                 }
 
@@ -6411,17 +6467,14 @@ class PosController extends Controller
                         ]]);
 
                     foreach ($serviceLines as $mainLine) {
-                        $mainAmount = max(0.0, (float) ($mainLine['balance_due'] ?? 0));
-                        if ($mainAmount <= 0.0001) {
-                            continue;
-                        }
                         $lineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, 0));
+                        $mainAmount = max(0.0, (float) ($mainLine['balance_due'] ?? 0));
                         $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $mainAmount);
                         $mainAmount = (float) $priceOverrideResult['amount'];
-                        $mainLinePriceOverride = $priceOverrideResult['override'] ?? ($mainLine['price_override'] ?? null);
                         if ($mainAmount <= 0.0001) {
                             continue;
                         }
+                        $mainLinePriceOverride = $priceOverrideResult['override'] ?? ($mainLine['price_override'] ?? null);
                         if ($hasPerLineDiscounts) {
                             $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $mainAmount);
                             $serviceLineDiscount = (float) $lineDiscount['discount_amount'];
@@ -6493,16 +6546,13 @@ class PosController extends Controller
                 }
 
                 foreach ($addonSettlementItems as $addon) {
-                    $addonAmount = max(0.0, (float) ($addon['balance_due'] ?? 0));
-                    if ($addonAmount <= 0.0001) {
-                        continue;
-                    }
                     $addonServiceRef = (string) ($addon['service_ref'] ?? 'original');
                     $addonName = (string) ($addon['name'] ?? 'Add-on');
                     $addonDisplayName = $addonServiceRef === 'original'
                         ? $addonName
                         : sprintf('%s::%s', $addonServiceRef, $addonName);
                     $lineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, 0));
+                    $addonAmount = max(0.0, (float) ($addon['balance_due'] ?? 0));
                     $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $addonAmount);
                     $addonAmount = (float) $priceOverrideResult['amount'];
                     $addonPriceOverride = $priceOverrideResult['override'] ?? ($addon['price_override'] ?? null);
@@ -8652,6 +8702,16 @@ class PosController extends Controller
 
     protected function calculateAppointmentPaymentStatus(array $summary): string
     {
+        if ($this->appointmentSummaryHasUnfinalizedRangePricing($summary)) {
+            $paidTotal = round(
+                max(0.0, (float) ($summary['deposit_paid'] ?? $summary['deposit_contribution'] ?? 0))
+                + max(0.0, (float) ($summary['settlement_paid'] ?? 0)),
+                2
+            );
+
+            return $paidTotal > 0.0001 ? 'PARTIAL' : 'UNPAID';
+        }
+
         $paidTotal = round(
             max(0.0, (float) ($summary['deposit_paid'] ?? $summary['deposit_contribution'] ?? 0))
             + max(0.0, (float) ($summary['settlement_paid'] ?? 0))
