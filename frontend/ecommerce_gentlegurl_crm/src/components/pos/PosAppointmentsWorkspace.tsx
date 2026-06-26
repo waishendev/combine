@@ -15,7 +15,9 @@ import {
   formatPosPriceDisplay,
   getSettlementRangeBounds,
   parseSettlementAmountInput,
+  posPriceDisplayHasRange,
   settlementNeedsSettledAmount,
+  type PosPriceDisplaySource,
   validateSettlementAmountInput,
 } from '@/components/pos/settlementAmountUtils'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
@@ -172,10 +174,10 @@ type CreateExtraServiceBlock = {
 }
 
 type AppointmentPriceEditTarget =
-  | { kind: 'originalService'; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
-  | { kind: 'originalAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
-  | { kind: 'addedService'; tmpId: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
-  | { kind: 'addedAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number }
+  | { kind: 'originalService'; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
+  | { kind: 'originalAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
+  | { kind: 'addedService'; tmpId: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
+  | { kind: 'addedAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
 
 
 /** POS member search row (`/api/proxy/pos/members/search`) */
@@ -444,6 +446,9 @@ export default function PosAppointmentsWorkspace({
     service_name: string
     service_cn_name?: string | null
     price: number
+    price_mode?: string | null
+    price_range_min?: number | null
+    price_range_max?: number | null
     duration_min: number
     addon_questions: ServiceAddonQuestion[]
     selected_addon_ids: Set<number>
@@ -1946,6 +1951,9 @@ export default function PosAppointmentsWorkspace({
         service_name: String(service.name ?? 'Service'),
         service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
         price: Number(service.extra_price ?? 0),
+        price_mode: service.price_mode ?? null,
+        price_range_min: service.price_range_min ?? null,
+        price_range_max: service.price_range_max ?? null,
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as ServiceAddonQuestion[],
         selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
@@ -2152,6 +2160,9 @@ export default function PosAppointmentsWorkspace({
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
       price: Number(service.service_price ?? service.price ?? 0),
+      price_mode: service.price_mode ?? null,
+      price_range_min: service.price_range_min ?? null,
+      price_range_max: service.price_range_max ?? null,
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
       selected_addon_ids: new Set<number>(),
@@ -3846,11 +3857,14 @@ export default function PosAppointmentsWorkspace({
                                     <span className="text-right text-xs font-semibold tabular-nums text-slate-900">
                                       {packageCoversMainService ? (
                                         <>
-                                          <span className="block text-slate-400 line-through">RM {servicePrice.toFixed(2)}</span>
+                                          <span className="block text-slate-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: servicePrice })}</span>
                                           <span className="block text-emerald-800">RM 0.00</span>
                                         </>
                                       ) : (
-                                        <>RM {servicePrice.toFixed(2)}</>
+                                        <>
+                                          <span className="block">RM {servicePrice.toFixed(2)}</span>
+                                          {posPriceDisplayHasRange(service) ? <span className="block text-[10px] font-medium text-slate-500">Reference range: {formatPosPriceDisplay(service)}</span> : null}
+                                        </>
                                       )}
                                     </span>
                                   </div>
@@ -3879,11 +3893,14 @@ export default function PosAppointmentsWorkspace({
                                             <span className="text-right tabular-nums">
                                               {packageCoversAddon ? (
                                                 <>
-                                                  <span className="block text-slate-400 line-through">RM {addonPrice.toFixed(2)}</span>
+                                                  <span className="block text-slate-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: addonPrice })}</span>
                                                   <span className="block font-semibold text-emerald-800">RM 0.00</span>
                                                 </>
                                               ) : (
-                                                <>RM {addonPrice.toFixed(2)}</>
+                                                <>
+                                                  <span className="block">RM {addonPrice.toFixed(2)}</span>
+                                                  {posPriceDisplayHasRange(addon) ? <span className="block text-[10px] font-medium text-slate-500">Reference range: {formatPosPriceDisplay(addon)}</span> : null}
+                                                </>
                                               )}
                                             </span>
                                           </li>
@@ -5680,7 +5697,7 @@ export default function PosAppointmentsWorkspace({
                               ).toFixed(2)}`}
                           {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
                         </p>
-                        <button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'originalService', name: editOriginalService?.name ?? appointmentDetail.service?.name ?? 'Service', currentUnitPrice: Number(editOriginalServicePriceOverride ?? editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), originalUnitPrice: Number(editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), quantity: 1 })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                        <button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'originalService', name: editOriginalService?.name ?? appointmentDetail.service?.name ?? 'Service', currentUnitPrice: Number(editOriginalServicePriceOverride ?? editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), originalUnitPrice: Number(editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), quantity: 1, priceSource: editOriginalService ?? editOriginalSettlementSource })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                       </div>
                     </div>
                     <button
@@ -5827,7 +5844,7 @@ export default function PosAppointmentsWorkspace({
                                     const inherited = editStaffSplitsToLineSplits(editStaffSplits)
                                     return (
                                       <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: opt }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                                         {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
                                         <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                       </>
@@ -6090,7 +6107,7 @@ export default function PosAppointmentsWorkspace({
                               primaryClassName="text-sm font-semibold text-gray-900"
                               secondaryClassName="mt-0.5 text-xs text-gray-500"
                             />
-                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p><button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'addedService', tmpId: block.tmp_id, name: block.service_name, currentUnitPrice: Number(block.price ?? 0), originalUnitPrice: Number(block.price ?? 0), quantity: 1 })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(block)}</span> : null}</p><button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'addedService', tmpId: block.tmp_id, name: block.service_name, currentUnitPrice: Number(block.price ?? 0), originalUnitPrice: Number(block.price ?? 0), quantity: 1, priceSource: block })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                           </>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">Select a service</p>
@@ -6139,7 +6156,7 @@ export default function PosAppointmentsWorkspace({
                                     const inherited = editStaffSplitsToLineSplits(block.staff_splits)
                                     return (
                                       <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1 }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: opt }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
                                         {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
                                         <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                       </>
@@ -6437,7 +6454,7 @@ export default function PosAppointmentsWorkspace({
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{appointmentPriceEditTarget.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-3 text-sm">
-              <div><p className="text-xs text-gray-500">Original Price</p><p className="font-semibold">RM {Number(appointmentPriceEditTarget.originalUnitPrice ?? 0).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-500">Original Price / Reference Range</p><p className="font-semibold">{appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) ? formatPosPriceDisplay(appointmentPriceEditTarget.priceSource) : `RM ${Number(appointmentPriceEditTarget.originalUnitPrice ?? 0).toFixed(2)}`}</p></div>
               <div><p className="text-xs text-gray-500">Current Price</p><p className="font-semibold">RM {Number(appointmentPriceEditTarget.currentUnitPrice ?? 0).toFixed(2)}</p></div>
               <div><p className="text-xs text-gray-500">Quantity</p><p className="font-semibold">{Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))}</p></div>
             </div>

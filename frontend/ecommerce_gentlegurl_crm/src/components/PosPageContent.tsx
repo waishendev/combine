@@ -14,7 +14,9 @@ import {
   formatPosPriceDisplay,
   getSettlementRangeBounds,
   parseSettlementAmountInput,
+  posPriceDisplayHasRange,
   settlementNeedsSettledAmount,
+  type PosPriceDisplaySource,
   validateSettlementAmountInput,
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
@@ -227,8 +229,8 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   addon_total_price?: number
   deposit_contribution?: number
   deposit_previously_collected?: boolean
@@ -321,7 +323,7 @@ type ServiceCartItem = {
     extra_price?: number
     linked_booking_service_id?: number | null
     is_original?: boolean
-    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
     staff_splits?: Array<{ staff_id: number; share_percent: number }>
   }>
 }
@@ -572,7 +574,7 @@ type PriceEditTarget =
   | { kind: 'bookingProductOption'; id: number; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
   | { kind: 'package'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
   | { kind: 'serviceDeposit'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
-  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null }
 
 type DiscountTarget =
   | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
@@ -1695,6 +1697,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     service_name: string
     service_cn_name?: string | null
     price: number
+    price_mode?: string | null
+    price_range_min?: number | null
+    price_range_max?: number | null
     duration_min: number
     addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
     selected_addon_ids: Set<number>
@@ -4412,6 +4417,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         service_name: String(service.name ?? 'Service'),
         service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
         price: Number(service.extra_price ?? 0),
+        price_mode: service.price_mode ?? null,
+        price_range_min: service.price_range_min ?? null,
+        price_range_max: service.price_range_max ?? null,
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as typeof cartEditAddonQuestions,
         selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
@@ -4591,6 +4599,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
       price: Number(service.service_price ?? service.price ?? 0),
+      price_mode: service.price_mode ?? null,
+      price_range_min: service.price_range_min ?? null,
+      price_range_max: service.price_range_max ?? null,
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
       selected_addon_ids: new Set<number>(),
@@ -4636,7 +4647,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const line = (cartEditSettlementItem.main_service_settlement_items ?? []).find((row, idx) => row.is_original ?? idx === 0)
     const current = Number(cartEditOriginalServicePrice ?? line?.gross_amount ?? line?.balance_due ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? 0)
     if (line?.line_key) {
-      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: line.name ?? cartEditOriginalService?.name ?? 'Service', currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: line.name ?? cartEditOriginalService?.name ?? 'Service', currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current), priceSource: line })
       return
     }
     const raw = window.prompt('New service price', current.toFixed(2))
@@ -4650,7 +4661,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const line = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => Number(row.id ?? 0) === Number(optionId))
     const current = Number(cartEditAddonPriceOverrides[optionId] ?? line?.gross_amount ?? line?.balance_due ?? currentPrice ?? 0)
     if (line?.line_key) {
-      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: label, currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: label, currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current), priceSource: line })
       return
     }
     const raw = window.prompt('New add-on price', current.toFixed(2))
@@ -8157,9 +8168,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           ) : null}
                                         </div>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {displayGross.toFixed(2)}</span> : null}
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
                                           <span className="block">RM {displayNet.toFixed(2)}</span>
+                                          {posPriceDisplayHasRange(service) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</span> : null}
                                         </span>
                                       </div>
                                     </div>
@@ -8178,9 +8190,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       <div className="flex justify-between gap-2 text-gray-700">
                                         <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</span>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {displayGross.toFixed(2)}</span> : null}
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
                                           <span className="block">RM {displayNet.toFixed(2)}</span>
+                                          {posPriceDisplayHasRange(addon) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</span> : null}
                                         </span>
                                       </div>
                                     </div>
@@ -9196,7 +9209,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(block)}</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -10014,7 +10027,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
-                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice), priceSource: service })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
                                           </div>
                                         </div>
                                       </td>
@@ -10022,7 +10035,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         {coveredByPackage ? (
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} inline />
                                         ) : (
-                                          <>RM {serviceNet.toFixed(2)}</>
+                                          <>
+                                            <span className="block">RM {serviceNet.toFixed(2)}</span>
+                                            {posPriceDisplayHasRange(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(service)}</span> : null}
+                                          </>
                                         )}
                                       </td>
                                       <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
@@ -10030,12 +10046,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} />
                                         ) : serviceDiscount > 0 ? (
                                           <div className="space-y-0.5">
-                                            <p className="text-xs text-gray-400 line-through">RM {servicePrice.toFixed(2)}</p>
+                                            <p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: servicePrice })}</p>
                                             <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
                                             <p className="text-lg font-bold leading-tight text-orange-700">RM {displayServiceNet.toFixed(2)}</p>
+                                            {posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}
                                           </div>
                                         ) : (
-                                          <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>
+                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>{posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}</div>
                                         )}
                                       </td>
                                       <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
@@ -10070,12 +10087,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <div className="flex flex-wrap gap-2">
                                         {renderCheckoutStaffSplitButtons(addonSettlementSplitKey, addon.name ?? 'Settlement add-on', settlementInheritedSplits)}
                                         <button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>
-                                        {!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                        {!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross), priceSource: addon })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
                                         </div>
                                       </div>
                                     </td>
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <>RM {due.toFixed(2)}</>}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <><span className="block">RM {due.toFixed(2)}</span>{posPriceDisplayHasRange(addon) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(addon)}</span> : null}</>}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: gross })}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</p> : null}</div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</p> : null}</div>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
@@ -10137,7 +10154,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       <span className="text-gray-500">+</span> {addon.name}
                                       {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                     </td>
-                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross), priceSource: addon })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
@@ -10861,7 +10878,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-sm">
-              <div><p className="text-xs text-gray-500">Original price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-500">Original price / Reference range</p><p className="font-semibold tabular-nums">{'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) ? formatPosPriceDisplay(priceEditTarget.priceSource) : `RM ${Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}`}</p></div>
               <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}</p></div>
             </div>
             <div className="mt-4 rounded-lg border border-gray-200 p-3">

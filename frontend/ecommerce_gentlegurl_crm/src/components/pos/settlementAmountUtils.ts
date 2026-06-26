@@ -92,6 +92,13 @@ export function formatPosPriceDisplay(source?: PosPriceDisplaySource | null, opt
   return `${prefix}${amount.toFixed(2)}`
 }
 
+export function posPriceDisplayHasRange(source?: PosPriceDisplaySource | null): boolean {
+  const mode = String(source?.price_mode ?? source?.service_price_mode ?? source?.linked_price_mode ?? '').toLowerCase()
+  return mode === 'range' &&
+    finiteNumber(source?.price_range_min ?? source?.service_price_range_min ?? source?.linked_price_range_min) != null &&
+    finiteNumber(source?.price_range_max ?? source?.service_price_range_max ?? source?.linked_price_range_max) != null
+}
+
 /** Parse POS settlement amount input (trim, allow commas as decimal separator). */
 export function parseSettlementAmountInput(raw: string): number | null {
   const normalized = String(raw ?? '')

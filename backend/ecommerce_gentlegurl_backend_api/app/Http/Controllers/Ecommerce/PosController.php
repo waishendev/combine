@@ -8894,6 +8894,28 @@ class PosController extends Controller
         $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
         $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
         $settlementItems = collect($booking->addon_items_json ?? []);
+        $linkedServiceIdsForPriceMeta = $settlementItems
+            ->flatMap(fn ($item) => collect([$item['linked_booking_service_id'] ?? null])
+                ->concat(collect($item['addon_items'] ?? [])->pluck('linked_booking_service_id')))
+            ->push($booking->service_id)
+            ->filter(fn ($id) => (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $linkedServicesForPriceMeta = $linkedServiceIdsForPriceMeta->isNotEmpty()
+            ? BookingService::query()
+                ->whereIn('id', $linkedServiceIdsForPriceMeta->all())
+                ->get(['id', 'price_mode', 'price_range_min', 'price_range_max'])
+                ->keyBy('id')
+            : collect();
+        $priceMetaForServiceId = function ($serviceId) use ($linkedServicesForPriceMeta): array {
+            $service = $linkedServicesForPriceMeta->get((int) $serviceId);
+            return [
+                'price_mode' => $service ? (string) ($service->price_mode ?? 'fixed') : null,
+                'price_range_min' => $service && $service->price_range_min !== null ? (float) $service->price_range_min : null,
+                'price_range_max' => $service && $service->price_range_max !== null ? (float) $service->price_range_max : null,
+            ];
+        };
         $originalMainServiceItem = $settlementItems
             ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
         $originalServiceAmount = $settledServiceAmount !== null
@@ -8912,6 +8934,7 @@ class PosController extends Controller
                 'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
                 'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
                 'linked_booking_service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
+                ...$priceMetaForServiceId($item['linked_booking_service_id'] ?? null),
                 'is_original' => false,
                 'add_ons' => collect($item['addon_items'] ?? [])->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
@@ -8919,6 +8942,8 @@ class PosController extends Controller
                     'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
                     'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
+                    'linked_booking_service_id' => isset($addon['linked_booking_service_id']) ? (int) $addon['linked_booking_service_id'] : null,
+                    ...$priceMetaForServiceId($addon['linked_booking_service_id'] ?? null),
                     'staff_splits' => collect($addon['staff_splits'] ?? [])->map(fn ($split) => [
                         'staff_id' => (int) ($split['staff_id'] ?? 0),
                         'share_percent' => (int) ($split['share_percent'] ?? 0),
@@ -8937,6 +8962,7 @@ class PosController extends Controller
             'extra_duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)),
             'extra_price' => round(max(0, $originalServiceAmount), 2),
             'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
+            ...$priceMetaForServiceId($booking->service_id),
             'is_original' => true,
             'add_ons' => [],
             'staff_splits' => $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all(),
@@ -8955,6 +8981,8 @@ class PosController extends Controller
             'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
             'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
             'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+            'linked_booking_service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
+            ...$priceMetaForServiceId($item['linked_booking_service_id'] ?? null),
             'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
                 'staff_id' => (int) ($split['staff_id'] ?? 0),
                 'share_percent' => (int) ($split['share_percent'] ?? 0),
@@ -8979,6 +9007,10 @@ class PosController extends Controller
                         'cn_name' => $addon['cn_name'] ?? null,
                         'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                         'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                        'linked_booking_service_id' => $addon['linked_booking_service_id'] ?? null,
+                        'price_mode' => $addon['price_mode'] ?? null,
+                        'price_range_min' => $addon['price_range_min'] ?? null,
+                        'price_range_max' => $addon['price_range_max'] ?? null,
                         'staff_splits' => $addon['staff_splits'] ?? [],
                     ])->values()->all(),
                 ];
