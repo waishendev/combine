@@ -229,10 +229,32 @@ export default function PosAppointmentsSchedule({
           Completed · unpaid
         </span>
         {scheduleScope === 'all' ? (
-          <span className="inline-flex items-center gap-1.5">
-            <span className="h-3 w-5 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
-            Completed · paid
-          </span>
+          <>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-5 shrink-0 rounded border-2 border-emerald-900 bg-emerald-600" aria-hidden />
+              Completed · paid
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-5 shrink-0 rounded border-2 border-rose-900 bg-rose-600" aria-hidden />
+              Cancelled
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-5 shrink-0 rounded border-2 border-fuchsia-900 bg-fuchsia-600" aria-hidden />
+              Notified Cancellation
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-5 shrink-0 rounded border-2 border-orange-900 bg-orange-600" aria-hidden />
+              Late Cancellation
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-5 shrink-0 rounded border-2 border-slate-900 bg-slate-600" aria-hidden />
+              No Show
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-5 shrink-0 rounded border-2 border-zinc-900 bg-zinc-500" aria-hidden />
+              Expired
+            </span>
+          </>
         ) : (
           <span className="text-slate-400">Completed · paid hidden in Active view</span>
         )}

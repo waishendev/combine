@@ -270,7 +270,17 @@ export function formatDateTimeRange(startAt?: string | null, endAt?: string | nu
 }
 
 /** Visual grouping for schedule blocks (month preview + day grid). */
-export type PosAppointmentVisualTone = 'active' | 'hold' | 'completedPaid' | 'completedUnpaid' | 'inactive'
+export type PosAppointmentVisualTone =
+  | 'active'
+  | 'hold'
+  | 'completedPaid'
+  | 'completedUnpaid'
+  | 'cancelled'
+  | 'notifiedCancellation'
+  | 'lateCancellation'
+  | 'noShow'
+  | 'expired'
+  | 'inactive'
 
 /**
  * Same “register paid” idea as the appointment detail Paid badge: not “package reserved, not finalised”
@@ -292,7 +302,12 @@ export function posAppointmentRegisterPaid(
 
 export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): PosAppointmentVisualTone {
   const s = String(row.status ?? '').toUpperCase()
-  if (['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'].includes(s)) return 'inactive'
+  if (s === 'CANCELLED') return 'cancelled'
+  if (s === 'NOTIFIED_CANCELLATION') return 'notifiedCancellation'
+  if (s === 'LATE_CANCELLATION') return 'lateCancellation'
+  if (s === 'NO_SHOW') return 'noShow'
+  if (s === 'EXPIRED') return 'expired'
+  if (s === 'VOIDED') return 'inactive'
   if (s === 'HOLD') return 'hold'
   if (s === 'COMPLETED') {
     return posAppointmentRegisterPaid(row) ? 'completedPaid' : 'completedUnpaid'
@@ -303,7 +318,7 @@ export function posAppointmentVisualToneFromRow(row: PosAppointmentListItem): Po
 /** Rows shown on the POS schedule calendar (includes completed paid/unpaid; excludes terminal statuses). */
 export function posAppointmentBlocksActiveSchedule(row: PosAppointmentListItem): boolean {
   const tone = posAppointmentVisualToneFromRow(row)
-  return tone !== 'inactive'
+  return !['cancelled', 'notifiedCancellation', 'lateCancellation', 'noShow', 'expired', 'inactive'].includes(tone)
 }
 
 export type PosAppointmentScheduleScope = 'active' | 'all'
@@ -323,7 +338,12 @@ export function posAppointmentVisualTone(status: string | null | undefined): Pos
   const s = String(status ?? '').toUpperCase()
   if (s === 'COMPLETED') return 'completedUnpaid'
   if (s === 'HOLD') return 'hold'
-  if (['CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED'].includes(s)) return 'inactive'
+  if (s === 'CANCELLED') return 'cancelled'
+  if (s === 'NOTIFIED_CANCELLATION') return 'notifiedCancellation'
+  if (s === 'LATE_CANCELLATION') return 'lateCancellation'
+  if (s === 'NO_SHOW') return 'noShow'
+  if (s === 'EXPIRED') return 'expired'
+  if (s === 'VOIDED') return 'inactive'
   return 'active'
 }
 
@@ -338,6 +358,16 @@ export function posAppointmentDayBlockClass(tone: PosAppointmentVisualTone): str
       return `${base} border-amber-900 bg-amber-600 text-white ring-1 ring-amber-950/30 hover:bg-amber-500 hover:ring-2 hover:ring-amber-300 focus-visible:ring-amber-300`
     case 'hold':
       return `${base} border-violet-900 bg-violet-600 text-white ring-1 ring-violet-950/30 hover:bg-violet-500 hover:ring-2 hover:ring-violet-300 focus-visible:ring-violet-300`
+    case 'cancelled':
+      return `${base} border-rose-900 bg-rose-600 text-white ring-1 ring-rose-950/30 hover:bg-rose-500 hover:ring-2 hover:ring-rose-300 focus-visible:ring-rose-300`
+    case 'notifiedCancellation':
+      return `${base} border-fuchsia-900 bg-fuchsia-600 text-white ring-1 ring-fuchsia-950/30 hover:bg-fuchsia-500 hover:ring-2 hover:ring-fuchsia-300 focus-visible:ring-fuchsia-300`
+    case 'lateCancellation':
+      return `${base} border-orange-900 bg-orange-600 text-white ring-1 ring-orange-950/30 hover:bg-orange-500 hover:ring-2 hover:ring-orange-300 focus-visible:ring-orange-300`
+    case 'noShow':
+      return `${base} border-slate-900 bg-slate-600 text-white ring-1 ring-slate-950/30 hover:bg-slate-500 hover:ring-2 hover:ring-slate-300 focus-visible:ring-slate-300`
+    case 'expired':
+      return `${base} border-zinc-900 bg-zinc-500 text-white ring-1 ring-zinc-950/30 hover:bg-zinc-400 hover:ring-2 hover:ring-zinc-300 focus-visible:ring-zinc-300`
     case 'inactive':
       return `${base} border-rose-900 bg-rose-600 text-white ring-1 ring-rose-950/30 hover:bg-rose-500 hover:ring-2 hover:ring-rose-300 focus-visible:ring-rose-300`
     default:
@@ -354,6 +384,16 @@ export function posAppointmentDayBlockSubtextClass(tone: PosAppointmentVisualTon
       return 'block truncate text-[9px] font-medium text-amber-50'
     case 'hold':
       return 'block truncate text-[9px] font-medium text-violet-50'
+    case 'cancelled':
+      return 'block truncate text-[9px] font-medium text-rose-50'
+    case 'notifiedCancellation':
+      return 'block truncate text-[9px] font-medium text-fuchsia-50'
+    case 'lateCancellation':
+      return 'block truncate text-[9px] font-medium text-orange-50'
+    case 'noShow':
+      return 'block truncate text-[9px] font-medium text-slate-50'
+    case 'expired':
+      return 'block truncate text-[9px] font-medium text-zinc-50'
     case 'inactive':
       return 'block truncate text-[9px] font-medium text-rose-50'
     default:
@@ -371,6 +411,16 @@ export function posAppointmentMonthPreviewChipClass(tone: PosAppointmentVisualTo
       return `${base} border-amber-500/90 bg-amber-100 text-amber-950`
     case 'hold':
       return `${base} border-violet-500/90 bg-violet-100 text-violet-950`
+    case 'cancelled':
+      return `${base} border-rose-500/90 bg-rose-100 text-rose-950`
+    case 'notifiedCancellation':
+      return `${base} border-fuchsia-500/90 bg-fuchsia-100 text-fuchsia-950`
+    case 'lateCancellation':
+      return `${base} border-orange-500/90 bg-orange-100 text-orange-950`
+    case 'noShow':
+      return `${base} border-slate-500/90 bg-slate-100 text-slate-950`
+    case 'expired':
+      return `${base} border-zinc-500/90 bg-zinc-100 text-zinc-950`
     case 'inactive':
       return `${base} border-rose-500/90 bg-rose-100 text-rose-950`
     default:
