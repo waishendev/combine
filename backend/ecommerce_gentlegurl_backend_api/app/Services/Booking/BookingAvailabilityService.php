@@ -505,4 +505,385 @@ class BookingAvailabilityService
 
         return $candidateStart < $breakEndAt && $candidateEnd > $breakStartAt;
     }
+
+    /**
+     * POS pooled availability with batched day context (avoids per-slot DB queries).
+     *
+     * @param  array<int,int>  $staffIds
+     * @param  callable(array<string,mixed>, array<string,mixed>): string|null  $conflictReasonResolver
+     * @return array<int, array{
+     *   start_at:string,
+     *   end_at:string,
+     *   available_staff_ids:array<int,int>,
+     *   scheduled_staff_ids:array<int,int>,
+     *   unavailable_staff_reasons:array<string,string>
+     * }>
+     */
+    public function getPosPooledAvailabilitySlots(
+        BookingService $service,
+        array $staffIds,
+        string $date,
+        int $extraDurationMin = 0,
+        int $stepMin = 15,
+        int $visibleStartMinute = 540,
+        int $visibleEndMinute = 1440,
+        ?callable $conflictReasonResolver = null,
+    ): array {
+        $staffIds = collect($staffIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        if ($staffIds === []) {
+            return [];
+        }
+
+        $timezone = $this->businessTimezone();
+        $day = Carbon::parse($date, $timezone)->startOfDay();
+        $durationMin = max(1, (int) $service->duration_min + max(0, $extraDurationMin));
+        $bufferMin = max(0, (int) $service->buffer_min);
+        $nowInBusinessTz = Carbon::now($timezone);
+        $isTodayInBusinessTz = $day->isSameDay($nowInBusinessTz);
+        $context = $this->prefetchPosDayAvailabilityContext($staffIds, $day, $bufferMin);
+
+        $visibleStartMinute = max(0, $visibleStartMinute);
+        $visibleEndMinute = max($visibleStartMinute, $visibleEndMinute);
+        $lastStartMinute = min($visibleEndMinute - $durationMin, (24 * 60) - $durationMin);
+        $visible = [];
+
+        for ($minute = $visibleStartMinute; $minute <= $lastStartMinute; $minute += max(1, $stepMin)) {
+            $startAt = $day->copy()->setTime(intdiv($minute, 60), $minute % 60, 0);
+            if ($isTodayInBusinessTz && $startAt->lessThanOrEqualTo($nowInBusinessTz)) {
+                continue;
+            }
+
+            $endAt = $startAt->copy()->addMinutes($durationMin);
+            $availableStaffIds = [];
+            $scheduledStaffIds = [];
+            $unavailableStaffReasons = [];
+
+            foreach ($staffIds as $staffId) {
+                $scheduleDiagnostics = $this->evaluatePrefetchedStaffSchedule($context, $staffId, $startAt, $endAt);
+                if ((bool) ($scheduleDiagnostics['is_available'] ?? false)) {
+                    $scheduledStaffIds[] = $staffId;
+                } else {
+                    $unavailableStaffReasons[(string) $staffId] = (string) ($scheduleDiagnostics['failure_reason'] ?? 'staff_unavailable');
+                }
+
+                $conflictDiagnostics = $this->evaluatePrefetchedStaffConflict($context, $staffId, $startAt, $endAt, $bufferMin);
+                if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
+                    $reason = $conflictReasonResolver !== null
+                        ? (string) $conflictReasonResolver($conflictDiagnostics, $scheduleDiagnostics)
+                        : 'booking_conflict';
+                    $unavailableStaffReasons[(string) $staffId] = $reason;
+                    continue;
+                }
+
+                if ((bool) ($scheduleDiagnostics['is_available'] ?? false)) {
+                    $availableStaffIds[] = $staffId;
+                }
+            }
+
+            $visible[] = [
+                'start_at' => $startAt->format('Y-m-d\TH:i:s'),
+                'end_at' => $endAt->format('Y-m-d\TH:i:s'),
+                'available_staff_ids' => array_values(array_unique($availableStaffIds)),
+                'scheduled_staff_ids' => array_values(array_unique($scheduledStaffIds)),
+                'unavailable_staff_reasons' => $unavailableStaffReasons,
+            ];
+        }
+
+        return $visible;
+    }
+
+    /**
+     * @param  array<int,int>  $staffIds
+     * @return array{
+     *   day:Carbon,
+     *   timezone:string,
+     *   schedules:array<int, BookingStaffSchedule>,
+     *   bookings_by_staff:array<int, array<int, array<string,mixed>>>,
+     *   cart_by_staff:array<int, array<int, array<string,mixed>>>,
+     *   timeoffs_by_staff:array<int, array<int, array<string,mixed>>>,
+     *   leave_by_staff:array<int, array<int, array<string,mixed>>>,
+     *   blocks:array<int, array<string,mixed>>
+     * }
+     */
+    protected function prefetchPosDayAvailabilityContext(array $staffIds, Carbon $day, int $bufferMin): array
+    {
+        $timezone = $this->businessTimezone();
+        $dayStart = $day->copy()->startOfDay();
+        $dayEnd = $day->copy()->endOfDay();
+        $queryStart = $this->normalizeForStorage($dayStart)->subMinutes($bufferMin);
+        $queryEnd = $this->normalizeForStorage($dayEnd)->addMinutes($bufferMin);
+        $requestDates = collect([$dayStart->toDateString()]);
+
+        $schedules = BookingStaffSchedule::query()
+            ->whereIn('staff_id', $staffIds)
+            ->where('day_of_week', $day->dayOfWeek)
+            ->get()
+            ->keyBy('staff_id')
+            ->all();
+
+        $bookingRows = Booking::query()
+            ->whereIn('staff_id', $staffIds)
+            ->where(function ($query) {
+                $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
+                    ->orWhere(function ($completed) {
+                        $completed->where('status', 'COMPLETED')
+                            ->where(function ($payment) {
+                                $payment->whereNull('payment_status')
+                                    ->orWhere('payment_status', '!=', 'PAID');
+                            });
+                    });
+            })
+            ->where('start_at', '<', $queryEnd->toDateTimeString())
+            ->get(['id', 'staff_id', 'booking_code', 'start_at', 'end_at', 'buffer_min', 'status', 'payment_status']);
+
+        $bookingsByStaff = [];
+        foreach ($bookingRows as $booking) {
+            $staffId = (int) $booking->staff_id;
+            $bufferedEnd = $booking->end_at
+                ? $this->normalizeForStorage($booking->end_at)->addMinutes(max(0, (int) ($booking->buffer_min ?? 0)))
+                : null;
+            if ($bufferedEnd === null || $bufferedEnd->lte($queryStart)) {
+                continue;
+            }
+            $bookingsByStaff[$staffId][] = [
+                'id' => (int) $booking->id,
+                'booking_code' => (string) ($booking->booking_code ?? ''),
+                'start_at' => optional($booking->start_at)?->toDateTimeString(),
+                'end_at' => optional($booking->end_at)?->toDateTimeString(),
+                'buffer_min' => (int) ($booking->buffer_min ?? 0),
+                'buffered_end_at' => $bufferedEnd->toDateTimeString(),
+                'status' => (string) ($booking->status ?? ''),
+                'payment_status' => (string) ($booking->payment_status ?? ''),
+            ];
+        }
+
+        $cartRows = BookingCartItem::query()
+            ->whereIn('staff_id', $staffIds)
+            ->where('status', 'active')
+            ->where('expires_at', '>', now())
+            ->where('start_at', '<', $queryEnd->toDateTimeString())
+            ->where('end_at', '>', $queryStart->toDateTimeString())
+            ->get(['id', 'staff_id', 'start_at', 'end_at', 'service_id', 'status']);
+
+        $cartByStaff = [];
+        foreach ($cartRows as $item) {
+            $staffId = (int) $item->staff_id;
+            $cartByStaff[$staffId][] = [
+                'id' => (int) $item->id,
+                'service_id' => (int) ($item->service_id ?? 0),
+                'start_at' => optional($item->start_at)?->toDateTimeString(),
+                'end_at' => optional($item->end_at)?->toDateTimeString(),
+                'status' => (string) ($item->status ?? ''),
+            ];
+        }
+
+        $timeoffRows = BookingStaffTimeoff::query()
+            ->whereIn('staff_id', $staffIds)
+            ->where('start_at', '<', $queryEnd->toDateTimeString())
+            ->where('end_at', '>', $queryStart->toDateTimeString())
+            ->get(['id', 'staff_id', 'start_at', 'end_at']);
+
+        $timeoffsByStaff = [];
+        foreach ($timeoffRows as $timeoff) {
+            $staffId = (int) $timeoff->staff_id;
+            $timeoffsByStaff[$staffId][] = [
+                'id' => (int) $timeoff->id,
+                'start_at' => optional($timeoff->start_at)?->toDateTimeString(),
+                'end_at' => optional($timeoff->end_at)?->toDateTimeString(),
+                'leave_type' => null,
+                'day_type' => null,
+            ];
+        }
+
+        $leaveRows = BookingLeaveRequest::query()
+            ->whereIn('staff_id', $staffIds)
+            ->where('status', 'approved')
+            ->where(function ($query) use ($requestDates) {
+                foreach ($requestDates as $requestDate) {
+                    $query->orWhere(function ($nested) use ($requestDate) {
+                        $nested->whereDate('start_date', '<=', $requestDate)
+                            ->whereDate('end_date', '>=', $requestDate);
+                    });
+                }
+            })
+            ->where(function ($query) {
+                $query->where('leave_type', 'off_day')
+                    ->orWhere('day_type', 'full_day');
+            })
+            ->get(['id', 'staff_id', 'approved_timeoff_id', 'leave_type', 'day_type', 'start_date', 'end_date']);
+
+        $leaveByStaff = [];
+        foreach ($leaveRows as $leave) {
+            $staffId = (int) $leave->staff_id;
+            $leaveByStaff[$staffId][] = [
+                'id' => $leave->approved_timeoff_id ? (int) $leave->approved_timeoff_id : (int) $leave->id,
+                'leave_request_id' => (int) $leave->id,
+                'start_at' => optional($leave->start_date)?->toDateString(),
+                'end_at' => optional($leave->end_date)?->toDateString(),
+                'leave_type' => (string) ($leave->leave_type ?? ''),
+                'day_type' => (string) ($leave->day_type ?? ''),
+            ];
+        }
+
+        $blockRows = BookingBlock::query()
+            ->where(function ($query) use ($staffIds) {
+                $query->where('scope', 'STORE')
+                    ->orWhere(function ($nested) use ($staffIds) {
+                        $nested->where('scope', 'STAFF')->whereIn('staff_id', $staffIds);
+                    });
+            })
+            ->where('start_at', '<', $queryEnd->toDateTimeString())
+            ->where('end_at', '>', $queryStart->toDateTimeString())
+            ->get(['id', 'scope', 'staff_id', 'start_at', 'end_at']);
+
+        $blocks = [];
+        foreach ($blockRows as $block) {
+            $blocks[] = [
+                'id' => (int) $block->id,
+                'scope' => (string) ($block->scope ?? ''),
+                'staff_id' => $block->staff_id ? (int) $block->staff_id : null,
+                'start_at' => optional($block->start_at)?->toDateTimeString(),
+                'end_at' => optional($block->end_at)?->toDateTimeString(),
+            ];
+        }
+
+        return [
+            'day' => $day,
+            'timezone' => $timezone,
+            'schedules' => $schedules,
+            'bookings_by_staff' => $bookingsByStaff,
+            'cart_by_staff' => $cartByStaff,
+            'timeoffs_by_staff' => $timeoffsByStaff,
+            'leave_by_staff' => $leaveByStaff,
+            'blocks' => $blocks,
+        ];
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array<string,mixed>
+     */
+    protected function evaluatePrefetchedStaffSchedule(array $context, int $staffId, Carbon $startAt, Carbon $endAt): array
+    {
+        if ($staffId <= 0) {
+            return ['is_available' => false, 'failure_reason' => 'invalid_staff_id'];
+        }
+
+        if ($endAt->lessThanOrEqualTo($startAt)) {
+            return ['is_available' => false, 'failure_reason' => 'end_not_after_start'];
+        }
+
+        $timezone = (string) ($context['timezone'] ?? $this->businessTimezone());
+        $start = $startAt->copy()->setTimezone($timezone);
+        $end = $endAt->copy()->setTimezone($timezone);
+
+        if (! $start->isSameDay($end)) {
+            return ['is_available' => false, 'failure_reason' => 'range_crosses_business_day'];
+        }
+
+        /** @var BookingStaffSchedule|null $schedule */
+        $schedule = $context['schedules'][$staffId] ?? null;
+        if (! $schedule) {
+            return ['is_available' => false, 'failure_reason' => 'no_staff_schedule'];
+        }
+
+        if (! $schedule->is_active) {
+            return ['is_available' => false, 'failure_reason' => 'schedule_inactive'];
+        }
+
+        $day = $start->copy()->startOfDay();
+        $startWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->start_time, $timezone);
+        $endWindow = Carbon::parse($day->toDateString() . ' ' . $schedule->end_time, $timezone);
+
+        if ($start->lt($startWindow) || $end->gt($endWindow)) {
+            return ['is_available' => false, 'failure_reason' => 'outside_staff_schedule'];
+        }
+
+        if ($this->hitsBreak($schedule->break_start, $schedule->break_end, $day, $start, $end)) {
+            return ['is_available' => false, 'failure_reason' => 'hits_staff_break'];
+        }
+
+        return ['is_available' => true, 'failure_reason' => null];
+    }
+
+    /**
+     * @param  array<string,mixed>  $context
+     * @return array<string,mixed>
+     */
+    protected function evaluatePrefetchedStaffConflict(array $context, int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin): array
+    {
+        $blockEnd = $endAt->copy()->addMinutes($bufferMin);
+        $queryStartAt = $this->normalizeForStorage($startAt);
+        $queryEndAt = $this->normalizeForStorage($endAt);
+        $queryBlockEndAt = $this->normalizeForStorage($blockEnd);
+
+        $conflictingBookingIds = [];
+        $conflictingBookingCodes = [];
+        $conflictingCartItemIds = [];
+        $detectedLeaveIds = [];
+        $detectedLeaveTypes = [];
+        $detectedBlockIds = [];
+
+        foreach ($context['bookings_by_staff'][$staffId] ?? [] as $booking) {
+            $candidateStart = Carbon::parse((string) ($booking['start_at'] ?? ''));
+            $bufferedEnd = Carbon::parse((string) ($booking['buffered_end_at'] ?? ''));
+            if ($candidateStart->lt($queryBlockEndAt) && $bufferedEnd->gt($queryStartAt)) {
+                $conflictingBookingIds[] = (int) ($booking['id'] ?? 0);
+                $code = trim((string) ($booking['booking_code'] ?? ''));
+                if ($code !== '') {
+                    $conflictingBookingCodes[] = $code;
+                }
+            }
+        }
+
+        foreach ($context['cart_by_staff'][$staffId] ?? [] as $cartItem) {
+            $cartStart = Carbon::parse((string) ($cartItem['start_at'] ?? ''));
+            $cartEnd = Carbon::parse((string) ($cartItem['end_at'] ?? ''));
+            if ($cartStart->lt($queryBlockEndAt) && $cartEnd->gt($queryStartAt)) {
+                $conflictingCartItemIds[] = (int) ($cartItem['id'] ?? 0);
+            }
+        }
+
+        foreach (array_merge($context['timeoffs_by_staff'][$staffId] ?? [], $context['leave_by_staff'][$staffId] ?? []) as $leave) {
+            $leaveStart = Carbon::parse((string) ($leave['start_at'] ?? ''))->startOfDay();
+            $leaveEnd = Carbon::parse((string) ($leave['end_at'] ?? ''))->endOfDay();
+            if ($leaveStart->lt($queryBlockEndAt) && $leaveEnd->gt($queryStartAt)) {
+                $detectedLeaveIds[] = (int) ($leave['id'] ?? 0);
+                $leaveType = trim((string) ($leave['leave_type'] ?? ''));
+                if ($leaveType !== '') {
+                    $detectedLeaveTypes[] = $leaveType;
+                }
+            }
+        }
+
+        foreach ($context['blocks'] ?? [] as $block) {
+            $scope = (string) ($block['scope'] ?? '');
+            $blockStaffId = (int) ($block['staff_id'] ?? 0);
+            if ($scope === 'STAFF' && $blockStaffId !== $staffId) {
+                continue;
+            }
+            $blockStart = Carbon::parse((string) ($block['start_at'] ?? ''));
+            $blockEndAt = Carbon::parse((string) ($block['end_at'] ?? ''));
+            if ($blockStart->lt($queryBlockEndAt) && $blockEndAt->gt($queryStartAt)) {
+                $detectedBlockIds[] = (int) ($block['id'] ?? 0);
+            }
+        }
+
+        $conflictingBookingIds = array_values(array_unique(array_filter($conflictingBookingIds)));
+        $conflictingCartItemIds = array_values(array_unique(array_filter($conflictingCartItemIds)));
+        $detectedLeaveIds = array_values(array_unique(array_filter($detectedLeaveIds)));
+        $detectedBlockIds = array_values(array_unique(array_filter($detectedBlockIds)));
+        $detectedLeaveTypes = array_values(array_unique($detectedLeaveTypes));
+
+        return [
+            'has_conflict' => ! empty($conflictingBookingIds) || ! empty($conflictingCartItemIds) || ! empty($detectedLeaveIds) || ! empty($detectedBlockIds),
+            'staff_id' => $staffId,
+            'conflicting_booking_ids' => $conflictingBookingIds,
+            'conflicting_booking_codes' => array_values(array_unique($conflictingBookingCodes)),
+            'conflicting_cart_item_ids' => $conflictingCartItemIds,
+            'detected_leave_ids' => $detectedLeaveIds,
+            'detected_leave_types' => $detectedLeaveTypes,
+            'detected_block_ids' => $detectedBlockIds,
+        ];
+    }
 }

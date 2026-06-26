@@ -183,6 +183,30 @@ export function formatPosPaymentHistoryLineType(raw: string | null | undefined):
   return s.replace(/_/g, ' ')
 }
 
+/** Stable guest identity key (matches backend PosController::resolvePosGuestIdentityKey). */
+export function resolvePosGuestIdentityKey(source?: {
+  customer_id?: number | null
+  guest_name?: string | null
+  guest_email?: string | null
+  guest_phone?: string | null
+} | null): string | null {
+  if (!source || Number(source.customer_id ?? 0) > 0) return null
+  const guestName = String(source.guest_name ?? '').trim().toUpperCase()
+  if (guestName.startsWith('UNKNOWN')) return 'unknown'
+  const guestEmail = String(source.guest_email ?? '').trim().toLowerCase()
+  if (guestEmail) return `email:${guestEmail}`
+  const guestPhone = String(source.guest_phone ?? '').trim()
+  if (guestName && guestPhone) return `guest:${guestName}|${guestPhone}`
+  if (guestName) return `name:${guestName}`
+  return null
+}
+
+export function posGuestIdentityKeysCompatible(left: string | null | undefined, right: string | null | undefined): boolean {
+  if (!left || !right) return true
+  if (left === 'unknown' || right === 'unknown') return true
+  return left === right
+}
+
 export type PageResponse<T> = {
   data: T[]
   current_page: number

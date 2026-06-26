@@ -2314,6 +2314,10 @@ class PosController extends Controller
             fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
         ) || collect($summary['add_ons'] ?? [])->contains(
             fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        ) || collect($summary['main_service_settlement_items'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        ) || collect($summary['addon_settlement_items'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
         );
     }
 
@@ -2324,6 +2328,10 @@ class PosController extends Controller
         }
 
         if ((bool) ($row['requires_settled_amount'] ?? false)) {
+            return true;
+        }
+
+        if (($row['is_range_priced'] ?? false) && (float) ($row['service_total'] ?? 0) <= 0.0001) {
             return true;
         }
 
@@ -2466,57 +2474,18 @@ class PosController extends Controller
             ]);
         }
 
-        $mergedByStart = [];
-        foreach ($staffIds as $staffId) {
-            // POS should ignore primary slot display policy; show all available times.
-            $slots = $this->availabilityService->getAvailableSlots($service, $staffId, (string) $validated['date'], 15, $extraDurationMin, false);
-            foreach ($slots as $slot) {
-                $key = $slot['start_at'] ?? null;
-                if (! $key) continue;
-                if (! isset($mergedByStart[$key])) {
-                    $mergedByStart[$key] = $slot;
-                    $mergedByStart[$key]['available_staff_ids'] = [];
-                }
-                $mergedByStart[$key]['available_staff_ids'][] = (int) $staffId;
-            }
-        }
-
-        $durationMin = max(1, (int) $service->duration_min + $extraDurationMin);
-        $lastStartMinute = max(0, (24 * 60) - $durationMin);
-        $timezone = (string) config('app.timezone', 'Asia/Kuala_Lumpur');
-        $visible = [];
-        for ($minute = 0; $minute <= $lastStartMinute; $minute += 15) {
-            $startAt = Carbon::parse(sprintf('%s %02d:%02d:00', (string) $validated['date'], intdiv($minute, 60), $minute % 60), $timezone);
-            $endAt = $startAt->copy()->addMinutes($durationMin);
-            $key = $startAt->format('Y-m-d\TH:i:s');
-            $scheduledStaffIds = [];
-            $unavailableStaffReasons = [];
-            foreach ($staffIds as $staffId) {
-                $staffId = (int) $staffId;
-                $diagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics($staffId, $startAt, $endAt);
-                if ((bool) ($diagnostics['is_available'] ?? false)) {
-                    $scheduledStaffIds[] = $staffId;
-                } else {
-                    $scheduleFailure = (string) ($diagnostics['failure_reason'] ?? 'staff_unavailable');
-                    $unavailableStaffReasons[(string) $staffId] = $scheduleFailure;
-                }
-
-                $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($staffId, $startAt, $endAt, (int) $service->buffer_min);
-                if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
-                    $unavailableStaffReasons[(string) $staffId] = $this->posAvailabilityReasonCode(array_merge($conflictDiagnostics, [
-                        'staff_schedule' => $diagnostics,
-                    ]));
-                }
-            }
-
-            $visible[] = [
-                'start_at' => $key,
-                'end_at' => $endAt->format('Y-m-d\TH:i:s'),
-                'available_staff_ids' => array_values(array_unique($mergedByStart[$key]['available_staff_ids'] ?? [])),
-                'scheduled_staff_ids' => array_values(array_unique($scheduledStaffIds)),
-                'unavailable_staff_reasons' => $unavailableStaffReasons,
-            ];
-        }
+        $visible = $this->availabilityService->getPosPooledAvailabilitySlots(
+            $service,
+            $staffIds,
+            (string) $validated['date'],
+            $extraDurationMin,
+            15,
+            9 * 60,
+            24 * 60,
+            fn (array $conflictDiagnostics, array $scheduleDiagnostics) => $this->posAvailabilityReasonCode(array_merge($conflictDiagnostics, [
+                'staff_schedule' => $scheduleDiagnostics,
+            ])),
+        );
 
         return $this->respond([
             'date' => (string) $validated['date'],
@@ -3594,12 +3563,41 @@ class PosController extends Controller
             'appointmentSettlementItems.booking:id,customer_id,guest_email',
         ]);
 
-        $hasGuestServiceContext = $cart->serviceItems->contains(function (PosCartServiceItem $item) {
-            if (! empty($item->customer_id)) return false;
-            return trim((string) ($item->guest_email ?? '')) !== '' || trim((string) ($item->guest_name ?? '')) !== '';
-        });
-        if ($hasGuestServiceContext) {
-            return $this->respondError(__('Cannot add settlement while cart is using guest details. Remove guest items or switch to a member first.'), 422);
+        $existingMemberServiceCustomerIds = $cart->serviceItems
+            ->map(fn (PosCartServiceItem $row) => (int) ($row->customer_id ?? 0))
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values();
+        $existingGuestServiceKeys = $cart->serviceItems
+            ->filter(fn (PosCartServiceItem $row) => empty($row->customer_id))
+            ->map(fn (PosCartServiceItem $row) => $this->resolvePosGuestIdentityKeyFromCartServiceItem($row))
+            ->filter(fn (?string $key) => ! empty($key))
+            ->unique()
+            ->values();
+        $currentGuestKey = $hasMember ? null : $this->resolvePosGuestIdentityKey($booking);
+
+        if ($existingMemberServiceCustomerIds->isNotEmpty()) {
+            if (! $hasMember) {
+                return $this->respondError(__('Cannot add guest settlement while cart has member booking services.'), 422);
+            }
+            if ($existingMemberServiceCustomerIds->count() !== 1 || (int) $existingMemberServiceCustomerIds->first() !== (int) $booking->customer_id) {
+                return $this->respondError(__('This settlement belongs to a different member than the booking services in cart.'), 422);
+            }
+        }
+
+        if ($existingGuestServiceKeys->isNotEmpty()) {
+            if ($hasMember) {
+                return $this->respondError(__('Cannot add member settlement while cart has guest booking services.'), 422);
+            }
+            if ($existingGuestServiceKeys->count() !== 1) {
+                return $this->respondError(__('All booking services in one cart must belong to the same guest.'), 422);
+            }
+            $lockedGuestServiceKey = (string) $existingGuestServiceKeys->first();
+            if ($currentGuestKey !== null
+                && $currentGuestKey !== $lockedGuestServiceKey
+                && ! in_array('unknown', [$lockedGuestServiceKey, $currentGuestKey], true)) {
+                return $this->respondError(__('This settlement belongs to a different guest than the booking services in cart.'), 422);
+            }
         }
 
         $existingPackageCustomerIds = $cart->packageItems
@@ -3630,8 +3628,6 @@ class PosController extends Controller
             ->filter(fn (?string $key) => ! empty($key))
             ->unique()
             ->values();
-        $currentGuestKey = $hasMember ? null : $this->resolvePosGuestIdentityKey($booking);
-
         if ($existingSettlementCustomerIds->isNotEmpty() && $existingSettlementGuestKeys->isNotEmpty()) {
             return $this->respondError(__('Appointment settlement items cannot mix member and guest in one cart.'), 422);
         }
@@ -8977,9 +8973,10 @@ class PosController extends Controller
 
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
-        $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
         $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
         $settlementItems = collect($booking->addon_items_json ?? []);
+        $originalMainServiceItem = $settlementItems
+            ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
         $linkedServiceIdsForPriceMeta = $settlementItems
             ->flatMap(fn ($item) => collect([$item['linked_booking_service_id'] ?? null])
                 ->concat(collect($item['addon_items'] ?? [])->pluck('linked_booking_service_id')))
@@ -9024,16 +9021,27 @@ class PosController extends Controller
                 ? round(max(0, (float) ($item['final_price'] ?? $item['settled_price'] ?? $item['adjusted_price'] ?? $item['override_price'] ?? $item['extra_price'] ?? 0)), 2)
                 : 0.0;
         };
-        $originalMainServiceItem = $settlementItems
-            ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
-        $originalServicePriceFinalized = ! $isRangePriced
-            || $settledServiceAmount !== null
-            || (is_array($originalMainServiceItem) && $priceIsFinalizedForItem($originalMainServiceItem, $booking->service_id));
+        $originalMainPriceServiceId = (int) (
+            (is_array($originalMainServiceItem) ? ($originalMainServiceItem['linked_booking_service_id'] ?? null) : null)
+            ?: ($booking->service_id ?? 0)
+        );
+        $mainPriceMeta = $priceMetaForServiceId($originalMainPriceServiceId);
+        $isMainRangePriced = ($mainPriceMeta['price_mode'] ?? 'fixed') === 'range';
+        $isRangePriced = $isMainRangePriced || (($booking->service?->price_mode ?? 'fixed') === 'range');
         $originalServiceAmount = $settledServiceAmount !== null
             ? $settledServiceAmount
             : (is_array($originalMainServiceItem)
-                ? $effectivePriceForItem($originalMainServiceItem, $booking->service_id)
-                : ($isRangePriced ? 0.0 : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0)));
+                ? $effectivePriceForItem($originalMainServiceItem, $originalMainPriceServiceId)
+                : ($isMainRangePriced ? 0.0 : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0)));
+        $originalServicePriceFinalized = ! $isMainRangePriced
+            || ($settledServiceAmount !== null && $settledServiceAmount > 0.0001)
+            || (
+                $originalServiceAmount > 0.0001
+                && (
+                    ! is_array($originalMainServiceItem)
+                    || $priceIsFinalizedForItem($originalMainServiceItem, $originalMainPriceServiceId)
+                )
+            );
         $extraMainServices = $settlementItems
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
             ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
@@ -9074,8 +9082,8 @@ class PosController extends Controller
             'cn_name' => $booking->service?->cn_name,
             'extra_duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)),
             'extra_price' => round(max(0, $originalServiceAmount), 2),
-            'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
-            ...$priceMetaForServiceId($booking->service_id),
+            'linked_booking_service_id' => $originalMainPriceServiceId,
+            ...$mainPriceMeta,
             'price_finalized' => $originalServicePriceFinalized,
             'is_original' => true,
             'add_ons' => [],
@@ -9341,7 +9349,7 @@ class PosController extends Controller
             'main_service_settlement_items' => $serviceOutstandingRows->all(),
             'settled_service_amount' => $settledServiceAmount !== null ? round($settledServiceAmount, 2) : null,
             'is_range_priced' => $isRangePriced,
-            'requires_settled_amount' => $isRangePriced && $settledServiceAmount === null,
+            'requires_settled_amount' => $isMainRangePriced && ! $originalServicePriceFinalized,
             'add_ons' => $addonItems->all(),
             'addon_settlement_items' => $addonSettlementItems->all(),
             'addon_total_duration_min' => $addonTotalDurationMin,
@@ -9634,17 +9642,39 @@ class PosController extends Controller
             return null;
         }
 
-        $guestName = strtoupper(trim((string) ($booking->guest_name ?? '')));
+        return $this->resolvePosGuestIdentityKeyFromContact(
+            (string) ($booking->guest_name ?? ''),
+            (string) ($booking->guest_email ?? ''),
+            (string) ($booking->guest_phone ?? ''),
+        );
+    }
+
+    protected function resolvePosGuestIdentityKeyFromCartServiceItem(PosCartServiceItem $item): ?string
+    {
+        if (! empty($item->customer_id)) {
+            return null;
+        }
+
+        return $this->resolvePosGuestIdentityKeyFromContact(
+            (string) ($item->guest_name ?? ''),
+            (string) ($item->guest_email ?? ''),
+            (string) ($item->guest_phone ?? ''),
+        );
+    }
+
+    protected function resolvePosGuestIdentityKeyFromContact(string $guestNameRaw, string $guestEmailRaw, string $guestPhoneRaw): ?string
+    {
+        $guestName = strtoupper(trim($guestNameRaw));
         if (str_starts_with($guestName, 'UNKNOWN')) {
             return 'unknown';
         }
 
-        $guestEmail = strtolower(trim((string) ($booking->guest_email ?? '')));
+        $guestEmail = strtolower(trim($guestEmailRaw));
         if ($guestEmail !== '') {
             return 'email:' . $guestEmail;
         }
 
-        $guestPhone = trim((string) ($booking->guest_phone ?? ''));
+        $guestPhone = trim($guestPhoneRaw);
         if ($guestName !== '' && $guestPhone !== '') {
             return 'guest:' . $guestName . '|' . $guestPhone;
         }

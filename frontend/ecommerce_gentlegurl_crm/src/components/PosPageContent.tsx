@@ -30,7 +30,7 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
-import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange } from '@/components/pos/posAppointmentHelpers'
+import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -2040,7 +2040,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return set
   }, [cartAppointmentSettlementItems])
 
-  const hasCartProducts = cartItems.length > 0
+  const cartMemberServiceCustomerIds = useMemo(() => {
+    const ids = new Set<number>()
+    for (const row of cartServiceItems) {
+      const id = Number(row.customer_id ?? 0)
+      if (Number.isFinite(id) && id > 0) ids.add(id)
+    }
+    return ids
+  }, [cartServiceItems])
+  const cartGuestServiceIdentityKeys = useMemo(() => {
+    const keys = new Set<string>()
+    for (const row of cartServiceItems) {
+      const key = resolvePosGuestIdentityKey(row)
+      if (key) keys.add(key)
+    }
+    return keys
+  }, [cartServiceItems])
   const hasCartBookServices = cartServiceItems.length > 0
   const hasCartPackages = cartPackageItems.length > 0
   const hasCartAppointmentSettlements = cartAppointmentSettlementItems.length > 0
@@ -2053,8 +2068,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   }, [hasCartAppointmentSettlements, hasCartGuestSettlement])
   /** Member/guest validation before pay (product-only carts skip) */
   const checkoutRequiresCustomerValidation = hasCartBookServices || hasCartPackages || hasCartAppointmentSettlements
-  /** Rules C,E,F,G: any package ⇒ member only, no guest */
-  const checkoutRequiresMemberOnly = hasCartPackages || (hasCartAppointmentSettlements && !hasCartGuestSettlement)
+  /** Rules C,E,F,G: any package or member booking service ⇒ member only */
+  const checkoutRequiresMemberOnly = hasCartPackages || cartMemberServiceCustomerIds.size > 0 || (hasCartAppointmentSettlements && !hasCartGuestSettlement)
   /** Rules B,D: book services without packages ⇒ member or guest */
   const checkoutAllowsGuestToggle = hasCartBookServices && !hasCartPackages
   /** Same Member / Guest UI as booking flow; product-only adds optional context + Clear */
@@ -7652,13 +7667,33 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       const lockedName = (cartAppointmentSettlementItems[0]?.customer_name ?? '').trim()
                       const apptName = String(appt.customer_name ?? '').trim()
                       const isLockedMismatchByName = Boolean(lockedId && lockedName && apptName && lockedName !== apptName)
-                      const isLockedMismatch = isLockedMismatchById || isLockedMismatchByName
-                      const cartHasGuestContext = cartServiceItems.some((row) => !row.customer_id && Boolean(row.guest_email?.trim() || row.guest_name?.trim()))
-                      const disableSettlementAdd = isLockedMismatch || cartHasGuestContext
-                      const disableReason = isLockedMismatch
-                        ? 'Different member. Remove current settlement to change.'
-                        : cartHasGuestContext
-                          ? 'Guest checkout in cart. Settlement requires member; remove guest items or clear guest details first.'
+                      const isMemberSettlementMismatch = isLockedMismatchById || isLockedMismatchByName
+                        || (cartMemberServiceCustomerIds.size > 0 && !apptCustomerId)
+                        || (cartMemberServiceCustomerIds.size > 0 && apptCustomerId > 0 && !cartMemberServiceCustomerIds.has(apptCustomerId))
+                      const cartGuestServiceKey = cartGuestServiceIdentityKeys.size === 1
+                        ? Array.from(cartGuestServiceIdentityKeys)[0]
+                        : null
+                      const apptGuestKey = resolvePosGuestIdentityKey(appt)
+                      const isGuestSettlementMismatch = Boolean(
+                        cartMemberServiceCustomerIds.size > 0 && apptCustomerId > 0,
+                      ) || Boolean(
+                        cartGuestServiceIdentityKeys.size > 0 && apptCustomerId > 0,
+                      ) || Boolean(
+                        cartGuestServiceIdentityKeys.size > 1,
+                      ) || Boolean(
+                        cartGuestServiceKey && apptGuestKey && !posGuestIdentityKeysCompatible(cartGuestServiceKey, apptGuestKey),
+                      )
+                      const disableSettlementAdd = isMemberSettlementMismatch || isGuestSettlementMismatch
+                      const disableReason = isMemberSettlementMismatch
+                        ? (isLockedMismatchById || isLockedMismatchByName
+                          ? 'Different member. Remove current settlement to change.'
+                          : 'Member booking services in cart — guest settlement cannot be added.')
+                        : isGuestSettlementMismatch
+                          ? (cartGuestServiceIdentityKeys.size > 1
+                            ? 'Cart has multiple guest booking services. Use one guest per cart.'
+                            : apptCustomerId > 0
+                              ? 'Guest booking services in cart — member settlement cannot be added.'
+                              : 'Different guest than booking services in cart.')
                           : ''
                       const guestContactLines = getGuestContactLines(appt)
                       const isInCart = catalogSettlementBookingIdsInCart.has(appt.id)
