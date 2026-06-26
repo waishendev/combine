@@ -139,7 +139,7 @@ export default function SalesVisualWorkspaceClient({ canExport }: { canExport: b
           </section>
           <section>
             <h4 className="text-base font-semibold text-slate-800">Booking</h4>
-            <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — one row per booking line.</p>
+            <p className="mb-3 text-xs text-slate-500">Deposits, settlement, add-ons, and packages — grouped to one row per order; line details remain in View Details.</p>
             <SalesChannelReportPage mode="booking" canExport={canExport} defaultDatePreset="today" paramPrefix="bk_" isAllWorkspace showDateInputsInFilterModal={false} onDataChanged={refreshVisualSummary} />
           </section>
         </div>
