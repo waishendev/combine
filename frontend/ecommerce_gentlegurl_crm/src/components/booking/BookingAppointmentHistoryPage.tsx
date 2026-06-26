@@ -89,7 +89,7 @@ const APPOINTMENT_HISTORY_COLUMN_WIDTHS = [
   '4.5rem', // Actions
 ] as const
 
-const STATUS_OPTIONS = ['HOLD', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED']
+const STATUS_OPTIONS = ['HOLD', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED']
 const PAYMENT_OPTIONS = [
   { value: 'paid', label: 'Paid' },
   { value: 'unpaid', label: 'Unpaid' },

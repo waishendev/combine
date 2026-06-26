@@ -30,7 +30,7 @@ import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
   extractPaged,
-  posAppointmentBlocksActiveSchedule,
+  posAppointmentRegisterPaid,
   posAppointmentShowOnScheduleCalendar,
   formatAppointmentCustomerDisplayName,
   formatAppointmentCustomerContactLines,
@@ -45,6 +45,45 @@ import {
   type PosAppointmentScheduleScope,
 } from './posAppointmentHelpers'
 import type { PosAppointmentCurrentUser, PosAppointmentDetail, PosAppointmentListItem, ServiceAddonQuestion, ServiceAddonOption } from './posAppointmentTypes'
+
+
+type AppointmentStatusFilterValue =
+  | ''
+  | 'HOLD'
+  | 'CONFIRMED'
+  | 'COMPLETED_UNPAID'
+  | 'COMPLETED_PAID'
+  | 'CANCELLED'
+  | 'NOTIFIED_CANCELLATION'
+  | 'LATE_CANCELLATION'
+  | 'NO_SHOW'
+  | 'EXPIRED'
+  | 'VOIDED'
+
+const APPOINTMENT_STATUS_FILTER_OPTIONS: Array<{ value: AppointmentStatusFilterValue; label: string }> = [
+  { value: '', label: 'All statuses' },
+  { value: 'HOLD', label: 'Hold' },
+  { value: 'CONFIRMED', label: 'Confirmed' },
+  { value: 'COMPLETED_UNPAID', label: 'Completed unpaid' },
+  { value: 'COMPLETED_PAID', label: 'Completed paid' },
+  { value: 'CANCELLED', label: 'Cancelled' },
+  { value: 'NOTIFIED_CANCELLATION', label: 'Notified Cancellation' },
+  { value: 'LATE_CANCELLATION', label: 'Late Cancellation' },
+  { value: 'NO_SHOW', label: 'No Show' },
+  { value: 'EXPIRED', label: 'Expired' },
+  { value: 'VOIDED', label: 'Voided' },
+]
+
+const appointmentStatusFilterApiValue = (value: string) =>
+  ['COMPLETED_UNPAID', 'COMPLETED_PAID'].includes(value) ? 'COMPLETED' : value
+
+const appointmentMatchesStatusFilter = (row: PosAppointmentListItem, value: string) => {
+  if (!value) return true
+  const status = String(row.status ?? '').toUpperCase()
+  if (value === 'COMPLETED_UNPAID') return status === 'COMPLETED' && !posAppointmentRegisterPaid(row)
+  if (value === 'COMPLETED_PAID') return status === 'COMPLETED' && posAppointmentRegisterPaid(row)
+  return status === value
+}
 
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
@@ -268,7 +307,7 @@ export default function PosAppointmentsWorkspace({
   const [appointmentStaffFilter, setAppointmentStaffFilter] = useState('')
   const [appointmentStaffOptions, setAppointmentStaffOptions] = useState<StaffOption[]>([])
   const [appointmentStaffLoading, setAppointmentStaffLoading] = useState(false)
-  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('')
+  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState<AppointmentStatusFilterValue>('')
   const [appointmentFiltersOpen, setAppointmentFiltersOpen] = useState(false)
   const [createAppointmentModalOpen, setCreateAppointmentModalOpen] = useState(false)
   const [createAppointmentServices, setCreateAppointmentServices] = useState<BookingServiceOption[]>([])
@@ -831,7 +870,12 @@ export default function PosAppointmentsWorkspace({
       if (appointmentQuery.trim()) params.set('q', appointmentQuery.trim())
       if (appointmentCustomerFilter.trim()) params.set('customer_id', appointmentCustomerFilter.trim())
       if (appointmentStaffFilter.trim()) params.set('staff_id', appointmentStaffFilter.trim())
-      if (appointmentStatusFilter.trim()) params.set('status', appointmentStatusFilter.trim())
+      if (scheduleScope === 'all') {
+        params.set('include_terminal_statuses', '1')
+      }
+      if (appointmentStatusFilter.trim()) {
+        params.set('status', appointmentStatusFilterApiValue(appointmentStatusFilter.trim()))
+      }
 
       const res = await fetch(`/api/proxy/pos/appointments?${params.toString()}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
@@ -845,7 +889,7 @@ export default function PosAppointmentsWorkspace({
       setAppointments(
         paged.data
           .map(normalizePosAppointmentListItem)
-          .filter(posAppointmentBlocksActiveSchedule),
+          .filter((row) => appointmentMatchesStatusFilter(row, appointmentStatusFilter)),
       )
       setPendingCancellationRequestsCount(paged.pending_cancellation_requests_count)
     } catch {
@@ -866,6 +910,7 @@ export default function PosAppointmentsWorkspace({
     appointmentStatusFilter,
     posApptCalendarMonth,
     posApptViewMode,
+    scheduleScope,
   ])
 
   const fetchCreateAppointmentServices = useCallback(async () => {
@@ -2839,6 +2884,7 @@ export default function PosAppointmentsWorkspace({
     fetchAppointments,
     posApptCalendarMonth,
     posApptViewMode,
+    scheduleScope,
   ])
 
   useEffect(() => {
@@ -2851,6 +2897,7 @@ export default function PosAppointmentsWorkspace({
     appointmentStatusFilter,
     posApptCalendarMonth,
     posApptViewMode,
+    scheduleScope,
   ])
 
   useEffect(() => {
@@ -3510,13 +3557,15 @@ export default function PosAppointmentsWorkspace({
                   </select>
                   <select
                     value={appointmentStatusFilter}
-                    onChange={(e) => setAppointmentStatusFilter(e.target.value)}
+                    onChange={(e) => setAppointmentStatusFilter(e.target.value as AppointmentStatusFilterValue)}
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    aria-label="Appointment status filter"
                   >
-                    <option value="">ALL</option>
-                    <option value="HOLD">HOLD</option>
-                    <option value="CONFIRMED">CONFIRMED</option>
-                    <option value="COMPLETED">COMPLETED (UNPAID)</option>
+                    {APPOINTMENT_STATUS_FILTER_OPTIONS.map((option) => (
+                      <option key={`appointment-status-${option.value || 'all'}`} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                     </div>
                   ) : null}
