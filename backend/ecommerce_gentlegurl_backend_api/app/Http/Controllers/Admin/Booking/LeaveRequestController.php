@@ -98,48 +98,14 @@ class LeaveRequestController extends Controller
         $targetWeekdays = array_values(array_unique(array_map('intval', $data['days_of_week'])));
         $weekdayLabels = $this->leaveService->weekdayLabels();
         $selectedDayNames = array_map(fn (int $day) => $weekdayLabels[$day] ?? (string) $day, $targetWeekdays);
-        $createdDates = [];
-        $skippedDates = [];
 
-        DB::transaction(function () use (
+        [$createdDates, $skippedDates] = DB::transaction(fn () => $this->generateOffDaysForWeekdaysInRange(
             $staffId,
             $monthStart,
             $monthEnd,
             $targetWeekdays,
-            $weekdayLabels,
-            $request,
-            &$createdDates,
-            &$skippedDates
-        ) {
-            for ($cursor = $monthStart->copy(); $cursor->lte($monthEnd); $cursor->addDay()) {
-                if (! in_array($cursor->dayOfWeek, $targetWeekdays, true)) {
-                    continue;
-                }
-
-                $dateKey = $cursor->toDateString();
-                $weekdayLabel = $weekdayLabels[$cursor->dayOfWeek] ?? (string) $cursor->dayOfWeek;
-                $reason = sprintf(
-                    'Auto-generated off day (%s, %s)',
-                    $weekdayLabel,
-                    $cursor->format('F Y')
-                );
-
-                $item = $this->leaveService->createApprovedOffDay(
-                    $staffId,
-                    $cursor->copy()->startOfDay(),
-                    $cursor->copy()->startOfDay(),
-                    $reason,
-                    $request->user()?->id,
-                    'Off day generated for selected weekday(s)'
-                );
-
-                if ($item) {
-                    $createdDates[] = $dateKey;
-                } else {
-                    $skippedDates[] = $dateKey;
-                }
-            }
-        });
+            $request->user()?->id,
+        ));
 
         return $this->respond([
             'staff_id' => $staffId,
@@ -151,6 +117,88 @@ class LeaveRequestController extends Controller
             'created_dates' => $createdDates,
             'skipped_dates' => $skippedDates,
         ], 'Monthly off days generated for selected weekday(s).');
+    }
+
+    public function generateOffDaysFromWeeklyScheduleByYear(Request $request)
+    {
+        $data = $request->validate([
+            'staff_id' => ['required', 'integer', 'exists:staffs,id'],
+            'target_year' => ['required', 'integer', 'min:2000', 'max:2100'],
+            'days_of_week' => ['required', 'array', 'min:1'],
+            'days_of_week.*' => ['integer', 'between:0,6', 'distinct'],
+        ]);
+
+        $staffId = (int) $data['staff_id'];
+        $yearStart = Carbon::createFromDate((int) $data['target_year'], 1, 1)->startOfDay();
+        $yearEnd = $yearStart->copy()->endOfYear()->startOfDay();
+        $targetWeekdays = array_values(array_unique(array_map('intval', $data['days_of_week'])));
+        $weekdayLabels = $this->leaveService->weekdayLabels();
+        $selectedDayNames = array_map(fn (int $day) => $weekdayLabels[$day] ?? (string) $day, $targetWeekdays);
+
+        [$createdDates, $skippedDates] = DB::transaction(fn () => $this->generateOffDaysForWeekdaysInRange(
+            $staffId,
+            $yearStart,
+            $yearEnd,
+            $targetWeekdays,
+            $request->user()?->id,
+        ));
+
+        return $this->respond([
+            'staff_id' => $staffId,
+            'target_year' => (int) $data['target_year'],
+            'days_of_week' => $targetWeekdays,
+            'weekday_labels' => $selectedDayNames,
+            'created_count' => count($createdDates),
+            'skipped_count' => count($skippedDates),
+            'created_dates' => $createdDates,
+            'skipped_dates' => $skippedDates,
+        ], 'Yearly off days generated for selected weekday(s).');
+    }
+
+    /**
+     * @return array{0: array<int, string>, 1: array<int, string>}
+     */
+    private function generateOffDaysForWeekdaysInRange(
+        int $staffId,
+        Carbon $rangeStart,
+        Carbon $rangeEnd,
+        array $targetWeekdays,
+        ?int $userId,
+    ): array {
+        $weekdayLabels = $this->leaveService->weekdayLabels();
+        $createdDates = [];
+        $skippedDates = [];
+
+        for ($cursor = $rangeStart->copy(); $cursor->lte($rangeEnd); $cursor->addDay()) {
+            if (! in_array($cursor->dayOfWeek, $targetWeekdays, true)) {
+                continue;
+            }
+
+            $dateKey = $cursor->toDateString();
+            $weekdayLabel = $weekdayLabels[$cursor->dayOfWeek] ?? (string) $cursor->dayOfWeek;
+            $reason = sprintf(
+                'Auto-generated off day (%s, %s)',
+                $weekdayLabel,
+                $cursor->format('F Y')
+            );
+
+            $item = $this->leaveService->createApprovedOffDay(
+                $staffId,
+                $cursor->copy()->startOfDay(),
+                $cursor->copy()->startOfDay(),
+                $reason,
+                $userId,
+                'Off day generated for selected weekday(s)'
+            );
+
+            if ($item) {
+                $createdDates[] = $dateKey;
+            } else {
+                $skippedDates[] = $dateKey;
+            }
+        }
+
+        return [$createdDates, $skippedDates];
     }
 
     public function updateOffDay(Request $request, int $id)

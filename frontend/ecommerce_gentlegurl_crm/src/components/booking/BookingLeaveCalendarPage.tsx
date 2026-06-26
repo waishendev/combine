@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 
@@ -201,6 +201,87 @@ const canManageOffDay = (item: LeaveRow, canUpdate: boolean): boolean =>
 const monthToTargetValue = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 
+type GenerateOffDaysResponse = {
+  created_count?: number
+  skipped_count?: number
+}
+
+function WeekdayCheckboxGrid({
+  selected,
+  disabled = false,
+  onChange,
+}: {
+  selected: number[]
+  disabled?: boolean
+  onChange: (days: number[]) => void
+}) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      {WEEKDAY_OPTIONS.map((day) => {
+        const checked = selected.includes(day.value)
+        return (
+          <label
+            key={day.value}
+            className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+              checked ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-300'
+            }`}
+          >
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-gray-300 text-emerald-600"
+              checked={checked}
+              disabled={disabled}
+              onChange={(e) => {
+                onChange(
+                  e.target.checked
+                    ? [...selected, day.value].sort((a, b) => a - b)
+                    : selected.filter((value) => value !== day.value),
+                )
+              }}
+            />
+            <span>{day.label}</span>
+          </label>
+        )
+      })}
+    </div>
+  )
+}
+
+const formatGenerateSummary = (payload: GenerateOffDaysResponse): string => {
+  const created = Number(payload.created_count ?? 0)
+  const skipped = Number(payload.skipped_count ?? 0)
+  if (created === 0 && skipped === 0) return 'No matching dates in the selected period.'
+  const parts = [`Created ${created} off day(s).`]
+  if (skipped > 0) parts.push(`${skipped} date(s) skipped (already booked).`)
+  return parts.join(' ')
+}
+
+type PageToast = { id: string; message: string; title: string }
+
+function LeaveCalendarSuccessPanel({ title, message }: { title: string; message: string }) {
+  return (
+    <div
+      className="rounded-xl border-2 border-emerald-400 bg-gradient-to-b from-emerald-50 to-white px-5 py-6 text-center shadow-sm ring-4 ring-emerald-100/80"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+        <i className="fa-solid fa-circle-check text-3xl" aria-hidden />
+      </div>
+      <p className="text-lg font-bold text-emerald-900">{title}</p>
+      <p className="mt-2 text-sm leading-relaxed text-emerald-800">{message}</p>
+    </div>
+  )
+}
+
+function LeaveCalendarErrorBanner({ message }: { message: string }) {
+  return (
+    <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-800" role="alert">
+      {message}
+    </div>
+  )
+}
+
 export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLeaveCalendarPageProps) {
   const canUpdate = permissions.includes('booking.schedules.update')
   const now = new Date()
@@ -213,20 +294,38 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
   const [error, setError] = useState<string | null>(null)
   const [isOffDayModalOpen, setIsOffDayModalOpen] = useState(false)
   const [isGenerateModalOpen, setIsGenerateModalOpen] = useState(false)
+  const [isGenerateYearModalOpen, setIsGenerateYearModalOpen] = useState(false)
   const [offDayForm, setOffDayForm] = useState({ staff_id: '', start_date: '', end_date: '', reason: '' })
   const [generateForm, setGenerateForm] = useState({
     staff_id: '',
     target_month: monthToTargetValue(now),
     days_of_week: [] as number[],
   })
+  const [generateYearForm, setGenerateYearForm] = useState({
+    staff_id: '',
+    target_year: String(now.getFullYear()),
+    days_of_week: [] as number[],
+  })
   const [isGenerating, setIsGenerating] = useState(false)
+  const [isCreatingOffDay, setIsCreatingOffDay] = useState(false)
   const [generateSummary, setGenerateSummary] = useState<string | null>(null)
+  const [pageToasts, setPageToasts] = useState<PageToast[]>([])
   const [editingOffDay, setEditingOffDay] = useState<LeaveRow | null>(null)
   const [editOffDayForm, setEditOffDayForm] = useState({ start_date: '', end_date: '', reason: '' })
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null)
   const [logsByRequestId, setLogsByRequestId] = useState<Record<number, LeaveLogEntry[]>>({})
   const [logsLoadingId, setLogsLoadingId] = useState<number | null>(null)
   const [expandedLogsId, setExpandedLogsId] = useState<number | null>(null)
+
+  const dismissPageToast = useCallback((id: string) => {
+    setPageToasts((prev) => prev.filter((toast) => toast.id !== id))
+  }, [])
+
+  const pushPageToast = useCallback((title: string, message: string) => {
+    const id = `${Date.now()}_${Math.random().toString(16).slice(2)}`
+    setPageToasts((prev) => [...prev, { id, title, message }].slice(-3))
+    window.setTimeout(() => dismissPageToast(id), 7000)
+  }, [dismissPageToast])
 
   const loadStaffOptions = async () => {
     const res = await fetch('/api/proxy/admin/booking/leave-balances', { cache: 'no-store' })
@@ -266,6 +365,12 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
     setIsGenerateModalOpen(false)
   }
 
+  const closeGenerateYearModal = () => {
+    setError(null)
+    setGenerateSummary(null)
+    setIsGenerateYearModalOpen(false)
+  }
+
   const openGenerateModal = () => {
     setError(null)
     setGenerateSummary(null)
@@ -275,6 +380,17 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       days_of_week: [],
     })
     setIsGenerateModalOpen(true)
+  }
+
+  const openGenerateYearModal = () => {
+    setError(null)
+    setGenerateSummary(null)
+    setGenerateYearForm({
+      staff_id: staffFilter || '',
+      target_year: String(month.getFullYear()),
+      days_of_week: [],
+    })
+    setIsGenerateYearModalOpen(true)
   }
 
   const generateOffDaysFromWeeklySchedule = async () => {
@@ -303,13 +419,54 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
         }),
       })
 
-      const payload = await res.json().catch(() => ({})) as { message?: string }
+      const root = await res.json().catch(() => ({})) as { data?: GenerateOffDaysResponse; message?: string }
       if (!res.ok) {
-        setError(payload.message ?? 'Failed to generate off days.')
+        setError(root.message ?? 'Failed to generate off days.')
         return
       }
 
-      setGenerateSummary('Off days created successfully.')
+      setGenerateSummary(formatGenerateSummary(root.data ?? {}))
+      await loadRows()
+    } catch {
+      setError('Failed to generate off days.')
+    } finally {
+      setIsGenerating(false)
+    }
+  }
+
+  const generateOffDaysFromYearSchedule = async () => {
+    setError(null)
+    setGenerateSummary(null)
+
+    if (!generateYearForm.staff_id || !generateYearForm.target_year) {
+      setError('Please select staff and target year.')
+      return
+    }
+
+    if (generateYearForm.days_of_week.length === 0) {
+      setError('Please select at least one weekday.')
+      return
+    }
+
+    setIsGenerating(true)
+    try {
+      const res = await fetch('/api/proxy/admin/booking/off-days/generate-from-weekly-schedule-by-year', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: Number(generateYearForm.staff_id),
+          target_year: Number(generateYearForm.target_year),
+          days_of_week: generateYearForm.days_of_week,
+        }),
+      })
+
+      const root = await res.json().catch(() => ({})) as { data?: GenerateOffDaysResponse; message?: string }
+      if (!res.ok) {
+        setError(root.message ?? 'Failed to generate off days.')
+        return
+      }
+
+      setGenerateSummary(formatGenerateSummary(root.data ?? {}))
       await loadRows()
     } catch {
       setError('Failed to generate off days.')
@@ -446,26 +603,35 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
       return
     }
 
-    const res = await fetch('/api/proxy/admin/booking/off-days', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        staff_id: Number(offDayForm.staff_id),
-        start_date: offDayForm.start_date,
-        end_date: offDayForm.end_date,
-        reason: offDayForm.reason || null,
-      }),
-    })
+    const staffName = staffOptions.find((row) => String(row.staff_id) === offDayForm.staff_id)?.staff_name ?? 'Staff'
+    const dateRange = formatDateRange(offDayForm.start_date, offDayForm.end_date)
 
-    if (!res.ok) {
-      const payload = await res.json().catch(() => ({})) as { message?: string }
-      setError(payload.message ?? 'Failed to create off day.')
-      return
+    setIsCreatingOffDay(true)
+    try {
+      const res = await fetch('/api/proxy/admin/booking/off-days', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staff_id: Number(offDayForm.staff_id),
+          start_date: offDayForm.start_date,
+          end_date: offDayForm.end_date,
+          reason: offDayForm.reason || null,
+        }),
+      })
+
+      if (!res.ok) {
+        const payload = await res.json().catch(() => ({})) as { message?: string }
+        setError(payload.message ?? 'Failed to create off day.')
+        return
+      }
+
+      pushPageToast('Off day created', `${staffName} · ${dateRange}`)
+      setOffDayForm({ staff_id: '', start_date: '', end_date: '', reason: '' })
+      setIsOffDayModalOpen(false)
+      await loadRows()
+    } finally {
+      setIsCreatingOffDay(false)
     }
-
-    setOffDayForm({ staff_id: '', start_date: '', end_date: '', reason: '' })
-    setIsOffDayModalOpen(false)
-    await loadRows()
   }
 
   useEffect(() => {
@@ -512,25 +678,55 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
   return (
     <div className="space-y-4">
+      <div className="pointer-events-none fixed inset-x-0 top-4 z-[60] flex flex-col items-center gap-3 px-4">
+        {pageToasts.map((toast) => (
+          <div
+            key={toast.id}
+            className="pointer-events-auto flex w-full max-w-lg items-start gap-3 rounded-xl border-2 border-emerald-400 bg-emerald-50 px-4 py-4 shadow-xl ring-4 ring-emerald-100"
+            role="status"
+            aria-live="polite"
+          >
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+              <i className="fa-solid fa-circle-check text-xl" aria-hidden />
+            </div>
+            <div className="min-w-0 flex-1 pt-0.5">
+              <p className="text-base font-bold text-emerald-900">{toast.title}</p>
+              <p className="mt-0.5 text-sm leading-relaxed text-emerald-800">{toast.message}</p>
+            </div>
+            <button
+              type="button"
+              className="shrink-0 rounded-md p-1 text-emerald-700 transition hover:bg-emerald-100"
+              aria-label="Dismiss notification"
+              onClick={() => dismissPageToast(toast.id)}
+            >
+              <i className="fa-solid fa-xmark" />
+            </button>
+          </div>
+        ))}
+      </div>
+
       {isOffDayModalOpen && (
         <CrmFormModalShell
           title="Create Off Days"
           onClose={closeOffDayModal}
+          closeDisabled={isCreatingOffDay}
           footer={
             <>
               <button
                 type="button"
                 className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
                 onClick={closeOffDayModal}
+                disabled={isCreatingOffDay}
               >
                 Cancel
               </button>
               <button
                 type="button"
-                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700"
+                className="px-4 py-2 text-sm text-white bg-blue-600 rounded-md hover:bg-blue-700 disabled:opacity-50"
                 onClick={createOffDay}
+                disabled={isCreatingOffDay}
               >
-                Create
+                {isCreatingOffDay ? 'Creating…' : 'Create'}
               </button>
             </>
           }
@@ -540,7 +736,7 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
               Off Day is admin-managed and blocks booking availability without deducting leave balance.
             </p>
 
-            {error && <p className="text-sm text-rose-600">{error}</p>}
+            {error ? <LeaveCalendarErrorBanner message={error} /> : null}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2">
@@ -619,16 +815,28 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
                   {isGenerating ? 'Generating…' : 'Generate'}
                 </button>
               )}
+              {generateSummary ? (
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700"
+                  onClick={closeGenerateModal}
+                >
+                  Done
+                </button>
+              ) : null}
             </>
           }
         >
           <div className="space-y-3 p-5">
-            <p className="text-xs text-slate-500">
-              Mark every selected weekday in the target month as off days for this staff.
-            </p>
+            {generateSummary ? (
+              <LeaveCalendarSuccessPanel title="Generation complete" message={generateSummary} />
+            ) : (
+              <>
+                <p className="text-xs text-slate-500">
+                  Mark every selected weekday in the target month as off days for this staff.
+                </p>
 
-            {error && <p className="text-sm text-rose-600">{error}</p>}
-            {generateSummary && <p className="text-sm text-emerald-700">{generateSummary}</p>}
+                {error ? <LeaveCalendarErrorBanner message={error} /> : null}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <div className="md:col-span-2">
@@ -661,37 +869,110 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
 
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">Weekday(s)</label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {WEEKDAY_OPTIONS.map((day) => {
-                    const checked = generateForm.days_of_week.includes(day.value)
-                    return (
-                      <label
-                        key={day.value}
-                        className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
-                          checked ? 'border-emerald-400 bg-emerald-50 text-emerald-800' : 'border-gray-300'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 rounded border-gray-300 text-emerald-600"
-                          checked={checked}
-                          disabled={isGenerating}
-                          onChange={(e) => {
-                            setGenerateForm((prev) => ({
-                              ...prev,
-                              days_of_week: e.target.checked
-                                ? [...prev.days_of_week, day.value].sort((a, b) => a - b)
-                                : prev.days_of_week.filter((value) => value !== day.value),
-                            }))
-                          }}
-                        />
-                        <span>{day.label}</span>
-                      </label>
-                    )
-                  })}
-                </div>
+                <WeekdayCheckboxGrid
+                  selected={generateForm.days_of_week}
+                  disabled={isGenerating}
+                  onChange={(days_of_week) => setGenerateForm((prev) => ({ ...prev, days_of_week }))}
+                />
               </div>
             </div>
+              </>
+            )}
+          </div>
+        </CrmFormModalShell>
+      )}
+
+      {isGenerateYearModalOpen && (
+        <CrmFormModalShell
+          title="Generate Yearly Off Days by Weekday"
+          onClose={closeGenerateYearModal}
+          closeDisabled={isGenerating}
+          size="lg"
+          footer={
+            <>
+              <button
+                type="button"
+                className="px-4 py-2 text-sm text-gray-700 border border-gray-300 rounded-md hover:bg-gray-200"
+                onClick={closeGenerateYearModal}
+                disabled={isGenerating}
+              >
+                {generateSummary ? 'Close' : 'Cancel'}
+              </button>
+              {!generateSummary && (
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700 disabled:opacity-50"
+                  onClick={generateOffDaysFromYearSchedule}
+                  disabled={isGenerating}
+                >
+                  {isGenerating ? 'Generating…' : 'Generate'}
+                </button>
+              )}
+              {generateSummary ? (
+                <button
+                  type="button"
+                  className="px-4 py-2 text-sm text-white bg-emerald-600 rounded-md hover:bg-emerald-700"
+                  onClick={closeGenerateYearModal}
+                >
+                  Done
+                </button>
+              ) : null}
+            </>
+          }
+        >
+          <div className="space-y-3 p-5">
+            {generateSummary ? (
+              <LeaveCalendarSuccessPanel title="Generation complete" message={generateSummary} />
+            ) : (
+              <>
+                <p className="text-xs text-slate-500">
+                  Mark every selected weekday across the full target year as off days for this staff. Existing off days on those dates are skipped.
+                </p>
+
+                {error ? <LeaveCalendarErrorBanner message={error} /> : null}
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Staff</label>
+                <select
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  value={generateYearForm.staff_id}
+                  onChange={(e) => setGenerateYearForm((prev) => ({ ...prev, staff_id: e.target.value }))}
+                  disabled={isGenerating}
+                >
+                  <option value="">Select Staff</option>
+                  {staffOptions.map((row) => (
+                    <option key={row.staff_id} value={row.staff_id}>
+                      {row.staff_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Target year</label>
+                <input
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                  type="number"
+                  min={2000}
+                  max={2100}
+                  value={generateYearForm.target_year}
+                  onChange={(e) => setGenerateYearForm((prev) => ({ ...prev, target_year: e.target.value }))}
+                  disabled={isGenerating}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 mb-2">Weekday(s)</label>
+                <WeekdayCheckboxGrid
+                  selected={generateYearForm.days_of_week}
+                  disabled={isGenerating}
+                  onChange={(days_of_week) => setGenerateYearForm((prev) => ({ ...prev, days_of_week }))}
+                />
+              </div>
+            </div>
+              </>
+            )}
           </div>
         </CrmFormModalShell>
       )}
@@ -714,6 +995,15 @@ export default function BookingLeaveCalendarPage({ permissions = [] }: BookingLe
           >
             <i className="fa-solid fa-calendar-week" />
             Generate by Weekday
+          </button>
+
+          <button
+            className="bg-teal-600 hover:bg-teal-700 text-white px-4 py-2 rounded text-sm flex items-center gap-2"
+            onClick={openGenerateYearModal}
+            type="button"
+          >
+            <i className="fa-solid fa-calendar-days" />
+            Generate by Year
           </button>
 
           <div>

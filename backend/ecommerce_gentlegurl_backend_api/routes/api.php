@@ -1309,6 +1309,8 @@ Route::middleware(['api.session', 'auth:web,sanctum'])->prefix('/admin/booking')
         ->middleware('permission:booking.schedules.update');
     Route::post('/off-days/generate-from-weekly-schedule', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'generateOffDaysFromWeeklySchedule'])
         ->middleware('permission:booking.schedules.update');
+    Route::post('/off-days/generate-from-weekly-schedule-by-year', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'generateOffDaysFromWeeklyScheduleByYear'])
+        ->middleware('permission:booking.schedules.update');
     Route::put('/off-days/{id}', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'updateOffDay'])
         ->middleware('permission:booking.schedules.update');
     Route::post('/off-days/{id}/cancel', [\App\Http\Controllers\Admin\Booking\LeaveRequestController::class, 'cancelOffDay'])
