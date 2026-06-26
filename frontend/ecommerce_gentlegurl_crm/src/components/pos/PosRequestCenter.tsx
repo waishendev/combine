@@ -6,6 +6,7 @@ import OrderConfirmPaymentModal from '@/components/OrderConfirmPaymentModal'
 import OrderRejectPaymentModal from '@/components/OrderRejectPaymentModal'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import { calculateOrderStatus, type OrderApiItem } from '@/components/orderUtils'
+import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
 
 export type PosRequestCenterProps = {
   disabled?: boolean
@@ -59,6 +60,7 @@ type BookingRequestRow = {
   requestedAt: string | null
   status: string
   badgeClassName: string
+  detail?: PosAppointmentDetail | null
 }
 
 type EcommerceRequestRow = {
@@ -77,13 +79,7 @@ type BookingConfirmState =
   | { kind: 'hold'; row: BookingRequestRow; action: 'approve' | 'reject' }
   | null
 
-const ECOMMERCE_REQUEST_FILTERS = [
-  { status: 'pending', payment_status: 'unpaid' },
-  { status: 'processing', payment_status: 'unpaid' },
-  { status: 'reject_payment_proof', payment_status: 'unpaid' },
-  { payment_status: 'failed' },
-  { status: 'cancelled' },
-]
+const ECOMMERCE_COMPLETED_STATUS = 'completed'
 
 const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING']
 
@@ -92,6 +88,11 @@ function extractRows<T>(payload: unknown): T[] {
   if (Array.isArray(data)) return data as T[]
   const nested = (data as { data?: unknown } | null)?.data
   return Array.isArray(nested) ? (nested as T[]) : []
+}
+
+function fmtMoney(value?: number | string | null) {
+  const amount = Number(value ?? 0)
+  return `RM ${Number.isFinite(amount) ? amount.toFixed(2) : '0.00'}`
 }
 
 function fmtDateTime(value?: string | null) {
@@ -133,7 +134,22 @@ function buildHoldRequest(row: BookingHoldRow): BookingRequestRow {
     requestedAt: row.created_at ?? row.appointment_start_at ?? null,
     status: row.status ?? 'HOLD',
     badgeClassName: 'bg-amber-100 text-amber-800 ring-amber-200',
+    detail: row as unknown as PosAppointmentDetail,
   }
+}
+
+function bookingServiceLabel(detail?: PosAppointmentDetail | null) {
+  const mainServices = detail?.main_services?.map((item) => item.name).filter(Boolean) ?? []
+  const addons = detail?.add_ons?.map((item) => item.name).filter(Boolean) ?? []
+  const labels = [...mainServices, ...addons]
+  if (labels.length > 0) return labels.join(', ')
+  return detail?.service?.name || '-'
+}
+
+function bookingStaffLabel(detail?: PosAppointmentDetail | null) {
+  const splitNames = detail?.staff_splits?.map((staff) => staff.staff_name).filter(Boolean) ?? []
+  if (splitNames.length > 0) return splitNames.join(', ')
+  return detail?.staff?.name || '-'
 }
 
 export default function PosRequestCenter({
@@ -150,6 +166,9 @@ export default function PosRequestCenter({
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [bookingConfirm, setBookingConfirm] = useState<BookingConfirmState>(null)
+  const [viewingBooking, setViewingBooking] = useState<BookingRequestRow | null>(null)
+  const [bookingDetail, setBookingDetail] = useState<PosAppointmentDetail | null>(null)
+  const [bookingDetailLoading, setBookingDetailLoading] = useState(false)
   const [adminNote, setAdminNote] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
@@ -169,12 +188,7 @@ export default function PosRequestCenter({
           const qs = new URLSearchParams({ status, per_page: '50' })
           return fetch(`/api/proxy/pos/appointments?${qs.toString()}`, { cache: 'no-store' })
         }),
-        ...ECOMMERCE_REQUEST_FILTERS.map((filter) => {
-          const qs = new URLSearchParams({ per_page: '25', order_type: 'ecommerce' })
-          if (filter.status) qs.set('status', filter.status)
-          if (filter.payment_status) qs.set('payment_status', filter.payment_status)
-          return fetch(`/api/proxy/ecommerce/orders?${qs.toString()}`, { cache: 'no-store' })
-        }),
+        fetch('/api/proxy/ecommerce/orders?per_page=100&order_type=ecommerce', { cache: 'no-store' }),
       ])
 
       const holdResponses = remainingResponses.slice(0, BOOKING_HOLD_FILTERS.length)
@@ -197,6 +211,7 @@ export default function PosRequestCenter({
       const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
       const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
       const uniqueOrders = Array.from(new Map(orders.map((order) => [Number(order.id), order])).values())
+        .filter((order) => String(order.status ?? '').toLowerCase() !== ECOMMERCE_COMPLETED_STATUS)
       setEcommerceRows(uniqueOrders.map((order) => ({
         id: Number(order.id),
         orderNo: order.order_no ?? order.order_number ?? `#${order.id}`,
@@ -223,6 +238,20 @@ export default function PosRequestCenter({
     { label: 'Total pending', value: totalCount, className: 'border-slate-200 bg-slate-50 text-slate-900' },
   ], [bookingRows.length, ecommerceRows.length, totalCount])
 
+  const openBookingDetail = async (row: BookingRequestRow) => {
+    setViewingBooking(row)
+    setBookingDetail(row.detail ?? null)
+    if (row.bookingId <= 0) return
+    setBookingDetailLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${row.bookingId}`, { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (res.ok) setBookingDetail((json?.data ?? null) as PosAppointmentDetail | null)
+    } finally {
+      setBookingDetailLoading(false)
+    }
+  }
+
   const submitBookingReview = async () => {
     if (!bookingConfirm) return
     setSubmitting(true)
@@ -244,6 +273,10 @@ export default function PosRequestCenter({
       setBookingConfirm(null)
       setAdminNote('')
       await load()
+      if (viewingBooking?.key === bookingConfirm.row.key) {
+        setViewingBooking(null)
+        setBookingDetail(null)
+      }
       await onBookingRequestsChanged?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to review request.')
@@ -276,8 +309,8 @@ export default function PosRequestCenter({
             <div className="border-b border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-5 text-white">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h3 className="text-xl font-bold">Request Center</h3>
-                  <p className="mt-1 text-sm text-slate-200">Pending booking and ecommerce requests that need staff action.</p>
+                  <h3 className="text-xl font-bold">Pending Tasks</h3>
+                  <p className="mt-1 text-sm text-slate-200">Request Center tasks that need staff action before completion.</p>
                 </div>
                 <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1 text-2xl leading-none text-slate-200 hover:bg-white/10 hover:text-white" aria-label="Close Request Center">×</button>
               </div>
@@ -319,7 +352,7 @@ export default function PosRequestCenter({
                         <div className="text-sm text-slate-600"><span className="font-semibold text-slate-800">Requested:</span> {fmtDateTime(row.requestedAt)}</div>
                         <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-700">{row.status}</span>
                         <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                          {row.bookingId > 0 && onViewBooking ? <button type="button" onClick={() => void onViewBooking(row.bookingId)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View booking</button> : null}
+                          {row.bookingId > 0 ? <button type="button" onClick={() => void openBookingDetail(row)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View booking</button> : null}
                           {canReviewBookingRequests && row.requestType === 'Cancellation request' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row, action: 'approve' })} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Approve cancel</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row, action: 'reject' })} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject cancel</button></> : null}
                           {canReviewBookingRequests && row.requestType === 'Hold confirmation' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row, action: 'approve' })} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row, action: 'reject' })} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject / cancel</button></> : null}
                         </div>
@@ -358,6 +391,48 @@ export default function PosRequestCenter({
         </div>
       ) : null}
 
+      {viewingBooking ? (
+        <div className="fixed inset-0 z-[90] flex items-center justify-end bg-slate-950/50 p-4">
+          <div className="flex max-h-[92vh] w-full max-w-xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
+            <div className="border-b border-slate-200 px-5 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-600">Booking Detail</p>
+                  <h3 className="text-xl font-bold text-slate-950">{bookingDetail?.booking_code || viewingBooking.number}</h3>
+                  <p className="mt-1 text-sm text-slate-500">{viewingBooking.requestType} · created {fmtDateTime(viewingBooking.requestedAt)}</p>
+                </div>
+                <button type="button" onClick={() => { setViewingBooking(null); setBookingDetail(null) }} className="rounded-full p-1 text-2xl leading-none text-slate-500 hover:bg-slate-100" aria-label="Close booking detail">×</button>
+              </div>
+            </div>
+            <div className="flex-1 space-y-4 overflow-y-auto p-5">
+              {bookingDetailLoading ? <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">Loading booking detail...</p> : null}
+              <div className="grid gap-3 sm:grid-cols-2">
+                {[
+                  ['Customer', bookingDetail?.customer?.name || bookingDetail?.customer_name || bookingDetail?.guest_name || viewingBooking.customerName],
+                  ['Service', bookingServiceLabel(bookingDetail)],
+                  ['Staff', bookingStaffLabel(bookingDetail)],
+                  ['Date/time', fmtDateTime(bookingDetail?.appointment_start_at)],
+                  ['Status', bookingDetail?.status || viewingBooking.status],
+                  ['Deposit', fmtMoney(bookingDetail?.deposit_paid ?? bookingDetail?.deposit_contribution)],
+                  ['Remaining balance', fmtMoney(bookingDetail?.balance_due ?? bookingDetail?.amount_due_now)],
+                  ['Request type', viewingBooking.requestType],
+                  ['Request created', fmtDateTime(viewingBooking.requestedAt)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950">{value || '-'}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
+              {canReviewBookingRequests ? <><button type="button" onClick={() => setBookingConfirm({ kind: viewingBooking.requestType === 'Cancellation request' ? 'cancellation' : 'hold', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Approve</button><button type="button" onClick={() => setBookingConfirm({ kind: viewingBooking.requestType === 'Cancellation request' ? 'cancellation' : 'hold', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
+              {onViewBooking && viewingBooking.bookingId > 0 ? <button type="button" onClick={() => void onViewBooking(viewingBooking.bookingId)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Open Full Booking</button> : null}
+              <button type="button" onClick={() => { setViewingBooking(null); setBookingDetail(null) }} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Close</button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {bookingConfirm ? (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
