@@ -7741,6 +7741,165 @@ class PosController extends Controller
         return (float) ($this->resolvePosBookingDepositBreakdown($cart, $this->resolveServiceItemClaimStatuses($cart))['deposit_total'] ?? 0);
     }
 
+    /**
+     * Deposit tier rules aligned with Booking CartController + shop deposit preview.
+     *
+     * @param  array<int, array{type: string, deposit_amount: float, scope: string, addon_id?: int|null, label?: string|null}>  $candidates
+     * @param  array<int, array{id?: int|null, label?: string, deposit_contribution: float}>  $addonDepositItems
+     * @return array{main_deposit_applied: float, addon_deposit_applied: float, deposit_total: float, addon_deposit_items: array<int, array{id?: int|null, label?: string, deposit_contribution: float}>}
+     */
+    protected function applyBookingDepositTierRules(array $candidates, array $addonDepositItems = []): array
+    {
+        $candidates = array_values(array_filter($candidates, fn ($row) => is_array($row)));
+        $mainDepositApplied = 0.0;
+        $addonDepositApplied = 0.0;
+
+        if (empty($candidates)) {
+            return [
+                'main_deposit_applied' => 0.0,
+                'addon_deposit_applied' => 0.0,
+                'deposit_total' => 0.0,
+                'addon_deposit_items' => $addonDepositItems,
+            ];
+        }
+
+        $premiumCandidates = array_values(array_filter(
+            $candidates,
+            fn (array $row) => strtoupper((string) ($row['type'] ?? '')) === 'PREMIUM',
+        ));
+
+        if (! empty($premiumCandidates)) {
+            foreach ($premiumCandidates as $row) {
+                $deposit = max(0, (float) ($row['deposit_amount'] ?? 0));
+                if (($row['scope'] ?? 'main') === 'addon') {
+                    $addonDepositApplied += $deposit;
+                    foreach ($addonDepositItems as &$addonRow) {
+                        if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
+                            $addonRow['deposit_contribution'] = round($deposit, 2);
+                            break;
+                        }
+                    }
+                    unset($addonRow);
+                } else {
+                    $mainDepositApplied += $deposit;
+                }
+            }
+        } else {
+            $applied = $candidates[0];
+            $appliedAmount = max(0, (float) ($applied['deposit_amount'] ?? 0));
+            if (($applied['scope'] ?? 'main') === 'addon') {
+                $addonDepositApplied = $appliedAmount;
+                foreach ($addonDepositItems as &$addonRow) {
+                    if ((int) ($addonRow['id'] ?? 0) === (int) ($applied['addon_id'] ?? 0)) {
+                        $addonRow['deposit_contribution'] = round($appliedAmount, 2);
+                        break;
+                    }
+                }
+                unset($addonRow);
+            } else {
+                $mainDepositApplied = $appliedAmount;
+            }
+        }
+
+        return [
+            'main_deposit_applied' => round($mainDepositApplied, 2),
+            'addon_deposit_applied' => round($addonDepositApplied, 2),
+            'deposit_total' => round($mainDepositApplied + $addonDepositApplied, 2),
+            'addon_deposit_items' => $addonDepositItems,
+        ];
+    }
+
+    protected function resolveLinkedBookingServicesForAddonRows(array $addonRows): \Illuminate\Support\Collection
+    {
+        $linkedIds = collect($addonRows)
+            ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
+            ->pluck('linked_booking_service_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($linkedIds->isEmpty()) {
+            return collect();
+        }
+
+        return BookingService::query()
+            ->whereIn('id', $linkedIds->all())
+            ->get(['id', 'service_type', 'deposit_amount'])
+            ->keyBy('id');
+    }
+
+    protected function normalizeAddonDepositMeta(array $addon, \Illuminate\Support\Collection $linkedServicesById): array
+    {
+        if (strtolower((string) ($addon['item_kind'] ?? '')) === 'main_service') {
+            return $addon;
+        }
+
+        $linkedId = (int) ($addon['linked_booking_service_id'] ?? 0);
+        if ($linkedId > 0 && $linkedServicesById->has($linkedId)) {
+            $linked = $linkedServicesById->get($linkedId);
+            if (trim((string) ($addon['linked_service_type'] ?? '')) === '') {
+                $addon['linked_service_type'] = (string) ($linked->service_type ?? '');
+            }
+            if (! array_key_exists('linked_deposit_amount', $addon) || $addon['linked_deposit_amount'] === null) {
+                $addon['linked_deposit_amount'] = round(max(0, (float) ($linked->deposit_amount ?? 0)), 2);
+            }
+        }
+
+        return $addon;
+    }
+
+    protected function resolveBookingDepositBreakdown(Booking $booking, bool $packageCoversMain = false): array
+    {
+        $rawAddonRows = collect($booking->addon_items_json ?? [])
+            ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? 'addon')) !== 'main_service')
+            ->values()
+            ->all();
+        $linkedServicesById = $this->resolveLinkedBookingServicesForAddonRows($rawAddonRows);
+        $addonDepositItems = [];
+        $candidates = [];
+
+        if (! $packageCoversMain) {
+            $mainType = strtoupper((string) ($booking->service?->service_type ?? 'STANDARD'));
+            $mainDeposit = max(0, (float) ($booking->service?->deposit_amount ?? 0));
+            $candidates[] = [
+                'type' => $mainType,
+                'deposit_amount' => $mainDeposit,
+                'scope' => 'main',
+            ];
+        }
+
+        foreach ($rawAddonRows as $rawAddon) {
+            $addon = $this->normalizeAddonDepositMeta((array) $rawAddon, $linkedServicesById);
+            $linkedType = strtoupper((string) ($addon['linked_service_type'] ?? ''));
+            if ($linkedType === '') {
+                continue;
+            }
+
+            $addonId = isset($addon['id']) ? (int) $addon['id'] : null;
+            $addonDepositItems[] = [
+                'id' => $addonId,
+                'label' => (string) ($addon['label'] ?? $addon['name'] ?? 'Add-on'),
+                'deposit_contribution' => 0.0,
+            ];
+            $candidates[] = [
+                'type' => $linkedType,
+                'deposit_amount' => max(0, (float) ($addon['linked_deposit_amount'] ?? 0)),
+                'scope' => 'addon',
+                'addon_id' => $addonId,
+            ];
+        }
+
+        $applied = $this->applyBookingDepositTierRules($candidates, $addonDepositItems);
+
+        return [
+            'deposit_total' => (float) $applied['deposit_total'],
+            'main_deposit_applied' => (float) $applied['main_deposit_applied'],
+            'addon_deposit_applied' => (float) $applied['addon_deposit_applied'],
+            'addon_deposit_items' => $applied['addon_deposit_items'],
+        ];
+    }
+
     protected function resolvePosBookingDepositBreakdown(PosCart $cart, array $serviceClaimStatuses = []): array
     {
         if ($cart->serviceItems->isEmpty()) {
@@ -7762,11 +7921,11 @@ class PosController extends Controller
         $depositByServiceItem = [];
         $depositByServiceItemAddons = [];
         $depositByServiceItemOverrides = [];
-        $candidates = [];
 
         foreach ($cart->serviceItems as $item) {
             $itemId = (int) $item->id;
             $depositByServiceItem[$itemId] = 0.0;
+            $linkedServicesById = $this->resolveLinkedBookingServicesForAddonRows((array) ($item->addon_items_json ?? []));
             $depositByServiceItemAddons[$itemId] = collect((array) ($item->addon_items_json ?? []))
                 ->filter(fn ($addon) => strtolower((string) ($addon['item_kind'] ?? '')) !== 'main_service')
                 ->filter(fn ($addon) => (int) ($addon['id'] ?? 0) > 0)
@@ -7781,15 +7940,23 @@ class PosController extends Controller
                 ->all();
             $claimStatus = $serviceClaimStatuses[(int) $item->id] ?? null;
             $claimedByPackage = in_array($claimStatus, ['reserved', 'consumed'], true);
+            $itemCandidates = [];
+
             // Package claim waives the main service deposit only; add-on deposits still apply.
             if (! $claimedByPackage) {
                 $type = strtoupper((string) ($item->bookingService?->service_type ?? 'STANDARD'));
                 $mainDeposit = max(0, (float) ($item->bookingService?->deposit_amount ?? 0));
                 $mainOverride = $this->applyPriceOverrideToAmount($item, 'main', $mainDeposit);
-                $candidates[] = ['service_item_id' => $itemId, 'type' => $type, 'deposit_amount' => (float) $mainOverride['amount'], 'price_override' => $mainOverride['override']];
+                $itemCandidates[] = [
+                    'type' => $type,
+                    'deposit_amount' => (float) $mainOverride['amount'],
+                    'scope' => 'main',
+                    'price_override' => $mainOverride['override'],
+                ];
             }
 
-            foreach ((array) ($item->addon_items_json ?? []) as $addon) {
+            foreach ((array) ($item->addon_items_json ?? []) as $rawAddon) {
+                $addon = $this->normalizeAddonDepositMeta((array) $rawAddon, $linkedServicesById);
                 if (strtolower((string) ($addon['item_kind'] ?? '')) === 'main_service' || (int) ($addon['id'] ?? 0) <= 0) {
                     continue;
                 }
@@ -7800,79 +7967,61 @@ class PosController extends Controller
                 $addonDeposit = max(0, (float) ($addon['linked_deposit_amount'] ?? 0));
                 $addonLineKey = 'addon:' . (int) ($addon['id'] ?? 0);
                 $addonOverride = $this->applyPriceOverrideToAmount($item, $addonLineKey, $addonDeposit);
-                $candidates[] = [
-                    'service_item_id' => $itemId,
+                $itemCandidates[] = [
                     'type' => $addonType,
                     'deposit_amount' => (float) $addonOverride['amount'],
-                    'price_override' => $addonOverride['override'],
                     'scope' => 'addon',
                     'addon_id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                    'price_override' => $addonOverride['override'],
                 ];
             }
-        }
 
-        $standardBaseAmount = 0.0;
-        $standardBaseAppliedItemId = null;
+            $addonRowsForApply = collect($depositByServiceItemAddons[$itemId] ?? [])
+                ->map(fn (array $row) => [
+                    'id' => $row['id'] ?? null,
+                    'label' => (string) ($row['name'] ?? 'Add-on'),
+                    'deposit_contribution' => 0.0,
+                ])
+                ->values()
+                ->all();
+            $applied = $this->applyBookingDepositTierRules($itemCandidates, $addonRowsForApply);
 
-        $premiumCandidates = collect($candidates)->filter(fn (array $row) => ($row['type'] ?? '') === 'PREMIUM')->values();
-        if ($premiumCandidates->isNotEmpty()) {
-            $premiumCount = (int) $premiumCandidates->count();
-            $premiumDepositTotal = (float) $premiumCandidates->sum(fn (array $row) => (float) ($row['deposit_amount'] ?? 0));
-            foreach ($premiumCandidates as $row) {
-                $itemId = (int) ($row['service_item_id'] ?? 0);
-                if ($itemId <= 0) {
+            $depositByServiceItem[$itemId] = (float) $applied['main_deposit_applied'];
+            foreach ($itemCandidates as $candidate) {
+                if (($candidate['scope'] ?? 'main') !== 'main' || empty($candidate['price_override'])) {
                     continue;
                 }
-                $depositAmount = (float) ($row['deposit_amount'] ?? 0);
-                $isAddon = ($row['scope'] ?? 'main') === 'addon';
-                if ($isAddon) {
-                    foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
-                        if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
-                            $addonRow['deposit_contribution'] = round($depositAmount, 2);
-                            if (! empty($row['price_override'])) {
-                                $addonRow['price_override'] = $row['price_override'];
-                            }
-                            break;
-                        }
-                    }
-                    unset($addonRow);
-                } else {
-                    $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
-                    if (! empty($row['price_override'])) {
-                        $depositByServiceItemOverrides[$itemId] = $row['price_override'];
-                    }
-                }
+                $depositByServiceItemOverrides[$itemId] = $candidate['price_override'];
             }
-        } else {
-            $standardCandidates = collect($candidates)->filter(fn (array $row) => ($row['type'] ?? '') !== 'PREMIUM')->values();
-            $standardCount = (int) $standardCandidates->count();
-            foreach ($standardCandidates as $row) {
-                $itemId = (int) ($row['service_item_id'] ?? 0);
-                if ($itemId <= 0) {
-                    continue;
-                }
-                $depositAmount = (float) ($row['deposit_amount'] ?? 0);
-                $isAddon = ($row['scope'] ?? 'main') === 'addon';
-                if ($isAddon) {
-                    foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
-                        if ((int) ($addonRow['id'] ?? 0) === (int) ($row['addon_id'] ?? 0)) {
-                            $addonRow['deposit_contribution'] = round($depositAmount, 2);
-                            if (! empty($row['price_override'])) {
-                                $addonRow['price_override'] = $row['price_override'];
-                            }
+
+            foreach ($applied['addon_deposit_items'] as $appliedAddonRow) {
+                foreach ($depositByServiceItemAddons[$itemId] as &$addonRow) {
+                    if ((int) ($addonRow['id'] ?? 0) !== (int) ($appliedAddonRow['id'] ?? 0)) {
+                        continue;
+                    }
+                    $addonRow['deposit_contribution'] = (float) ($appliedAddonRow['deposit_contribution'] ?? 0);
+                    foreach ($itemCandidates as $candidate) {
+                        if (($candidate['scope'] ?? '') === 'addon'
+                            && (int) ($candidate['addon_id'] ?? 0) === (int) ($addonRow['id'] ?? 0)
+                            && ! empty($candidate['price_override'])) {
+                            $addonRow['price_override'] = $candidate['price_override'];
                             break;
                         }
                     }
-                    unset($addonRow);
-                } else {
-                    $depositByServiceItem[$itemId] = round((float) ($depositByServiceItem[$itemId] ?? 0) + $depositAmount, 2);
-                    if (! empty($row['price_override'])) {
-                        $depositByServiceItemOverrides[$itemId] = $row['price_override'];
-                    }
-                    if ($standardBaseAppliedItemId === null) {
-                        $standardBaseAmount = round($depositAmount, 2);
-                        $standardBaseAppliedItemId = $itemId;
-                    }
+                    break;
+                }
+                unset($addonRow);
+            }
+
+            $itemPremiumCount = collect($itemCandidates)->where('type', 'PREMIUM')->count();
+            if ($itemPremiumCount > 0) {
+                $premiumCount += $itemPremiumCount;
+                $premiumDepositTotal += (float) $applied['deposit_total'];
+            } else {
+                $standardCount += count($itemCandidates) > 0 ? 1 : 0;
+                if ($standardBaseAppliedItemId === null && (float) $applied['deposit_total'] > 0) {
+                    $standardBaseAmount = (float) $applied['deposit_total'];
+                    $standardBaseAppliedItemId = $itemId;
                 }
             }
         }
@@ -9177,105 +9326,67 @@ class PosController extends Controller
                 'balance_due' => round($balanceDue, 2),
             ];
         })->values();
-        $actualAppointmentDepositCollected = round((float) OrderItem::query()
+        $packageUsageEarly = CustomerServicePackageUsage::query()
+            ->where('booking_id', (int) $booking->id)
+            ->whereIn('status', ['reserved', 'consumed'])
+            ->latest('id')
+            ->first();
+        if (! $packageUsageEarly && $booking->customer_id && $booking->service_id) {
+            $packageUsageEarly = CustomerServicePackageUsage::query()
+                ->where('customer_id', (int) $booking->customer_id)
+                ->where('booking_service_id', (int) $booking->service_id)
+                ->where('used_from', 'POS')
+                ->where('used_ref_id', (int) $booking->id)
+                ->whereIn('status', ['reserved', 'consumed'])
+                ->latest('id')
+                ->first();
+        }
+        $packageCoversMain = $packageUsageEarly !== null;
+        $depositBreakdown = $this->resolveBookingDepositBreakdown($booking, $packageCoversMain);
+        $expectedDepositByAddonId = collect($depositBreakdown['addon_deposit_items'] ?? [])
+            ->mapWithKeys(fn (array $row) => [(int) ($row['id'] ?? 0) => (float) ($row['deposit_contribution'] ?? 0)]);
+
+        $mainDepositCollected = round((float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_deposit')
             ->sum('line_total'), 2);
+        $addonDepositCollected = round((float) OrderItem::query()
+            ->where('booking_id', (int) $booking->id)
+            ->where('line_type', 'booking_addon')
+            ->where('variant_name_snapshot', 'Booking Add-on Deposit')
+            ->sum('line_total'), 2);
+        $actualAppointmentDepositCollected = round($mainDepositCollected + $addonDepositCollected, 2);
         if ($actualAppointmentDepositCollected <= 0.0001) {
             $actualAppointmentDepositCollected = round(max(0, (float) ($booking->deposit_amount ?? 0)), 2);
         }
-        $linkedOrderIds = OrderServiceItem::query()
-            ->where('booking_id', (int) $booking->id)
-            ->pluck('order_id')
-            ->merge(
-                OrderItem::query()
-                    ->where('booking_id', (int) $booking->id)
-                    ->where('line_type', 'booking_deposit')
-                    ->pluck('order_id')
-            )
-            ->filter()
-            ->unique()
-            ->values();
 
-        $linkedBookingRows = $linkedOrderIds->isNotEmpty()
-            ? OrderServiceItem::query()
-                ->leftJoin('bookings', 'bookings.id', '=', 'order_service_items.booking_id')
-                ->leftJoin('booking_services', 'booking_services.id', '=', 'bookings.service_id')
-                ->whereIn('order_service_items.order_id', $linkedOrderIds->all())
-                ->whereNotNull('order_service_items.booking_id')
-                ->get([
-                    'order_service_items.booking_id',
-                    'booking_services.service_type',
-                ])
-                ->unique('booking_id')
-                ->values()
-            : collect();
+        $depositPaid = $actualAppointmentDepositCollected;
+        $linkedBookingDeposit = $actualAppointmentDepositCollected > 0.0001
+            ? $actualAppointmentDepositCollected
+            : (float) ($depositBreakdown['deposit_total'] ?? 0);
 
-        $settings = BookingSetting::query()->first();
-        $premiumDeposit = (float) ($settings?->deposit_amount_per_premium ?? 0);
-        $standardDeposit = (float) ($settings?->deposit_base_amount_if_only_standard ?? 0);
+        $applyAddonDepositDisplay = function (array $addon) use ($expectedDepositByAddonId): array {
+            $addonId = (int) ($addon['id'] ?? 0);
 
-        $premiumBookings = $linkedBookingRows
-            ->filter(fn ($row) => strtoupper((string) ($row->service_type ?? 'STANDARD')) === 'PREMIUM')
-            ->values();
-        $standardBookings = $linkedBookingRows
-            ->filter(fn ($row) => strtoupper((string) ($row->service_type ?? 'STANDARD')) !== 'PREMIUM')
-            ->sortBy(fn ($row) => (int) ($row->booking_id ?? 0))
-            ->values();
+            return [
+                ...$addon,
+                'linked_deposit_amount' => $addonId > 0
+                    ? (float) ($expectedDepositByAddonId->get($addonId, (float) ($addon['linked_deposit_amount'] ?? 0)))
+                    : (float) ($addon['linked_deposit_amount'] ?? 0),
+            ];
+        };
+        $addonItems = $addonItems->map($applyAddonDepositDisplay)->values();
+        $addonSettlementItems = $addonSettlementItems->map($applyAddonDepositDisplay)->values();
+        $mainServices = $mainServices->map(function (array $service) use ($applyAddonDepositDisplay) {
+            if (($service['is_original'] ?? false) !== true) {
+                return $service;
+            }
 
-        $expectedDepositTotal = $premiumBookings->isNotEmpty()
-            ? (float) $premiumBookings->count() * $premiumDeposit
-            : ($standardBookings->isNotEmpty() ? $standardDeposit : 0.0);
-
-        $depositFromOrderItems = $linkedOrderIds->isNotEmpty()
-            ? (float) OrderItem::query()
-                ->whereIn('order_id', $linkedOrderIds->all())
-                ->where('line_type', 'booking_deposit')
-                ->sum('line_total')
-            : 0.0;
-
-        $depositFromOrderNotes = $linkedOrderIds->isNotEmpty()
-            ? (float) Order::query()
-                ->whereIn('id', $linkedOrderIds->all())
-                ->get(['notes'])
-                ->reduce(function (float $carry, Order $order) {
-                    $notes = (string) ($order->notes ?? '');
-                    if (preg_match('/booking_deposit=([0-9]+(?:\\.[0-9]+)?)/', $notes, $matches) === 1) {
-                        return $carry + (float) ($matches[1] ?? 0);
-                    }
-
-                    return $carry;
-                }, 0.0)
-            : 0.0;
-
-        $linkedBookingDeposit = $depositFromOrderNotes > 0
-            ? $depositFromOrderNotes
-            : ($depositFromOrderItems > 0
-                ? ($expectedDepositTotal > 0 ? min($depositFromOrderItems, $expectedDepositTotal) : $depositFromOrderItems)
-                : 0.0);
-
-        $depositPaid = 0.0;
-        $currentType = strtoupper((string) ($booking->service?->service_type ?? 'STANDARD'));
-        if ($premiumBookings->isNotEmpty()) {
-            $perPremiumContribution = $premiumBookings->count() > 0
-                ? round($linkedBookingDeposit / $premiumBookings->count(), 2)
-                : 0.0;
-            $depositPaid = $currentType === 'PREMIUM' ? $perPremiumContribution : 0.0;
-        } elseif ($standardBookings->isNotEmpty()) {
-            $firstStandardBookingId = (int) ($standardBookings->first()?->booking_id ?? 0);
-            $depositPaid = (int) $booking->id === $firstStandardBookingId ? $linkedBookingDeposit : 0.0;
-        }
-
-        $bookingDepositAmount = round(max(0, (float) ($booking->deposit_amount ?? 0)), 2);
-        if ($actualAppointmentDepositCollected > 0.0001) {
-            $depositPaid = $actualAppointmentDepositCollected;
-        } elseif (abs($bookingDepositAmount - $depositPaid) > 0.0001) {
-            $depositPaid = $bookingDepositAmount;
-        }
-
-        if ($linkedBookingDeposit <= 0.0001 && $actualAppointmentDepositCollected > 0.0001) {
-            $linkedBookingDeposit = $actualAppointmentDepositCollected;
-        }
+            return [
+                ...$service,
+                'add_ons' => collect($service['add_ons'] ?? [])->map(fn (array $addon) => $applyAddonDepositDisplay($addon))->values()->all(),
+            ];
+        })->values();
 
         $mainSettlementPaidRows = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
@@ -9364,6 +9475,9 @@ class PosController extends Controller
             'addon_total_price' => round($addonTotalPrice, 2),
             'deposit_contribution' => round($depositPaid, 2),
             'deposit_paid' => round($depositPaid, 2),
+            'expected_deposit_total' => round((float) ($depositBreakdown['deposit_total'] ?? 0), 2),
+            'main_deposit_expected' => round((float) ($depositBreakdown['main_deposit_applied'] ?? 0), 2),
+            'addon_deposit_expected' => round((float) ($depositBreakdown['addon_deposit_applied'] ?? 0), 2),
             'linked_booking_deposit' => round($linkedBookingDeposit, 2),
             'linked_booking_deposit_total' => round($linkedBookingDeposit, 2),
             'deposit_previously_collected' => $actualAppointmentDepositCollected > 0.0001,
