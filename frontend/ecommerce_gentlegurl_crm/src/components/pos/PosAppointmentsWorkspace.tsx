@@ -2332,6 +2332,7 @@ export default function PosAppointmentsWorkspace({
         main_service_items: editAddedMainBlocks.map((block) => ({
           booking_service_id: block.service_id,
           price: block.price,
+          price_finalized: Boolean(block.price_finalized),
           addon_option_ids: Array.from(block.selected_addon_ids),
           addon_price_overrides: block.addon_price_overrides,
           addon_staff_splits: Object.fromEntries(Array.from(block.selected_addon_ids).map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),

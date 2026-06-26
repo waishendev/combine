@@ -4758,9 +4758,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         availability_override_type: 'outside_staff_schedule',
         availability_override_reason: null,
         addon_staff_splits: Object.fromEntries(Array.from(cartEditSelectedAddonIds).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`] ?? []])),
+        addon_price_overrides: cartEditAddonPriceOverrides,
         main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
         main_service_items: cartEditAddedMainBlocks.map((block) => ({
           booking_service_id: block.service_id,
+          price: block.price,
+          price_finalized: Boolean(block.price_finalized),
+          addon_price_overrides: cartEditAddonPriceOverrides,
           addon_option_ids: Array.from(block.selected_addon_ids),
           addon_staff_splits: Object.fromEntries(Array.from(block.selected_addon_ids).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
           staff_splits: block.staff_splits.map((row) => ({

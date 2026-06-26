@@ -1094,6 +1094,7 @@ class PosController extends Controller
             'main_service_items.*.addon_staff_splits.*.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'main_service_items.*.addon_staff_splits.*.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'main_service_items.*.price' => ['nullable', 'numeric', 'min:0'],
+            'main_service_items.*.price_finalized' => ['nullable', 'boolean'],
             'main_service_items.*.addon_price_overrides' => ['nullable', 'array'],
             'main_service_items.*.addon_price_overrides.*' => ['numeric', 'min:0'],
             'main_service_items.*.staff_splits' => ['nullable', 'array', 'min:1'],
@@ -1217,6 +1218,7 @@ class PosController extends Controller
                         'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
                         'addon_option_ids' => collect($item['addon_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->values()->all(),
                         'price' => array_key_exists('price', $item) ? round(max(0, (float) $item['price']), 2) : null,
+                        'price_finalized' => (bool) ($item['price_finalized'] ?? false),
                         'addon_price_overrides' => collect($item['addon_price_overrides'] ?? [])->mapWithKeys(fn ($price, $id) => [(int) $id => round(max(0, (float) $price), 2)])->all(),
                         'addon_staff_splits' => collect($item['addon_staff_splits'] ?? [])->mapWithKeys(fn ($splits, $id) => [(int) $id => collect($splits)->values()->all()])->all(),
                         'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
@@ -1242,7 +1244,7 @@ class PosController extends Controller
                 : BookingService::query()
                     ->whereIn('id', $serviceIds->all())
                     ->where('is_active', true)
-                    ->get(['id', 'name', 'service_price', 'price', 'duration_min'])
+                    ->get(['id', 'name', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'duration_min'])
                     ->keyBy('id');
 
             $existingMainByServiceId = $existingSettlementItems
@@ -1259,9 +1261,13 @@ class PosController extends Controller
                     }
                     $existing = (array) ($existingMainByServiceId->get($serviceId) ?? []);
                     $itemPayload = (array) ($itemsPayload->first(fn (array $item) => (int) ($item['booking_service_id'] ?? 0) === $serviceId) ?? []);
-                    $price = array_key_exists('price', $itemPayload) && $itemPayload['price'] !== null
-                        ? round(max(0, (float) $itemPayload['price']), 2)
-                        : round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2);
+                    $priceFinalized = (bool) ($itemPayload['price_finalized'] ?? false);
+                    $serviceIsRangePriced = (string) ($service->price_mode ?? 'fixed') === 'range';
+                    $price = $priceFinalized || ! $serviceIsRangePriced
+                        ? (array_key_exists('price', $itemPayload) && $itemPayload['price'] !== null
+                            ? round(max(0, (float) $itemPayload['price']), 2)
+                            : round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2))
+                        : 0.0;
                     $addonPriceOverrides = (array) ($itemPayload['addon_price_overrides'] ?? []);
                     $addonStaffSplits = (array) ($itemPayload['addon_staff_splits'] ?? []);
                     $availableOptions = BookingService::query()
@@ -1282,9 +1288,12 @@ class PosController extends Controller
                                 : max(0, (int) ($option->extra_duration_min ?? 0)),
                             'extra_price' => array_key_exists((int) $option->id, $addonPriceOverrides)
                                 ? round(max(0, (float) $addonPriceOverrides[(int) $option->id]), 2)
-                                : ($option->linkedBookingService
-                                    ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                                    : round(max(0, (float) ($option->extra_price ?? 0)), 2)),
+                                : ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'
+                                    ? 0.0
+                                    : ($option->linkedBookingService
+                                        ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                                        : round(max(0, (float) ($option->extra_price ?? 0)), 2))),
+                            'price_finalized' => array_key_exists((int) $option->id, $addonPriceOverrides) || ! ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'),
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,
@@ -1315,6 +1324,7 @@ class PosController extends Controller
                         'extra_price' => $price,
                         'linked_booking_service_id' => (int) $serviceId,
                         'is_original' => false,
+                        'price_finalized' => $priceFinalized || ! $serviceIsRangePriced,
                         'addon_items' => $addonItems,
                         'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
                         'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
@@ -1353,9 +1363,12 @@ class PosController extends Controller
                         : max(0, (int) ($option->extra_duration_min ?? 0)),
                     'extra_price' => array_key_exists((int) $option->id, $addonPriceOverrides)
                         ? round(max(0, (float) $addonPriceOverrides[(int) $option->id]), 2)
-                        : ($option->linkedBookingService
-                            ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                            : round(max(0, (float) ($option->extra_price ?? 0)), 2)),
+                        : ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'
+                            ? 0.0
+                            : ($option->linkedBookingService
+                                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                                : round(max(0, (float) ($option->extra_price ?? 0)), 2))),
+                    'price_finalized' => array_key_exists((int) $option->id, $addonPriceOverrides) || ! ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'),
                     'linked_booking_service_id' => $option->linkedBookingService
                         ? (int) $option->linkedBookingService->id
                         : null,
