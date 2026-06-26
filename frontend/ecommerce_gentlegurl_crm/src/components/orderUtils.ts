@@ -10,6 +10,7 @@ export type OrderApiItem = {
     id?: number | string | null
     name?: string | null
     email?: string | null
+    phone?: string | null
   } | null
   order_type?: OrderType | string | null
   notes?: string | null

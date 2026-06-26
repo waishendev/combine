@@ -308,7 +308,7 @@ class PosController extends Controller
         $perPageCap = $hasRange ? 500 : 100;
         $perPage = max(1, min($perPageCap, (int) $request->query('per_page', 20)));
 
-        $builder = Booking::query()->with(['customer:id,name', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'staff:id,name']);
+        $builder = Booking::query()->with(['customer:id,name,phone,email', 'service:id,name,cn_name,service_price,price,price_mode,price_range_min,price_range_max,service_type,duration_min', 'staff:id,name']);
 
         if ($query !== '') {
             $builder->where(function ($q) use ($query) {
@@ -372,6 +372,8 @@ class PosController extends Controller
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
+                'customer_phone' => $booking->customer?->phone,
+                'customer_email' => $booking->customer?->email,
                 'service_names' => [(string) ($booking->service?->name ?? '-')],
                 'service_cn_names' => array_values(array_filter([(string) ($booking->service?->cn_name ?? '')])),
                 'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),

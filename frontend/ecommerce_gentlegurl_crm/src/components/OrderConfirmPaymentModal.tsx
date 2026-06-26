@@ -7,12 +7,14 @@ interface OrderConfirmPaymentModalProps {
   orderId: number
   onClose: () => void
   onSuccess: () => void
+  zIndexClassName?: string
 }
 
 export default function OrderConfirmPaymentModal({
   orderId,
   onClose,
   onSuccess,
+  zIndexClassName = 'z-[60]',
 }: OrderConfirmPaymentModalProps) {
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
@@ -76,7 +78,7 @@ export default function OrderConfirmPaymentModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center p-4`}>
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {
