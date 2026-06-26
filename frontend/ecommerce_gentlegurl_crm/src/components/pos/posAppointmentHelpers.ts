@@ -308,13 +308,13 @@ export function posAppointmentBlocksActiveSchedule(row: PosAppointmentListItem):
 
 export type PosAppointmentScheduleScope = 'active' | 'all'
 
-/** Calendar display filter — Active hides completed·paid so freed slots stay readable. */
+/** Calendar display filter — Active stays operational-only; All shows full history. */
 export function posAppointmentShowOnScheduleCalendar(
   row: PosAppointmentListItem,
   scope: PosAppointmentScheduleScope = 'active',
 ): boolean {
-  if (!posAppointmentBlocksActiveSchedule(row)) return false
   if (scope === 'all') return true
+  if (!posAppointmentBlocksActiveSchedule(row)) return false
   return posAppointmentVisualToneFromRow(row) !== 'completedPaid'
 }
 
