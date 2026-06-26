@@ -5,11 +5,13 @@ namespace App\Services\Reports;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class SalesChannelReportService
 {
@@ -50,7 +52,7 @@ class SalesChannelReportService
     {
         $order = Order::query()
             ->with([
-                'customer:id,name',
+                'customer:id,name,email',
                 'payments:id,order_id,payment_method,amount,reference_no',
                 'uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
                 'items' => fn ($query) => $query->orderBy('id'),
@@ -124,6 +126,8 @@ class SalesChannelReportService
                 'status' => (string) $order->status,
                 'grand_total' => (float) $order->grand_total,
                 'payment_proofs' => $paymentProofs,
+                'receipt_public_url' => $this->resolveReceiptPublicUrl($order),
+                'customer_email' => $this->resolveReceiptCustomerEmail($order),
             ],
             'lines' => $order->items->map(fn (OrderItem $item) => $this->formatOrderDetailLine($item, $overrideUsers->all()))->values()->all(),
         ];
@@ -832,5 +836,40 @@ class SalesChannelReportService
             'package_purchase_amount' => (float) $rows->filter(fn ($row) => ($row['type'] ?? '') === self::BOOKING_TYPE_PACKAGE_PURCHASE)->sum('net_amount'),
             'booking_product_amount' => (float) $rows->filter(fn ($row) => ($row['type'] ?? '') === self::BOOKING_TYPE_PRODUCT)->sum('net_amount'),
         ];
+    }
+
+    private function resolveReceiptPublicUrl(Order $order): ?string
+    {
+        $existingToken = OrderReceiptToken::query()
+            ->where('order_id', $order->id)
+            ->latest('id')
+            ->first();
+
+        if (! $existingToken) {
+            $existingToken = OrderReceiptToken::create([
+                'order_id' => $order->id,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+
+        return $frontendUrl . '/api/proxy/public/receipt/' . $existingToken->token . '/invoice';
+    }
+
+    private function resolveReceiptCustomerEmail(Order $order): ?string
+    {
+        $customerEmail = trim((string) ($order->customer?->email ?? ''));
+        if ($customerEmail !== '' && filter_var($customerEmail, FILTER_VALIDATE_EMAIL)) {
+            return $customerEmail;
+        }
+
+        $guestEmail = $order->items
+            ->map(fn (OrderItem $item) => trim((string) ($item->booking?->guest_email ?? '')))
+            ->filter(fn (string $email) => $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL))
+            ->first();
+
+        return is_string($guestEmail) && $guestEmail !== '' ? $guestEmail : null;
     }
 }

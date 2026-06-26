@@ -525,7 +525,7 @@ $protectedRoutes = function () {
     });
 
     Route::post('/orders/{orderId}/send-receipt-email', [PosController::class, 'sendReceiptEmail'])
-        ->middleware(['permission:pos.checkout', 'throttle:6,1']);
+        ->middleware(['permission:pos.checkout|ecommerce.daily-sales-reports.view|ecommerce.reports.sales.view', 'throttle:6,1']);
 
     Route::post('/admin/products/stock-movements/{id}/revoke', [ProductStockMovementController::class, 'revoke'])
         ->middleware('permission:ecommerce.products.update');

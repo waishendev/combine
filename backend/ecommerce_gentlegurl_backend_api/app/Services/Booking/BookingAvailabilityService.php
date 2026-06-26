@@ -527,6 +527,8 @@ class BookingAvailabilityService
         int $visibleStartMinute = 540,
         int $visibleEndMinute = 1440,
         ?callable $conflictReasonResolver = null,
+        ?int $ignoreBookingId = null,
+        ?Booking $ignoreBooking = null,
     ): array {
         $staffIds = collect($staffIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
         if ($staffIds === []) {
@@ -539,7 +541,18 @@ class BookingAvailabilityService
         $bufferMin = max(0, (int) $service->buffer_min);
         $nowInBusinessTz = Carbon::now($timezone);
         $isTodayInBusinessTz = $day->isSameDay($nowInBusinessTz);
+        $ignoreBookingIds = collect([$ignoreBookingId, $ignoreBooking?->id])
+            ->filter(fn ($id) => $id !== null && (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
         $context = $this->prefetchPosDayAvailabilityContext($staffIds, $day, $bufferMin);
+        $context['ignore_booking_ids'] = $ignoreBookingIds;
+        $context['ignore_booking_code'] = trim((string) ($ignoreBooking?->booking_code ?? ''));
+        $context['ignore_booking_start_at'] = $ignoreBooking?->start_at ? $ignoreBooking->start_at->toDateTimeString() : null;
+        $context['ignore_booking_service_id'] = (int) ($ignoreBooking?->service_id ?? 0);
 
         $visibleStartMinute = max(0, $visibleStartMinute);
         $visibleEndMinute = max($visibleStartMinute, $visibleEndMinute);
@@ -814,7 +827,18 @@ class BookingAvailabilityService
         $detectedLeaveTypes = [];
         $detectedBlockIds = [];
 
+        $ignoreBookingIds = array_values(array_filter(array_map('intval', $context['ignore_booking_ids'] ?? [])));
+        $ignoreBookingCode = trim((string) ($context['ignore_booking_code'] ?? ''));
+
         foreach ($context['bookings_by_staff'][$staffId] ?? [] as $booking) {
+            $bookingId = (int) ($booking['id'] ?? 0);
+            if ($ignoreBookingIds !== [] && in_array($bookingId, $ignoreBookingIds, true)) {
+                continue;
+            }
+            if ($ignoreBookingCode !== '' && trim((string) ($booking['booking_code'] ?? '')) === $ignoreBookingCode) {
+                continue;
+            }
+
             $candidateStart = Carbon::parse((string) ($booking['start_at'] ?? ''));
             $bufferedEnd = Carbon::parse((string) ($booking['buffered_end_at'] ?? ''));
             if ($candidateStart->lt($queryBlockEndAt) && $bufferedEnd->gt($queryStartAt)) {
@@ -826,7 +850,17 @@ class BookingAvailabilityService
             }
         }
 
+        $ignoreStartAt = $context['ignore_booking_start_at'] ?? null;
+        $ignoreServiceId = (int) ($context['ignore_booking_service_id'] ?? 0);
+
         foreach ($context['cart_by_staff'][$staffId] ?? [] as $cartItem) {
+            if ($ignoreStartAt && $ignoreServiceId > 0) {
+                if ((int) ($cartItem['service_id'] ?? 0) === $ignoreServiceId
+                    && (string) ($cartItem['start_at'] ?? '') === $ignoreStartAt) {
+                    continue;
+                }
+            }
+
             $cartStart = Carbon::parse((string) ($cartItem['start_at'] ?? ''));
             $cartEnd = Carbon::parse((string) ($cartItem['end_at'] ?? ''));
             if ($cartStart->lt($queryBlockEndAt) && $cartEnd->gt($queryStartAt)) {

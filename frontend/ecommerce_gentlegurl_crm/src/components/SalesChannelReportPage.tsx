@@ -9,6 +9,7 @@ import PaginationControls from './PaginationControls'
 import TableEmptyState from './TableEmptyState'
 import TableLoadingRow from './TableLoadingRow'
 import OfflineOrderActions from './reports/OfflineOrderActions'
+import OrderReceiptAction from './reports/OrderReceiptAction'
 import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
@@ -186,6 +187,8 @@ type OrderDetail = {
     status: string
     grand_total: number
     payment_proofs?: PaymentProof[]
+    receipt_public_url?: string | null
+    customer_email?: string | null
   }
   lines: OrderDetailLine[]
 }
@@ -841,6 +844,7 @@ export default function SalesChannelReportPage({
                     <td className="px-4 py-2 border border-gray-200 text-center">
                       <div className="inline-flex items-center justify-center gap-2">
                         <ReportViewDetailsButton onClick={() => void openOrderDetail(row.order_id)} title={`View details for ${row.order_no}`} />
+                        <OrderReceiptAction orderId={row.order_id} orderNo={row.order_no} />
                       <OfflineOrderActions
                         orderId={row.order_id}
                         channel={row.channel}
@@ -879,6 +883,7 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200 text-center">
                     <div className="inline-flex items-center justify-center gap-2">
                       <ReportViewDetailsButton onClick={() => void openOrderDetail(row.order_id, row.booking_id)} title={`View details for ${row.order_no}`} />
+                      <OrderReceiptAction orderId={row.order_id} orderNo={row.order_no} />
                     <OfflineOrderActions
                       orderId={row.order_id}
                       channel={row.channel}

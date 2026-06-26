@@ -2352,7 +2352,8 @@ export default function PosAppointmentsWorkspace({
   const saveEditSettlement = useCallback(async () => {
     if (!appointmentDetail?.id) return
     reportEditSettlementError(null)
-    if (editSettlementAvailability?.is_hard_block) {
+    const isCompletedAppointment = String(appointmentDetail?.status ?? '').toUpperCase() === 'COMPLETED'
+    if (!isCompletedAppointment && editSettlementAvailability?.is_hard_block) {
       reportEditSettlementError(formatPosAvailabilityErrorMessage({
         reasonCode: String(editSettlementAvailability.reason_code ?? 'booking_conflict'),
         staffName: appointmentDetail.staff?.name ?? activeStaffs.find((staff) => staff.id === appointmentDetail.staff?.id)?.name,
@@ -2817,6 +2818,7 @@ export default function PosAppointmentsWorkspace({
           service_id: String(appointmentDetail.service.id),
           date: appointmentRescheduleDate,
           extra_duration_min: String(extraDurationMin),
+          ignore_booking_id: String(appointmentDetail.id),
         })
         const res = await fetch(`/api/proxy/pos/availability/pooled?${params.toString()}`, { cache: 'no-store' })
         const json = await res.json().catch(() => null)
@@ -2863,6 +2865,7 @@ export default function PosAppointmentsWorkspace({
     appointmentDetail?.appointment_end_at,
     appointmentDetail?.appointment_start_at,
     appointmentDetail?.estimated_duration_min,
+    appointmentDetail?.id,
     appointmentDetail?.service?.duration_min,
     appointmentDetail?.service?.id,
     appointmentRescheduleDate,
@@ -3143,6 +3146,10 @@ export default function PosAppointmentsWorkspace({
         setEditSettlementAvailability(null)
         return
       }
+      if (String(appointmentDetail.status ?? '').toUpperCase() === 'COMPLETED') {
+        setEditSettlementAvailability(null)
+        return
+      }
       const params = new URLSearchParams({
         staff_id: String(appointmentDetail.staff.id),
         start_at: appointmentDetail.appointment_start_at,
@@ -3158,7 +3165,7 @@ export default function PosAppointmentsWorkspace({
       setEditSettlementAvailability((json?.data ?? null) as { reason_code?: string | null; is_hard_block?: boolean; is_outside_staff_schedule?: boolean } | null)
     }
     void checkEditSettlementAvailability()
-  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, editSettlementEstimatedEndAt, editSettlementOpen])
+  }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, appointmentDetail?.status, editSettlementEstimatedEndAt, editSettlementOpen])
 
   const appointmentAddonBoundsForBreakdown = useMemo(
     () => accumulatePosPriceBounds((appointmentDetail?.add_ons ?? []).map((addon) => ({ source: addon }))),
@@ -5693,18 +5700,22 @@ export default function PosAppointmentsWorkspace({
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="font-bold">Estimated duration after save: {editSettlementEstimatedDurationMin > 0 ? `${editSettlementEstimatedDurationMin} min` : '—'}</p>
-                    <p className="text-xs text-amber-800">Backend will validate the updated time range before saving.</p>
+                    <p className="text-xs text-amber-800">
+                      {String(appointmentDetail.status ?? '').toUpperCase() === 'COMPLETED'
+                        ? 'Completed appointments no longer hold the calendar slot; duration updates are for records only.'
+                        : 'Backend will validate the updated time range before saving.'}
+                    </p>
                   </div>
                   <div className="text-xs font-semibold tabular-nums text-amber-950">
                     {formatTimeRange(appointmentDetail.appointment_start_at, editSettlementEstimatedEndAt)}
                   </div>
                 </div>
-                {editSettlementAvailability?.is_outside_staff_schedule ? (
+                {String(appointmentDetail.status ?? '').toUpperCase() !== 'COMPLETED' && editSettlementAvailability?.is_outside_staff_schedule ? (
                   <p className="mt-2 rounded-lg bg-white/70 px-3 py-2 text-xs font-semibold text-amber-900">
                     Updated appointment time is outside staff schedule. POS can continue if this is a walk-in / overtime appointment.
                   </p>
                 ) : null}
-                {editSettlementAvailability?.is_hard_block ? (
+                {String(appointmentDetail.status ?? '').toUpperCase() !== 'COMPLETED' && editSettlementAvailability?.is_hard_block ? (
                   <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-800">
                     Updated appointment time is blocked by staff leave/off day, inactive staff, or another booking conflict.
                   </p>
