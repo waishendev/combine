@@ -27,6 +27,7 @@ type PaymentBreakdownRow = { method?: string | null; payment_method?: string | n
 type EcommerceRow = {
   order_id: number
   order_no: string
+  transaction_no?: string | null
   order_datetime: string
   customer: string
   channel: string
@@ -43,6 +44,7 @@ type EcommerceRow = {
 type BookingRow = {
   order_id: number
   order_no: string
+  transaction_no?: string | null
   order_datetime: string
   customer: string
   channel: string
@@ -344,6 +346,35 @@ const isBookingWorkerType = (value?: string | null) => {
   return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
 }
 
+
+const groupKeyForOrder = (row: { order_no?: string | null; transaction_no?: string | null; order_id: number }) => {
+  const transactionNo = String(row.transaction_no ?? '').trim()
+  const orderNo = String(row.order_no ?? '').trim()
+  return transactionNo || orderNo || `order-${row.order_id}`
+}
+
+const sameOrMultiple = (values: Array<string | null | undefined>, fallback: string | null = '—') => {
+  const unique = Array.from(new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean)))
+  if (unique.length === 0) return fallback
+  if (unique.length === 1) return unique[0]
+  return 'Multiple'
+}
+
+const summarizeMore = (value: string | null | undefined, additionalCount: number, fallback = 'View details') => {
+  const label = String(value ?? '').trim() || fallback
+  return additionalCount > 0 ? `${label} +${additionalCount} more` : label
+}
+
+const bookingTypeSummary = (types: string[]) => {
+  const unique = Array.from(new Set(types.map((type) => String(type ?? '').trim()).filter(Boolean)))
+  if (unique.length === 0) return 'Booking'
+  if (unique.length === 1) return unique[0]
+  const hasSettlement = unique.some((type) => isBookingWorkerType(type))
+  const hasAddOns = unique.some((type) => ['addon', 'add_on', 'booking_addon', 'booking_product'].includes(normalizeBookingType(type)))
+  if (hasSettlement && hasAddOns) return 'Final Settlement + Add-ons'
+  return `${labelize(unique[0])} + ${unique.length - 1} more`
+}
+
 /** Table header: only the first character is uppercase (no full-string caps). */
 const reportTableColumnHeader = (label: string) =>
   label ? `${label.charAt(0).toUpperCase()}${label.slice(1).toLowerCase()}` : label
@@ -570,6 +601,56 @@ export default function SalesChannelReportPage({
     return `/api/proxy/ecommerce/reports/sales/export/${mode}?${qs.toString()}`
   }, [mode, resolved])
 
+  const groupedEcommerceRows = useMemo(() => {
+    const groups = new Map<string, EcommerceRow>()
+    ecommerceRows.forEach((row) => {
+      const key = groupKeyForOrder(row)
+      const current = groups.get(key)
+      if (!current) {
+        groups.set(key, { ...row })
+        return
+      }
+      groups.set(key, {
+        ...current,
+        item_count: Number(current.item_count ?? 0) + Number(row.item_count ?? 0),
+        product_amount: Number(current.product_amount ?? 0) + Number(row.product_amount ?? 0),
+        discount: Number(current.discount ?? 0) + Number(row.discount ?? 0),
+        net_amount: Number(current.net_amount ?? 0) + Number(row.net_amount ?? 0),
+        order_total: Number(current.net_amount ?? 0) + Number(row.net_amount ?? 0),
+      })
+    })
+    return Array.from(groups.values())
+  }, [ecommerceRows])
+
+  const groupedBookingRows = useMemo(() => {
+    const groups = new Map<string, { first: BookingRow; rows: BookingRow[] }>()
+    bookingRows.forEach((row) => {
+      const key = groupKeyForOrder(row)
+      const current = groups.get(key)
+      if (!current) {
+        groups.set(key, { first: row, rows: [row] })
+        return
+      }
+      current.rows.push(row)
+    })
+
+    return Array.from(groups.values()).map(({ first, rows }) => {
+      const additionalCount = Math.max(rows.length - 1, 0)
+      const bookingNo = sameOrMultiple(rows.map((row) => row.booking_no), null)
+      return {
+        ...first,
+        type: bookingTypeSummary(rows.map((row) => row.type)),
+        booking_id: bookingNo === first.booking_no ? first.booking_id : null,
+        booking_no: bookingNo,
+        package_name: summarizeMore(first.package_name, additionalCount),
+        gross_amount: rows.reduce((total, row) => total + Number(row.gross_amount ?? 0), 0),
+        discount: rows.reduce((total, row) => total + Number(row.discount ?? 0), 0),
+        net_amount: rows.reduce((total, row) => total + Number(row.net_amount ?? 0), 0),
+        order_total: rows.reduce((total, row) => total + Number(row.net_amount ?? 0), 0),
+      }
+    })
+  }, [bookingRows])
+
   const ecColSpan = 11
   const bkColSpan = 13
 
@@ -742,10 +823,10 @@ export default function SalesChannelReportPage({
             {loading ? (
               <TableLoadingRow colSpan={mode === 'ecommerce' ? ecColSpan : bkColSpan} />
             ) : mode === 'ecommerce' ? (
-              ecommerceRows.length === 0 ? (
+              groupedEcommerceRows.length === 0 ? (
                 <TableEmptyState colSpan={ecColSpan} />
               ) : (
-                ecommerceRows.map((row) => (
+                groupedEcommerceRows.map((row) => (
                   <tr key={`${row.order_no}-${row.order_datetime}`}>
                     <td className="px-4 py-2 border border-gray-200">{row.order_no}</td>
                     <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
@@ -776,10 +857,10 @@ export default function SalesChannelReportPage({
                   </tr>
                 ))
               )
-            ) : bookingRows.length === 0 ? (
+            ) : groupedBookingRows.length === 0 ? (
               <TableEmptyState colSpan={bkColSpan} />
             ) : (
-              bookingRows.map((row, idx) => (
+              groupedBookingRows.map((row, idx) => (
                 <tr key={`${row.order_no}-${idx}`}>
                   <td className="px-4 py-2 border border-gray-200">{row.order_no}</td>
                   <td className="px-4 py-2 border border-gray-200">{formatDisplayDateTime(row.order_datetime)}</td>
