@@ -11,6 +11,18 @@ export type SettlementRangeSource = {
   } | null
 }
 
+export type PosPriceDisplaySource = {
+  price?: number | string | null
+  service_price?: number | string | null
+  extra_price?: number | string | null
+  price_mode?: string | null
+  service_price_mode?: string | null
+  price_range_min?: number | string | null
+  price_range_max?: number | string | null
+  service_price_range_min?: number | string | null
+  service_price_range_max?: number | string | null
+}
+
 type BookingServiceSettlementOption = {
   price_mode?: string | null
   price_range_min?: number | null
@@ -54,6 +66,27 @@ export function getSettlementRangeBounds(source?: SettlementRangeSource | null):
     max = swap
   }
   return { min, max }
+}
+
+function finiteNumber(value: number | string | null | undefined): number | null {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+export function formatPosPriceDisplay(source?: PosPriceDisplaySource | null, options?: { prefix?: string }): string {
+  const prefix = options?.prefix ?? 'RM '
+  const mode = String(source?.price_mode ?? source?.service_price_mode ?? '').toLowerCase()
+  const min = finiteNumber(source?.price_range_min ?? source?.service_price_range_min)
+  const max = finiteNumber(source?.price_range_max ?? source?.service_price_range_max)
+
+  if (mode === 'range' && min != null && max != null) {
+    const low = Math.min(min, max)
+    const high = Math.max(min, max)
+    return `${prefix}${low.toFixed(2)} - ${prefix}${high.toFixed(2)}`
+  }
+
+  const amount = finiteNumber(source?.price ?? source?.service_price ?? source?.extra_price) ?? 0
+  return `${prefix}${amount.toFixed(2)}`
 }
 
 /** Parse POS settlement amount input (trim, allow commas as decimal separator). */

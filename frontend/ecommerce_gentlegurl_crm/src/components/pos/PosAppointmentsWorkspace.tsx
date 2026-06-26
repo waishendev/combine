@@ -12,6 +12,7 @@ import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
 import {
   bookingServiceSettlementSource,
+  formatPosPriceDisplay,
   getSettlementRangeBounds,
   parseSettlementAmountInput,
   settlementNeedsSettledAmount,
@@ -1018,6 +1019,9 @@ export default function PosAppointmentsWorkspace({
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
+                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
                 } as ServiceAddonOption
               })
               .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
@@ -1061,6 +1065,9 @@ export default function PosAppointmentsWorkspace({
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
+                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
                 } as ServiceAddonOption
               })
               .filter((option): option is ServiceAddonOption => Boolean(option && option.id > 0)),
@@ -4495,7 +4502,7 @@ export default function PosAppointmentsWorkspace({
                                 />
                               </div>
                               <span className="flex shrink-0 flex-col items-end gap-1 text-xs font-semibold text-gray-700">
-                                <span>+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                <span>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
                                 {checked && createAppointmentServiceDraft ? (() => {
                                   const lineKey = `appointment-create:addon:${option.id}`
                                   const inherited = appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
@@ -4646,7 +4653,7 @@ export default function PosAppointmentsWorkspace({
                                     />
                                   </div>
                                   <span className="flex flex-col items-end gap-1 font-semibold text-gray-700">
-                                    <span>+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                    <span>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
                                     {checked ? (() => {
                                       const lineKey = `appointment-create:block:${block.id}:addon:${option.id}`
                                       const inherited = appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
@@ -5806,7 +5813,7 @@ export default function PosAppointmentsWorkspace({
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-1">
                                   <span className="text-xs font-semibold tabular-nums text-gray-600">
-                                    +RM {Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}
+                                    +{formatPosPriceDisplay({ ...opt, extra_price: editAddonPriceOverrides[opt.id] ?? opt.extra_price }, { prefix: 'RM' })}
                                     {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
                                   </span>
                                   {checked && appointmentDetail?.id ? (() => {
@@ -6120,7 +6127,7 @@ export default function PosAppointmentsWorkspace({
                                   <PosServiceNameStack name={opt.label} cnName={opt.cn_name ?? opt.cn_label ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
                                 <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <span className="text-xs font-semibold text-gray-500">+RM {Number(block.addon_price_overrides[opt.id] ?? opt.extra_price).toFixed(2)}</span>
+                                  <span className="text-xs font-semibold text-gray-500">+{formatPosPriceDisplay({ ...opt, extra_price: block.addon_price_overrides[opt.id] ?? opt.extra_price }, { prefix: 'RM' })}</span>
                                   {checked && appointmentDetail?.id ? (() => {
                                     const lineKey = `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${opt.id}`
                                     const inherited = editStaffSplitsToLineSplits(block.staff_splits)

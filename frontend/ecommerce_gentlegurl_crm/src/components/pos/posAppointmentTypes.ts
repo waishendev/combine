@@ -153,6 +153,9 @@ export type ServiceAddonOption = {
   linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
 }
 
 export type ServiceAddonQuestion = {

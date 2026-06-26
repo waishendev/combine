@@ -11,6 +11,7 @@ import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   bookingServiceSettlementSource,
+  formatPosPriceDisplay,
   getSettlementRangeBounds,
   parseSettlementAmountInput,
   settlementNeedsSettledAmount,
@@ -696,6 +697,9 @@ type BookingServiceQuestionOption = {
   linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
   is_active?: boolean
 }
 
@@ -1671,7 +1675,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementServiceId, setCartEditSettlementServiceId] = useState<number | null>(null)
   const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
-  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number }> }>>([])
+  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
@@ -1686,7 +1690,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     service_cn_name?: string | null
     price: number
     duration_min: number
-    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number }> }>
+    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null }> }>
     selected_addon_ids: Set<number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
@@ -3511,6 +3515,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
+                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
                 }
               })
               .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
@@ -3553,6 +3560,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : null,
+                  price_range_min: option.price_range_min == null ? null : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? null : Number(option.price_range_max),
                 }
               })
               .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
@@ -8909,7 +8919,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
                                 <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
-                                  <span>+RM {Number(cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
+                                  <span>+{formatPosPriceDisplay({ ...opt, extra_price: cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price }, { prefix: 'RM' })}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
                                   {checked ? (() => {
                                     const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
                                     const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
@@ -9207,7 +9217,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                               </div>
                               <span className="flex flex-col items-end gap-1 text-xs font-semibold text-gray-500">
-                                <span>+RM {Number(opt.extra_price).toFixed(2)}</span>
+                                <span>+{formatPosPriceDisplay(opt, { prefix: 'RM' })}</span>
                                 {checked ? (() => {
                                   const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${opt.id}`
                                   const inherited = block.staff_splits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
@@ -11237,7 +11247,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   </div>
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <span className="block tabular-nums font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                  <span className="block tabular-nums font-semibold text-gray-900">+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
                                   {checked ? (() => {
                                     const lineKey = `booking-draft:addon:${option.id}`
                                     const mainSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
@@ -11396,7 +11406,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   />
                                 </div>
                                 <span className="flex flex-col items-end gap-1 font-semibold text-gray-900">
-                                  <span>+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                  <span>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
                                   {checked ? (() => {
                                     const lineKey = `booking-draft:block:${block.id}:addon:${option.id}`
                                     const mainSplits = checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
