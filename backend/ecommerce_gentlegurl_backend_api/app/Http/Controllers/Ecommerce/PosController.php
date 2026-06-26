@@ -333,27 +333,28 @@ class PosController extends Controller
         if ($request->filled('staff_id')) {
             $builder->where('staff_id', (int) $request->query('staff_id'));
         }
+        $activeScheduleStatuses = ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED'];
+        $terminalScheduleStatuses = ['CANCELLED', 'NOTIFIED_CANCELLATION', 'LATE_CANCELLATION', 'NO_SHOW', 'EXPIRED', 'VOIDED'];
+        $allScheduleStatuses = array_merge($activeScheduleStatuses, $terminalScheduleStatuses);
+        $includeTerminalStatuses = $request->boolean('include_terminal_statuses');
         $statusFilterNeedsActiveCheck = false;
         if ($unpaidOnly) {
             $builder->where('status', 'COMPLETED');
             $statusFilterNeedsActiveCheck = true;
         } elseif ($request->filled('status')) {
             $status = strtoupper(trim((string) $request->query('status')));
-            if (in_array($status, ['HOLD', 'CONFIRMED', 'PENDING'], true)) {
+            if (in_array($status, $allScheduleStatuses, true)) {
                 $builder->where('status', $status);
-            } elseif ($status === 'COMPLETED') {
-                // Payment_status can be stale; classify completed paid/unpaid from the resolved balances below.
-                $builder->where('status', 'COMPLETED');
-                $statusFilterNeedsActiveCheck = true;
+                $statusFilterNeedsActiveCheck = ! $includeTerminalStatuses || $status === 'COMPLETED';
             } else {
-                $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED']);
-                $statusFilterNeedsActiveCheck = true;
+                $builder->whereIn('status', $includeTerminalStatuses ? $allScheduleStatuses : $activeScheduleStatuses);
+                $statusFilterNeedsActiveCheck = ! $includeTerminalStatuses;
             }
         } else {
-            // POS appointments schedule: show completed paid/unpaid; terminal statuses stay hidden.
+            // Active POS schedule keeps terminal statuses hidden; All view opts into the full history set.
             // Completed paid/unpaid is decided from financial fields after resolving the appointment summary.
-            $builder->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING', 'COMPLETED']);
-            $statusFilterNeedsActiveCheck = true;
+            $builder->whereIn('status', $includeTerminalStatuses ? $allScheduleStatuses : $activeScheduleStatuses);
+            $statusFilterNeedsActiveCheck = ! $includeTerminalStatuses;
         }
 
         $allRows = $builder->orderBy('start_at')->get()->map(function (Booking $booking) {

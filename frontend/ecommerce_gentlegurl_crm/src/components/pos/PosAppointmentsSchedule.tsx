@@ -254,6 +254,10 @@ export default function PosAppointmentsSchedule({
               <span className="h-3 w-5 shrink-0 rounded border-2 border-zinc-900 bg-zinc-500" aria-hidden />
               Expired
             </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="h-3 w-5 shrink-0 rounded border-2 border-neutral-950 bg-neutral-700" aria-hidden />
+              Voided
+            </span>
           </>
         ) : (
           <span className="text-slate-400">Completed · paid hidden in Active view</span>

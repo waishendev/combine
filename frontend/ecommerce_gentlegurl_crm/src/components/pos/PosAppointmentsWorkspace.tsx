@@ -58,6 +58,7 @@ type AppointmentStatusFilterValue =
   | 'LATE_CANCELLATION'
   | 'NO_SHOW'
   | 'EXPIRED'
+  | 'VOIDED'
 
 const APPOINTMENT_STATUS_FILTER_OPTIONS: Array<{ value: AppointmentStatusFilterValue; label: string }> = [
   { value: '', label: 'All statuses' },
@@ -70,6 +71,7 @@ const APPOINTMENT_STATUS_FILTER_OPTIONS: Array<{ value: AppointmentStatusFilterV
   { value: 'LATE_CANCELLATION', label: 'Late Cancellation' },
   { value: 'NO_SHOW', label: 'No Show' },
   { value: 'EXPIRED', label: 'Expired' },
+  { value: 'VOIDED', label: 'Voided' },
 ]
 
 const appointmentStatusFilterApiValue = (value: string) =>
@@ -868,6 +870,9 @@ export default function PosAppointmentsWorkspace({
       if (appointmentQuery.trim()) params.set('q', appointmentQuery.trim())
       if (appointmentCustomerFilter.trim()) params.set('customer_id', appointmentCustomerFilter.trim())
       if (appointmentStaffFilter.trim()) params.set('staff_id', appointmentStaffFilter.trim())
+      if (scheduleScope === 'all') {
+        params.set('include_terminal_statuses', '1')
+      }
       if (appointmentStatusFilter.trim()) {
         params.set('status', appointmentStatusFilterApiValue(appointmentStatusFilter.trim()))
       }
@@ -905,6 +910,7 @@ export default function PosAppointmentsWorkspace({
     appointmentStatusFilter,
     posApptCalendarMonth,
     posApptViewMode,
+    scheduleScope,
   ])
 
   const fetchCreateAppointmentServices = useCallback(async () => {
@@ -2878,6 +2884,7 @@ export default function PosAppointmentsWorkspace({
     fetchAppointments,
     posApptCalendarMonth,
     posApptViewMode,
+    scheduleScope,
   ])
 
   useEffect(() => {
@@ -2890,6 +2897,7 @@ export default function PosAppointmentsWorkspace({
     appointmentStatusFilter,
     posApptCalendarMonth,
     posApptViewMode,
+    scheduleScope,
   ])
 
   useEffect(() => {
