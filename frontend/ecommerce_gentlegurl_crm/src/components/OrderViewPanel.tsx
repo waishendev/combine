@@ -1508,6 +1508,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowShip(false)}
           onSuccess={handleOrderUpdated}
+          zIndexClassName="z-[110]"
         />
       )}
 

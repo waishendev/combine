@@ -1,9 +1,11 @@
 'use client'
+/* eslint-disable @next/next/no-img-element */
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import OrderConfirmPaymentModal from '@/components/OrderConfirmPaymentModal'
 import OrderRejectPaymentModal from '@/components/OrderRejectPaymentModal'
+import OrderShipModal from '@/components/OrderShipModal'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import { calculateOrderStatus, type OrderApiItem } from '@/components/orderUtils'
 import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
@@ -22,6 +24,7 @@ type BookingCancellationRequestRow = {
   created_at?: string | null
   status?: string | null
   reason?: string | null
+  admin_note?: string | null
   booking?: {
     id?: number | null
     booking_code?: string | null
@@ -59,6 +62,8 @@ type BookingRequestRow = {
   requestedAt: string | null
   status: string
   badgeClassName: string
+  reason?: string | null
+  adminNote?: string | null
 }
 
 type EcommerceRequestRow = {
@@ -70,6 +75,7 @@ type EcommerceRequestRow = {
   statusLabel: string
   status: string
   paymentStatus: string
+  shippingMethod?: string | null
 }
 
 type BookingConfirmState =
@@ -121,7 +127,21 @@ function buildCancellationRequest(row: BookingCancellationRequestRow): BookingRe
     requestedAt: row.requested_at ?? row.created_at ?? null,
     status: row.status ?? 'pending',
     badgeClassName: 'bg-rose-100 text-rose-800 ring-rose-200',
+    reason: row.reason ?? null,
+    adminNote: row.admin_note ?? null,
   }
+}
+
+function formatMoney(value?: string | number | null) {
+  return `RM ${Number(value ?? 0).toFixed(2)}`
+}
+
+function calcDurationMinutes(start?: string | null, end?: string | null) {
+  if (!start || !end) return null
+  const startDate = new Date(start)
+  const endDate = new Date(end)
+  if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null
+  return Math.max(0, Math.round((endDate.getTime() - startDate.getTime()) / 60000))
 }
 
 function Info({ label, value }: { label: string; value?: string | number | null }) {
@@ -170,6 +190,8 @@ export default function PosRequestCenter({
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
   const [confirmPaymentOrderId, setConfirmPaymentOrderId] = useState<number | null>(null)
   const [rejectPaymentOrderId, setRejectPaymentOrderId] = useState<number | null>(null)
+  const [shipOrderId, setShipOrderId] = useState<number | null>(null)
+  const [readySubmittingOrderId, setReadySubmittingOrderId] = useState<number | null>(null)
 
   const totalCount = bookingRows.length + ecommerceRows.length
 
@@ -221,6 +243,7 @@ export default function PosRequestCenter({
         statusLabel: calculateOrderStatus(order.status, order.payment_status, 'ecommerce'),
         status: order.status ?? '',
         paymentStatus: order.payment_status ?? '',
+        shippingMethod: order.shipping_method ?? null,
       })))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
@@ -260,6 +283,26 @@ export default function PosRequestCenter({
     setViewingBooking(null)
     setBookingDetail(null)
     setBookingDetailError(null)
+  }
+
+
+  const markOrderReadyForPickup = async (orderId: number) => {
+    setReadySubmittingOrderId(orderId)
+    setError(null)
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'ready_for_pickup' }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(String(json?.message ?? 'Unable to mark order ready for pickup.'))
+      await load()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to mark order ready for pickup.')
+    } finally {
+      setReadySubmittingOrderId(null)
+    }
   }
 
   const submitBookingReview = async () => {
@@ -381,6 +424,8 @@ export default function PosRequestCenter({
                         <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
                           <button type="button" onClick={() => setViewingOrderId(row.id)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View order</button>
                           {row.statusLabel === 'Waiting for Verification' ? <><button type="button" onClick={() => setConfirmPaymentOrderId(row.id)} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Confirm payment</button><button type="button" onClick={() => setRejectPaymentOrderId(row.id)} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject payment proof</button></> : null}
+                          {['Payment Confirmed', 'Preparing'].includes(row.statusLabel) && row.shippingMethod !== 'pickup' ? <button type="button" onClick={() => setShipOrderId(row.id)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Mark as Shipped</button> : null}
+                          {['Payment Confirmed', 'Preparing'].includes(row.statusLabel) && row.shippingMethod === 'pickup' ? <button type="button" disabled={readySubmittingOrderId === row.id} onClick={() => void markOrderReadyForPickup(row.id)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{readySubmittingOrderId === row.id ? 'Updating...' : 'Mark Ready'}</button> : null}
                         </div>
                       </div>
                     </div>
@@ -432,24 +477,62 @@ export default function PosRequestCenter({
               {bookingDetailError ? <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{bookingDetailError}</p> : null}
               {bookingDetail ? (
                 <div className="space-y-4">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Info label="Customer" value={bookingDetail.customer?.name ?? bookingDetail.customer_name ?? bookingDetail.guest_name ?? viewingBooking.customerName} />
-                      <Info label="Contact" value={bookingDetail.customer?.phone ?? bookingDetail.customer_phone ?? bookingDetail.guest_phone ?? bookingDetail.customer?.email ?? bookingDetail.customer_email ?? bookingDetail.guest_email ?? viewingBooking.contact} />
-                      <Info label="Service" value={bookingDetail.service?.name ?? '—'} />
-                      <Info label="Staff" value={bookingDetail.staff?.name ?? '—'} />
-                      <Info label="Schedule" value={`${fmtDateTime(bookingDetail.appointment_start_at)}${bookingDetail.appointment_end_at ? ` - ${fmtDateTime(bookingDetail.appointment_end_at)}` : ''}`} />
-                      <Info label="Status" value={bookingDetail.status ?? viewingBooking.status} />
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Booking Info</p>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <Info label="Booking number" value={bookingDetail.booking_code ?? viewingBooking.number} />
+                      <Info label="Booking status" value={bookingDetail.status ?? viewingBooking.status} />
                       <Info label="Payment status" value={bookingDetail.payment_status ?? '—'} />
-                      <Info label="Deposit" value={`RM ${Number(bookingDetail.deposit_paid ?? bookingDetail.deposit_contribution ?? 0).toFixed(2)}`} />
-                      <Info label="Remaining balance" value={`RM ${Number(bookingDetail.amount_due_now ?? bookingDetail.balance_due ?? 0).toFixed(2)}`} />
+                      <Info label="Created time" value={fmtDateTime((bookingDetail as { created_at?: string | null }).created_at)} />
+                      <Info label="Request type" value={viewingBooking.requestType} />
+                      <Info label="Request created time" value={fmtDateTime(viewingBooking.requestedAt)} />
                     </div>
-                  </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Request</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${viewingBooking.badgeClassName}`}>{viewingBooking.requestType}</span><span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-700">{viewingBooking.status}</span></div>
-                    <p className="mt-3 text-sm text-slate-600">Request created time: <span className="font-semibold text-slate-900">{fmtDateTime(viewingBooking.requestedAt)}</span></p>
-                  </div>
+                  </section>
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Customer / Guest</p>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-3">
+                      <Info label="Name" value={bookingDetail.customer?.name ?? bookingDetail.customer_name ?? bookingDetail.guest_name ?? viewingBooking.customerName} />
+                      <Info label="Phone" value={bookingDetail.customer?.phone ?? bookingDetail.customer_phone ?? bookingDetail.guest_phone ?? '—'} />
+                      <Info label="Email" value={bookingDetail.customer?.email ?? bookingDetail.customer_email ?? bookingDetail.guest_email ?? '—'} />
+                    </div>
+                  </section>
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Services</p>
+                    <div className="mt-3 space-y-3 text-sm text-slate-700">
+                      <div><span className="font-semibold text-slate-900">Main service(s):</span> {(bookingDetail.main_services?.length ? bookingDetail.main_services.map((item) => item.name).join(', ') : bookingDetail.service?.name) ?? '—'}</div>
+                      <div><span className="font-semibold text-slate-900">Add-ons:</span> {bookingDetail.add_ons?.length ? bookingDetail.add_ons.map((item) => item.name).join(', ') : '—'}</div>
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <Info label="Service amount" value={formatMoney(bookingDetail.service_total)} />
+                        <Info label="Add-on amount" value={formatMoney(bookingDetail.addon_total_price)} />
+                        <Info label="Total amount" value={formatMoney(Number(bookingDetail.service_total ?? 0) + Number(bookingDetail.addon_total_price ?? 0))} />
+                        <Info label="Deposit paid" value={formatMoney(bookingDetail.deposit_paid ?? bookingDetail.deposit_contribution)} />
+                        <Info label="Settlement paid" value={formatMoney(bookingDetail.settlement_paid)} />
+                        <Info label="Balance due" value={formatMoney(bookingDetail.amount_due_now ?? bookingDetail.balance_due)} />
+                      </div>
+                    </div>
+                  </section>
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Staff / Schedule</p>
+                    <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                      <Info label="Staff" value={bookingDetail.staff_splits?.length ? bookingDetail.staff_splits.map((split) => `${split.staff_name} ${split.share_percent}%`).join(', ') : bookingDetail.staff?.name ?? '—'} />
+                      <Info label="Appointment start/end" value={`${fmtDateTime(bookingDetail.appointment_start_at)}${bookingDetail.appointment_end_at ? ` - ${fmtDateTime(bookingDetail.appointment_end_at)}` : ''}`} />
+                      <Info label="Duration" value={calcDurationMinutes(bookingDetail.appointment_start_at, bookingDetail.appointment_end_at) != null ? `${calcDurationMinutes(bookingDetail.appointment_start_at, bookingDetail.appointment_end_at)} min` : bookingDetail.estimated_duration_min ? `${bookingDetail.estimated_duration_min} min` : '—'} />
+                    </div>
+                  </section>
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Payment Proof / Uploaded Proof</p>
+                    {bookingDetail.payment_proofs?.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{bookingDetail.payment_proofs.map((proof, idx) => { const proofUrl = proof.file_url ?? proof.url ?? proof.payment_proof_url; return <div key={`${proof.id ?? idx}`} className="rounded-lg border border-slate-200 p-3 text-sm"><p className="font-semibold text-slate-900">Proof {idx + 1}</p>{proofUrl ? <a href={proofUrl} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-lg border border-slate-200"><img src={proofUrl} alt={`Payment proof ${idx + 1}`} className="max-h-56 w-full object-cover" /></a> : null}<p className="mt-2 text-slate-600">{proof.note ?? 'No note'}</p><p className="text-xs text-slate-500">{fmtDateTime(proof.uploaded_at)}</p></div> })}</div> : <p className="mt-3 text-sm text-slate-500">No uploaded payment proof.</p>}
+                  </section>
+                  <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Notes / Remarks</p>
+                    <div className="mt-3 space-y-2 text-sm text-slate-700">
+                      <p><span className="font-semibold text-slate-900">Customer remarks:</span> {bookingDetail.notes || '—'}</p>
+                      <p><span className="font-semibold text-slate-900">Payment proof notes:</span> {bookingDetail.payment_proofs?.map((proof) => proof.note).filter(Boolean).join('; ') || '—'}</p>
+                      <p><span className="font-semibold text-slate-900">Admin note:</span> {viewingBooking.adminNote || '—'}</p>
+                      <p><span className="font-semibold text-slate-900">Cancellation reason:</span> {viewingBooking.reason || '—'}</p>
+                      <p><span className="font-semibold text-slate-900">Reschedule reason:</span> {bookingDetail.reschedule_reason || '—'}</p>
+                    </div>
+                  </section>
                 </div>
               ) : null}
             </div>
@@ -462,6 +545,7 @@ export default function PosRequestCenter({
           </aside>
         </div>
       ) : null}
+      {shipOrderId !== null ? <OrderShipModal orderId={shipOrderId} onClose={() => setShipOrderId(null)} onSuccess={() => { setShipOrderId(null); void load() }} zIndexClassName="z-[105]" /> : null}
       {viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="z-[95]" /> : null}
       {confirmPaymentOrderId !== null ? <OrderConfirmPaymentModal orderId={confirmPaymentOrderId} onClose={() => setConfirmPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[105]" /> : null}
       {rejectPaymentOrderId !== null ? <OrderRejectPaymentModal orderId={rejectPaymentOrderId} onClose={() => setRejectPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[105]" /> : null}
