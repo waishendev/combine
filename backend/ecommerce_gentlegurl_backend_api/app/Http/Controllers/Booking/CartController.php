@@ -1055,16 +1055,7 @@ class CartController extends Controller
 
         $bookingConflict = Booking::query()
             ->where('staff_id', $item->staff_id)
-            ->where(function ($query) {
-                $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
-                    ->orWhere(function ($completed) {
-                        $completed->where('status', 'COMPLETED')
-                            ->where(function ($payment) {
-                                $payment->whereNull('payment_status')
-                                    ->orWhere('payment_status', '!=', 'PAID');
-                            });
-                    });
-            })
+            ->whereIn('status', BookingAvailabilityService::BLOCKING_BOOKING_STATUSES)
             ->where('start_at', '<', $blockEndAt)
             ->get(['end_at', 'buffer_min'])
             ->contains(function (Booking $booking) use ($startAt) {

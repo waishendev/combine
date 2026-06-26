@@ -17,6 +17,14 @@ use Illuminate\Support\Facades\Log;
 class BookingAvailabilityService
 {
     /**
+     * Booking statuses that still reserve staff time. Terminal statuses, including COMPLETED,
+     * release the slot regardless of payment_status because payment only affects settlement.
+     *
+     * @var array<int,string>
+     */
+    public const BLOCKING_BOOKING_STATUSES = ['HOLD', 'CONFIRMED', 'PENDING', 'IN_PROGRESS', 'CHECKED_IN'];
+
+    /**
      * @return array<int, array{
      *   start_at:string,
      *   end_at:string,
@@ -230,16 +238,7 @@ class BookingAvailabilityService
                         ->orWhere('booking_code', '!=', $ignoreBookingCode);
                 });
             })
-            ->where(function ($query) {
-                $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
-                    ->orWhere(function ($completed) {
-                        $completed->where('status', 'COMPLETED')
-                            ->where(function ($payment) {
-                                $payment->whereNull('payment_status')
-                                    ->orWhere('payment_status', '!=', 'PAID');
-                            });
-                    });
-            })
+            ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
             ->where('start_at', '<', $queryBlockEndAt->toDateTimeString())
             ->get(['id', 'booking_code', 'start_at', 'end_at', 'buffer_min', 'status', 'payment_status'])
             ->filter(function (Booking $candidate) use ($queryStartAt) {
@@ -623,16 +622,7 @@ class BookingAvailabilityService
 
         $bookingRows = Booking::query()
             ->whereIn('staff_id', $staffIds)
-            ->where(function ($query) {
-                $query->whereIn('status', ['HOLD', 'CONFIRMED', 'PENDING'])
-                    ->orWhere(function ($completed) {
-                        $completed->where('status', 'COMPLETED')
-                            ->where(function ($payment) {
-                                $payment->whereNull('payment_status')
-                                    ->orWhere('payment_status', '!=', 'PAID');
-                            });
-                    });
-            })
+            ->whereIn('status', self::BLOCKING_BOOKING_STATUSES)
             ->where('start_at', '<', $queryEnd->toDateTimeString())
             ->get(['id', 'staff_id', 'booking_code', 'start_at', 'end_at', 'buffer_min', 'status', 'payment_status']);
 
