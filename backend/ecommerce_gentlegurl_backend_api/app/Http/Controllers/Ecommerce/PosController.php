@@ -394,6 +394,7 @@ class PosController extends Controller
                 'settled_service_amount' => $summary['settled_service_amount'] ?? null,
                 'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
                 'requires_settled_amount' => (bool) ($summary['requires_settled_amount'] ?? false),
+                'has_unfinalized_range_pricing' => $this->appointmentSummaryHasUnfinalizedRangePricing($summary),
                 'service_price_mode' => (string) ($booking->service?->price_mode ?? 'fixed'),
                 'service_price_range_min' => $booking->service?->price_range_min !== null ? (float) $booking->service->price_range_min : null,
                 'service_price_range_max' => $booking->service?->price_range_max !== null ? (float) $booking->service->price_range_max : null,
@@ -695,6 +696,12 @@ class PosController extends Controller
         }
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $hasUnfinalizedRangePrice = collect($summary['main_services'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false))
+            || collect($summary['add_ons'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false));
+        if ($hasUnfinalizedRangePrice) {
+            return $this->respondError(__('Range pricing — please set final price before checkout.'), 422);
+        }
+
         $balanceDue = (float) $summary['balance_due'];
         if ($balanceDue <= 0) {
             return $this->respondError(__('No balance due for this appointment.'), 422);
@@ -1000,6 +1007,12 @@ class PosController extends Controller
         }
 
         $summary = $this->resolveAppointmentFinancialSummary($booking);
+        $hasUnfinalizedRangePrice = collect($summary['main_services'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false))
+            || collect($summary['add_ons'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false));
+        if ($hasUnfinalizedRangePrice) {
+            return $this->respondError(__('Range pricing — please set final price before checkout.'), 422);
+        }
+
         if (max(0.0, (float) ($summary['balance_due'] ?? 0)) > 0.0001) {
             return $this->respondError(__('A balance is still due; use standard collection.'), 422);
         }
@@ -1082,7 +1095,7 @@ class PosController extends Controller
         ]);
         $validated = $request->validate([
             'booking_service_id' => ['nullable', 'integer', 'exists:booking_services,id'],
-            'settled_service_amount' => [$isRangePriced && $isEditingSettlement ? 'required' : 'nullable', 'numeric', 'min:0'],
+            'settled_service_amount' => ['nullable', 'numeric', 'min:0'],
             'main_service_ids' => ['nullable', 'array'],
             'main_service_ids.*' => ['integer'],
             'main_service_items' => ['nullable', 'array'],
@@ -1094,6 +1107,7 @@ class PosController extends Controller
             'main_service_items.*.addon_staff_splits.*.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'main_service_items.*.addon_staff_splits.*.*.share_percent' => ['required', 'integer', 'min:1', 'max:100'],
             'main_service_items.*.price' => ['nullable', 'numeric', 'min:0'],
+            'main_service_items.*.price_finalized' => ['nullable', 'boolean'],
             'main_service_items.*.addon_price_overrides' => ['nullable', 'array'],
             'main_service_items.*.addon_price_overrides.*' => ['numeric', 'min:0'],
             'main_service_items.*.staff_splits' => ['nullable', 'array', 'min:1'],
@@ -1217,6 +1231,7 @@ class PosController extends Controller
                         'booking_service_id' => (int) ($item['booking_service_id'] ?? 0),
                         'addon_option_ids' => collect($item['addon_option_ids'] ?? [])->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->values()->all(),
                         'price' => array_key_exists('price', $item) ? round(max(0, (float) $item['price']), 2) : null,
+                        'price_finalized' => (bool) ($item['price_finalized'] ?? false),
                         'addon_price_overrides' => collect($item['addon_price_overrides'] ?? [])->mapWithKeys(fn ($price, $id) => [(int) $id => round(max(0, (float) $price), 2)])->all(),
                         'addon_staff_splits' => collect($item['addon_staff_splits'] ?? [])->mapWithKeys(fn ($splits, $id) => [(int) $id => collect($splits)->values()->all()])->all(),
                         'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
@@ -1242,7 +1257,7 @@ class PosController extends Controller
                 : BookingService::query()
                     ->whereIn('id', $serviceIds->all())
                     ->where('is_active', true)
-                    ->get(['id', 'name', 'service_price', 'price', 'duration_min'])
+                    ->get(['id', 'name', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'duration_min'])
                     ->keyBy('id');
 
             $existingMainByServiceId = $existingSettlementItems
@@ -1259,9 +1274,13 @@ class PosController extends Controller
                     }
                     $existing = (array) ($existingMainByServiceId->get($serviceId) ?? []);
                     $itemPayload = (array) ($itemsPayload->first(fn (array $item) => (int) ($item['booking_service_id'] ?? 0) === $serviceId) ?? []);
-                    $price = array_key_exists('price', $itemPayload) && $itemPayload['price'] !== null
-                        ? round(max(0, (float) $itemPayload['price']), 2)
-                        : round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2);
+                    $priceFinalized = (bool) ($itemPayload['price_finalized'] ?? false);
+                    $serviceIsRangePriced = (string) ($service->price_mode ?? 'fixed') === 'range';
+                    $price = $priceFinalized || ! $serviceIsRangePriced
+                        ? (array_key_exists('price', $itemPayload) && $itemPayload['price'] !== null
+                            ? round(max(0, (float) $itemPayload['price']), 2)
+                            : round(max(0, (float) ($service->service_price ?? $service->price ?? 0)), 2))
+                        : 0.0;
                     $addonPriceOverrides = (array) ($itemPayload['addon_price_overrides'] ?? []);
                     $addonStaffSplits = (array) ($itemPayload['addon_staff_splits'] ?? []);
                     $availableOptions = BookingService::query()
@@ -1282,9 +1301,12 @@ class PosController extends Controller
                                 : max(0, (int) ($option->extra_duration_min ?? 0)),
                             'extra_price' => array_key_exists((int) $option->id, $addonPriceOverrides)
                                 ? round(max(0, (float) $addonPriceOverrides[(int) $option->id]), 2)
-                                : ($option->linkedBookingService
-                                    ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                                    : round(max(0, (float) ($option->extra_price ?? 0)), 2)),
+                                : ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'
+                                    ? 0.0
+                                    : ($option->linkedBookingService
+                                        ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                                        : round(max(0, (float) ($option->extra_price ?? 0)), 2))),
+                            'price_finalized' => array_key_exists((int) $option->id, $addonPriceOverrides) || ! ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'),
                             'linked_booking_service_id' => $option->linkedBookingService
                                 ? (int) $option->linkedBookingService->id
                                 : null,
@@ -1315,6 +1337,7 @@ class PosController extends Controller
                         'extra_price' => $price,
                         'linked_booking_service_id' => (int) $serviceId,
                         'is_original' => false,
+                        'price_finalized' => $priceFinalized || ! $serviceIsRangePriced,
                         'addon_items' => $addonItems,
                         'addon_total_price' => round((float) collect($addonItems)->sum('extra_price'), 2),
                         'addon_total_duration_min' => (int) collect($addonItems)->sum('extra_duration_min'),
@@ -1353,9 +1376,12 @@ class PosController extends Controller
                         : max(0, (int) ($option->extra_duration_min ?? 0)),
                     'extra_price' => array_key_exists((int) $option->id, $addonPriceOverrides)
                         ? round(max(0, (float) $addonPriceOverrides[(int) $option->id]), 2)
-                        : ($option->linkedBookingService
-                            ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
-                            : round(max(0, (float) ($option->extra_price ?? 0)), 2)),
+                        : ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'
+                            ? 0.0
+                            : ($option->linkedBookingService
+                                ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
+                                : round(max(0, (float) ($option->extra_price ?? 0)), 2))),
+                    'price_finalized' => array_key_exists((int) $option->id, $addonPriceOverrides) || ! ($option->linkedBookingService && (string) ($option->linkedBookingService->price_mode ?? 'fixed') === 'range'),
                     'linked_booking_service_id' => $option->linkedBookingService
                         ? (int) $option->linkedBookingService->id
                         : null,
@@ -1393,6 +1419,7 @@ class PosController extends Controller
                     'extra_duration_min' => max(0, (int) ($effectiveService?->duration_min ?? $booking->service?->duration_min ?? 0)),
                     'extra_price' => $originalServicePrice,
                     'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
+                    'price_finalized' => true,
                     'is_original' => true,
                     'addon_items' => [],
                 ])
@@ -1560,6 +1587,13 @@ class PosController extends Controller
                 'extra_price' => $option->linkedBookingService
                     ? round(max(0, (float) ($option->linkedBookingService->service_price ?? 0)), 2)
                     : round(max(0, (float) ($option->extra_price ?? 0)), 2),
+                'linked_price_mode' => $option->linkedBookingService ? (string) ($option->linkedBookingService->price_mode ?? 'fixed') : null,
+                'linked_price_range_min' => $option->linkedBookingService && $option->linkedBookingService->price_range_min !== null
+                    ? (float) $option->linkedBookingService->price_range_min
+                    : null,
+                'linked_price_range_max' => $option->linkedBookingService && $option->linkedBookingService->price_range_max !== null
+                    ? (float) $option->linkedBookingService->price_range_max
+                    : null,
             ])->values(),
         ]);
 
@@ -2270,6 +2304,34 @@ class PosController extends Controller
         return true;
     }
 
+    protected function appointmentSummaryHasUnfinalizedRangePricing(array $summary): bool
+    {
+        if ((bool) ($summary['requires_settled_amount'] ?? false)) {
+            return true;
+        }
+
+        return collect($summary['main_services'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        ) || collect($summary['add_ons'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        );
+    }
+
+    protected function appointmentRowHasUnfinalizedRangePricing(array $row): bool
+    {
+        if ((bool) ($row['has_unfinalized_range_pricing'] ?? false)) {
+            return true;
+        }
+
+        if ((bool) ($row['requires_settled_amount'] ?? false)) {
+            return true;
+        }
+
+        return collect($row['add_ons'] ?? [])->contains(
+            fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false)
+        );
+    }
+
     protected function appointmentCompletedRowNeedsSettlement(array $row): bool
     {
         $amountDueNow = (float) ($row['amount_due_now'] ?? 0);
@@ -2277,6 +2339,10 @@ class PosController extends Controller
         $settlementPaid = (float) ($row['settlement_paid'] ?? 0);
         $paymentStatus = strtoupper((string) ($row['payment_status'] ?? ''));
         $packageStatus = strtolower((string) data_get($row, 'package_status.status', ''));
+
+        if ($this->appointmentRowHasUnfinalizedRangePricing($row)) {
+            return true;
+        }
 
         if ($amountDueNow > 0.0001 || $balanceDue > 0.0001) {
             return true;
@@ -3497,7 +3563,9 @@ class PosController extends Controller
         }
 
         $settlementSummary = $this->resolveAppointmentFinancialSummary($booking);
-        if ((float) ($settlementSummary['balance_due'] ?? 0) <= 0.0001) {
+        $balanceDue = (float) ($settlementSummary['balance_due'] ?? 0);
+        $hasUnfinalizedRangePricing = $this->appointmentSummaryHasUnfinalizedRangePricing($settlementSummary);
+        if ($balanceDue <= 0.0001 && ! $hasUnfinalizedRangePricing) {
             return $this->respondError(__('No balance due for this appointment settlement.'), 422);
         }
 
@@ -5107,19 +5175,33 @@ class PosController extends Controller
     {
         foreach ((array) ($summary['main_service_settlement_items'] ?? []) as $line) {
             if ((string) ($line['line_key'] ?? '') === $lineKey) {
-                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
-                return $gross > 0.0001 ? $gross : null;
+                return $this->resolveAppointmentSettlementLineReferenceGross($line);
             }
         }
 
         foreach ((array) ($summary['addon_settlement_items'] ?? []) as $line) {
             if ((string) ($line['line_key'] ?? '') === $lineKey) {
-                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
-                return $gross > 0.0001 ? $gross : null;
+                return $this->resolveAppointmentSettlementLineReferenceGross($line);
             }
         }
 
         return null;
+    }
+
+    protected function resolveAppointmentSettlementLineReferenceGross(array $line): float
+    {
+        $balanceDue = max(0.0, (float) ($line['balance_due'] ?? 0));
+        if ($balanceDue > 0.0001) {
+            return $balanceDue;
+        }
+
+        $gross = max(0.0, (float) ($line['gross_amount'] ?? $line['extra_price'] ?? 0));
+        if ($gross > 0.0001) {
+            return $gross;
+        }
+
+        // Unfinalized range / unset lines still exist — allow cart price override with zero reference.
+        return 0.0;
     }
 
     protected function resolveAppointmentSettlementLineDiscount(PosCartAppointmentSettlementItem $item, string $lineKey, float $gross): array
@@ -5477,8 +5559,15 @@ class PosController extends Controller
             if ($cart->appointmentSettlementItems->isNotEmpty()) {
                 foreach ($cart->appointmentSettlementItems as $settlementItem) {
                     $stlBooking = $settlementItem->booking;
-                    if ($stlBooking && ($stlBooking->service?->price_mode ?? 'fixed') === 'range' && $stlBooking->settled_service_amount === null) {
-                        abort(422, __('Please set the service amount for all range-priced settlement items before checkout.'));
+                    if (! $stlBooking) {
+                        continue;
+                    }
+                    $summary = $this->resolveAppointmentFinancialSummary($stlBooking);
+                    $hasUnfinalizedRangePrice = (bool) ($summary['requires_settled_amount'] ?? false)
+                        || collect($summary['main_services'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false))
+                        || collect($summary['add_ons'] ?? [])->contains(fn ($item) => ($item['price_mode'] ?? null) === 'range' && ! (bool) ($item['price_finalized'] ?? false));
+                    if ($hasUnfinalizedRangePrice) {
+                        abort(422, __('Range pricing — please set final price before checkout.'));
                     }
                 }
 
@@ -6378,17 +6467,14 @@ class PosController extends Controller
                         ]]);
 
                     foreach ($serviceLines as $mainLine) {
-                        $mainAmount = max(0.0, (float) ($mainLine['balance_due'] ?? 0));
-                        if ($mainAmount <= 0.0001) {
-                            continue;
-                        }
                         $lineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, 0));
+                        $mainAmount = max(0.0, (float) ($mainLine['balance_due'] ?? 0));
                         $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $mainAmount);
                         $mainAmount = (float) $priceOverrideResult['amount'];
-                        $mainLinePriceOverride = $priceOverrideResult['override'] ?? ($mainLine['price_override'] ?? null);
                         if ($mainAmount <= 0.0001) {
                             continue;
                         }
+                        $mainLinePriceOverride = $priceOverrideResult['override'] ?? ($mainLine['price_override'] ?? null);
                         if ($hasPerLineDiscounts) {
                             $lineDiscount = $this->resolveAppointmentSettlementLineDiscount($settlementItem, $lineKey, $mainAmount);
                             $serviceLineDiscount = (float) $lineDiscount['discount_amount'];
@@ -6460,16 +6546,13 @@ class PosController extends Controller
                 }
 
                 foreach ($addonSettlementItems as $addon) {
-                    $addonAmount = max(0.0, (float) ($addon['balance_due'] ?? 0));
-                    if ($addonAmount <= 0.0001) {
-                        continue;
-                    }
                     $addonServiceRef = (string) ($addon['service_ref'] ?? 'original');
                     $addonName = (string) ($addon['name'] ?? 'Add-on');
                     $addonDisplayName = $addonServiceRef === 'original'
                         ? $addonName
                         : sprintf('%s::%s', $addonServiceRef, $addonName);
                     $lineKey = (string) ($addon['line_key'] ?? $this->appointmentSettlementLineKey('addon', (array) $addon, 0));
+                    $addonAmount = max(0.0, (float) ($addon['balance_due'] ?? 0));
                     $priceOverrideResult = $this->applyPriceOverrideToAmount($settlementItem, $lineKey, $addonAmount);
                     $addonAmount = (float) $priceOverrideResult['amount'];
                     $addonPriceOverride = $priceOverrideResult['override'] ?? ($addon['price_override'] ?? null);
@@ -8619,6 +8702,16 @@ class PosController extends Controller
 
     protected function calculateAppointmentPaymentStatus(array $summary): string
     {
+        if ($this->appointmentSummaryHasUnfinalizedRangePricing($summary)) {
+            $paidTotal = round(
+                max(0.0, (float) ($summary['deposit_paid'] ?? $summary['deposit_contribution'] ?? 0))
+                + max(0.0, (float) ($summary['settlement_paid'] ?? 0)),
+                2
+            );
+
+            return $paidTotal > 0.0001 ? 'PARTIAL' : 'UNPAID';
+        }
+
         $paidTotal = round(
             max(0.0, (float) ($summary['deposit_paid'] ?? $summary['deposit_contribution'] ?? 0))
             + max(0.0, (float) ($summary['settlement_paid'] ?? 0))
@@ -8887,13 +8980,60 @@ class PosController extends Controller
         $isRangePriced = ($booking->service?->price_mode ?? 'fixed') === 'range';
         $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;
         $settlementItems = collect($booking->addon_items_json ?? []);
+        $linkedServiceIdsForPriceMeta = $settlementItems
+            ->flatMap(fn ($item) => collect([$item['linked_booking_service_id'] ?? null])
+                ->concat(collect($item['addon_items'] ?? [])->pluck('linked_booking_service_id')))
+            ->push($booking->service_id)
+            ->filter(fn ($id) => (int) $id > 0)
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values();
+        $linkedServicesForPriceMeta = $linkedServiceIdsForPriceMeta->isNotEmpty()
+            ? BookingService::query()
+                ->whereIn('id', $linkedServiceIdsForPriceMeta->all())
+                ->get(['id', 'price_mode', 'price_range_min', 'price_range_max'])
+                ->keyBy('id')
+            : collect();
+        $priceMetaForServiceId = function ($serviceId) use ($linkedServicesForPriceMeta): array {
+            $service = $linkedServicesForPriceMeta->get((int) $serviceId);
+            return [
+                'price_mode' => $service ? (string) ($service->price_mode ?? 'fixed') : null,
+                'price_range_min' => $service && $service->price_range_min !== null ? (float) $service->price_range_min : null,
+                'price_range_max' => $service && $service->price_range_max !== null ? (float) $service->price_range_max : null,
+            ];
+        };
+        $priceIsFinalizedForItem = function (array $item, $serviceId) use ($priceMetaForServiceId): bool {
+            $meta = $priceMetaForServiceId($serviceId);
+            if (($meta['price_mode'] ?? null) !== 'range') {
+                return true;
+            }
+            if ((bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? false)) {
+                return true;
+            }
+
+            foreach (['final_price', 'settled_price', 'adjusted_price', 'override_price', 'price_override'] as $field) {
+                if (array_key_exists($field, $item) && $item[$field] !== null && $item[$field] !== '') {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+        $effectivePriceForItem = function (array $item, $serviceId) use ($priceIsFinalizedForItem): float {
+            return $priceIsFinalizedForItem($item, $serviceId)
+                ? round(max(0, (float) ($item['final_price'] ?? $item['settled_price'] ?? $item['adjusted_price'] ?? $item['override_price'] ?? $item['extra_price'] ?? 0)), 2)
+                : 0.0;
+        };
         $originalMainServiceItem = $settlementItems
             ->first(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service' && (bool) ($item['is_original'] ?? false));
+        $originalServicePriceFinalized = ! $isRangePriced
+            || $settledServiceAmount !== null
+            || (is_array($originalMainServiceItem) && $priceIsFinalizedForItem($originalMainServiceItem, $booking->service_id));
         $originalServiceAmount = $settledServiceAmount !== null
             ? $settledServiceAmount
-            : (is_array($originalMainServiceItem) && array_key_exists('extra_price', $originalMainServiceItem)
-                ? (float) $originalMainServiceItem['extra_price']
-                : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0));
+            : (is_array($originalMainServiceItem)
+                ? $effectivePriceForItem($originalMainServiceItem, $booking->service_id)
+                : ($isRangePriced ? 0.0 : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0)));
         $extraMainServices = $settlementItems
             ->filter(fn ($item) => strtolower((string) ($item['item_kind'] ?? '')) === 'main_service')
             ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
@@ -8903,15 +9043,20 @@ class PosController extends Controller
                 'name' => (string) ($item['name'] ?? $item['label'] ?? 'Service'),
                 'cn_name' => $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
                 'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
-                'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+                'extra_price' => $effectivePriceForItem((array) $item, $item['linked_booking_service_id'] ?? null),
                 'linked_booking_service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
+                'price_finalized' => $priceIsFinalizedForItem((array) $item, $item['linked_booking_service_id'] ?? null),
+                ...$priceMetaForServiceId($item['linked_booking_service_id'] ?? null),
                 'is_original' => false,
                 'add_ons' => collect($item['addon_items'] ?? [])->map(fn ($addon) => [
                     'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                     'name' => (string) ($addon['name'] ?? $addon['label'] ?? 'Add-on'),
                     'cn_name' => $addon['cn_label'] ?? $addon['cn_name'] ?? $addon['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
-                    'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
+                    'extra_price' => $effectivePriceForItem((array) $addon, $addon['linked_booking_service_id'] ?? null),
+                    'linked_booking_service_id' => isset($addon['linked_booking_service_id']) ? (int) $addon['linked_booking_service_id'] : null,
+                    'price_finalized' => $priceIsFinalizedForItem((array) $addon, $addon['linked_booking_service_id'] ?? null),
+                    ...$priceMetaForServiceId($addon['linked_booking_service_id'] ?? null),
                     'staff_splits' => collect($addon['staff_splits'] ?? [])->map(fn ($split) => [
                         'staff_id' => (int) ($split['staff_id'] ?? 0),
                         'share_percent' => (int) ($split['share_percent'] ?? 0),
@@ -8930,6 +9075,8 @@ class PosController extends Controller
             'extra_duration_min' => max(0, (int) ($booking->service?->duration_min ?? 0)),
             'extra_price' => round(max(0, $originalServiceAmount), 2),
             'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
+            ...$priceMetaForServiceId($booking->service_id),
+            'price_finalized' => $originalServicePriceFinalized,
             'is_original' => true,
             'add_ons' => [],
             'staff_splits' => $this->resolveBookingStaffSplits((int) $booking->id, (int) ($booking->staff_id ?? 0))->values()->all(),
@@ -8947,7 +9094,10 @@ class PosController extends Controller
             'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
             'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
             'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
-            'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+            'extra_price' => $effectivePriceForItem((array) $item, $item['linked_booking_service_id'] ?? null),
+            'linked_booking_service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
+            'price_finalized' => $priceIsFinalizedForItem((array) $item, $item['linked_booking_service_id'] ?? null),
+            ...$priceMetaForServiceId($item['linked_booking_service_id'] ?? null),
             'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
                 'staff_id' => (int) ($split['staff_id'] ?? 0),
                 'share_percent' => (int) ($split['share_percent'] ?? 0),
@@ -8972,6 +9122,11 @@ class PosController extends Controller
                         'cn_name' => $addon['cn_name'] ?? null,
                         'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                         'extra_price' => (float) ($addon['extra_price'] ?? 0),
+                        'linked_booking_service_id' => $addon['linked_booking_service_id'] ?? null,
+                        'price_finalized' => (bool) ($addon['price_finalized'] ?? true),
+                        'price_mode' => $addon['price_mode'] ?? null,
+                        'price_range_min' => $addon['price_range_min'] ?? null,
+                        'price_range_max' => $addon['price_range_max'] ?? null,
                         'staff_splits' => $addon['staff_splits'] ?? [],
                     ])->values()->all(),
                 ];
@@ -8980,7 +9135,7 @@ class PosController extends Controller
             return $service;
         })->values();
         $addonTotalDurationMin = (int) $addonItems->sum('extra_duration_min');
-        $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum('extra_price')), 2);
+        $addonTotalPrice = round((float) $addonItems->sum('extra_price'), 2);
         $addonPaidRows = OrderItem::query()
             ->where('booking_id', (int) $booking->id)
             ->where('line_type', 'booking_addon')

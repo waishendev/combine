@@ -10,11 +10,23 @@ import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/com
 import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
+  accumulatePosPriceBounds,
+  appointmentDetailHasUnsettledRangePricing,
   bookingServiceSettlementSource,
+  formatPosAccumulatedPriceDisplay,
+  formatPosCurrentOrRangeDisplay,
+  formatPosPriceDisplay,
   getSettlementRangeBounds,
+  optionalSettlementAmountPayload,
   parseSettlementAmountInput,
+  posPriceDisplayHasFinalPrice,
+  posPriceDisplayHasRange,
+  posPriceDisplayWithOverride,
+  seedFinalizedAddonPriceOverrides,
+  settlementCartItemHasUnsettledRangePricing,
   settlementNeedsSettledAmount,
-  validateSettlementAmountInput,
+  UNSETTLED_RANGE_CHECKOUT_MESSAGE,
+  type PosPriceDisplaySource,
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
@@ -226,8 +238,8 @@ type AppointmentSettlementCartItem = {
   appointment_end_at?: string | null
   balance_due: number
   service_total?: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
-  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; gross_amount?: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; discount_type?: 'percentage' | 'fixed' | null; discount_value?: number; discount_amount?: number; line_total_after_discount?: number; discount_remark?: string | null; price_override?: PriceOverrideSnapshot | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   addon_total_price?: number
   deposit_contribution?: number
   deposit_previously_collected?: boolean
@@ -320,7 +332,7 @@ type ServiceCartItem = {
     extra_price?: number
     linked_booking_service_id?: number | null
     is_original?: boolean
-    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
     staff_splits?: Array<{ staff_id: number; share_percent: number }>
   }>
 }
@@ -571,7 +583,7 @@ type PriceEditTarget =
   | { kind: 'bookingProductOption'; id: number; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
   | { kind: 'package'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
   | { kind: 'serviceDeposit'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
-  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
+  | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null }
 
 type DiscountTarget =
   | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
@@ -681,6 +693,9 @@ type BookingServiceOption = {
   price_mode?: string | null
   price_range_min?: number | null
   price_range_max?: number | null
+  linked_price_mode?: string | null
+  linked_price_range_min?: number | null
+  linked_price_range_max?: number | null
   duration_min?: number
   is_active?: boolean
   allowed_staffs?: Array<{ id: number; name: string }>
@@ -696,6 +711,12 @@ type BookingServiceQuestionOption = {
   linked_cn_name?: string | null
   extra_duration_min: number
   extra_price: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+  linked_price_mode?: string | null
+  linked_price_range_min?: number | null
+  linked_price_range_max?: number | null
   is_active?: boolean
 }
 
@@ -1621,7 +1642,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       addon_total_price?: number
       deposit_contribution?: number
       package_offset?: number
-      add_ons?: Array<{ id?: number | null; name: string; extra_duration_min?: number; extra_price: number }>
+      requires_settled_amount?: boolean
+      has_unfinalized_range_pricing?: boolean
+      is_range_priced?: boolean
+      service_price_range_min?: number | null
+      service_price_range_max?: number | null
+      add_ons?: Array<{
+        id?: number | null
+        name: string
+        extra_duration_min?: number
+        extra_price: number
+        price_mode?: string | null
+        price_range_min?: number | null
+        price_range_max?: number | null
+        price_finalized?: boolean | null
+      }>
     }>
   >([])
   const [settlementLoading, setSettlementLoading] = useState(false)
@@ -1671,7 +1706,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementServiceId, setCartEditSettlementServiceId] = useState<number | null>(null)
   const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
-  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number }> }>>([])
+  const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>>([])
   const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
@@ -1685,8 +1720,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     service_name: string
     service_cn_name?: string | null
     price: number
+    price_mode?: string | null
+    price_range_min?: number | null
+    price_range_max?: number | null
+    price_finalized?: boolean | null
     duration_min: number
-    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number }> }>
+    addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
     selected_addon_ids: Set<number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
@@ -3511,6 +3550,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
+                  price_range_min: option.price_range_min == null ? (option.linked_price_range_min == null ? null : Number(option.linked_price_range_min)) : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? (option.linked_price_range_max == null ? null : Number(option.linked_price_range_max)) : Number(option.price_range_max),
+                  linked_price_mode: typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null,
+                  linked_price_range_min: option.linked_price_range_min == null ? null : Number(option.linked_price_range_min),
+                  linked_price_range_max: option.linked_price_range_max == null ? null : Number(option.linked_price_range_max),
                 }
               })
               .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
@@ -3553,6 +3598,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   linked_cn_name: typeof option.linked_cn_name === 'string' ? option.linked_cn_name : null,
                   extra_duration_min: Number(option.extra_duration_min ?? 0),
                   extra_price: Number(option.extra_price ?? 0),
+                  price_mode: typeof option.price_mode === 'string' ? option.price_mode : (typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null),
+                  price_range_min: option.price_range_min == null ? (option.linked_price_range_min == null ? null : Number(option.linked_price_range_min)) : Number(option.price_range_min),
+                  price_range_max: option.price_range_max == null ? (option.linked_price_range_max == null ? null : Number(option.linked_price_range_max)) : Number(option.price_range_max),
+                  linked_price_mode: typeof option.linked_price_mode === 'string' ? option.linked_price_mode : null,
+                  linked_price_range_min: option.linked_price_range_min == null ? null : Number(option.linked_price_range_min),
+                  linked_price_range_max: option.linked_price_range_max == null ? null : Number(option.linked_price_range_max),
                 }
               })
               .filter((option): option is BookingServiceQuestionOption => Boolean(option && option.id > 0)),
@@ -3572,10 +3623,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     () => bookingSelectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0),
     [bookingSelectedOptions],
   )
-  const bookingAddonPriceTotal = useMemo(
-    () => bookingSelectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0),
-    [bookingSelectedOptions],
-  )
+  const bookingGrandTotalBounds = useMemo(() => {
+    const items: Array<{ source?: PosPriceDisplaySource | null }> = []
+    if (bookingServiceDraft) items.push({ source: bookingServiceDraft })
+    bookingSelectedOptions.forEach((option) => items.push({ source: option }))
+    for (const block of bookingExtraServiceBlocks) {
+      if (!block.service) continue
+      items.push({ source: block.service })
+      const selected = new Set(block.selectedOptionIds)
+      block.questions
+        .flatMap((question) => question.options.filter((option) => selected.has(option.id)))
+        .forEach((option) => items.push({ source: option }))
+    }
+    return accumulatePosPriceBounds(items)
+  }, [bookingExtraServiceBlocks, bookingSelectedOptions, bookingServiceDraft])
   const bookingExtraTotals = useMemo(() => {
     return bookingExtraServiceBlocks.reduce((acc, block) => {
       if (!block.service) return acc
@@ -4154,8 +4215,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const openPriceEditModal = (target: PriceEditTarget) => {
     setPriceEditTarget(target)
-    setPriceEditValueDraft(Number(target.currentUnitPrice ?? 0).toFixed(2))
-    setPriceEditLineTotalDraft(Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2))
+    const hasFinalPrice = !('priceSource' in target) || !target.priceSource || posPriceDisplayHasFinalPrice(target.priceSource)
+    setPriceEditValueDraft(hasFinalPrice ? Number(target.currentUnitPrice ?? 0).toFixed(2) : '')
+    setPriceEditLineTotalDraft(hasFinalPrice ? Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2) : '')
     setPriceEditMode('unit')
     setPriceEditReasonDraft('')
     setPriceEditError(null)
@@ -4164,12 +4226,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const submitPriceEditModal = async () => {
     if (!priceEditTarget || priceEditSaving) return
     const quantity = Math.max(1, Number(priceEditTarget.quantity ?? 1))
-    const nextInput = priceEditMode === 'line' ? Number(priceEditLineTotalDraft) : Number(priceEditValueDraft)
-    if (!Number.isFinite(nextInput) || nextInput < 0) {
+    const parsedInput = parseSettlementAmountInput(priceEditMode === 'line' ? priceEditLineTotalDraft : priceEditValueDraft)
+    if (parsedInput == null) {
+      showMsg(priceEditMode === 'line' ? 'Please enter a valid line total.' : 'Please enter a valid price.', 'error')
+      return
+    }
+    const nextInput = parsedInput
+    const next = priceEditMode === 'line' ? nextInput / quantity : nextInput
+    if (!Number.isFinite(next) || next < 0) {
       showMsg(priceEditMode === 'line' ? 'New line total must be 0 or higher.' : 'New price must be 0 or higher.', 'error')
       return
     }
-    const next = priceEditMode === 'line' ? nextInput / quantity : nextInput
+    const roundedNext = Number(next.toFixed(2))
     let endpoint = ''
     if (priceEditTarget.kind === 'product') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/price`
     if (priceEditTarget.kind === 'bookingProductOption') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/booking-product-options/${priceEditTarget.optionId}/price`
@@ -4182,22 +4250,35 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       const res = await fetch(endpoint, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ unit_price: next, ...(priceEditMode === 'line' ? { line_total: nextInput } : {}), reason: priceEditReasonDraft.trim() || null, ...('lineKey' in priceEditTarget ? { line_key: priceEditTarget.lineKey } : {}) }),
+        body: JSON.stringify({ unit_price: roundedNext, ...(priceEditMode === 'line' ? { line_total: nextInput } : {}), reason: priceEditReasonDraft.trim() || null, ...('lineKey' in priceEditTarget ? { line_key: priceEditTarget.lineKey } : {}) }),
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
         showMsg(json?.message ?? 'Unable to update price.', 'error')
         return
       }
-      setCart((json?.data?.cart ?? null) as Cart | null)
-      if (priceEditTarget.kind === 'settlementLine' && cartEditSettlementItem?.id === priceEditTarget.id) {
-        const originalLineKey = (cartEditSettlementItem.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)?.line_key
-        if (priceEditTarget.lineKey === originalLineKey) {
-          setCartEditOriginalServicePrice(next)
-        } else {
-          const addon = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
-          if (addon?.id != null) {
-            setCartEditAddonPriceOverrides((prev) => ({ ...prev, [Number(addon.id)]: next }))
+      const refreshedCart = (json?.data?.cart ?? null) as Cart | null
+      setCart(refreshedCart)
+      if (priceEditTarget.kind === 'settlementLine' && refreshedCart && cartEditSettlementItem?.id === priceEditTarget.id) {
+        const refreshedSettlement = refreshedCart.appointment_settlement_items?.find((row) => row.id === priceEditTarget.id)
+        if (refreshedSettlement) {
+          setCartEditSettlementItem(refreshedSettlement)
+          const originalLineKey = (refreshedSettlement.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)?.line_key
+          if (priceEditTarget.lineKey === originalLineKey) {
+            const line = (refreshedSettlement.main_service_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
+            setCartEditOriginalServicePrice(Number(line?.gross_amount ?? line?.price_override?.final_unit_price ?? roundedNext))
+          } else if (priceEditTarget.lineKey) {
+            const addonLine = (refreshedSettlement.addon_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
+            const savedAmount = Number(addonLine?.gross_amount ?? addonLine?.price_override?.final_unit_price ?? roundedNext)
+            const optionId = Number(addonLine?.id ?? 0)
+            if (optionId > 0) {
+              setCartEditAddonPriceOverrides((prev) => ({ ...prev, [optionId]: savedAmount }))
+            } else {
+              const matchedOption = cartEditAddonQuestions.flatMap((question) => question.options).find((opt) => opt.label === addonLine?.name)
+              if (matchedOption) {
+                setCartEditAddonPriceOverrides((prev) => ({ ...prev, [matchedOption.id]: savedAmount }))
+              }
+            }
           }
         }
       }
@@ -4362,8 +4443,46 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
     const originalMainService = (settlement.main_services ?? []).find((service) => service.is_original)
     const originalSettlementLine = (settlement.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)
-    setCartEditOriginalServicePrice(Number(originalSettlementLine?.gross_amount ?? originalSettlementLine?.balance_due ?? originalMainService?.extra_price ?? settlement.service_total ?? 0))
-    setCartEditAddonPriceOverrides(Object.fromEntries((settlement.addon_settlement_items ?? []).filter((addon) => addon.id != null).map((addon) => [Number(addon.id), Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)])))
+    const cartOriginalSettlementSource = bookingServiceSettlementSource(
+      {
+        price_mode: settlement.service_price_mode ?? originalMainService?.price_mode ?? null,
+        price_range_min: settlement.service_price_range_min ?? originalMainService?.price_range_min ?? null,
+        price_range_max: settlement.service_price_range_max ?? originalMainService?.price_range_max ?? null,
+      },
+      {
+        is_range_priced: settlement.is_range_priced,
+        requires_settled_amount: settlement.requires_settled_amount,
+      },
+    )
+    const hasFinalCartOriginalServicePrice =
+      !settlementNeedsSettledAmount(cartOriginalSettlementSource) ||
+      settlement.settled_service_amount != null ||
+      posPriceDisplayHasFinalPrice({
+        ...originalMainService,
+        ...originalSettlementLine,
+        price_mode: originalMainService?.price_mode ?? settlement.service_price_mode,
+        price_range_min: originalMainService?.price_range_min ?? settlement.service_price_range_min,
+        price_range_max: originalMainService?.price_range_max ?? settlement.service_price_range_max,
+        settled_service_amount: settlement.settled_service_amount,
+      })
+    setCartEditOriginalServicePrice(
+      hasFinalCartOriginalServicePrice
+        ? Number(
+            settlement.settled_service_amount
+            ?? originalSettlementLine?.gross_amount
+            ?? originalSettlementLine?.balance_due
+            ?? originalMainService?.extra_price
+            ?? settlement.service_total
+            ?? 0,
+          )
+        : null,
+    )
+    setCartEditAddonPriceOverrides(seedFinalizedAddonPriceOverrides(
+      (settlement.addon_settlement_items ?? []).map((addon) => ({
+        ...addon,
+        extra_price: addon.gross_amount ?? addon.balance_due ?? addon.extra_price,
+      })),
+    ))
     setCartEditOriginalService({
       id: Number(settlement.booking_service_id ?? originalMainService?.linked_booking_service_id ?? originalMainService?.id ?? 0),
       name: String(originalMainService?.name ?? settlement.service_name ?? 'Service'),
@@ -4390,6 +4509,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         service_name: String(service.name ?? 'Service'),
         service_cn_name: typeof service.cn_name === 'string' ? service.cn_name : null,
         price: Number(service.extra_price ?? 0),
+        price_mode: service.price_mode ?? null,
+        price_range_min: service.price_range_min ?? null,
+        price_range_max: service.price_range_max ?? null,
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as typeof cartEditAddonQuestions,
         selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
@@ -4569,6 +4691,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       service_name: service.name,
       service_cn_name: service.cn_name ?? null,
       price: Number(service.service_price ?? service.price ?? 0),
+      price_mode: service.price_mode ?? null,
+      price_range_min: service.price_range_min ?? null,
+      price_range_max: service.price_range_max ?? null,
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
       selected_addon_ids: new Set<number>(),
@@ -4614,7 +4739,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const line = (cartEditSettlementItem.main_service_settlement_items ?? []).find((row, idx) => row.is_original ?? idx === 0)
     const current = Number(cartEditOriginalServicePrice ?? line?.gross_amount ?? line?.balance_due ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? 0)
     if (line?.line_key) {
-      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: line.name ?? cartEditOriginalService?.name ?? 'Service', currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: line.name ?? cartEditOriginalService?.name ?? 'Service', currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current), priceSource: line })
       return
     }
     const raw = window.prompt('New service price', current.toFixed(2))
@@ -4628,7 +4753,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     const line = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => Number(row.id ?? 0) === Number(optionId))
     const current = Number(cartEditAddonPriceOverrides[optionId] ?? line?.gross_amount ?? line?.balance_due ?? currentPrice ?? 0)
     if (line?.line_key) {
-      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: label, currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current) })
+      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: label, currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current), priceSource: line })
       return
     }
     const raw = window.prompt('New add-on price', current.toFixed(2))
@@ -4642,7 +4767,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     if (raw == null) return
     const next = Number(raw)
     if (!Number.isFinite(next) || next < 0) return
-    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next } : block))
+    setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === tmpId ? { ...block, price: next, price_finalized: true } : block))
   }
 
   const saveCartEditSettlementDeposit = async () => {
@@ -4713,9 +4838,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         availability_override_type: 'outside_staff_schedule',
         availability_override_reason: null,
         addon_staff_splits: Object.fromEntries(Array.from(cartEditSelectedAddonIds).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`] ?? []])),
+        addon_price_overrides: cartEditAddonPriceOverrides,
         main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
         main_service_items: cartEditAddedMainBlocks.map((block) => ({
           booking_service_id: block.service_id,
+          price: block.price,
+          price_finalized: Boolean(block.price_finalized),
+          addon_price_overrides: cartEditAddonPriceOverrides,
           addon_option_ids: Array.from(block.selected_addon_ids),
           addon_staff_splits: Object.fromEntries(Array.from(block.selected_addon_ids).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
           staff_splits: block.staff_splits.map((row) => ({
@@ -4729,12 +4858,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         payload.booking_service_id = originalServiceId
       }
       if (needsSettledAmount) {
-        const amountCheck = validateSettlementAmountInput(cartEditSettledAmount, cartEditOriginalSettlementSource)
-        if (!amountCheck.ok) {
-          reportCartEditSettlementError(amountCheck.message)
-          return
+        const settledAmount = optionalSettlementAmountPayload(cartEditSettledAmount)
+        if (settledAmount != null) {
+          payload.settled_service_amount = settledAmount
         }
-        payload.settled_service_amount = amountCheck.amount
       }
       const normalizedSplits = cartEditStaffSplits.map((row) => ({
         staff_id: Number(row.staff_id ?? 0),
@@ -5754,7 +5881,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setPaymentMethod('qrpay')
   }, [checkoutConfirmationOpen, cartTotal])
 
-  const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((s) => s.requires_settled_amount)
+  const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((settlement) => settlementCartItemHasUnsettledRangePricing(settlement))
   const cashShiftBlocksCheckout = cashShiftLoading || !hasOpenShift
   const canCheckout = hasCartItems && !checkingOut && !hasUnsettledRangeInCart && !cashShiftBlocksCheckout
 
@@ -6177,6 +6304,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const confirmCheckout = async () => {
     if (!cart || !hasCartItems || checkingOut) return
     reportCheckoutError(null)
+    if (hasUnsettledRangeInCart) {
+      reportCheckoutError(UNSETTLED_RANGE_CHECKOUT_MESSAGE)
+      return
+    }
     if (cartPackageItems.length > 0 && !selectedMember?.id) {
       reportCheckoutError('Please assign member before purchasing service package.')
       return
@@ -7485,9 +7616,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   ) : (
                     settlementAppointments.map((appt) => {
                       const due = Number(appt.amount_due_now ?? appt.balance_due ?? 0)
-                      const isRangeAppt =
-                        'requires_settled_amount' in (appt as Record<string, unknown>) &&
-                        (appt as { requires_settled_amount?: boolean | null }).requires_settled_amount === true
+                      const apptHasUnsettledRange = appointmentDetailHasUnsettledRangePricing({
+                        requires_settled_amount: appt.requires_settled_amount,
+                        add_ons: appt.add_ons,
+                      })
+                      const settlementListPriceLabel = apptHasUnsettledRange || appt.requires_settled_amount
+                        ? formatPosAccumulatedPriceDisplay(
+                            accumulatePosPriceBounds([
+                              ...(appt.requires_settled_amount || appt.is_range_priced
+                                ? [{
+                                    source: {
+                                      price_mode: 'range',
+                                      price_range_min: appt.service_price_range_min,
+                                      price_range_max: appt.service_price_range_max,
+                                    },
+                                  }]
+                                : Number(appt.service_total ?? 0) > 0.0001
+                                  ? [{ source: { extra_price: appt.service_total } }]
+                                  : []),
+                              ...(Array.isArray(appt.add_ons) ? appt.add_ons : []).map((addon) => ({ source: addon })),
+                            ]),
+                            { prefix: 'RM' },
+                          )
+                        : `RM ${Number.isFinite(due) ? due.toFixed(2) : '0.00'}`
                       const serviceLabel = Array.isArray(appt.service_names) && appt.service_names.length
                         ? appt.service_names.join(', ')
                         : ''
@@ -7552,17 +7703,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           </div>
                           <div className="flex flex-col items-end gap-2">
                             <span className="text-sm font-bold text-gray-900">
-                              {isRangeAppt
-                                ? `RM ${Number(
-                                    ('service_price_range_min' in (appt as Record<string, unknown>)
-                                      ? (appt as { service_price_range_min?: number | string | null }).service_price_range_min
-                                      : 0) ?? 0,
-                                  ).toFixed(2)} - ${Number(
-                                    ('service_price_range_max' in (appt as Record<string, unknown>)
-                                      ? (appt as { service_price_range_max?: number | string | null }).service_price_range_max
-                                      : 0) ?? 0,
-                                  ).toFixed(2)}`
-                                : `RM ${Number.isFinite(due) ? due.toFixed(2) : '0.00'}`}
+                              {settlementListPriceLabel}
                             </span>
                             <button
                               type="button"
@@ -8063,11 +8204,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           ))}
                         </div>
                       ) : null} */}
-                      {settlement.requires_settled_amount ? (
+                      {settlementCartItemHasUnsettledRangePricing(settlement) ? (
                         <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2.5 py-1.5">
-                          <p className="text-[11px] font-semibold text-amber-900">
-                            Range pricing — click Edit to set the service amount before checkout.
-                          </p>
+                          <p className="text-[11px] font-semibold text-amber-900">{UNSETTLED_RANGE_CHECKOUT_MESSAGE}</p>
+                          <p className="mt-0.5 text-[10px] leading-snug text-amber-800">Save settlement changes anytime; checkout unlocks after all range prices are set.</p>
                         </div>
                       ) : null}
                     </div>
@@ -8135,9 +8275,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           ) : null}
                                         </div>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {displayGross.toFixed(2)}</span> : null}
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">RM {displayNet.toFixed(2)}</span>
+                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayNet })}</span>
+                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</span> : null}
+                                          {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
                                     </div>
@@ -8156,9 +8298,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       <div className="flex justify-between gap-2 text-gray-700">
                                         <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</span>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">RM {displayGross.toFixed(2)}</span> : null}
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">RM {displayNet.toFixed(2)}</span>
+                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...addon, extra_price: displayNet })}</span>
+                                          {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</span> : null}
+                                          {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
                                     </div>
@@ -8325,6 +8469,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               <p className="mt-1.5 text-center text-xs font-semibold text-amber-700">Open a cash shift before checkout.</p>
             ) : cashShiftLoading ? (
               <p className="mt-1.5 text-center text-xs font-semibold text-blue-700">Checking current cash shift…</p>
+            ) : hasUnsettledRangeInCart ? (
+              <p className="mt-1.5 text-center text-xs font-semibold text-amber-700">{UNSETTLED_RANGE_CHECKOUT_MESSAGE}</p>
             ) : null}
             </div>
             </div>
@@ -8909,7 +9055,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                                 </div>
                                 <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
-                                  <span>+RM {Number(cartEditAddonPriceOverrides[opt.id] ?? opt.extra_price).toFixed(2)}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
+                                  <span>+{formatPosCurrentOrRangeDisplay(posPriceDisplayWithOverride(opt, cartEditAddonPriceOverrides[opt.id], Object.prototype.hasOwnProperty.call(cartEditAddonPriceOverrides, opt.id)) ?? opt, { prefix: 'RM' })}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
                                   {checked ? (() => {
                                     const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
                                     const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
@@ -9174,7 +9320,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -9207,7 +9353,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
                               </div>
                               <span className="flex flex-col items-end gap-1 text-xs font-semibold text-gray-500">
-                                <span>+RM {Number(opt.extra_price).toFixed(2)}</span>
+                                <span>+{formatPosPriceDisplay(opt, { prefix: 'RM' })}</span>
                                 {checked ? (() => {
                                   const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${opt.id}`
                                   const inherited = block.staff_splits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
@@ -9301,12 +9447,22 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
                 const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
-                const addonTotal = selectedAddons.reduce((sum, o) => sum + Number(cartEditAddonPriceOverrides[o.id] ?? o.extra_price), 0)
+                const addonBounds = accumulatePosPriceBounds(
+                  selectedAddons.map((option) => ({
+                    source: option,
+                    overrideAmount: cartEditAddonPriceOverrides[option.id],
+                    hasOverrideKey: Object.prototype.hasOwnProperty.call(cartEditAddonPriceOverrides, option.id),
+                  })),
+                )
                 const selectedMainServices = cartEditAddedMainBlocks
                 const addedMainTotal = selectedMainServices.reduce((sum, service) => {
                   const addonOptions = service.addon_questions.flatMap((q) => q.options)
-                  const addonTotal = addonOptions.filter((opt) => service.selected_addon_ids.has(opt.id)).reduce((acc, opt) => acc + Number(opt.extra_price ?? 0), 0)
-                  return sum + Number(service.price ?? 0) + addonTotal
+                  const blockAddonBounds = accumulatePosPriceBounds(
+                    addonOptions
+                      .filter((opt) => service.selected_addon_ids.has(opt.id))
+                      .map((opt) => ({ source: opt })),
+                  )
+                  return sum + Number(service.price ?? 0) + blockAddonBounds.min
                 }, 0)
                 const isRange = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
                 const settledAmt = parseSettlementAmountInput(cartEditSettledAmount)
@@ -9321,10 +9477,20 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       ?? cartEditSettlementItem.service_total
                       ?? 0,
                   )
-                const serviceAmt = originalServiceAmt + addedMainTotal
+                const serviceMin = isRange && settledAmt == null
+                  ? getSettlementRangeBounds(cartEditOriginalSettlementSource).min
+                  : originalServiceAmt
+                const serviceMax = isRange && settledAmt == null
+                  ? getSettlementRangeBounds(cartEditOriginalSettlementSource).max
+                  : originalServiceAmt
                 const depositOffset = cartEditSettlementDepositPreview
                 const packageOffset = Number(cartEditSettlementItem.package_offset ?? 0)
-                const finalTotal = Math.max(0, serviceAmt + addonTotal - depositOffset - packageOffset)
+                const finalMin = Math.max(0, serviceMin + addedMainTotal + addonBounds.min - depositOffset - packageOffset)
+                const finalMax = Math.max(0, serviceMax + addedMainTotal + addonBounds.max - depositOffset - packageOffset)
+                const summaryHasRange = (isRange && settledAmt == null) || addonBounds.hasRange
+                const finalTotalLabel = summaryHasRange && Math.abs(finalMin - finalMax) > 0.0001
+                  ? `RM ${finalMin.toFixed(2)} - ${finalMax.toFixed(2)}`
+                  : `RM ${finalMax.toFixed(2)}`
                 return (
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-4">
                     <p className="text-xs font-semibold uppercase tracking-wide text-gray-600 mb-2">Summary</p>
@@ -9346,7 +9512,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       {selectedAddons.length > 0 ? (
                         <div className="flex justify-between">
                           <span className="text-gray-600">Add-ons ({selectedAddons.length})</span>
-                          <span className="font-semibold tabular-nums text-gray-900">+RM {addonTotal.toFixed(2)}</span>
+                          <span className="font-semibold tabular-nums text-gray-900">+{formatPosAccumulatedPriceDisplay(addonBounds, { prefix: 'RM' })}</span>
                         </div>
                       ) : null}
                       {depositOffset > 0 ? (
@@ -9363,7 +9529,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       ) : null}
                       <div className="flex justify-between border-t border-gray-200 pt-1.5">
                         <span className="font-bold text-gray-900">Final Amount</span>
-                        <span className="font-bold tabular-nums text-gray-900">RM {finalTotal.toFixed(2)}</span>
+                        <span className="font-bold tabular-nums text-gray-900">{finalTotalLabel}</span>
                       </div>
                     </div>
                   </div>
@@ -9992,7 +10158,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
-                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice), priceSource: service })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
                                           </div>
                                         </div>
                                       </td>
@@ -10000,7 +10166,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         {coveredByPackage ? (
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} inline />
                                         ) : (
-                                          <>RM {serviceNet.toFixed(2)}</>
+                                          <>
+                                            <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: serviceNet })}</span>
+                                            {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(service)}</span> : null}
+                                            {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                          </>
                                         )}
                                       </td>
                                       <td className="px-4 py-2.5 text-right align-top tabular-nums sm:px-5">
@@ -10008,12 +10178,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} />
                                         ) : serviceDiscount > 0 ? (
                                           <div className="space-y-0.5">
-                                            <p className="text-xs text-gray-400 line-through">RM {servicePrice.toFixed(2)}</p>
+                                            <p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: servicePrice })}</p>
                                             <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
                                             <p className="text-lg font-bold leading-tight text-orange-700">RM {displayServiceNet.toFixed(2)}</p>
+                                            {posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}
                                           </div>
                                         ) : (
-                                          <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>
+                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: serviceNet })}</p>{posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}{posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</p> : null}</div>
                                         )}
                                       </td>
                                       <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
@@ -10048,12 +10219,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <div className="flex flex-wrap gap-2">
                                         {renderCheckoutStaffSplitButtons(addonSettlementSplitKey, addon.name ?? 'Settlement add-on', settlementInheritedSplits)}
                                         <button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>
-                                        {!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                        {!coveredByPackage && addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross), priceSource: addon })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
                                         </div>
                                       </div>
                                     </td>
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <>RM {due.toFixed(2)}</>}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <><span className="block">RM {due.toFixed(2)}</span>{posPriceDisplayHasRange(addon) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(addon)}</span> : null}</>}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: gross })}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</p> : null}</div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</p> : null}</div>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
@@ -10115,7 +10286,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       <span className="text-gray-500">+</span> {addon.name}
                                       {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
                                     </td>
-                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross) })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
+                                    <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross), priceSource: addon })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
                                     <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
@@ -10839,8 +11010,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-sm">
-              <div><p className="text-xs text-gray-500">Original price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}</p></div>
-              <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-500">Original price / Reference range</p><p className="font-semibold tabular-nums">{'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) ? formatPosPriceDisplay(priceEditTarget.priceSource) : `RM ${Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}`}</p></div>
+              <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">{'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Not set' : `RM ${Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}`}</p></div>
             </div>
             <div className="mt-4 rounded-lg border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-700">Edit by</p>
@@ -10850,13 +11021,31 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
               {priceEditMode === 'unit' ? (
                 <label className="mt-3 block text-sm font-semibold text-gray-700">New Unit Price
-                  <input type="number" min={0} step="0.01" value={priceEditValueDraft} onChange={(event) => setPriceEditValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
-                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(priceEditValueDraft || 0)) * Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(2)}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={priceEditValueDraft}
+                    onChange={(event) => setPriceEditValueDraft(event.target.value)}
+                    onFocus={(event) => event.currentTarget.select()}
+                    placeholder={'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Enter final price' : '0.00'}
+                    className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
+                  />
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Line Total: RM {((parseSettlementAmountInput(priceEditValueDraft) ?? 0) * Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(2)}</span>
                 </label>
               ) : (
                 <label className="mt-3 block text-sm font-semibold text-gray-700">New Line Total
-                  <input type="number" min={0} step="0.01" value={priceEditLineTotalDraft} onChange={(event) => setPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
-                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(priceEditLineTotalDraft || 0)) / Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(6)}</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
+                    value={priceEditLineTotalDraft}
+                    onChange={(event) => setPriceEditLineTotalDraft(event.target.value)}
+                    onFocus={(event) => event.currentTarget.select()}
+                    placeholder="0.00"
+                    className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
+                  />
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Unit Price: RM {((parseSettlementAmountInput(priceEditLineTotalDraft) ?? 0) / Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(6)}</span>
                 </label>
               )}
             </div>
@@ -11237,7 +11426,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   </div>
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <span className="block tabular-nums font-semibold text-gray-900">+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                  <span className="block tabular-nums font-semibold text-gray-900">+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
                                   {checked ? (() => {
                                     const lineKey = `booking-draft:addon:${option.id}`
                                     const mainSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
@@ -11262,9 +11451,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           Duration: {Number(bookingServiceDraft.duration_min ?? 0) + bookingAddonDurationTotal + bookingExtraTotals.baseDuration + bookingExtraTotals.addonDuration} min
                         </p>
                         <p className="font-medium">
-                          Total price: {bookingServiceDraft.price_mode === 'range' && bookingServiceDraft.price_range_min != null && bookingServiceDraft.price_range_max != null
-                            ? `RM${(Number(bookingServiceDraft.price_range_min) + bookingAddonPriceTotal + bookingExtraTotals.basePrice + bookingExtraTotals.addonPrice).toFixed(2)} - RM${(Number(bookingServiceDraft.price_range_max) + bookingAddonPriceTotal + bookingExtraTotals.basePrice + bookingExtraTotals.addonPrice).toFixed(2)}`
-                            : `RM${(Number(bookingServiceDraft.price ?? bookingServiceDraft.service_price ?? 0) + bookingAddonPriceTotal + bookingExtraTotals.basePrice + bookingExtraTotals.addonPrice).toFixed(2)}`}
+                          Total price: {formatPosAccumulatedPriceDisplay(bookingGrandTotalBounds, { prefix: 'RM' })}
                         </p>
                       </div>
                     </div>
@@ -11396,7 +11583,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   />
                                 </div>
                                 <span className="flex flex-col items-end gap-1 font-semibold text-gray-900">
-                                  <span>+RM{Number(option.extra_price ?? 0).toFixed(2)}</span>
+                                  <span>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
                                   {checked ? (() => {
                                     const lineKey = `booking-draft:block:${block.id}:addon:${option.id}`
                                     const mainSplits = checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
