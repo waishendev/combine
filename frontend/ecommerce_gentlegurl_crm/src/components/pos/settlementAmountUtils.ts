@@ -24,6 +24,10 @@ export type PosPriceDisplaySource = {
   service_price_range_max?: number | string | null
   linked_price_range_min?: number | string | null
   linked_price_range_max?: number | string | null
+  settled_service_amount?: number | string | null
+  price_finalized?: boolean | null
+  final_price_set?: boolean | null
+  price_override?: unknown | null
 }
 
 type BookingServiceSettlementOption = {
@@ -97,6 +101,25 @@ export function posPriceDisplayHasRange(source?: PosPriceDisplaySource | null): 
   return mode === 'range' &&
     finiteNumber(source?.price_range_min ?? source?.service_price_range_min ?? source?.linked_price_range_min) != null &&
     finiteNumber(source?.price_range_max ?? source?.service_price_range_max ?? source?.linked_price_range_max) != null
+}
+
+export function posPriceDisplayHasFinalPrice(source?: PosPriceDisplaySource | null): boolean {
+  if (!posPriceDisplayHasRange(source)) return true
+  if (source?.price_finalized === true || source?.final_price_set === true) return true
+  if (source?.price_override != null) return true
+  return finiteNumber(source?.settled_service_amount) != null
+}
+
+export function formatPosCurrentOrRangeDisplay(source?: PosPriceDisplaySource | null, options?: { prefix?: string }): string {
+  if (posPriceDisplayHasRange(source) && !posPriceDisplayHasFinalPrice(source)) {
+    return formatPosPriceDisplay(source, options)
+  }
+  return formatPosPriceDisplay({
+    ...source,
+    price_mode: null,
+    service_price_mode: null,
+    linked_price_mode: null,
+  }, options)
 }
 
 /** Parse POS settlement amount input (trim, allow commas as decimal separator). */

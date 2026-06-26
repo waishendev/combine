@@ -11,9 +11,11 @@ import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   bookingServiceSettlementSource,
+  formatPosCurrentOrRangeDisplay,
   formatPosPriceDisplay,
   getSettlementRangeBounds,
   parseSettlementAmountInput,
+  posPriceDisplayHasFinalPrice,
   posPriceDisplayHasRange,
   settlementNeedsSettledAmount,
   type PosPriceDisplaySource,
@@ -4181,8 +4183,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const openPriceEditModal = (target: PriceEditTarget) => {
     setPriceEditTarget(target)
-    setPriceEditValueDraft(Number(target.currentUnitPrice ?? 0).toFixed(2))
-    setPriceEditLineTotalDraft(Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2))
+    const hasFinalPrice = !('priceSource' in target) || !target.priceSource || posPriceDisplayHasFinalPrice(target.priceSource)
+    setPriceEditValueDraft(hasFinalPrice ? Number(target.currentUnitPrice ?? 0).toFixed(2) : '')
+    setPriceEditLineTotalDraft(hasFinalPrice ? Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2) : '')
     setPriceEditMode('unit')
     setPriceEditReasonDraft('')
     setPriceEditError(null)
@@ -8170,8 +8173,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <span className="text-right font-semibold tabular-nums">
                                           {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">RM {displayNet.toFixed(2)}</span>
-                                          {posPriceDisplayHasRange(service) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</span> : null}
+                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayNet })}</span>
+                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</span> : null}
+                                          {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
                                     </div>
@@ -8192,8 +8196,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                         <span className="text-right font-semibold tabular-nums">
                                           {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">RM {displayNet.toFixed(2)}</span>
-                                          {posPriceDisplayHasRange(addon) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</span> : null}
+                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...addon, extra_price: displayNet })}</span>
+                                          {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</span> : null}
+                                          {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
                                     </div>
@@ -9209,7 +9214,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">RM {Number(block.price).toFixed(2)}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(block)}</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -10036,8 +10041,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} inline />
                                         ) : (
                                           <>
-                                            <span className="block">RM {serviceNet.toFixed(2)}</span>
-                                            {posPriceDisplayHasRange(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(service)}</span> : null}
+                                            <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: serviceNet })}</span>
+                                            {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(service)}</span> : null}
+                                            {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                           </>
                                         )}
                                       </td>
@@ -10052,7 +10058,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                             {posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}
                                           </div>
                                         ) : (
-                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">RM {serviceNet.toFixed(2)}</p>{posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}</div>
+                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: serviceNet })}</p>{posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}{posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</p> : null}</div>
                                         )}
                                       </td>
                                       <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
@@ -10879,7 +10885,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
             <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-sm">
               <div><p className="text-xs text-gray-500">Original price / Reference range</p><p className="font-semibold tabular-nums">{'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) ? formatPosPriceDisplay(priceEditTarget.priceSource) : `RM ${Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}`}</p></div>
-              <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">RM {Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}</p></div>
+              <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">{'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Not set' : `RM ${Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}`}</p></div>
             </div>
             <div className="mt-4 rounded-lg border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-700">Edit by</p>
@@ -10889,7 +10895,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               </div>
               {priceEditMode === 'unit' ? (
                 <label className="mt-3 block text-sm font-semibold text-gray-700">New Unit Price
-                  <input type="number" min={0} step="0.01" value={priceEditValueDraft} onChange={(event) => setPriceEditValueDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
+                  <input type="number" min={0} step="0.01" value={priceEditValueDraft} onChange={(event) => setPriceEditValueDraft(event.target.value)} placeholder={'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Enter final price' : '0.00'} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" />
                   <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(priceEditValueDraft || 0)) * Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(2)}</span>
                 </label>
               ) : (
