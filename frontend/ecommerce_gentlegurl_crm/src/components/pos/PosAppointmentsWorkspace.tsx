@@ -3947,7 +3947,7 @@ export default function PosAppointmentsWorkspace({
                                       ) : (
                                         <>
                                           <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: servicePrice })}</span>
-                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-slate-500">Reference range: {formatPosPriceDisplay(service)}</span> : null}
+                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-slate-500">Ref range: {formatPosPriceDisplay(service)}</span> : null}
                                           {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </>
                                       )}
@@ -3984,7 +3984,7 @@ export default function PosAppointmentsWorkspace({
                                               ) : (
                                                 <>
                                                   <span className="block">{formatPosCurrentOrRangeDisplay({ ...addon, extra_price: addonPrice })}</span>
-                                                  {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-slate-500">Reference range: {formatPosPriceDisplay(addon)}</span> : null}
+                                                  {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-slate-500">Ref range: {formatPosPriceDisplay(addon)}</span> : null}
                                                   {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                                 </>
                                               )}
@@ -5760,7 +5760,7 @@ export default function PosAppointmentsWorkspace({
                       {settlementNeedsSettledAmount(editOriginalSettlementSource) ? (
                         <>
                           <p className="mt-2 text-xs text-gray-500">
-                            Reference range: RM {getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                            Ref range: RM {getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} – RM{' '}
                             {getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}
                           </p>
                           <div className="relative mt-2 max-w-xs">
@@ -6206,7 +6206,7 @@ export default function PosAppointmentsWorkspace({
                               primaryClassName="text-sm font-semibold text-gray-900"
                               secondaryClassName="mt-0.5 text-xs text-gray-500"
                             />
-                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'addedService', tmpId: block.tmp_id, name: block.service_name, currentUnitPrice: Number(block.price ?? 0), originalUnitPrice: Number(block.price ?? 0), quantity: 1, priceSource: block })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'addedService', tmpId: block.tmp_id, name: block.service_name, currentUnitPrice: Number(block.price ?? 0), originalUnitPrice: Number(block.price ?? 0), quantity: 1, priceSource: block })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                           </>
                         ) : (
                           <p className="text-sm font-semibold text-gray-700">Select a service</p>
