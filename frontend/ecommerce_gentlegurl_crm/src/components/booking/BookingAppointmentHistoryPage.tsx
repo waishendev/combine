@@ -10,7 +10,7 @@ import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/report
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type StaffOption = { id: number; name: string }
-type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
+export type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
 
 export type AppointmentHistoryRow = {
   id: number
@@ -21,7 +21,9 @@ export type AppointmentHistoryRow = {
   guest_phone?: string | null
   guest_email?: string | null
   service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null; amount?: number | null; staff_splits?: StaffSplit[] } | null
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string; service_ref?: string | null; item_kind?: string | null; line_type?: string | null; parent_service_ref?: string | null }>
+  services?: BookingServiceBlock[]
+  service_blocks?: BookingServiceBlock[]
+  add_ons?: BookingServiceAddOn[]
   staff: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -42,6 +44,10 @@ export type AppointmentHistoryRow = {
   source?: string | null
   logs?: Array<{ id: number; actor_type: string; actor_id?: number | null; action: string; meta?: unknown; created_at?: string | null }>
 }
+
+export type BookingServiceAddOn = { id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string; service_ref?: string | null; item_kind?: string | null; line_type?: string | null; parent_service_ref?: string | null }
+
+export type BookingServiceBlock = { id?: number | null; service_id?: number | null; name: string; cn_name?: string | null; amount?: number | null; duration_min?: number | null; start_at?: string | null; end_at?: string | null; staff_splits?: StaffSplit[]; add_ons?: BookingServiceAddOn[] }
 
 type ApiPage = {
   data?: {
@@ -131,6 +137,24 @@ const visibleAddOns = (row: Pick<AppointmentHistoryRow, 'add_ons'>) => (row.add_
   return itemKind !== 'main_service' && serviceRef !== 'original'
 })
 
+const serviceBlocksForRow = (row: AppointmentHistoryRow): BookingServiceBlock[] => {
+  const blocks = row.services?.length ? row.services : row.service_blocks
+  if (blocks?.length) return blocks
+  if (!row.service) return []
+  return [{
+    id: row.service.id,
+    service_id: row.service.id,
+    name: row.service.name,
+    cn_name: row.service.cn_name,
+    amount: row.service.amount ?? Math.max(0, Number(row.total_amount ?? 0) - visibleAddOns(row).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)),
+    duration_min: row.service.duration_min,
+    start_at: row.start_at,
+    end_at: row.end_at,
+    staff_splits: row.service.staff_splits ?? (row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : []),
+    add_ons: visibleAddOns(row),
+  }]
+}
+
 const formatPaymentStatus = (status?: string | null) => {
   const s = String(status ?? '').toLowerCase()
   if (s === 'paid') return 'Paid'
@@ -216,34 +240,41 @@ export function BookingAppointmentDetailDrawer({ row, loading, error, onClose }:
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Services + Add-ons</h4>
                 <div className="mt-4 space-y-4">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Main Service</p>
-                    <div className="mt-2 space-y-2">
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">{row.service?.name ?? '—'}</p>
-                        {row.service?.cn_name ? <p className="text-xs text-slate-500">{row.service.cn_name}</p> : null}
-                      </div>
-                      <p className="text-sm text-slate-700">Amount: {formatMoney(row.service?.amount ?? Math.max(0, Number(row.total_amount ?? 0) - visibleAddOns(row).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)))}</p>
-                      <p className="text-sm text-slate-700">Schedule: {`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`}</p>
-                      <StaffSplitList splits={row.service?.staff_splits ?? (row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : [])} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Add-ons</p>
-                    {visibleAddOns(row).length > 0 ? (
-                      <div className="mt-2 space-y-3">
-                        {visibleAddOns(row).map((item, index) => (
-                          <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 p-3">
-                            <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
-                            {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
-                            <p className="mt-2 text-sm text-slate-700">Amount: {formatMoney(item.extra_price)}</p>
-                            <div className="mt-2"><StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} /></div>
+                  {serviceBlocksForRow(row).map((service, blockIndex) => (
+                    <div key={`${service.service_id ?? service.id ?? service.name}-${blockIndex}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-sm font-semibold text-slate-900">Service Block {blockIndex + 1}</p>
+                      <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Main Service</p>
+                        <div className="mt-2 space-y-2">
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{service.name || '—'}</p>
+                            {service.cn_name ? <p className="text-xs text-slate-500">{service.cn_name}</p> : null}
                           </div>
-                        ))}
+                          <p className="text-sm text-slate-700">Amount: {formatMoney(service.amount)}</p>
+                          <p className="text-sm text-slate-700">Duration: {service.duration_min != null ? `${service.duration_min} min` : '—'}</p>
+                          <p className="text-sm text-slate-700">Schedule: {`${formatDateTime(service.start_at ?? row.start_at)} - ${formatDateTime(service.end_at ?? row.end_at)}`}</p>
+                          <StaffSplitList splits={service.staff_splits} />
+                        </div>
                       </div>
-                    ) : <p className="mt-2 text-sm text-slate-500">—</p>}
-                  </div>
+
+                      <div className="mt-3">
+                        <p className="text-sm font-semibold text-slate-900">Add-ons</p>
+                        {(service.add_ons ?? []).length > 0 ? (
+                          <div className="mt-2 space-y-3">
+                            {service.add_ons?.map((item, index) => (
+                              <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
+                                <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
+                                {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
+                                <p className="mt-2 text-sm text-slate-700">Amount: {formatMoney(item.extra_price)}</p>
+                                <p className="text-sm text-slate-700">Duration: {item.extra_duration_min != null ? `${item.extra_duration_min} min` : '—'}</p>
+                                <div className="mt-2"><StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} /></div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : <p className="mt-2 text-sm text-slate-500">No add-ons.</p>}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </section>
 

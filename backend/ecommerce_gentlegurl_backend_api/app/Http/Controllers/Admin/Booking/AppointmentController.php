@@ -282,10 +282,10 @@ class AppointmentController extends Controller
     {
         $financial = $this->resolveHistoryFinancials($booking);
         $mainStaffSplits = $this->resolveHistoryStaffSplits($booking);
-        $addonItems = $this->mapAddonItems($booking->addon_items_json, $mainStaffSplits);
+        $services = $this->mapHistoryServiceBlocks($booking, $mainStaffSplits);
+        $addonItems = collect($services)->flatMap(fn (array $service) => $service['add_ons'] ?? [])->values()->all();
         $guestName = trim((string) ($booking->guest_name ?? ''));
-        $addonTotal = collect($addonItems)->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0));
-        $serviceAmount = round(max(0, (float) ($financial['total_amount'] ?? 0) - $addonTotal), 2);
+        $primaryService = $services[0] ?? null;
 
         return [
             'id' => (int) $booking->id,
@@ -301,14 +301,16 @@ class AppointmentController extends Controller
             'guest_email' => $booking->guest_email,
             'customer_display_name' => $booking->customer?->name
                 ?: ($guestName !== '' ? ($guestName . ' (GUEST)') : 'Walk-in / Unknown'),
-            'service' => $booking->service ? [
-                'id' => (int) $booking->service->id,
-                'name' => (string) $booking->service->name,
-                'cn_name' => $booking->service->cn_name,
-                'duration_min' => (int) ($booking->service->duration_min ?? 0),
-                'amount' => $serviceAmount,
-                'staff_splits' => $mainStaffSplits,
+            'service' => $primaryService ? [
+                'id' => (int) ($primaryService['service_id'] ?? $primaryService['id'] ?? 0),
+                'name' => (string) ($primaryService['name'] ?? 'Service'),
+                'cn_name' => $primaryService['cn_name'] ?? null,
+                'duration_min' => (int) ($primaryService['duration_min'] ?? 0),
+                'amount' => (float) ($primaryService['amount'] ?? 0),
+                'staff_splits' => $primaryService['staff_splits'] ?? $mainStaffSplits,
             ] : null,
+            'services' => $services,
+            'service_blocks' => $services,
             'add_ons' => $addonItems,
             'staff' => $booking->staff ? [
                 'id' => (int) $booking->staff->id,
@@ -326,12 +328,88 @@ class AppointmentController extends Controller
         ];
     }
 
-    private function resolveHistoryFinancials(Booking $booking): array
+    private function mapHistoryServiceBlocks(Booking $booking, array $defaultStaffSplits): array
     {
-        $addonTotal = collect($this->mapAddonItems($booking->addon_items_json))->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0));
-        $serviceTotal = $booking->settled_service_amount !== null
+        $rawItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : []);
+        $mainItems = $rawItems
+            ->filter(fn ($item) => is_array($item) && strtolower((string) ($item['item_kind'] ?? $item['line_type'] ?? '')) === 'main_service')
+            ->values();
+        $originalMainItem = $mainItems->first(fn ($item) => (bool) ($item['is_original'] ?? false));
+        $originalAddonSource = is_array($originalMainItem)
+            ? collect((array) ($originalMainItem['addon_items'] ?? []))
+            : $rawItems->filter(fn ($item) => is_array($item) && strtolower((string) ($item['item_kind'] ?? $item['line_type'] ?? 'addon')) !== 'main_service');
+
+        $originalServiceAmount = $booking->settled_service_amount !== null
             ? (float) $booking->settled_service_amount
             : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
+
+        $services = collect();
+        if ($booking->service) {
+            $services->push([
+                'id' => (int) $booking->service->id,
+                'service_id' => (int) $booking->service->id,
+                'name' => (string) $booking->service->name,
+                'cn_name' => $booking->service->cn_name,
+                'amount' => round(max(0, $originalServiceAmount), 2),
+                'duration_min' => (int) ($booking->service->duration_min ?? 0),
+                'start_at' => optional($booking->start_at)?->toIso8601String(),
+                'end_at' => optional($booking->end_at)?->toIso8601String(),
+                'staff_splits' => $this->mapHistoryRawStaffSplits($originalMainItem['staff_splits'] ?? [], $defaultStaffSplits),
+                'is_original' => true,
+                'add_ons' => $this->mapAddonItems($originalAddonSource->values()->all(), $defaultStaffSplits),
+            ]);
+        }
+
+        $mainItems
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
+            ->each(function (array $item) use ($services, $booking, $defaultStaffSplits) {
+                $staffSplits = $this->mapHistoryRawStaffSplits($item['staff_splits'] ?? [], $defaultStaffSplits);
+                $services->push([
+                    'id' => isset($item['id']) ? (int) $item['id'] : null,
+                    'service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
+                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Service'),
+                    'cn_name' => $item['cn_name'] ?? $item['cn_label'] ?? $item['linked_cn_name'] ?? null,
+                    'amount' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+                    'duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
+                    'start_at' => optional($booking->start_at)?->toIso8601String(),
+                    'end_at' => optional($booking->end_at)?->toIso8601String(),
+                    'staff_splits' => $staffSplits,
+                    'is_original' => false,
+                    'add_ons' => $this->mapAddonItems($item['addon_items'] ?? [], $staffSplits),
+                ]);
+            });
+
+        return $services->values()->all();
+    }
+
+    private function mapHistoryRawStaffSplits($rawSplits, array $fallback = []): array
+    {
+        $splits = collect(is_array($rawSplits) ? $rawSplits : []);
+        $staffNameLookup = DB::table('staffs')
+            ->whereIn('id', $splits->pluck('staff_id')->filter()->unique()->values()->all())
+            ->pluck('name', 'id');
+
+        $mapped = $splits
+            ->map(fn ($split) => [
+                'staff_id' => (int) ($split['staff_id'] ?? 0),
+                'staff_name' => (string) ($split['staff_name'] ?? $split['name'] ?? $staffNameLookup[(int) ($split['staff_id'] ?? 0)] ?? '-'),
+                'share_percent' => (int) ($split['share_percent'] ?? $split['split_percent'] ?? 0),
+            ])
+            ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+            ->values()
+            ->all();
+
+        return ! empty($mapped) ? $mapped : $fallback;
+    }
+
+    private function resolveHistoryFinancials(Booking $booking): array
+    {
+        $serviceBlocks = $this->mapHistoryServiceBlocks($booking, $this->resolveHistoryStaffSplits($booking));
+        $addonTotal = collect($serviceBlocks)
+            ->flatMap(fn (array $service) => $service['add_ons'] ?? [])
+            ->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0));
+        $serviceTotal = collect($serviceBlocks)->sum(fn (array $service) => (float) ($service['amount'] ?? 0));
         $totalAmount = round(max(0, $serviceTotal + $addonTotal), 2);
 
         $orderItems = OrderItem::query()

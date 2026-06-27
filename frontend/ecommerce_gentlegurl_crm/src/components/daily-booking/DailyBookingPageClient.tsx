@@ -15,6 +15,10 @@ type Photo = {
   original_name?: string | null
 }
 
+type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
+type DailyBookingAddOn = { id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: string | null }
+type DailyBookingServiceBlock = { id?: number | null; service_id?: number | null; name: string; cn_name?: string | null; amount?: number | null; duration_min?: number | null; start_at?: string | null; end_at?: string | null; staff_splits?: StaffSplit[]; add_ons?: DailyBookingAddOn[] }
+
 type DailyBookingRow = {
   id: number
   booking_code: string
@@ -22,7 +26,9 @@ type DailyBookingRow = {
   guest_name?: string | null
   customer?: { id: number; name: string; phone?: string | null; email?: string | null } | null
   service?: { id: number; name: string; cn_name?: string | null; duration_min?: number | null } | null
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>
+  services?: DailyBookingServiceBlock[]
+  service_blocks?: DailyBookingServiceBlock[]
+  add_ons?: DailyBookingAddOn[]
   staff?: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -117,6 +123,35 @@ function TableServicesCell({
         </p>
       ) : null}
     </div>
+  )
+}
+
+
+const serviceBlocksForRow = (row: DailyBookingRow): DailyBookingServiceBlock[] => {
+  const blocks = row.services?.length ? row.services : row.service_blocks
+  if (blocks?.length) return blocks
+  if (!row.service) return []
+  return [{
+    id: row.service.id,
+    service_id: row.service.id,
+    name: row.service.name,
+    cn_name: row.service.cn_name,
+    duration_min: row.service.duration_min,
+    start_at: row.start_at,
+    end_at: row.end_at,
+    staff_splits: row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : [],
+    add_ons: row.add_ons ?? [],
+  }]
+}
+
+function StaffSplitList({ splits }: { splits?: StaffSplit[] }) {
+  if (!splits?.length) return <p className="text-xs text-slate-500">—</p>
+  return (
+    <ul className="mt-1 space-y-1 text-xs text-slate-600">
+      {splits.map((split, index) => (
+        <li key={`${split.staff_id}-${index}`}>{split.staff_name ?? split.name ?? `Staff #${split.staff_id}`} — {Number(split.share_percent ?? 0)}%</li>
+      ))}
+    </ul>
   )
 }
 
@@ -316,34 +351,43 @@ export default function DailyBookingPageClient() {
               <section className="rounded-xl border border-slate-200 bg-white p-4">
                 <h4 className="text-sm font-bold text-slate-900">Services / Add-ons</h4>
                 <div className="mt-3 space-y-3 text-sm">
-                  <div>
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Main treatment</p>
-                    <ServiceDetailCard
-                      name={selected.service?.name}
-                      cnName={selected.service?.cn_name}
-                      durationText={selected.service?.duration_min ? `${selected.service.duration_min} min` : null}
-                    />
-                  </div>
-                  {(selected.add_ons?.length ?? 0) > 0 ? (
-                    <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
-                      <div className="space-y-2">
-                        {selected.add_ons?.map((addon, index) => (
-                          <ServiceDetailCard
-                            key={`${addon.id ?? addon.name}-${index}`}
-                            name={addon.name}
-                            cnName={addon.cn_name}
-                            durationText={
-                              addon.extra_duration_min != null ? `+${addon.extra_duration_min} min` : null
-                            }
-                            price={addon.extra_price}
-                          />
-                        ))}
+                  {serviceBlocksForRow(selected).map((service, blockIndex) => (
+                    <div key={`${service.service_id ?? service.id ?? service.name}-${blockIndex}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Service Block {blockIndex + 1}</p>
+                      <ServiceDetailCard
+                        name={service.name}
+                        cnName={service.cn_name}
+                        durationText={service.duration_min != null ? `${service.duration_min} min` : null}
+                        price={service.amount}
+                      />
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Schedule</p>
+                        <p className="text-xs text-slate-600">{formatTimeRange(service.start_at ?? selected.start_at, service.end_at ?? selected.end_at)}</p>
+                      </div>
+                      <div className="mt-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Split</p>
+                        <StaffSplitList splits={service.staff_splits} />
+                      </div>
+                      <div className="mt-3">
+                        <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
+                        {(service.add_ons?.length ?? 0) > 0 ? (
+                          <div className="space-y-2">
+                            {service.add_ons?.map((addon, index) => (
+                              <ServiceDetailCard
+                                key={`${addon.id ?? addon.name}-${index}`}
+                                name={addon.name}
+                                cnName={addon.cn_name}
+                                durationText={addon.extra_duration_min != null ? `${addon.extra_duration_min} min` : null}
+                                price={addon.extra_price}
+                              />
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-500">No add-ons.</p>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">No add-ons.</p>
-                  )}
+                  ))}
                 </div>
               </section>
 
