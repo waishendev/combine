@@ -310,6 +310,14 @@ const staffSplitDisplay = (line: OrderDetailLine) => {
   return line.staff_name || '—'
 }
 
+type DisplayOrderDetailLine = OrderDetailLine & { isChildLine?: boolean; parentName?: string }
+
+const flattenOrderDetailLines = (lines: OrderDetailLine[]): DisplayOrderDetailLine[] =>
+  lines.flatMap((line) => [
+    line,
+    ...((line.children ?? []).map((child) => ({ ...child, isChildLine: true, parentName: line.name })) as DisplayOrderDetailLine[]),
+  ])
+
 
 const normalizedPaymentBreakdown = (payments?: PaymentBreakdownRow[]) => {
   if (!Array.isArray(payments)) return []
@@ -583,6 +591,8 @@ export default function SalesChannelReportPage({
     setDetailBookingId(null)
     setSelectedDetailLine(null)
   }
+
+  const detailLines = orderDetail ? flattenOrderDetailLines(orderDetail.lines) : []
 
   const showingRange = `${formatDisplayDate(resolved.dateFrom)} – ${formatDisplayDate(resolved.dateTo)}`
   const activeFilters = [
@@ -1016,11 +1026,12 @@ export default function SalesChannelReportPage({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {orderDetail.lines.map((line) => (
-                          <tr key={line.id} className="align-top">
+                        {detailLines.map((line) => (
+                          <tr key={line.id} className={`align-top ${line.isChildLine ? 'bg-indigo-50/40' : ''}`}>
                             <td className="px-3 py-3">
                               <p className="text-xs font-semibold uppercase text-slate-400">{line.type_label}</p>
-                              <p className="mt-1 font-semibold text-slate-900">{line.name}</p>
+                              {line.isChildLine && line.parentName ? <p className="mt-1 text-xs text-indigo-700">Add-on for {line.parentName}</p> : null}
+                              <p className="mt-1 font-semibold text-slate-900">{line.isChildLine ? `↳ ${line.name}` : line.name}</p>
                               {line.cn_name ? <p className="mt-0.5 text-xs text-slate-500">{line.cn_name}</p> : null}
                               {line.variant_name ? (
                                 <div className="mt-1 text-xs text-slate-500">

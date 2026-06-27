@@ -200,6 +200,17 @@ class SalesChannelReportService
         $discount = (float) ($item->discount_amount ?? 0);
         $net = (float) ($item->line_total_after_discount ?? $item->effective_line_total ?? max(0.0, $gross - $discount));
         $unitPrice = (float) ($item->unit_price_snapshot ?? $item->price_snapshot ?? 0);
+        $children = $this->formatOrderDetailChildren($item, $overrideUsers);
+
+        if ((string) ($item->line_type ?? '') === 'booking_product' && $children !== []) {
+            $childGross = collect($children)->sum(fn (array $child) => (float) ($child['gross_amount'] ?? 0));
+            $childDiscount = collect($children)->sum(fn (array $child) => (float) ($child['discount_amount'] ?? 0));
+            $childNet = collect($children)->sum(fn (array $child) => (float) ($child['net_amount'] ?? 0));
+            $gross = round(max(0.0, $gross - $childGross), 2);
+            $discount = round(max(0.0, $discount - $childDiscount), 2);
+            $net = round(max(0.0, $net - $childNet), 2);
+            $unitPrice = round($gross / max(1, (int) ($item->quantity ?? 1)), 2);
+        }
         $variantName = trim((string) ($item->variant_name_snapshot ?: $item->productVariant?->title ?: ''));
         $lineType = (string) ($item->line_type ?? 'product');
         $productCnName = match ($lineType) {
@@ -209,6 +220,7 @@ class SalesChannelReportService
         $bookingNo = $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null);
 
         $staffSplits = $item->staffSplits
+            ->filter(fn ($split) => ! in_array((string) ($split->line_type ?? ''), ['booking_product_option'], true))
             ->map(fn ($split) => [
                 'staff_id' => (int) $split->staff_id,
                 'staff_name' => (string) ($split->staff?->name ?? ('Staff #' . $split->staff_id)),
@@ -236,7 +248,7 @@ class SalesChannelReportService
             'discount_value' => (float) ($item->discount_value ?? 0),
             'discount_remark' => $item->discount_remark,
             'price_override' => $this->normalizeOrderItemPriceOverride($item, $overrideUsers),
-            'children' => $this->formatOrderDetailChildren($item, $overrideUsers),
+            'children' => $children,
             'staff_name' => $item->staff?->name,
             'staff_splits' => $staffSplits->all(),
         ];
@@ -278,9 +290,11 @@ class SalesChannelReportService
                 $net = (float) ($option['line_total_after_discount'] ?? max(0.0, $lineTotal - $discount));
                 $name = (string) ($option['label'] ?? $option['name'] ?? $option['option_name'] ?? 'Booking product option');
                 $cnName = (string) ($option['cn_label'] ?? $option['cn_name'] ?? $option['linked_cn_name'] ?? '');
+                $optionId = (string) ($option['id'] ?? $option['option_id'] ?? $index);
+                $staffSplits = $this->bookingProductOptionStaffSplits($item, $option, $optionId);
 
                 $children[] = [
-                    'id' => sprintf('%d-option-%d', (int) $item->id, count($children) + $index + 1),
+                    'id' => sprintf('%d-option-%s-%d', (int) $item->id, $optionId, count($children) + 1),
                     'line_type' => 'booking_product_option',
                     'type_label' => 'Booking Product Option',
                     'booking_no' => $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null),
@@ -300,13 +314,44 @@ class SalesChannelReportService
                     'discount_remark' => $option['discount_remark'] ?? null,
                     'price_override' => $this->normalizeBookingProductOptionPriceOverride($option, $qty, $overrideUsers),
                     'staff_name' => null,
-                    'staff_splits' => [],
+                    'staff_splits' => $staffSplits,
                     'children' => [],
                 ];
             }
         }
 
         return $children;
+    }
+
+
+    private function bookingProductOptionStaffSplits(OrderItem $item, array $option, string $optionId): array
+    {
+        $splits = $item->staffSplits
+            ->filter(fn ($split) => (string) ($split->line_type ?? '') === 'booking_product_option'
+                && (string) ($split->line_ref_id ?? '') === $optionId)
+            ->map(fn ($split) => [
+                'staff_id' => (int) $split->staff_id,
+                'staff_name' => (string) ($split->staff?->name ?? ('Staff #' . $split->staff_id)),
+                'share_percent' => (int) $split->share_percent,
+                'commission_rate_snapshot' => (float) ($split->commission_rate_snapshot ?? 0),
+            ])
+            ->values()
+            ->all();
+
+        if ($splits !== []) {
+            return $splits;
+        }
+
+        return collect($option['staff_splits'] ?? [])
+            ->map(fn ($split) => [
+                'staff_id' => (int) ($split['staff_id'] ?? 0),
+                'staff_name' => (string) ($split['staff_name'] ?? $split['name'] ?? ('Staff #' . ($split['staff_id'] ?? 0))),
+                'share_percent' => (int) ($split['share_percent'] ?? 0),
+                'commission_rate_snapshot' => (float) ($split['commission_rate_snapshot'] ?? 0),
+            ])
+            ->filter(fn (array $split) => $split['staff_id'] > 0 && $split['share_percent'] > 0)
+            ->values()
+            ->all();
     }
 
     private function normalizeBookingProductOptionPriceOverride(array $option, int $quantity, array $overrideUsers = []): ?array
