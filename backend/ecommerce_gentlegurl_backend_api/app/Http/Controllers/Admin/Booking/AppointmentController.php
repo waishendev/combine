@@ -168,7 +168,17 @@ class AppointmentController extends Controller
 
     public function historyShow(int $id)
     {
-        $booking = Booking::with(['service', 'staff', 'customer'])->findOrFail($id);
+        $booking = Booking::with([
+            'service',
+            'staff',
+            'customer',
+            'itemPhotos:id,booking_id,file_path,original_name,mime_type,size,sort_order,created_at',
+            'servicePhotos:id,booking_id,image_path,caption,sort_order,created_at,updated_at',
+            'payments:id,booking_id,provider,amount,status,raw_response,created_at,updated_at',
+            'orderItems:id,order_id,booking_id',
+            'orderItems.order:id,payment_method',
+            'orderItems.order.uploads:id,order_id,type,file_path,note,status,created_at,updated_at',
+        ])->findOrFail($id);
         $row = $this->mapHistoryBooking($booking);
         $logs = BookingLog::query()
             ->where('booking_id', $booking->id)
@@ -188,6 +198,7 @@ class AppointmentController extends Controller
             'notes' => $booking->notes,
             'source' => $booking->source,
             'logs' => $logs,
+            ...$this->mapBookingMediaFields($booking),
         ]));
     }
 
@@ -196,6 +207,11 @@ class AppointmentController extends Controller
     {
         $row = $this->mapHistoryBooking($booking);
 
+        return array_merge($row, $this->mapBookingMediaFields($booking));
+    }
+
+    private function mapBookingMediaFields(Booking $booking): array
+    {
         $referencePhotos = $booking->itemPhotos->map(fn ($photo) => [
             'id' => (int) $photo->id,
             'file_url' => $photo->file_url,
@@ -216,13 +232,13 @@ class AppointmentController extends Controller
             'updated_at' => optional($photo->updated_at)?->toIso8601String(),
         ])->values();
 
-        return array_merge($row, [
+        return [
             'customer_reference_photos_count' => $referencePhotos->count(),
             'customer_reference_photos' => $referencePhotos,
             'service_photos_count' => $servicePhotos->count(),
             'service_photos' => $servicePhotos,
             'payment_proofs' => $this->mapBookingPaymentProofs($booking),
-        ]);
+        ];
     }
 
     private function mapBookingPaymentProofs(Booking $booking): array

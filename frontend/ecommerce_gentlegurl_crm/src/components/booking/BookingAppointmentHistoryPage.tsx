@@ -3,14 +3,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import BookingStatusBadge from './BookingStatusBadge'
+import BookingPhotosPaymentProofSection from './BookingPhotosPaymentProofSection'
+import BookingServicesAddOnsSection from './BookingServicesAddOnsSection'
+import { type BookingServicePhoto } from './BookingServicePhotosPanel'
 import PaginationControls from '@/components/PaginationControls'
 import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
+import { type PaymentProof } from '@/components/payment/PaymentProofPreview'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
+export type { StaffSplit, BookingServiceAddOn, BookingServiceBlock } from './BookingServicesAddOnsSection'
+import type { StaffSplit, BookingServiceAddOn, BookingServiceBlock } from './BookingServicesAddOnsSection'
+
 type StaffOption = { id: number; name: string }
-export type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
 
 export type AppointmentHistoryRow = {
   id: number
@@ -42,12 +48,13 @@ export type AppointmentHistoryRow = {
   balance_due: number
   notes?: string | null
   source?: string | null
+  customer_reference_photos_count?: number
+  customer_reference_photos?: Array<{ id: number; file_url?: string | null; original_name?: string | null }>
+  service_photos_count?: number
+  service_photos?: BookingServicePhoto[]
+  payment_proofs?: PaymentProof[]
   logs?: Array<{ id: number; actor_type: string; actor_id?: number | null; action: string; meta?: unknown; created_at?: string | null }>
 }
-
-export type BookingServiceAddOn = { id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string; service_ref?: string | null; item_kind?: string | null; line_type?: string | null; parent_service_ref?: string | null }
-
-export type BookingServiceBlock = { id?: number | null; service_id?: number | null; name: string; cn_name?: string | null; amount?: number | null; duration_min?: number | null; start_at?: string | null; end_at?: string | null; staff_splits?: StaffSplit[]; add_ons?: BookingServiceAddOn[] }
 
 type ApiPage = {
   data?: {
@@ -131,30 +138,6 @@ const paymentBadgeClass = (status?: string | null) => {
 
 const resolvedPaymentStatus = (row: Pick<AppointmentHistoryRow, 'payment_status' | 'computed_payment_status'>) => row.payment_status ?? row.computed_payment_status
 
-const visibleAddOns = (row: Pick<AppointmentHistoryRow, 'add_ons'>) => (row.add_ons ?? []).filter((item) => {
-  const itemKind = String(item.item_kind ?? item.line_type ?? 'addon').toLowerCase()
-  const serviceRef = String(item.service_ref ?? '').toLowerCase()
-  return itemKind !== 'main_service' && serviceRef !== 'original'
-})
-
-const serviceBlocksForRow = (row: AppointmentHistoryRow): BookingServiceBlock[] => {
-  const blocks = row.services?.length ? row.services : row.service_blocks
-  if (blocks?.length) return blocks
-  if (!row.service) return []
-  return [{
-    id: row.service.id,
-    service_id: row.service.id,
-    name: row.service.name,
-    cn_name: row.service.cn_name,
-    amount: row.service.amount ?? Math.max(0, Number(row.total_amount ?? 0) - visibleAddOns(row).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)),
-    duration_min: row.service.duration_min,
-    start_at: row.start_at,
-    end_at: row.end_at,
-    staff_splits: row.service.staff_splits ?? (row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : []),
-    add_ons: visibleAddOns(row),
-  }]
-}
-
 const formatPaymentStatus = (status?: string | null) => {
   const s = String(status ?? '').toLowerCase()
   if (s === 'paid') return 'Paid'
@@ -182,25 +165,30 @@ function DetailField({
 }
 
 
-function StaffSplitList({ splits, inherited }: { splits?: StaffSplit[]; inherited?: boolean }) {
-  if (!splits?.length) return <p className="text-sm text-slate-500">—</p>
+export function BookingAppointmentDetailDrawer({
+  row,
+  loading,
+  error,
+  onClose,
+  onServicePhotosChanged,
+}: {
+  row: AppointmentHistoryRow | null
+  loading: boolean
+  error: string | null
+  onClose: () => void
+  onServicePhotosChanged?: (photos: BookingServicePhoto[]) => void
+}) {
+  const [servicePhotos, setServicePhotos] = useState<BookingServicePhoto[]>([])
 
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Split:</p>
-      <ul className="space-y-1 text-sm text-slate-700">
-        {splits.map((split, index) => (
-          <li key={`${split.staff_id}-${index}`}>
-            <span>{split.staff_name ?? split.name ?? `Staff #${split.staff_id}`} — {Number(split.share_percent ?? 0)}%</span>
-            {inherited && index === 0 ? <span className="ml-2 text-xs text-slate-500">Inherited from main service</span> : null}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
+  useEffect(() => {
+    setServicePhotos(row?.service_photos ?? [])
+  }, [row])
 
-export function BookingAppointmentDetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistoryRow | null; loading: boolean; error: string | null; onClose: () => void }) {
+  const handleServicePhotosChanged = (photos: BookingServicePhoto[]) => {
+    setServicePhotos(photos)
+    onServicePhotosChanged?.(photos)
+  }
+
   if (!row && !loading && !error) return null
 
   return (
@@ -237,46 +225,7 @@ export function BookingAppointmentDetailDrawer({ row, loading, error, onClose }:
                 </dl>
               </section>
 
-              <section className="rounded-xl border border-slate-200 p-4">
-                <h4 className="font-semibold text-slate-900">Services + Add-ons</h4>
-                <div className="mt-4 space-y-4">
-                  {serviceBlocksForRow(row).map((service, blockIndex) => (
-                    <div key={`${service.service_id ?? service.id ?? service.name}-${blockIndex}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-sm font-semibold text-slate-900">Service Block {blockIndex + 1}</p>
-                      <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Main Service</p>
-                        <div className="mt-2 space-y-2">
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{service.name || '—'}</p>
-                            {service.cn_name ? <p className="text-xs text-slate-500">{service.cn_name}</p> : null}
-                          </div>
-                          <p className="text-sm text-slate-700">Amount: {formatMoney(service.amount)}</p>
-                          <p className="text-sm text-slate-700">Duration: {service.duration_min != null ? `${service.duration_min} min` : '—'}</p>
-                          <p className="text-sm text-slate-700">Schedule: {`${formatDateTime(service.start_at ?? row.start_at)} - ${formatDateTime(service.end_at ?? row.end_at)}`}</p>
-                          <StaffSplitList splits={service.staff_splits} />
-                        </div>
-                      </div>
-
-                      <div className="mt-3">
-                        <p className="text-sm font-semibold text-slate-900">Add-ons</p>
-                        {(service.add_ons ?? []).length > 0 ? (
-                          <div className="mt-2 space-y-3">
-                            {service.add_ons?.map((item, index) => (
-                              <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
-                                <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
-                                {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
-                                <p className="mt-2 text-sm text-slate-700">Amount: {formatMoney(item.extra_price)}</p>
-                                <p className="text-sm text-slate-700">Duration: {item.extra_duration_min != null ? `${item.extra_duration_min} min` : '—'}</p>
-                                <div className="mt-2"><StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} /></div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : <p className="mt-2 text-sm text-slate-500">No add-ons.</p>}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </section>
+              <BookingServicesAddOnsSection row={row} />
 
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Payment Breakdown</h4>
@@ -289,6 +238,16 @@ export function BookingAppointmentDetailDrawer({ row, loading, error, onClose }:
                   <DetailField label="Balance Due" value={formatMoney(row.balance_due)} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
+
+              <BookingPhotosPaymentProofSection
+                bookingId={row.id}
+                bookingCode={row.booking_code}
+                customerReferencePhotos={row.customer_reference_photos}
+                servicePhotos={servicePhotos}
+                paymentProofs={row.payment_proofs}
+                canManageServicePhotos={row.status === 'COMPLETED'}
+                onServicePhotosChanged={handleServicePhotosChanged}
+              />
 
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Status Logs</h4>
@@ -537,7 +496,15 @@ export default function BookingAppointmentHistoryPage() {
         <PaginationControls currentPage={page} totalPages={totalPages} pageSize={pageSize} onPageChange={setPage} disabled={loading} />
       </div>
 
-      <BookingAppointmentDetailDrawer row={detail} loading={detailLoading} error={detailError} onClose={() => { setDetailId(null); setDetail(null); setDetailError(null) }} />
+      <BookingAppointmentDetailDrawer
+        row={detail}
+        loading={detailLoading}
+        error={detailError}
+        onClose={() => { setDetailId(null); setDetail(null); setDetailError(null) }}
+        onServicePhotosChanged={(photos) => {
+          setDetail((current) => (current ? { ...current, service_photos: photos, service_photos_count: photos.length } : current))
+        }}
+      />
     </div>
   )
 }

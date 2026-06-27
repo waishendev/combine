@@ -4004,7 +4004,7 @@ export default function PosAppointmentsWorkspace({
 
                     {!appointmentIsTerminalCancelled &&
                     !(appointmentStatusUpper === 'COMPLETED' && appointmentPaymentBadgeIsPaid) ? (
-                      <div className="mt-3">
+                      <div className="pos-edit-settlement-sticky mt-3">
                         {appointmentHasUnsettledRangePricing ? (
                           <div className="mb-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
                             <p className="text-xs font-semibold text-amber-900">{UNSETTLED_RANGE_CHECKOUT_MESSAGE}</p>
@@ -4017,7 +4017,7 @@ export default function PosAppointmentsWorkspace({
                           type="button"
                           onClick={() => void openEditSettlement()}
                           disabled={appointmentActionLoading}
-                          className="w-full rounded-lg border-2 border-indigo-300 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-800 shadow-sm transition-colors hover:bg-indigo-100 disabled:opacity-50"
+                          className="pos-edit-settlement-action w-full rounded-lg border-2 border-indigo-300 bg-indigo-50 px-4 py-2.5 text-sm font-semibold text-indigo-800 shadow-sm transition-colors hover:bg-indigo-100 disabled:opacity-50"
                         >
                           Edit Settlement
                         </button>

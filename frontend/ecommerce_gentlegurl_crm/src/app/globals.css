@@ -1033,6 +1033,78 @@ body {
     .pos-settlement-sheet-backdrop--open {
       opacity: 1;
       pointer-events: auto;
+      /* Dim schedule only — do not cover the bottom settlement sheet (fixes missed taps on mobile). */
+      inset: auto;
+      top: 0;
+      right: 0;
+      left: 0;
+      bottom: min(96dvh, calc(100dvh - 0.5rem));
+    }
+
+    .pos-appt-right.pos-appt-settlement-sheet-open,
+    body > .pos-appt-right.pos-appt-settlement-sheet-open {
+      z-index: 132;
+    }
+
+    .pos-appt-settlement-scroll {
+      padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+    }
+
+    .pos-edit-settlement-sticky {
+      position: sticky;
+      bottom: 0;
+      z-index: 30;
+      margin-top: 0.75rem;
+      padding-top: 0.5rem;
+      padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+      background: linear-gradient(
+        to bottom,
+        rgba(255, 255, 255, 0) 0%,
+        rgba(255, 255, 255, 0.94) 24%,
+        rgb(255 255 255) 100%
+      );
+    }
+
+    .pos-edit-settlement-action {
+      position: relative;
+      z-index: 31;
+      min-height: 3rem;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: rgba(67, 56, 202, 0.18);
+    }
+
+    .pos-cart-settlement-actions {
+      width: 100%;
+      flex-basis: 100%;
+      flex-direction: column;
+      align-items: stretch !important;
+    }
+
+    .pos-cart-settlement-actions > * {
+      width: 100%;
+    }
+
+    .pos-cart-settlement-actions button {
+      min-height: 3rem;
+      touch-action: manipulation;
+      justify-content: center;
+    }
+
+    .pos-cart-settlement-actions .inline-flex {
+      display: flex;
+      width: 100%;
+    }
+
+    .pos-cart-settlement-actions .inline-flex > button {
+      width: 100%;
+    }
+
+    .pos-cart-sheet-backdrop-scrim {
+      bottom: min(92dvh, calc(100dvh - 0.5rem));
+    }
+
+    .pos-split-cart-scroll {
+      padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
     }
 
     .pos-appt-left--compact .pos-appt-schedule-host {

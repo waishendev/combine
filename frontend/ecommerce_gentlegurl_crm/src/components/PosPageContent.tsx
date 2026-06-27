@@ -7810,7 +7810,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           {isCompactLayout === true && cartSheetOpen ? (
             <button
               type="button"
-              className="fixed inset-0 z-0 touch-manipulation bg-slate-900/45 backdrop-blur-[2px]"
+              className="pos-cart-sheet-backdrop-scrim fixed inset-x-0 top-0 z-0 touch-manipulation bg-slate-900/45 backdrop-blur-[2px]"
               aria-label="Close cart"
               onClick={() => setCartSheetOpen(false)}
             />
@@ -8196,7 +8196,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </p>
                           ) : null}
                         </div>
-                        <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
+                        <div className="pos-cart-settlement-actions flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
                           {settlement.package_status?.status === 'reserved' || Number(settlement.eligible_package_count ?? settlementAvailabilityMap[settlement.id] ?? 0) > 0 ? (
                             <span className="text-[10px] text-gray-500 tabular-nums">
                               Pkg bal. {Number(settlement.eligible_package_count ?? settlementAvailabilityMap[settlement.id] ?? 0)}
@@ -8232,9 +8232,9 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           <button
                             type="button"
                             onClick={() => void openCartEditSettlement(settlement)}
-                            className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-800 shadow-sm hover:bg-indigo-100"
+                            className="pos-edit-settlement-action rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-800 shadow-sm hover:bg-indigo-100"
                           >
-                            Edit
+                            Edit Settlement
                           </button>
                           <button
                             type="button"

@@ -1033,6 +1033,9 @@ export default function SalesChannelReportPage({
           loading={bookingDetailLoading}
           error={bookingDetailError}
           onClose={closeBookingDetail}
+          onServicePhotosChanged={(photos) => {
+            setBookingDetail((current) => (current ? { ...current, service_photos: photos, service_photos_count: photos.length } : current))
+          }}
         />
       ) : null}
 
