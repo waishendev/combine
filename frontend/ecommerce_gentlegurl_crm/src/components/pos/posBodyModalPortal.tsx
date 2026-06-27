@@ -1,4 +1,5 @@
-import { createPortal, type ReactNode } from 'react-dom'
+import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 export function getPosBodyModalRoot(): HTMLElement | null {
   if (typeof document === 'undefined') return null
