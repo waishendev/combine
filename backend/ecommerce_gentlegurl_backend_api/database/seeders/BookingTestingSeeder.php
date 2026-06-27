@@ -197,11 +197,37 @@ class BookingTestingSeeder extends Seeder
 
     private function seedServices(): array
     {
-        $serviceSpecs = [
-            ['name' => 'Haircut', 'cn_name' => '剪发', 'service_type' => 'standard', 'service_price' => 5200, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
+        // Main bookable services — range priced (settlement / POS range testing).
+        $mainRangeSpecs = [
             ['name' => 'Coloring', 'cn_name' => '染发', 'service_type' => 'premium', 'service_price' => 680, 'price_mode' => 'range', 'price_range_min' => 680, 'price_range_max' => 1200, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
-            ['name' => 'Treatment', 'cn_name' => '护理', 'service_type' => 'premium', 'service_price' => 450, 'price_mode' => 'fixed', 'duration_min' => 60, 'deposit_amount' => 20, 'buffer_min' => 15],
+            ['name' => 'Highlights', 'cn_name' => '挑染', 'service_type' => 'premium', 'service_price' => 450, 'price_mode' => 'range', 'price_range_min' => 450, 'price_range_max' => 900, 'duration_min' => 90, 'deposit_amount' => 30, 'buffer_min' => 15],
+            ['name' => 'Balayage', 'cn_name' => '手刷染', 'service_type' => 'premium', 'service_price' => 600, 'price_mode' => 'range', 'price_range_min' => 600, 'price_range_max' => 1300, 'duration_min' => 150, 'deposit_amount' => 35, 'buffer_min' => 15],
+            ['name' => 'Perm', 'cn_name' => '烫发', 'service_type' => 'premium', 'service_price' => 350, 'price_mode' => 'range', 'price_range_min' => 350, 'price_range_max' => 650, 'duration_min' => 120, 'deposit_amount' => 25, 'buffer_min' => 15],
+            ['name' => 'Rebonding', 'cn_name' => '离子烫', 'service_type' => 'premium', 'service_price' => 800, 'price_mode' => 'range', 'price_range_min' => 800, 'price_range_max' => 1500, 'duration_min' => 180, 'deposit_amount' => 40, 'buffer_min' => 20],
+            ['name' => 'Keratin Treatment', 'cn_name' => '角蛋白护理', 'service_type' => 'premium', 'service_price' => 500, 'price_mode' => 'range', 'price_range_min' => 500, 'price_range_max' => 980, 'duration_min' => 120, 'deposit_amount' => 25, 'buffer_min' => 15],
         ];
+
+        // Add-on services — also range priced; linked under main services via questions.
+        $addonRangeSpecs = [
+            ['name' => 'Gloss Toner Add-on', 'cn_name' => '光泽调色附加', 'service_type' => 'premium', 'service_price' => 80, 'price_mode' => 'range', 'price_range_min' => 80, 'price_range_max' => 150, 'duration_min' => 20, 'deposit_amount' => 15, 'buffer_min' => 10],
+            ['name' => 'Bond Repair Add-on', 'cn_name' => '结构修护附加', 'service_type' => 'premium', 'service_price' => 120, 'price_mode' => 'range', 'price_range_min' => 120, 'price_range_max' => 220, 'duration_min' => 30, 'deposit_amount' => 20, 'buffer_min' => 10],
+            ['name' => 'Deep Mask Add-on', 'cn_name' => '深层发膜附加', 'service_type' => 'premium', 'service_price' => 90, 'price_mode' => 'range', 'price_range_min' => 90, 'price_range_max' => 180, 'duration_min' => 45, 'deposit_amount' => 18, 'buffer_min' => 10],
+            ['name' => 'Olaplex Boost Add-on', 'cn_name' => '蛋白加强附加', 'service_type' => 'premium', 'service_price' => 45, 'price_mode' => 'range', 'price_range_min' => 45, 'price_range_max' => 85, 'duration_min' => 15, 'deposit_amount' => 12, 'buffer_min' => 10],
+            ['name' => 'Scalp Booster Add-on', 'cn_name' => '头皮加强附加', 'service_type' => 'premium', 'service_price' => 60, 'price_mode' => 'range', 'price_range_min' => 60, 'price_range_max' => 110, 'duration_min' => 25, 'deposit_amount' => 15, 'buffer_min' => 10],
+            ['name' => 'Color Lock Add-on', 'cn_name' => '锁色护理附加', 'service_type' => 'premium', 'service_price' => 70, 'price_mode' => 'range', 'price_range_min' => 70, 'price_range_max' => 130, 'duration_min' => 20, 'deposit_amount' => 15, 'buffer_min' => 10],
+        ];
+
+        // Simple fixed-price services for non-range booking paths.
+        $fixedStandaloneSpecs = [
+            ['name' => 'Haircut', 'cn_name' => '剪发', 'service_type' => 'standard', 'service_price' => 5200, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 10, 'buffer_min' => 15],
+            ['name' => 'Blow Dry', 'cn_name' => '吹发', 'service_type' => 'standard', 'service_price' => 80, 'price_mode' => 'fixed', 'duration_min' => 45, 'deposit_amount' => 10, 'buffer_min' => 10],
+            ['name' => 'Hair Wash', 'cn_name' => '洗头', 'service_type' => 'standard', 'service_price' => 35, 'price_mode' => 'fixed', 'duration_min' => 20, 'deposit_amount' => 10, 'buffer_min' => 10],
+            ['name' => 'Kids Cut', 'cn_name' => '儿童剪发', 'service_type' => 'standard', 'service_price' => 45, 'price_mode' => 'fixed', 'duration_min' => 25, 'deposit_amount' => 10, 'buffer_min' => 10],
+            ['name' => 'Beard Trim', 'cn_name' => '修胡须', 'service_type' => 'standard', 'service_price' => 55, 'price_mode' => 'fixed', 'duration_min' => 20, 'deposit_amount' => 10, 'buffer_min' => 10],
+            ['name' => 'Scalp Massage', 'cn_name' => '头皮按摩', 'service_type' => 'premium', 'service_price' => 120, 'price_mode' => 'fixed', 'duration_min' => 30, 'deposit_amount' => 15, 'buffer_min' => 10],
+        ];
+
+        $serviceSpecs = array_merge($mainRangeSpecs, $addonRangeSpecs, $fixedStandaloneSpecs);
 
         $services = [];
         foreach ($serviceSpecs as $spec) {
@@ -230,8 +256,7 @@ class BookingTestingSeeder extends Seeder
             }
 
             if (Schema::hasColumn('booking_services', 'allow_photo_upload')) {
-                // Keep at least one seeded service enabled for QA verification flow.
-                $payload['allow_photo_upload'] = $spec['name'] === 'Haircut';
+                $payload['allow_photo_upload'] = in_array($spec['name'], ['Haircut', 'Balayage'], true);
             }
 
             $services[$spec['name']] = BookingService::query()->create($payload);
@@ -274,17 +299,32 @@ class BookingTestingSeeder extends Seeder
                     'name' => 'Hair Essentials',
                     'cn_name' => '头发基础护理',
                     'slug' => 'hair-essentials',
-                    'description' => 'Daily and classic hair services.',
+                    'description' => 'Simple fixed-price services.',
                     'sort_order' => 1,
-                    'service_names' => ['Haircut', 'Coloring'],
+                    'service_names' => ['Haircut', 'Blow Dry', 'Hair Wash', 'Kids Cut', 'Beard Trim', 'Scalp Massage'],
                 ],
                 [
-                    'name' => 'Premium Treatments',
-                    'cn_name' => '高级护理',
-                    'slug' => 'premium-treatments',
-                    'description' => 'Repair and intensive premium care.',
+                    'name' => 'Main Range Services',
+                    'cn_name' => '主服务（Range）',
+                    'slug' => 'main-range-services',
+                    'description' => 'Primary bookable services with range pricing.',
                     'sort_order' => 2,
-                    'service_names' => ['Coloring', 'Treatment'],
+                    'service_names' => ['Coloring', 'Highlights', 'Balayage', 'Perm', 'Rebonding', 'Keratin Treatment'],
+                ],
+                [
+                    'name' => 'Range Add-ons',
+                    'cn_name' => '附加服务（Range）',
+                    'slug' => 'range-add-ons',
+                    'description' => 'Range-priced add-ons linked under main services.',
+                    'sort_order' => 3,
+                    'service_names' => [
+                        'Gloss Toner Add-on',
+                        'Bond Repair Add-on',
+                        'Deep Mask Add-on',
+                        'Olaplex Boost Add-on',
+                        'Scalp Booster Add-on',
+                        'Color Lock Add-on',
+                    ],
                 ],
             ];
 
@@ -333,8 +373,17 @@ class BookingTestingSeeder extends Seeder
         if (Schema::hasTable('booking_service_primary_slots')) {
             $slotConfig = [
                 'Haircut' => ['10:00:00', '12:00:00', '15:00:00'],
+                'Blow Dry' => ['10:30:00', '13:00:00', '16:00:00'],
+                'Hair Wash' => ['10:00:00', '11:30:00', '14:00:00', '16:30:00'],
+                'Kids Cut' => ['11:00:00', '14:30:00', '17:00:00'],
+                'Beard Trim' => ['10:00:00', '12:30:00', '15:30:00'],
+                'Scalp Massage' => ['11:00:00', '13:30:00', '16:30:00'],
                 'Coloring' => ['11:00:00', '14:00:00', '17:00:00'],
-                'Treatment' => ['12:00:00', '15:00:00', '18:00:00'],
+                'Highlights' => ['10:00:00', '13:00:00', '16:00:00'],
+                'Balayage' => ['09:30:00', '12:30:00', '15:30:00'],
+                'Perm' => ['10:00:00', '14:00:00'],
+                'Rebonding' => ['09:00:00', '13:00:00'],
+                'Keratin Treatment' => ['11:30:00', '15:30:00'],
             ];
 
             foreach ($slotConfig as $serviceName => $times) {
@@ -386,66 +435,96 @@ class BookingTestingSeeder extends Seeder
         }
 
         $now = now();
-        $targetService = $services['Coloring'] ?? null;
-        if (! $targetService) {
-            return;
-        }
-
-        DB::table('booking_service_questions')
-            ->where('booking_service_id', $targetService->id)
-            ->delete();
-
-        $questionRows = [
-            [
-                'title' => 'Choose add-on design',
-                'description' => 'Optional artistry for this service.',
-                'question_type' => 'single_choice',
-                'sort_order' => 1,
-                'is_required' => false,
-                'is_active' => true,
-                'service_keys' => ['Treatment', 'Haircut'],
-            ],
-            [
-                'title' => 'Preparation add-ons',
-                'description' => 'Select one or more preparation options.',
-                'question_type' => 'multi_choice',
-                'sort_order' => 2,
-                'is_required' => false,
-                'is_active' => true,
-                'service_keys' => ['Haircut', 'Treatment'],
-            ],
+        $rangeAddonKeys = [
+            'Gloss Toner Add-on',
+            'Bond Repair Add-on',
+            'Deep Mask Add-on',
+            'Olaplex Boost Add-on',
+            'Scalp Booster Add-on',
+            'Color Lock Add-on',
+        ];
+        $mainRangeKeys = [
+            'Coloring',
+            'Highlights',
+            'Balayage',
+            'Perm',
+            'Rebonding',
+            'Keratin Treatment',
         ];
 
-        foreach ($questionRows as $row) {
-            $questionId = DB::table('booking_service_questions')->insertGetId([
-                'booking_service_id' => $targetService->id,
-                'title' => $row['title'],
-                'description' => $row['description'],
-                'question_type' => $row['question_type'],
-                'sort_order' => $row['sort_order'],
-                'is_required' => $row['is_required'],
-                'is_active' => $row['is_active'],
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]);
+        $questionTargets = [];
+        foreach ($mainRangeKeys as $mainName) {
+            $questionTargets[$mainName] = [
+                [
+                    'title' => 'Range add-ons',
+                    'description' => 'Optional range-priced add-ons for this main service.',
+                    'question_type' => 'multi_choice',
+                    'sort_order' => 1,
+                    'is_required' => false,
+                    'service_keys' => $rangeAddonKeys,
+                ],
+                [
+                    'title' => 'Premium range add-ons (pick one)',
+                    'description' => 'Single-choice range add-on tier.',
+                    'question_type' => 'single_choice',
+                    'sort_order' => 2,
+                    'is_required' => false,
+                    'service_keys' => ['Bond Repair Add-on', 'Deep Mask Add-on', 'Color Lock Add-on'],
+                ],
+            ];
+        }
 
-            $selectedAddonServices = collect($row['service_keys'] ?? [])
-                ->map(fn ($serviceKey) => $services[$serviceKey] ?? null)
-                ->filter()
-                ->values();
+        // Coloring gets an extra question mixing range + fixed for contrast testing.
+        $questionTargets['Coloring'][] = [
+            'title' => 'Quick fixed finish (optional)',
+            'description' => 'Fixed-price finish add-ons for mixed pricing scenarios.',
+            'question_type' => 'multi_choice',
+            'sort_order' => 3,
+            'is_required' => false,
+            'service_keys' => ['Blow Dry', 'Hair Wash'],
+        ];
 
-            foreach ($selectedAddonServices as $optionIndex => $addonService) {
-                DB::table('booking_service_question_options')->insert([
-                    'booking_service_question_id' => $questionId,
-                    'label' => (string) $addonService->name,
-                    'linked_booking_service_id' => (int) $addonService->id,
-                    'extra_duration_min' => max(0, (int) $addonService->duration_min),
-                    'extra_price' => max(0, (float) $addonService->service_price),
-                    'sort_order' => $optionIndex + 1,
+        foreach ($questionTargets as $serviceName => $questionRows) {
+            $targetService = $services[$serviceName] ?? null;
+            if (! $targetService) {
+                continue;
+            }
+
+            DB::table('booking_service_questions')
+                ->where('booking_service_id', $targetService->id)
+                ->delete();
+
+            foreach ($questionRows as $row) {
+                $questionId = DB::table('booking_service_questions')->insertGetId([
+                    'booking_service_id' => $targetService->id,
+                    'title' => $row['title'],
+                    'description' => $row['description'],
+                    'question_type' => $row['question_type'],
+                    'sort_order' => $row['sort_order'],
+                    'is_required' => $row['is_required'],
                     'is_active' => true,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]);
+
+                $selectedAddonServices = collect($row['service_keys'] ?? [])
+                    ->map(fn ($serviceKey) => $services[$serviceKey] ?? null)
+                    ->filter()
+                    ->values();
+
+                foreach ($selectedAddonServices as $optionIndex => $addonService) {
+                    DB::table('booking_service_question_options')->insert([
+                        'booking_service_question_id' => $questionId,
+                        'label' => (string) $addonService->name,
+                        'linked_booking_service_id' => (int) $addonService->id,
+                        'extra_duration_min' => max(0, (int) $addonService->duration_min),
+                        'extra_price' => max(0, (float) $addonService->service_price),
+                        'sort_order' => $optionIndex + 1,
+                        'is_active' => true,
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]);
+                }
             }
         }
     }

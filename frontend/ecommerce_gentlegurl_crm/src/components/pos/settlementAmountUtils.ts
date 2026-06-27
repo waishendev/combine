@@ -226,6 +226,42 @@ export function collectionHasUnsettledRangePricing(
   return (items ?? []).some((item) => posLineHasUnsettledRangePricing(item))
 }
 
+export function computeSettlementCartItemDueBounds(settlement?: {
+  is_range_priced?: boolean | null
+  requires_settled_amount?: boolean | null
+  settled_service_amount?: number | string | null
+  service_price_range_min?: number | string | null
+  service_price_range_max?: number | string | null
+  balance_due?: number | string | null
+  amount_due_now?: number | string | null
+  deposit_contribution?: number | string | null
+  package_offset?: number | string | null
+  addon_settlement_items?: Array<{ balance_due?: number | string | null; extra_price?: number | string | null }> | null
+} | null): PosPriceBounds {
+  if (!settlement) return { min: 0, max: 0, hasRange: false }
+
+  const depositCredit = Number(settlement.deposit_contribution ?? 0)
+  const pkgOffset = Number(settlement.package_offset ?? 0)
+  const addonDueSum = (settlement.addon_settlement_items ?? []).reduce(
+    (sum, addon) => sum + Number(addon.balance_due ?? addon.extra_price ?? 0),
+    0,
+  )
+  const isRangeUnsettled = Boolean(
+    settlement.is_range_priced || settlement.requires_settled_amount,
+  ) && settlement.settled_service_amount == null
+
+  if (isRangeUnsettled) {
+    const minRaw = Number(settlement.service_price_range_min ?? 0) + addonDueSum - depositCredit - pkgOffset
+    const maxRaw = Number(settlement.service_price_range_max ?? 0) + addonDueSum - depositCredit - pkgOffset
+    const min = Math.max(0, Math.min(minRaw, maxRaw))
+    const max = Math.max(0, Math.max(minRaw, maxRaw))
+    return { min, max, hasRange: Math.abs(min - max) > 0.0001 }
+  }
+
+  const due = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
+  return { min: due, max: due, hasRange: false }
+}
+
 export function appointmentDetailHasUnsettledRangePricing(detail?: {
   requires_settled_amount?: boolean | null
   add_ons?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null }>

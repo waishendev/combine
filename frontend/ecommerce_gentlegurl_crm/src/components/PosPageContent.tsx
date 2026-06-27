@@ -23,6 +23,7 @@ import {
   posPriceDisplayHasRange,
   posPriceDisplayWithOverride,
   seedFinalizedAddonPriceOverrides,
+  computeSettlementCartItemDueBounds,
   settlementCartItemHasUnsettledRangePricing,
   settlementNeedsSettledAmount,
   UNSETTLED_RANGE_CHECKOUT_MESSAGE,
@@ -2185,6 +2186,49 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const voucherDiscount = useMemo(() => {
     return Number(cart?.voucher?.discount_amount ?? 0)
   }, [cart?.voucher?.discount_amount])
+
+  const cartTotalDisplayBounds = useMemo(() => {
+    let min = 0
+    let max = 0
+    let hasRange = false
+
+    const addBounds = (bounds: { min: number; max: number; hasRange: boolean }) => {
+      min += bounds.min
+      max += bounds.max
+      if (bounds.hasRange) hasRange = true
+    }
+
+    for (const item of cartItems) {
+      const amount = Number(item.line_total ?? 0)
+      addBounds({ min: amount, max: amount, hasRange: false })
+    }
+    for (const item of cartServiceItems) {
+      const amount = Number(item.line_total ?? 0)
+      addBounds({ min: amount, max: amount, hasRange: false })
+    }
+    for (const item of cartPackageItems) {
+      const amount = Number(item.line_total ?? 0)
+      addBounds({ min: amount, max: amount, hasRange: false })
+    }
+    for (const settlement of cartAppointmentSettlementItems) {
+      addBounds(computeSettlementCartItemDueBounds(settlement))
+    }
+
+    const deduct = promotionDiscount + voucherDiscount
+    min = Math.max(0, min - deduct)
+    max = Math.max(0, max - deduct)
+    if (!hasRange && Math.abs(min - max) > 0.0001) hasRange = true
+
+    return { min, max, hasRange }
+  }, [
+    cartAppointmentSettlementItems,
+    cartItems,
+    cartPackageItems,
+    cartServiceItems,
+    promotionDiscount,
+    voucherDiscount,
+  ])
+  const cartTotalDisplayLabel = formatPosAccumulatedPriceDisplay(cartTotalDisplayBounds)
   
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
@@ -4284,7 +4328,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           const originalLineKey = (refreshedSettlement.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)?.line_key
           if (priceEditTarget.lineKey === originalLineKey) {
             const line = (refreshedSettlement.main_service_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
-            setCartEditOriginalServicePrice(Number(line?.gross_amount ?? line?.price_override?.final_unit_price ?? roundedNext))
+            const savedAmount = Number(line?.gross_amount ?? line?.price_override?.final_unit_price ?? roundedNext)
+            if (settlementNeedsSettledAmount(cartEditOriginalSettlementSource)) {
+              setCartEditSettledAmount(savedAmount.toFixed(2))
+            } else {
+              setCartEditOriginalServicePrice(savedAmount)
+            }
           } else if (priceEditTarget.lineKey) {
             const addonLine = (refreshedSettlement.addon_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
             const savedAmount = Number(addonLine?.gross_amount ?? addonLine?.price_override?.final_unit_price ?? roundedNext)
@@ -4754,6 +4803,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
   const editCartSettlementOriginalServicePrice = () => {
     if (!cartEditSettlementItem) return
+    if (settlementNeedsSettledAmount(cartEditOriginalSettlementSource)) return
     const line = (cartEditSettlementItem.main_service_settlement_items ?? []).find((row, idx) => row.is_original ?? idx === 0)
     const current = Number(cartEditOriginalServicePrice ?? line?.gross_amount ?? line?.balance_due ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? 0)
     if (line?.line_key) {
@@ -8088,6 +8138,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       {identityLine ? (
                         <p>{identityLine}</p>
                       ) : null}
+                      {getGuestContactLines(serviceItem).map((line) => (
+                        <p key={`cart-service-guest-contact-${serviceItem.id}-${line}`}>{line}</p>
+                      ))}
+                      {serviceItem.notes?.trim() ? (
+                        <p className="whitespace-pre-wrap">Remarks: {serviceItem.notes.trim()}</p>
+                      ) : null}
                     </div>
                     </div>
 
@@ -8099,7 +8155,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-800">
                               <span className="text-gray-500">{idx + 1}.</span>
                               <ServiceNameStack name={service.name} cnName={service.cn_name} primaryClassName="text-xs font-semibold text-gray-900" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                              <div className="text-right"><PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />{!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                              <div className="flex flex-col items-end gap-1 text-right">
+                                <PosDepositAmount amount={Number(service.deposit ?? 0)} referenceAmount={Number(service.reference_deposit ?? service.deposit ?? 0)} />
+                                {!service.covered_by_package && Number(service.deposit ?? 0) > 0.0001 ? (
+                                  <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: service.line_key ?? 'main', name: service.name ?? 'Service deposit', currentUnitPrice: Number(service.deposit ?? 0), originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.reference_deposit ?? service.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                ) : null}
+                              </div>
                             </div>
                             {service.package_note ? (
                               <p className="pl-7 text-[10px] font-medium text-emerald-700">{service.package_note}</p>
@@ -8109,7 +8170,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                   <span className="text-gray-500">+</span>
                                   <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
-                                  <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="mt-1 rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}</div>
+                                  <div className="flex flex-col items-end gap-1 text-right">
+                                    <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
+                                    {!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? (
+                                      <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                                    ) : null}
+                                  </div>
                                 </div>
                                 {addon.package_note ? (
                                   <p className="pl-7 text-[10px] font-medium text-emerald-700">{addon.package_note}</p>
@@ -8487,7 +8553,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 )}
                 <div className="flex justify-between border-t border-gray-200 pt-2 text-base font-bold">
                   <span className="text-gray-900">Total</span>
-                  <span className="text-lg text-orange-700">RM {cartTotal.toFixed(2)}</span>
+                  <span className="text-lg text-orange-700">{cartTotalDisplayLabel}</span>
                 </div>
               </div>
             </div>
@@ -8556,7 +8622,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <span className="pos-floating-cart-bar-trailing flex shrink-0 flex-col items-end gap-1.5 text-right">
                   <span>
                     <span className="pos-floating-cart-bar-total-label block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Total</span>
-                    <span className="pos-floating-cart-bar-total-value text-lg font-extrabold tabular-nums text-orange-700">RM {cartTotal.toFixed(2)}</span>
+                    <span className="pos-floating-cart-bar-total-value text-lg font-extrabold tabular-nums text-orange-700">{cartTotalDisplayLabel}</span>
                   </span>
                   <span className="pos-floating-cart-bar-action inline-flex items-center gap-1 rounded-full bg-blue-600 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide text-white shadow-sm">
                     View Details
@@ -8903,31 +8969,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
               ) : null}
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
-              {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) ? (
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-1">Service Amount</label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Reference range: RM {getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} – RM{' '}
-                    {getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}
-                  </p>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={cartEditSettledAmount}
-                      onChange={(e) => {
-                        reportCartEditSettlementError(null)
-                        setCartEditSettledAmount(e.target.value)
-                      }}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder={`${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
               <div className="space-y-3">
                 <div className="rounded-lg border border-indigo-100 bg-indigo-50/70 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -8954,25 +8995,53 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
 
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Service Block · Original</p>
                       <ServiceNameStack
                         name={cartEditOriginalService?.name ?? cartEditSettlementItem.service_name ?? 'Service'}
                         cnName={cartEditOriginalService?.cn_name ?? cartEditSettlementItem.service_cn_name}
                       />
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="text-xs text-gray-600">
-                          {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) == null
-                            ? `RM ${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`
-                            : `RM ${Number(
-                                settlementNeedsSettledAmount(cartEditOriginalSettlementSource) && parseSettlementAmountInput(cartEditSettledAmount) != null
-                                  ? parseSettlementAmountInput(cartEditSettledAmount)
-                                  : cartEditOriginalServicePrice ?? cartEditOriginalService?.service_price ?? cartEditOriginalService?.price ?? cartEditSettlementItem.service_total ?? 0,
-                              ).toFixed(2)}`}
-                          {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
-                        </p>
-                        <button type="button" onClick={editCartSettlementOriginalServicePrice} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
-                      </div>
+                      {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) ? (
+                        <>
+                          <p className="mt-2 text-xs text-gray-500">
+                            Reference range: RM {getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                            {getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}
+                          </p>
+                          <div className="relative mt-2 max-w-xs">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              value={cartEditSettledAmount}
+                              onChange={(e) => {
+                                reportCartEditSettlementError(null)
+                                setCartEditSettledAmount(e.target.value)
+                              }}
+                              className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                              placeholder={`${getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}`}
+                            />
+                          </div>
+                          <p className="mt-1 text-[10px] text-gray-500">
+                            Enter the final service amount within the reference range.
+                            {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
+                          </p>
+                        </>
+                      ) : (
+                        <div className="mt-1 flex flex-col items-start gap-1">
+                          <p className="text-xs text-gray-600">
+                            RM {Number(
+                              cartEditOriginalServicePrice
+                                ?? cartEditOriginalService?.service_price
+                                ?? cartEditOriginalService?.price
+                                ?? cartEditSettlementItem.service_total
+                                ?? 0,
+                            ).toFixed(2)}
+                            {Number(cartEditOriginalService?.duration_min ?? 0) > 0 ? ` · ${cartEditOriginalService?.duration_min}min` : ''}
+                          </p>
+                          <button type="button" onClick={editCartSettlementOriginalServicePrice} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -9510,8 +9579,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 }, 0)
                 const isRange = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
                 const settledAmt = parseSettlementAmountInput(cartEditSettledAmount)
-                const originalServiceAmt = isRange && settledAmt != null
-                  ? settledAmt
+                const originalServiceAmt = isRange
+                  ? (settledAmt ?? 0)
                   : Number(
                     cartEditOriginalServicePrice
                       ?? cartEditOriginalService?.service_price
@@ -9997,6 +10066,12 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <p>Appointment: {formatDateTimeRange(serviceItem.start_at, serviceItem.end_at)}</p>
                             ) : null}
                             {chkIdentity ? <p className="font-medium text-gray-700">{chkIdentity}</p> : null}
+                            {getGuestContactLines(serviceItem).map((line) => (
+                              <p key={`checkout-service-guest-contact-${serviceItem.id}-${line}`}>{line}</p>
+                            ))}
+                            {serviceItem.notes?.trim() ? (
+                              <p className="whitespace-pre-wrap">Remarks: {serviceItem.notes.trim()}</p>
+                            ) : null}
                           </div>
                         </>
                       )
@@ -10485,7 +10560,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   )}
                   <div className="flex items-center justify-between border-t border-gray-300 pt-2 mt-2">
                     <p className="text-base font-semibold text-gray-700">Net Amount</p>
-                    <p className="text-2xl font-bold text-orange-700">RM {cartTotal.toFixed(2)}</p>
+                    <p className="text-2xl font-bold text-orange-700">{cartTotalDisplayLabel}</p>
                   </div>
                 </div>
               </div>

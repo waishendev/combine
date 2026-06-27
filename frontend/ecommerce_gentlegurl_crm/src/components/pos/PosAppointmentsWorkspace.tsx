@@ -2390,7 +2390,7 @@ export default function PosAppointmentsWorkspace({
       if (originalServiceId > 0 && originalServiceId !== Number(appointmentDetail.service?.id ?? 0)) {
         payload.booking_service_id = originalServiceId
       }
-      if (editOriginalServicePriceOverride != null) {
+      if (editOriginalServicePriceOverride != null && !needsSettledAmount) {
         payload.original_service_price = editOriginalServicePriceOverride
       }
       if (needsSettledAmount) {
@@ -5723,33 +5723,6 @@ export default function PosAppointmentsWorkspace({
               </div>
               <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-5">
-              {settlementNeedsSettledAmount(editOriginalSettlementSource) ? (
-                <div>
-                  <label className="block text-sm font-bold text-gray-900 mb-1">
-                    Service Amount
-                  </label>
-                  <p className="text-xs text-gray-500 mb-2">
-                    Reference range: RM {getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} – RM{' '}
-                    {getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}
-                  </p>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      autoComplete="off"
-                      value={editSettledAmount}
-                      onChange={(e) => {
-                        reportEditSettlementError(null)
-                        setEditSettledAmount(e.target.value)
-                      }}
-                      className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      placeholder={`${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`}
-                    />
-                  </div>
-                </div>
-              ) : null}
-
               <div className="space-y-3">
                 <div className="rounded-lg border border-indigo-100 bg-indigo-50/70 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -5776,7 +5749,7 @@ export default function PosAppointmentsWorkspace({
 
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3">
                   <div className="flex items-start justify-between gap-2">
-                    <div>
+                    <div className="min-w-0 flex-1">
                       <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Service Block · Original</p>
                       <PosServiceNameStack
                         name={editOriginalService?.name ?? appointmentDetail.service?.name ?? 'Service'}
@@ -5784,20 +5757,47 @@ export default function PosAppointmentsWorkspace({
                         primaryClassName="mt-1 text-sm font-semibold text-gray-900"
                         secondaryClassName="mt-0.5 text-xs text-gray-500"
                       />
-                      <div className="mt-1 flex flex-wrap items-center gap-2">
-                        <p className="text-xs text-gray-600">
-                          {settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) == null
-                            ? `RM ${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`
-                            : `RM ${Number(
-                                editOriginalServicePriceOverride
-                                  ?? (settlementNeedsSettledAmount(editOriginalSettlementSource) && parseSettlementAmountInput(editSettledAmount) != null
-                                    ? parseSettlementAmountInput(editSettledAmount)
-                                    : editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0),
-                              ).toFixed(2)}`}
-                          {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
-                        </p>
-                        <button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'originalService', name: editOriginalService?.name ?? appointmentDetail.service?.name ?? 'Service', currentUnitPrice: Number(editOriginalServicePriceOverride ?? editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), originalUnitPrice: Number(editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), quantity: 1, priceSource: editOriginalService ?? editOriginalSettlementSource })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
-                      </div>
+                      {settlementNeedsSettledAmount(editOriginalSettlementSource) ? (
+                        <>
+                          <p className="mt-2 text-xs text-gray-500">
+                            Reference range: RM {getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                            {getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}
+                          </p>
+                          <div className="relative mt-2 max-w-xs">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-gray-500">RM</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              autoComplete="off"
+                              value={editSettledAmount}
+                              onChange={(e) => {
+                                reportEditSettlementError(null)
+                                setEditSettledAmount(e.target.value)
+                              }}
+                              className="w-full rounded-lg border-2 border-gray-300 bg-white py-2.5 pl-10 pr-4 text-sm font-semibold tabular-nums focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                              placeholder={`${getSettlementRangeBounds(editOriginalSettlementSource).min.toFixed(2)} - ${getSettlementRangeBounds(editOriginalSettlementSource).max.toFixed(2)}`}
+                            />
+                          </div>
+                          <p className="mt-1 text-[10px] text-gray-500">
+                            Enter the final service amount within the reference range.
+                            {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
+                          </p>
+                        </>
+                      ) : (
+                        <div className="mt-1 flex flex-col items-start gap-1">
+                          <p className="text-xs text-gray-600">
+                            RM {Number(
+                              editOriginalServicePriceOverride
+                                ?? editOriginalService?.service_price
+                                ?? editOriginalService?.price
+                                ?? appointmentDetail.service_total
+                                ?? 0,
+                            ).toFixed(2)}
+                            {Number(editOriginalService?.duration_min ?? 0) > 0 ? ` · ${editOriginalService?.duration_min}min` : ''}
+                          </p>
+                          <button type="button" onClick={() => openAppointmentPriceEditModal({ kind: 'originalService', name: editOriginalService?.name ?? appointmentDetail.service?.name ?? 'Service', currentUnitPrice: Number(editOriginalServicePriceOverride ?? editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), originalUnitPrice: Number(editOriginalService?.service_price ?? editOriginalService?.price ?? appointmentDetail.service_total ?? 0), quantity: 1, priceSource: editOriginalService ?? editOriginalSettlementSource })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
+                        </div>
+                      )}
                     </div>
                     <button
                       type="button"
@@ -6373,8 +6373,8 @@ export default function PosAppointmentsWorkspace({
                   }, 0)
                   const isRange = settlementNeedsSettledAmount(editOriginalSettlementSource)
                   const settledAmt = parseSettlementAmountInput(editSettledAmount)
-                  const originalServiceAmt = isRange && settledAmt != null
-                    ? settledAmt
+                  const originalServiceAmt = isRange
+                    ? (settledAmt ?? 0)
                     : Number(
                       editOriginalServicePriceOverride
                         ?? editOriginalService?.service_price
