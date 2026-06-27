@@ -7,6 +7,7 @@ import OrderConfirmPaymentModal from '@/components/OrderConfirmPaymentModal'
 import OrderRejectPaymentModal from '@/components/OrderRejectPaymentModal'
 import OrderShipModal from '@/components/OrderShipModal'
 import OrderViewPanel from '@/components/OrderViewPanel'
+import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import { calculateOrderStatus, type OrderApiItem } from '@/components/orderUtils'
 import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
 
@@ -352,8 +353,9 @@ export default function PosRequestCenter({
         ) : null}
       </button>
 
-      {open ? (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
+      {renderPosBodyModalPortal(
+        open ? (
+        <div className="pos-body-stack-modal flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
           <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/60 bg-white shadow-2xl">
             <div className="border-b border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-5 text-white">
               <div className="flex items-start justify-between gap-4">
@@ -440,10 +442,11 @@ export default function PosRequestCenter({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null)}
 
-      {bookingConfirm ? (
-        <div className="fixed inset-0 z-[105] flex items-center justify-center bg-slate-950/50 p-4">
+      {renderPosBodyModalPortal(
+        bookingConfirm ? (
+        <div className="pos-body-stack-modal flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-950">
               {bookingConfirm.kind === 'hold'
@@ -458,9 +461,11 @@ export default function PosRequestCenter({
             </div>
           </div>
         </div>
-      ) : null}
-      {viewingBooking ? (
-        <div className="fixed inset-0 z-[95] flex items-center justify-end bg-slate-950/50" role="dialog" aria-modal="true" onClick={closeBookingDetail}>
+      ) : null)}
+
+      {renderPosBodyModalPortal(
+        viewingBooking ? (
+        <div className="pos-body-stack-modal flex items-center justify-end bg-slate-950/50" role="dialog" aria-modal="true" onClick={closeBookingDetail}>
           <aside className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="border-b border-slate-200 px-5 py-4">
               <div className="flex items-start justify-between gap-3">
@@ -544,11 +549,20 @@ export default function PosRequestCenter({
             </div>
           </aside>
         </div>
-      ) : null}
-      {shipOrderId !== null ? <OrderShipModal orderId={shipOrderId} onClose={() => setShipOrderId(null)} onSuccess={() => { setShipOrderId(null); void load() }} zIndexClassName="z-[105]" /> : null}
-      {viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="z-[95]" /> : null}
-      {confirmPaymentOrderId !== null ? <OrderConfirmPaymentModal orderId={confirmPaymentOrderId} onClose={() => setConfirmPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[105]" /> : null}
-      {rejectPaymentOrderId !== null ? <OrderRejectPaymentModal orderId={rejectPaymentOrderId} onClose={() => setRejectPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="z-[105]" /> : null}
+      ) : null)}
+
+      {renderPosBodyModalPortal(
+        shipOrderId !== null ? <OrderShipModal orderId={shipOrderId} onClose={() => setShipOrderId(null)} onSuccess={() => { setShipOrderId(null); void load() }} zIndexClassName="pos-body-stack-modal" /> : null,
+      )}
+      {renderPosBodyModalPortal(
+        viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="pos-body-stack-modal" /> : null,
+      )}
+      {renderPosBodyModalPortal(
+        confirmPaymentOrderId !== null ? <OrderConfirmPaymentModal orderId={confirmPaymentOrderId} onClose={() => setConfirmPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="pos-body-stack-modal" /> : null,
+      )}
+      {renderPosBodyModalPortal(
+        rejectPaymentOrderId !== null ? <OrderRejectPaymentModal orderId={rejectPaymentOrderId} onClose={() => setRejectPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="pos-body-stack-modal" /> : null,
+      )}
     </>
   )
 }

@@ -974,13 +974,13 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
     <>
       {!collapsed && (
         <div
-          className="fixed inset-x-0 bottom-0 top-16 z-[45] bg-black/50 backdrop-blur-[1px]"
+          className="fixed inset-x-0 bottom-0 top-16 z-[160] bg-black/50 backdrop-blur-[1px]"
           onClick={onToggleSidebar}
           aria-hidden="true"
         />
       )}
       <aside
-        className={`fixed top-16 left-0 z-[50] flex h-[calc(100dvh-4rem)] min-h-0 w-64 flex-col border-r border-slate-200 bg-white shadow-sm transition-[transform,visibility] duration-300 ease-in-out ${
+        className={`fixed top-16 left-0 z-[161] flex h-[calc(100dvh-4rem)] min-h-0 w-64 flex-col border-r border-slate-200 bg-white shadow-sm transition-[transform,visibility] duration-300 ease-in-out ${
           collapsed
             ? 'pointer-events-none invisible -translate-x-full'
             : 'pointer-events-auto visible translate-x-0 shadow-xl'

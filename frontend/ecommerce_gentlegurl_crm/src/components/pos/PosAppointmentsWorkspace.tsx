@@ -1,12 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-
-function renderPosBodyModalPortal(node: ReactNode, root: HTMLElement | null | undefined) {
-  if (!node || typeof document === 'undefined') return null
-  return createPortal(node, root ?? document.body)
-}
+import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
@@ -3394,6 +3390,14 @@ export default function PosAppointmentsWorkspace({
 
   const compactPosBodyModalOpen = useMemo(
     () =>
+      createAppointmentModalOpen ||
+      createAppointmentMemberPickerOpen ||
+      cancellationRequestsModalOpen ||
+      appointmentRescheduleOpen ||
+      editSettlementOpen ||
+      appointmentLineSplitTarget != null ||
+      appointmentPriceEditTarget != null ||
+      editMainServicePickerOpen ||
       appointmentCheckoutConfirmationOpen ||
       holdApproveConfirmOpen ||
       holdRejectConfirmOpen ||
@@ -3403,12 +3407,20 @@ export default function PosAppointmentsWorkspace({
       appointmentQrCodeFullscreen,
     [
       appointmentCheckoutConfirmationOpen,
-      holdApproveConfirmOpen,
-      holdRejectConfirmOpen,
-      holdCancelConfirmOpen,
-      cancellationConfirmOpen,
-      appointmentSettlementResult,
+      appointmentLineSplitTarget,
+      appointmentPriceEditTarget,
       appointmentQrCodeFullscreen,
+      appointmentRescheduleOpen,
+      appointmentSettlementResult,
+      cancellationConfirmOpen,
+      cancellationRequestsModalOpen,
+      createAppointmentMemberPickerOpen,
+      createAppointmentModalOpen,
+      editMainServicePickerOpen,
+      editSettlementOpen,
+      holdApproveConfirmOpen,
+      holdCancelConfirmOpen,
+      holdRejectConfirmOpen,
     ],
   )
 
@@ -4415,7 +4427,14 @@ export default function PosAppointmentsWorkspace({
         createPortal(
           <>
             {!hasAppointmentSettlementTarget ? (
-              <div className="pos-floating-settlement-bar pos-floating-settlement-bar--placeholder touch-manipulation">
+              <div
+                className={[
+                  'pos-floating-settlement-bar pos-floating-settlement-bar--placeholder touch-manipulation',
+                  compactPosBodyModalOpen && 'pos-floating-settlement-bar--hidden',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
                 <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -4438,6 +4457,7 @@ export default function PosAppointmentsWorkspace({
                 className={[
                   'pos-floating-settlement-bar touch-manipulation',
                   settlementBarPulse ? 'pos-floating-settlement-bar--pulse' : '',
+                  compactPosBodyModalOpen && 'pos-floating-settlement-bar--hidden',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -4495,8 +4515,9 @@ export default function PosAppointmentsWorkspace({
           document.body,
         )}
 
-      {createAppointmentModalOpen ? (
-        <div className="fixed inset-0 z-[135] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+      {renderPosBodyModalPortal(
+        createAppointmentModalOpen ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
           <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
               <div>
@@ -5066,7 +5087,9 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {renderPosBodyModalPortal(
         createAppointmentMemberPickerOpen ? (
@@ -5183,8 +5206,9 @@ export default function PosAppointmentsWorkspace({
         bodyModalRoot,
       )}
 
-      {cancellationRequestsModalOpen ? (
-        <div className="fixed inset-0 z-[125] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+      {renderPosBodyModalPortal(
+        cancellationRequestsModalOpen ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
           <div
             className="relative mx-auto flex w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
             role="dialog"
@@ -5310,7 +5334,9 @@ export default function PosAppointmentsWorkspace({
             </div> */}
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {renderPosBodyModalPortal(
         holdApproveConfirmOpen && appointmentDetail ? (
@@ -5567,8 +5593,9 @@ export default function PosAppointmentsWorkspace({
         bodyModalRoot,
       )}
 
-      {appointmentRescheduleOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+      {renderPosBodyModalPortal(
+        appointmentRescheduleOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/40 p-4">
           <div className="relative mx-auto flex w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="shrink-0 px-5 pt-5">
               <h3 className="text-lg font-bold text-gray-900">Reschedule Appointment</h3>
@@ -5690,10 +5717,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
-      {editSettlementOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+      {renderPosBodyModalPortal(
+        editSettlementOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
           <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -6490,10 +6520,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
-      {appointmentLineSplitTarget ? (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      {renderPosBodyModalPortal(
+        appointmentLineSplitTarget ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3">
               <h4 className="text-lg font-bold text-gray-900">
@@ -6592,10 +6625,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
-      {appointmentPriceEditTarget ? (
-        <div className="fixed inset-0 z-[180] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      {renderPosBodyModalPortal(
+        appointmentPriceEditTarget ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
@@ -6624,10 +6660,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
-      {editMainServicePickerOpen && editMainServicePickerTargetId ? (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+      {renderPosBodyModalPortal(
+        editMainServicePickerOpen && editMainServicePickerTargetId ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
           <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -6672,7 +6711,9 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {renderPosBodyModalPortal(
         appointmentCheckoutConfirmationOpen && appointmentDetail ? (
