@@ -8,6 +8,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\User;
+use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -126,7 +127,7 @@ class SalesChannelReportService
                 'order_datetime' => optional($order->placed_at ?? $order->created_at)?->toIso8601String(),
                 'placed_at' => optional($order->placed_at)?->toIso8601String(),
                 'created_at' => optional($order->created_at)?->toIso8601String(),
-                'customer' => (string) ($order->customer?->name ?: $order->shipping_name ?: $order->billing_name ?: 'Walk-in Customer'),
+                'customer' => $this->resolveOrderCustomerDisplayName($order),
                 'payment_method' => (string) ($order->payment_method ?: 'unknown'),
                 'payments' => $payments->all(),
                 'type' => $lineTypes->isEmpty() ? 'Order' : $lineTypes->implode(', '),
@@ -507,7 +508,12 @@ class SalesChannelReportService
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
-                'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                 'channel' => (string) $row->channel,
                 'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                 'payments' => $paymentRowsByOrder->get((int) $row->order_id, []),
@@ -569,7 +575,12 @@ class SalesChannelReportService
                     'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
-                    'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                    'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                     'channel' => (string) $row->channel,
                     'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                     'item_count' => (int) $row->item_count,
@@ -627,7 +638,12 @@ class SalesChannelReportService
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
-                'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                 'channel' => (string) $row->channel,
                 'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                 'payments' => $paymentRowsByOrder->get((int) $row->order_id, []),
@@ -709,7 +725,12 @@ class SalesChannelReportService
                     'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
-                    'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                    'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                     'channel' => (string) $row->channel,
                     'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                     'type' => (string) $row->type,
@@ -740,11 +761,13 @@ class SalesChannelReportService
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
-            ->groupBy('o.id', 'o.order_number', 'c.name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', DB::raw($this->orderBillAtSql()))
+            ->groupBy('o.id', 'o.order_number', 'c.name', 'o.shipping_name', 'o.billing_name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', DB::raw($this->orderBillAtSql()))
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
             ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
             ->selectRaw('c.name as customer_name')
+            ->selectRaw('o.shipping_name as shipping_name')
+            ->selectRaw('o.billing_name as billing_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
@@ -794,6 +817,9 @@ class SalesChannelReportService
             ->selectRaw('o.order_number as order_no')
             ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
             ->selectRaw('c.name as customer_name')
+            ->selectRaw('o.shipping_name as shipping_name')
+            ->selectRaw('o.billing_name as billing_name')
+            ->selectRaw('b.guest_name as booking_guest_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
@@ -967,6 +993,77 @@ class SalesChannelReportService
         $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
 
         return $frontendUrl . '/api/proxy/public/receipt/' . $existingToken->token . '/invoice';
+    }
+
+    private function resolveOrderCustomerDisplayName(Order $order): string
+    {
+        return $this->formatCustomerDisplayName(
+            $order->customer?->name,
+            $order->shipping_name,
+            $order->billing_name,
+            $this->resolveBookingGuestDisplayName($order),
+        );
+    }
+
+    private function resolveBookingGuestDisplayName(Order $order): ?string
+    {
+        foreach ($order->items ?? [] as $item) {
+            $guest = trim((string) ($item->booking?->guest_name ?? ''));
+            if ($guest !== '' && strtoupper($guest) !== 'UNKNOWN') {
+                return $guest;
+            }
+        }
+
+        return null;
+    }
+
+    private function formatCustomerDisplayName(
+        ?string $memberName,
+        ?string $shippingName,
+        ?string $billingName,
+        ?string $bookingGuestName,
+    ): string {
+        $member = trim((string) ($memberName ?? ''));
+        if ($member !== '') {
+            return $member;
+        }
+
+        $shipping = trim((string) ($shippingName ?? ''));
+        if ($shipping !== '') {
+            return $shipping;
+        }
+
+        $billing = trim((string) ($billingName ?? ''));
+        if ($billing !== '' && ! $this->isPosWalkInPlaceholderName($billing)) {
+            return $billing;
+        }
+
+        $guest = trim((string) ($bookingGuestName ?? ''));
+        if ($guest !== '' && strtoupper($guest) !== 'UNKNOWN') {
+            return $guest;
+        }
+
+        return 'Walk-in Customer';
+    }
+
+    private function isPosWalkInPlaceholderName(string $name): bool
+    {
+        $normalized = strtoupper(trim($name));
+        if ($normalized === '' || $normalized === '-') {
+            return true;
+        }
+
+        $walkInName = strtoupper(trim((string) data_get(
+            SettingService::get('ecommerce.invoice_profile', []),
+            'pos_walk_in_bill_to.name',
+            'UNKNOWN'
+        )));
+
+        if ($walkInName !== '' && $normalized === $walkInName) {
+            return true;
+        }
+
+        return in_array($normalized, ['UNKNOWN', 'LOYALTY TESTER'], true);
     }
 
     private function resolveReceiptCustomerEmail(Order $order): ?string

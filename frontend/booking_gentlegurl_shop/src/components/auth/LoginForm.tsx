@@ -209,7 +209,12 @@ export function LoginForm({
       />
 
       <div className="-mt-2">
-        <div className="text-xs text-[var(--foreground)]/60">Forgot password? Please check your email reset flow.</div>
+        <Link
+          href="/forgot-password"
+          className="text-xs font-medium text-[var(--accent-strong)] hover:opacity-80"
+        >
+          Forgot password?
+        </Link>
       </div>
 
       <button
