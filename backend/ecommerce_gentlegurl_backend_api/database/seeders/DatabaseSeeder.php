@@ -35,23 +35,25 @@ class DatabaseSeeder extends Seeder
             FooterWidgetSeederReal::class,
             ServicesMenuAndPagesSeeder::class,
             CustomerTypeSeeder::class,
-
+            BookingSettingsSeeder::class,
+            PaymentProofNotificationSettingSeeder::class,
             EnsurePromotionPermissionsForSuperAdminSeeder::class,
            
             PaymentGatewaySeeder::class,
             BillplzPaymentGatewayOptionSeeder::class,
             BookingLandingPageSeeder::class,
+            // EcommerceLandingPageSeeder::class,
             // BookingProductSeeder::class,
             
-            // upper all should open , no command to avoid error seed
+            // // upper all should open , no command to avoid error seed
             // DemoMembersSeederTesting::class,
 
             // FrontendTestDataSeeder::class,
             // LoyaltyRewardSeederTesting::class,
             // LoyaltyDemoCustomerSeederTesting::class,
-            // SelfPickupCompletedOrderSeeder::class,
-            // GuestCompletedOrderSeeder::class,
-            
+            // // SelfPickupCompletedOrderSeeder::class,
+            // // GuestCompletedOrderSeeder::class,
+          
             // BookingTestingSeeder::class,
             // BookingLeaveTestingSeeder::class,
             // ServicePackageTestingSeeder::class,

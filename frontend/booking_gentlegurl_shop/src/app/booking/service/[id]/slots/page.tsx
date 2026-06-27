@@ -252,12 +252,12 @@ function SlotPageContent() {
     const selected = parseDateString(date);
     const today = parseDateString(todayInTimezone());
     const maxDate = parseDateString(maxSelectableDate);
-    const monthStart = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1);
-    const monthEnd = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0);
-    const minAllowedDate = maxLocalDate(today, monthStart);
-    const maxAllowedDate = minLocalDate(maxDate, monthEnd);
-    const selectedInActiveMonth = selected.getFullYear() === calMonth.getFullYear() && selected.getMonth() === calMonth.getMonth();
-    const anchorDate = selectedInActiveMonth ? minLocalDate(maxLocalDate(selected, minAllowedDate), maxAllowedDate) : minAllowedDate;
+    const minAllowedDate = today;
+    const maxAllowedDate = maxDate;
+    const selectedInRange = selected >= minAllowedDate && selected <= maxAllowedDate;
+    const anchorDate = selectedInRange
+      ? minLocalDate(maxLocalDate(selected, minAllowedDate), maxAllowedDate)
+      : minAllowedDate;
     const daysBeforeAnchor = Math.floor((QUICK_DATE_STRIP_DAYS - 1) / 2);
     let stripStart = addDaysToLocalDate(anchorDate, -daysBeforeAnchor);
     let stripEnd = addDaysToLocalDate(stripStart, QUICK_DATE_STRIP_DAYS - 1);
@@ -285,7 +285,7 @@ function SlotPageContent() {
       });
     }
     return arr;
-  }, [calMonth, date, maxSelectableDate]);
+  }, [date, maxSelectableDate]);
 
   const prevMonth = () => {
     setCalMonth((m) => new Date(m.getFullYear(), m.getMonth() - 1, 1));
