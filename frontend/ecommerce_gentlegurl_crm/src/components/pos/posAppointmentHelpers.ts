@@ -156,6 +156,32 @@ function makePosLocalDateTimeValue(date: string, minutesFromMidnight: number) {
   return `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
 }
 
+/** Today's YYYY-MM-DD in the POS business timezone. */
+export function getPosScheduleTodayYmd(timeZone = POS_SCHEDULE_TZ): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${read('year')}-${read('month')}-${read('day')}`
+}
+
+/** Minutes from midnight right now in the POS business timezone. */
+export function getCurrentMinutesInPosSchedule(timeZone = POS_SCHEDULE_TZ): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? NaN)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? NaN)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 0
+  return hour * 60 + minute
+}
+
 /** Bookable slots for POS dropdowns (9 am – midnight, 15-minute steps by default). */
 export function buildPosAppointmentSlots(
   date: string,
@@ -164,9 +190,16 @@ export function buildPosAppointmentSlots(
 ): Array<{ start_at: string; end_at: string }> {
   const safeDurationMin = Math.max(1, durationMin)
   const lastStartMinute = Math.max(POS_APPOINTMENT_DAY_START_MIN, POS_APPOINTMENT_DAY_END_MIN - safeDurationMin)
+  let dayStartMinute = POS_APPOINTMENT_DAY_START_MIN
+
+  if (date === getPosScheduleTodayYmd()) {
+    const nowMin = getCurrentMinutesInPosSchedule()
+    dayStartMinute = Math.max(POS_APPOINTMENT_DAY_START_MIN, Math.ceil(nowMin / stepMin) * stepMin)
+  }
+
   const slots: Array<{ start_at: string; end_at: string }> = []
 
-  for (let minute = POS_APPOINTMENT_DAY_START_MIN; minute <= lastStartMinute; minute += stepMin) {
+  for (let minute = dayStartMinute; minute <= lastStartMinute; minute += stepMin) {
     slots.push({
       start_at: makePosLocalDateTimeValue(date, minute),
       end_at: makePosLocalDateTimeValue(date, minute + safeDurationMin),

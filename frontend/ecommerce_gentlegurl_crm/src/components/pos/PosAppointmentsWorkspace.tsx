@@ -126,7 +126,7 @@ type AppointmentLineSplitDraftRow = { staff_id: number | null; share_percent: st
 
 type AppointmentLineSplitTarget =
   | { type: 'line'; lineKey: string; title: string; inheritedSplits: AppointmentLineStaffSplit[] }
-  | { type: 'bulk'; lineKeys: string[]; title: string; inheritedSplits: AppointmentLineStaffSplit[] }
+  | { type: 'bulk'; lineKeys: string[]; title: string; inheritedSplits: AppointmentLineStaffSplit[]; applyEditSettlementMainServices?: boolean }
 
 function durationMinutesFromRange(startAt?: string | null, endAt?: string | null): number {
   if (!startAt || !endAt) return 0
@@ -752,17 +752,29 @@ export default function PosAppointmentsWorkspace({
     reportAppointmentLineSplitError(null)
   }, [activeStaffs, appointmentLineStaffSplits, fetchStaffOptions])
 
-  const openAppointmentBulkLineSplitEditor = useCallback(async (title: string, lineKeys: string[], inheritedSplits: AppointmentLineStaffSplit[] = []) => {
+  const openAppointmentBulkLineSplitEditor = useCallback(async (
+    title: string,
+    lineKeys: string[],
+    inheritedSplits: AppointmentLineStaffSplit[] = [],
+    options?: { applyEditSettlementMainServices?: boolean },
+  ) => {
     let nextStaffs = activeStaffs
     if (!nextStaffs.length) {
       nextStaffs = await fetchStaffOptions('')
       setActiveStaffs(nextStaffs)
     }
     const uniqueLineKeys = Array.from(new Set(lineKeys)).filter(Boolean)
-    setAppointmentLineSplitTarget({ type: 'bulk', lineKeys: uniqueLineKeys, title, inheritedSplits })
+    const applyEditSettlementMainServices = options?.applyEditSettlementMainServices ?? false
+    setAppointmentLineSplitTarget({
+      type: 'bulk',
+      lineKeys: uniqueLineKeys,
+      title,
+      inheritedSplits,
+      applyEditSettlementMainServices,
+    })
     setAppointmentLineSplitDraftRows(inheritedSplits.length ? inheritedSplits.map((split) => ({ staff_id: split.staff_id, share_percent: String(split.share_percent) })) : [{ staff_id: null, share_percent: '100' }])
     setAppointmentLineSplitAutoBalance(true)
-    setAppointmentLineSplitOverwrite(false)
+    setAppointmentLineSplitOverwrite(applyEditSettlementMainServices)
     reportAppointmentLineSplitError(null)
   }, [activeStaffs, fetchStaffOptions])
 
@@ -785,13 +797,25 @@ export default function PosAppointmentsWorkspace({
     if (appointmentLineSplitTarget.type === 'line') {
       setAppointmentLineStaffSplits((prev) => ({ ...prev, [appointmentLineSplitTarget.lineKey]: mappedSplits }))
     } else {
+      const forceOverwrite = appointmentLineSplitTarget.applyEditSettlementMainServices || appointmentLineSplitOverwrite
       setAppointmentLineStaffSplits((prev) => {
         const next = { ...prev }
         appointmentLineSplitTarget.lineKeys.forEach((lineKey) => {
-          if (appointmentLineSplitOverwrite || !next[lineKey]?.length) next[lineKey] = mappedSplits
+          if (forceOverwrite || !next[lineKey]?.length) next[lineKey] = mappedSplits
         })
         return next
       })
+      if (appointmentLineSplitTarget.applyEditSettlementMainServices) {
+        const draftRows = mappedSplits.map((row) => ({
+          staff_id: row.staff_id,
+          share_percent: String(row.share_percent),
+        }))
+        setEditStaffSplits(draftRows)
+        setEditAddedMainBlocks((prev) => prev.map((block) => ({
+          ...block,
+          staff_splits: draftRows.map((row) => ({ ...row })),
+        })))
+      }
     }
     setAppointmentLineSplitTarget(null)
   }, [appointmentLineSplitDraftRows, appointmentLineSplitOverwrite, appointmentLineSplitTarget])
@@ -5728,7 +5752,7 @@ export default function PosAppointmentsWorkspace({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Staff Split Bulk Setup</p>
-                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply a split to selected settlement add-on lines; service blocks remain the inheritance source.</p>
+                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply one split to the original main service, added service blocks, and all selected add-ons.</p>
                     </div>
                     <button
                       type="button"
@@ -5738,7 +5762,7 @@ export default function PosAppointmentsWorkspace({
                           ...Array.from(editSelectedAddonIds).map((id) => `appointment-settlement:${appointmentDetail.id}:addon:${id}`),
                           ...editAddedMainBlocks.flatMap((block) => Array.from(block.selected_addon_ids).map((id) => `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`)),
                         ]
-                        void openAppointmentBulkLineSplitEditor('Edit Settlement Lines', lineKeys, editStaffSplitsToLineSplits(editStaffSplits))
+                        void openAppointmentBulkLineSplitEditor('Edit Settlement Lines', lineKeys, editStaffSplitsToLineSplits(editStaffSplits), { applyEditSettlementMainServices: true })
                       }}
                       className="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
                     >
@@ -6478,7 +6502,7 @@ export default function PosAppointmentsWorkspace({
               <button type="button" onClick={() => setAppointmentLineSplitTarget(null)} className="text-2xl leading-none text-gray-500">×</button>
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-              {appointmentLineSplitTarget.type === 'bulk' ? (
+              {appointmentLineSplitTarget.type === 'bulk' && !appointmentLineSplitTarget.applyEditSettlementMainServices ? (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                   <input type="checkbox" checked={appointmentLineSplitOverwrite} onChange={(event) => setAppointmentLineSplitOverwrite(event.target.checked)} className="h-4 w-4" />
                   Overwrite existing explicit staff splits

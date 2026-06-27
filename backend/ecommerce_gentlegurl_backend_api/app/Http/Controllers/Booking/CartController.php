@@ -22,6 +22,7 @@ use App\Services\Booking\BookingAvailabilityService;
 use App\Services\Booking\BookingCartCleanupService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Services\Ecommerce\OrderPaymentService;
+use App\Services\Ecommerce\OrderReserveService;
 use App\Services\SettingService;
 use App\Support\WorkspaceType;
 use Carbon\Carbon;
@@ -102,8 +103,7 @@ class CartController extends Controller
                 return $this->respondError('Selected slot is no longer available.', 409);
             }
 
-            $settings = $this->getSettings();
-            $expiresAt = now()->addMinutes((int) $settings->cart_hold_minutes);
+            $expiresAt = now()->addMinutes($this->getCartHoldMinutes());
 
             $duplicate = BookingCartItem::query()
                 ->where('booking_cart_id', $cart->id)
@@ -1297,6 +1297,11 @@ class CartController extends Controller
             ->where('gateway_group', $gatewayGroup)
             ->where('is_active', true)
             ->exists();
+    }
+
+    private function getCartHoldMinutes(): int
+    {
+        return app(OrderReserveService::class)->getBookingHoldMinutes();
     }
 
     private function getSettings(): BookingSetting

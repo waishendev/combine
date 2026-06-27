@@ -1803,7 +1803,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageCheckoutSplits, setPackageCheckoutSplits] = useState<Record<number, CheckoutItemStaffSplit[]>>({})
   const [checkoutLineSplits, setCheckoutLineSplits] = useState<Record<string, CheckoutItemStaffSplit[]>>({})
   const [itemSplitEditorOpen, setItemSplitEditorOpen] = useState(false)
-  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement' | 'line' | 'bulk'; id: number; lineKey?: string; lineKeys?: string[]; productCartItemIds?: number[]; packageItemIds?: number[]; title?: string } | null>(null)
+  const [itemSplitEditorTarget, setItemSplitEditorTarget] = useState<{ type: 'product' | 'package' | 'settlement' | 'line' | 'bulk'; id: number; lineKey?: string; lineKeys?: string[]; productCartItemIds?: number[]; packageItemIds?: number[]; title?: string; applyCartEditSettlementMainServices?: boolean } | null>(null)
   const [itemSplitDraftRows, setItemSplitDraftRows] = useState<CheckoutItemSplitDraft[]>([])
   const [itemSplitAutoBalance, setItemSplitAutoBalance] = useState(true)
   const [bulkSplitOverwrite, setBulkSplitOverwrite] = useState(false)
@@ -6798,7 +6798,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     )
   }
 
-  const openBulkSplitEditor = async (title: string, lineKeys: string[], inheritedSplits: CheckoutItemStaffSplit[] = [], productCartItemIds: number[] = [], packageItemIds: number[] = []) => {
+  const openBulkSplitEditor = async (
+    title: string,
+    lineKeys: string[],
+    inheritedSplits: CheckoutItemStaffSplit[] = [],
+    productCartItemIds: number[] = [],
+    packageItemIds: number[] = [],
+    options?: { applyCartEditSettlementMainServices?: boolean },
+  ) => {
     let nextStaffs = activeStaffs
     if (!nextStaffs.length) {
       nextStaffs = await fetchStaffOptions('')
@@ -6815,9 +6822,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       })
     })
 
-    setBulkSplitOverwrite(false)
+    const applyCartEditSettlementMainServices = options?.applyCartEditSettlementMainServices ?? false
+    setBulkSplitOverwrite(applyCartEditSettlementMainServices)
     setItemSplitDraftRows(rows.length ? rows : [createDraftRow({ options: nextStaffs, share_percent: 100 })])
-    setItemSplitEditorTarget({ type: 'bulk', id: 0, lineKeys: Array.from(new Set(lineKeys)), productCartItemIds, packageItemIds, title })
+    setItemSplitEditorTarget({
+      type: 'bulk',
+      id: 0,
+      lineKeys: Array.from(new Set(lineKeys)),
+      productCartItemIds,
+      packageItemIds,
+      title,
+      applyCartEditSettlementMainServices,
+    })
     setItemSplitAutoBalance(true)
     reportItemSplitError(null)
     setItemSplitEditorOpen(true)
@@ -6945,17 +6961,29 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       setCheckoutLineSplits((prev) => ({ ...prev, [itemSplitEditorTarget.lineKey!]: mappedSplits }))
     } else if (itemSplitEditorTarget.type === 'bulk') {
       const lineKeys = itemSplitEditorTarget.lineKeys ?? []
+      const forceOverwrite = itemSplitEditorTarget.applyCartEditSettlementMainServices || bulkSplitOverwrite
       setCheckoutLineSplits((prev) => {
         const next = { ...prev }
         lineKeys.forEach((key) => {
-          if (bulkSplitOverwrite || !next[key]?.length) next[key] = mappedSplits
+          if (forceOverwrite || !next[key]?.length) next[key] = mappedSplits
         })
         return next
       })
+      if (itemSplitEditorTarget.applyCartEditSettlementMainServices) {
+        const draftRows = mappedSplits.map((row) => ({
+          staff_id: row.staff_id,
+          share_percent: String(row.share_percent),
+        }))
+        setCartEditStaffSplits(draftRows)
+        setCartEditAddedMainBlocks((prev) => prev.map((block) => ({
+          ...block,
+          staff_splits: draftRows.map((row) => ({ ...row })),
+        })))
+      }
       if (itemSplitEditorTarget.productCartItemIds?.length) {
         const productIds = new Set(itemSplitEditorTarget.productCartItemIds)
         setCheckoutItemAssignments((prev) => prev.map((assignment) => (
-          productIds.has(assignment.cart_item_id) && (bulkSplitOverwrite || !assignment.splits?.length)
+          productIds.has(assignment.cart_item_id) && (forceOverwrite || !assignment.splits?.length)
             ? { ...assignment, is_default: false, splits: mappedSplits }
             : assignment
         )))
@@ -6965,7 +6993,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         setPackageCheckoutSplits((prev) => {
           const next = { ...prev }
           packageIds.forEach((id) => {
-            if (bulkSplitOverwrite || !next[id]?.length) next[id] = mappedSplits
+            if (forceOverwrite || !next[id]?.length) next[id] = mappedSplits
           })
           return next
         })
@@ -8954,7 +8982,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Staff Split Bulk Setup</p>
-                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply a split to selected settlement add-on lines; main service blocks keep their editable service-block split as the inheritance source.</p>
+                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply one split to the original main service, added service blocks, and all selected add-ons.</p>
                     </div>
                     <button
                       type="button"
@@ -8964,7 +8992,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           ...cartEditAddedMainBlocks.flatMap((block) => Array.from(block.selected_addon_ids).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`)),
                         ]
                         const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
-                        void openBulkSplitEditor('Edit Settlement Lines', lineKeys, inherited)
+                        void openBulkSplitEditor('Edit Settlement Lines', lineKeys, inherited, [], [], { applyCartEditSettlementMainServices: true })
                       }}
                       className="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
                     >
@@ -10964,7 +10992,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   {itemSplitError}
                 </div>
               ) : null}
-              {itemSplitEditorTarget.type === 'bulk' ? (
+              {itemSplitEditorTarget.type === 'bulk' && !itemSplitEditorTarget.applyCartEditSettlementMainServices ? (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                   <input type="checkbox" checked={bulkSplitOverwrite} onChange={(event) => setBulkSplitOverwrite(event.target.checked)} className="h-4 w-4" />
                   Overwrite existing child staff splits

@@ -550,14 +550,37 @@ class SalesChannelReportService
 
         $baseQuery = $this->baseBookingRowsQuery($start, $end, $channel, $paymentMethod, $type, $customerId);
 
-        $paginator = (clone $baseQuery)
+        // Paginate by distinct order — UI groups line items (deposit/settlement/add-on) into one row per order.
+        $distinctOrdersQuery = (clone $baseQuery)
+            ->selectRaw('order_id')
+            ->selectRaw('MAX(order_datetime) as order_datetime')
+            ->groupBy('order_id');
+
+        $paginator = DB::query()
+            ->fromSub($distinctOrdersQuery, 'distinct_orders')
             ->orderByDesc('order_datetime')
+            ->orderByDesc('order_id')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $cnNames = $this->resolveOrderItemCnNames(collect($paginator->items())->pluck('order_item_id')->all());
-        $paymentRowsByOrder = $this->paymentRowsByOrderIds(collect($paginator->items())->pluck('order_id')->all());
+        $orderIds = collect($paginator->items())
+            ->pluck('order_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->values()
+            ->all();
 
-        $rows = collect($paginator->items())->map(function ($row) use ($cnNames, $paymentRowsByOrder) {
+        $pageItems = $orderIds === []
+            ? collect()
+            : (clone $baseQuery)
+                ->whereIn('order_id', $orderIds)
+                ->orderByDesc('order_datetime')
+                ->orderBy('order_id')
+                ->get();
+
+        $cnNames = $this->resolveOrderItemCnNames($pageItems->pluck('order_item_id')->all());
+        $paymentRowsByOrder = $this->paymentRowsByOrderIds($pageItems->pluck('order_id')->all());
+
+        $rows = $pageItems->map(function ($row) use ($cnNames, $paymentRowsByOrder) {
             return [
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
@@ -592,6 +615,7 @@ class SalesChannelReportService
             ->first();
 
         $totalsPage = $this->aggregateBookingTotals($rows);
+        $totalsPage['orders_count'] = (int) $rows->pluck('order_id')->unique()->count();
         $grandTotals = [
             'orders_count' => (int) ($summaryRow->total_transactions ?? 0),
             'gross_amount' => (float) ((clone $baseQuery)->sum('gross_amount') ?? 0),

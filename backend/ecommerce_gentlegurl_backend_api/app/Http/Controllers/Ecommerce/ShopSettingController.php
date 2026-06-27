@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Services\Booking\BookingHoldSettingsService;
 use App\Services\SettingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -13,6 +14,10 @@ use Illuminate\Validation\ValidationException;
 
 class ShopSettingController extends Controller
 {
+    public function __construct(private readonly BookingHoldSettingsService $bookingHoldSettingsService)
+    {
+    }
+
     /**
      * 返回当前支持的所有 shop 设置
      * GET /api/ecommerce/shop-settings
@@ -274,6 +279,10 @@ class ShopSettingController extends Controller
             ['type' => $type, 'key' => $settingKey],
             ['value' => $data]
         );
+
+        if ($key === 'BOOKING_HOLD_MINUTES') {
+            $this->bookingHoldSettingsService->applyHoldMinutesChange((int) $data);
+        }
 
         Cache::forget('public_homepage_v1');
         Cache::forget('public_homepage_v2_ecommerce');
