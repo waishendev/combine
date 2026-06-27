@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 
-import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
+import BookingPhotosPaymentProofSection from '@/components/booking/BookingPhotosPaymentProofSection'
 import { type BookingServicePhoto } from '@/components/booking/BookingServicePhotosPanel'
-import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
-import PaymentProofModal from '@/components/payment/PaymentProofModal'
+import BookingServicesAddOnsSection, {
+  type BookingServiceAddOn,
+  type BookingServiceBlock,
+} from '@/components/booking/BookingServicesAddOnsSection'
 import { type PaymentProof } from '@/components/payment/PaymentProofPreview'
 import StatusBadge from '@/components/StatusBadge'
 
@@ -22,7 +24,9 @@ type DailyBookingRow = {
   guest_name?: string | null
   customer?: { id: number; name: string; phone?: string | null; email?: string | null } | null
   service?: { id: number; name: string; cn_name?: string | null; duration_min?: number | null } | null
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number }>
+  services?: BookingServiceBlock[]
+  service_blocks?: BookingServiceBlock[]
+  add_ons?: BookingServiceAddOn[]
   staff?: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -120,28 +124,6 @@ function TableServicesCell({
   )
 }
 
-function ServiceDetailCard({
-  name,
-  cnName,
-  durationText,
-  price,
-}: {
-  name?: string | null
-  cnName?: string | null
-  durationText?: string | null
-  price?: number | null
-}) {
-  return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50/80 p-3">
-      <p className="break-words font-semibold text-slate-900">{name || '—'}</p>
-      {cnName ? <p className="mt-0.5 break-words text-sm text-slate-500">{cnName}</p> : null}
-      {durationText ? <p className="mt-2 text-xs font-medium tabular-nums text-slate-600">{durationText}</p> : null}
-      {price != null && Number(price) > 0 ? (
-        <p className="mt-1 text-sm font-semibold tabular-nums text-slate-900">{money(price)}</p>
-      ) : null}
-    </div>
-  )
-}
 
 const formatTodayLabel = () => {
   const [y, m, d] = todayYmd().split('-').map(Number)
@@ -198,16 +180,6 @@ export default function DailyBookingPageClient() {
     setSelected((current) => (current ? { ...current, service_photos: photos, service_photos_count: photos.length } : current))
     setRows((current) => current.map((row) => (row.id === selected?.id ? { ...row, service_photos: photos, service_photos_count: photos.length } : row)))
   }
-
-  const selectedCustomerReferencePhotos = useMemo(
-    () =>
-      (selected?.customer_reference_photos ?? []).map((photo) => ({
-        id: photo.id,
-        resolved_url: photo.file_url ?? '',
-        created_at: null,
-      })),
-    [selected?.customer_reference_photos],
-  )
 
   return (
     <div className="space-y-5">
@@ -313,39 +285,7 @@ export default function DailyBookingPageClient() {
                 <p><span className="font-semibold text-slate-500">Paid / Balance</span><br />{money(selected.paid_amount)} / {money(selected.balance_due)}</p>
               </section>
 
-              <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 className="text-sm font-bold text-slate-900">Services / Add-ons</h4>
-                <div className="mt-3 space-y-3 text-sm">
-                  <div>
-                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Main treatment</p>
-                    <ServiceDetailCard
-                      name={selected.service?.name}
-                      cnName={selected.service?.cn_name}
-                      durationText={selected.service?.duration_min ? `${selected.service.duration_min} min` : null}
-                    />
-                  </div>
-                  {(selected.add_ons?.length ?? 0) > 0 ? (
-                    <div>
-                      <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">Add-ons</p>
-                      <div className="space-y-2">
-                        {selected.add_ons?.map((addon, index) => (
-                          <ServiceDetailCard
-                            key={`${addon.id ?? addon.name}-${index}`}
-                            name={addon.name}
-                            cnName={addon.cn_name}
-                            durationText={
-                              addon.extra_duration_min != null ? `+${addon.extra_duration_min} min` : null
-                            }
-                            price={addon.extra_price}
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="text-xs text-slate-500">No add-ons.</p>
-                  )}
-                </div>
-              </section>
+              <BookingServicesAddOnsSection row={selected} className="rounded-xl border border-slate-200 bg-white p-4" />
 
               <section className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
                 <p><span className="font-semibold text-slate-500">Deposit paid</span><br />{money(selected.deposit_paid)}</p>
@@ -355,31 +295,14 @@ export default function DailyBookingPageClient() {
                 <p><span className="font-semibold text-slate-500">Balance due</span><br />{money(selected.balance_due)}</p>
               </section>
 
-              <section className="rounded-xl border border-slate-200 bg-white p-4">
-                <h4 className="mb-3 text-sm font-bold text-slate-900">Photos & payment proof</h4>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <CustomerUploadedPhotosModal
-                    photos={selectedCustomerReferencePhotos}
-                    bookingCode={selected.booking_code}
-                    layout="tile"
-                    buttonLabel="Customer reference photos"
-                    modalTitle="Customer reference photos"
-                    modalDescription="Reference photos submitted by the customer for this booking."
-                    gallerySectionTitle="Reference photos"
-                    emptyTitle="No reference photos"
-                    emptyDescription="The customer has not uploaded any reference photos for this booking."
-                  />
-                  <BookingServicePhotosModal
-                    bookingId={selected.id}
-                    bookingCode={selected.booking_code}
-                    initialPhotos={selected.service_photos ?? []}
-                    layout="tile"
-                    buttonLabel="Salon service photos"
-                    onChanged={updateSelectedPhotos}
-                  />
-                  <PaymentProofModal proofs={selected.payment_proofs} bookingCode={selected.booking_code} layout="tile" />
-                </div>
-              </section>
+              <BookingPhotosPaymentProofSection
+                bookingId={selected.id}
+                bookingCode={selected.booking_code}
+                customerReferencePhotos={selected.customer_reference_photos}
+                servicePhotos={selected.service_photos}
+                paymentProofs={selected.payment_proofs}
+                onServicePhotosChanged={updateSelectedPhotos}
+              />
             </div>
           </div>
         </div>

@@ -3,16 +3,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import BookingStatusBadge from './BookingStatusBadge'
+import BookingPhotosPaymentProofSection from './BookingPhotosPaymentProofSection'
+import BookingServicesAddOnsSection from './BookingServicesAddOnsSection'
+import { type BookingServicePhoto } from './BookingServicePhotosPanel'
 import PaginationControls from '@/components/PaginationControls'
 import TableEmptyState from '@/components/TableEmptyState'
 import TableLoadingRow from '@/components/TableLoadingRow'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
+import { type PaymentProof } from '@/components/payment/PaymentProofPreview'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
-type StaffOption = { id: number; name: string }
-type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
+export type { StaffSplit, BookingServiceAddOn, BookingServiceBlock } from './BookingServicesAddOnsSection'
+import type { StaffSplit, BookingServiceAddOn, BookingServiceBlock } from './BookingServicesAddOnsSection'
 
-type AppointmentHistoryRow = {
+type StaffOption = { id: number; name: string }
+
+export type AppointmentHistoryRow = {
   id: number
   booking_code: string
   customer: { id: number; name: string; phone?: string | null; email?: string | null } | null
@@ -21,7 +27,9 @@ type AppointmentHistoryRow = {
   guest_phone?: string | null
   guest_email?: string | null
   service: { id: number; name: string; cn_name?: string | null; duration_min?: number | null; amount?: number | null; staff_splits?: StaffSplit[] } | null
-  add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; staff_splits?: StaffSplit[]; staff_split_source?: 'explicit' | 'inherited' | string; service_ref?: string | null; item_kind?: string | null; line_type?: string | null; parent_service_ref?: string | null }>
+  services?: BookingServiceBlock[]
+  service_blocks?: BookingServiceBlock[]
+  add_ons?: BookingServiceAddOn[]
   staff: { id: number; name: string } | null
   start_at?: string | null
   end_at?: string | null
@@ -40,6 +48,11 @@ type AppointmentHistoryRow = {
   balance_due: number
   notes?: string | null
   source?: string | null
+  customer_reference_photos_count?: number
+  customer_reference_photos?: Array<{ id: number; file_url?: string | null; original_name?: string | null }>
+  service_photos_count?: number
+  service_photos?: BookingServicePhoto[]
+  payment_proofs?: PaymentProof[]
   logs?: Array<{ id: number; actor_type: string; actor_id?: number | null; action: string; meta?: unknown; created_at?: string | null }>
 }
 
@@ -125,12 +138,6 @@ const paymentBadgeClass = (status?: string | null) => {
 
 const resolvedPaymentStatus = (row: Pick<AppointmentHistoryRow, 'payment_status' | 'computed_payment_status'>) => row.payment_status ?? row.computed_payment_status
 
-const visibleAddOns = (row: Pick<AppointmentHistoryRow, 'add_ons'>) => (row.add_ons ?? []).filter((item) => {
-  const itemKind = String(item.item_kind ?? item.line_type ?? 'addon').toLowerCase()
-  const serviceRef = String(item.service_ref ?? '').toLowerCase()
-  return itemKind !== 'main_service' && serviceRef !== 'original'
-})
-
 const formatPaymentStatus = (status?: string | null) => {
   const s = String(status ?? '').toLowerCase()
   if (s === 'paid') return 'Paid'
@@ -158,25 +165,30 @@ function DetailField({
 }
 
 
-function StaffSplitList({ splits, inherited }: { splits?: StaffSplit[]; inherited?: boolean }) {
-  if (!splits?.length) return <p className="text-sm text-slate-500">—</p>
+export function BookingAppointmentDetailDrawer({
+  row,
+  loading,
+  error,
+  onClose,
+  onServicePhotosChanged,
+}: {
+  row: AppointmentHistoryRow | null
+  loading: boolean
+  error: string | null
+  onClose: () => void
+  onServicePhotosChanged?: (photos: BookingServicePhoto[]) => void
+}) {
+  const [servicePhotos, setServicePhotos] = useState<BookingServicePhoto[]>([])
 
-  return (
-    <div className="space-y-1">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Staff Split:</p>
-      <ul className="space-y-1 text-sm text-slate-700">
-        {splits.map((split, index) => (
-          <li key={`${split.staff_id}-${index}`}>
-            <span>{split.staff_name ?? split.name ?? `Staff #${split.staff_id}`} — {Number(split.share_percent ?? 0)}%</span>
-            {inherited && index === 0 ? <span className="ml-2 text-xs text-slate-500">Inherited from main service</span> : null}
-          </li>
-        ))}
-      </ul>
-    </div>
-  )
-}
+  useEffect(() => {
+    setServicePhotos(row?.service_photos ?? [])
+  }, [row])
 
-function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistoryRow | null; loading: boolean; error: string | null; onClose: () => void }) {
+  const handleServicePhotosChanged = (photos: BookingServicePhoto[]) => {
+    setServicePhotos(photos)
+    onServicePhotosChanged?.(photos)
+  }
+
   if (!row && !loading && !error) return null
 
   return (
@@ -213,39 +225,7 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
                 </dl>
               </section>
 
-              <section className="rounded-xl border border-slate-200 p-4">
-                <h4 className="font-semibold text-slate-900">Services + Add-ons</h4>
-                <div className="mt-4 space-y-4">
-                  <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Main Service</p>
-                    <div className="mt-2 space-y-2">
-                      <div>
-                        <p className="text-sm font-medium text-slate-900">{row.service?.name ?? '—'}</p>
-                        {row.service?.cn_name ? <p className="text-xs text-slate-500">{row.service.cn_name}</p> : null}
-                      </div>
-                      <p className="text-sm text-slate-700">Amount: {formatMoney(row.service?.amount ?? Math.max(0, Number(row.total_amount ?? 0) - visibleAddOns(row).reduce((sum, item) => sum + Number(item.extra_price ?? 0), 0)))}</p>
-                      <p className="text-sm text-slate-700">Schedule: {`${formatDateTime(row.start_at)} - ${formatDateTime(row.end_at)}`}</p>
-                      <StaffSplitList splits={row.service?.staff_splits ?? (row.staff ? [{ staff_id: row.staff.id, staff_name: row.staff.name, share_percent: 100 }] : [])} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <p className="text-sm font-semibold text-slate-900">Add-ons</p>
-                    {visibleAddOns(row).length > 0 ? (
-                      <div className="mt-2 space-y-3">
-                        {visibleAddOns(row).map((item, index) => (
-                          <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 p-3">
-                            <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
-                            {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
-                            <p className="mt-2 text-sm text-slate-700">Amount: {formatMoney(item.extra_price)}</p>
-                            <div className="mt-2"><StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} /></div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : <p className="mt-2 text-sm text-slate-500">—</p>}
-                  </div>
-                </div>
-              </section>
+              <BookingServicesAddOnsSection row={row} />
 
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Payment Breakdown</h4>
@@ -258,6 +238,16 @@ function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistor
                   <DetailField label="Balance Due" value={formatMoney(row.balance_due)} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
+
+              <BookingPhotosPaymentProofSection
+                bookingId={row.id}
+                bookingCode={row.booking_code}
+                customerReferencePhotos={row.customer_reference_photos}
+                servicePhotos={servicePhotos}
+                paymentProofs={row.payment_proofs}
+                canManageServicePhotos={row.status === 'COMPLETED'}
+                onServicePhotosChanged={handleServicePhotosChanged}
+              />
 
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Status Logs</h4>
@@ -506,7 +496,15 @@ export default function BookingAppointmentHistoryPage() {
         <PaginationControls currentPage={page} totalPages={totalPages} pageSize={pageSize} onPageChange={setPage} disabled={loading} />
       </div>
 
-      <DetailDrawer row={detail} loading={detailLoading} error={detailError} onClose={() => { setDetailId(null); setDetail(null); setDetailError(null) }} />
+      <BookingAppointmentDetailDrawer
+        row={detail}
+        loading={detailLoading}
+        error={detailError}
+        onClose={() => { setDetailId(null); setDetail(null); setDetailError(null) }}
+        onServicePhotosChanged={(photos) => {
+          setDetail((current) => (current ? { ...current, service_photos: photos, service_photos_count: photos.length } : current))
+        }}
+      />
     </div>
   )
 }
