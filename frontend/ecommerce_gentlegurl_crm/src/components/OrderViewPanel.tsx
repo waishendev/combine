@@ -218,6 +218,9 @@ export default function OrderViewPanel({
   onOrderUpdated,
   zIndexClassName = 'z-50',
 }: OrderViewPanelProps) {
+  const nestedModalZIndexClassName = zIndexClassName.includes('pos-body-stack-modal')
+    ? 'pos-body-stack-modal-top'
+    : 'z-[60]'
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [order, setOrder] = useState<OrderDetailData | null>(null)
@@ -1304,7 +1307,7 @@ export default function OrderViewPanel({
       </div>
 
       {viewingBookingDetail && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/50 p-4" role="dialog" aria-modal="true" onClick={() => setViewingBookingDetail(null)}>
+        <div className={`fixed inset-0 ${nestedModalZIndexClassName} flex items-center justify-center overflow-y-auto bg-black/50 p-4`} role="dialog" aria-modal="true" onClick={() => setViewingBookingDetail(null)}>
           <div className="flex max-h-[min(90dvh,calc(100vh-2rem))] w-full max-w-3xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex shrink-0 items-center justify-between border-b border-slate-200 px-5 py-4">
               <div>
@@ -1481,7 +1484,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowConfirmPayment(false)}
           onSuccess={handleOrderUpdated}
-          zIndexClassName="z-[110]"
+          zIndexClassName={nestedModalZIndexClassName}
         />
       )}
 
@@ -1490,7 +1493,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowRejectPayment(false)}
           onSuccess={handleOrderUpdated}
-          zIndexClassName="z-[110]"
+          zIndexClassName={nestedModalZIndexClassName}
         />
       )}
 
@@ -1500,6 +1503,7 @@ export default function OrderViewPanel({
           onClose={() => setShowCancel(false)}
           onSuccess={handleOrderUpdated}
           isBookingOrder={isBookingOrder}
+          zIndexClassName={nestedModalZIndexClassName}
         />
       )}
 
@@ -1508,7 +1512,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowShip(false)}
           onSuccess={handleOrderUpdated}
-          zIndexClassName="z-[110]"
+          zIndexClassName={nestedModalZIndexClassName}
         />
       )}
 
@@ -1517,6 +1521,7 @@ export default function OrderViewPanel({
           orderId={orderId}
           onClose={() => setShowRefund(false)}
           onSuccess={handleOrderUpdated}
+          zIndexClassName={nestedModalZIndexClassName}
         />
       )}
 
@@ -1528,6 +1533,7 @@ export default function OrderViewPanel({
             await handleOrderUpdated()
             setCompleteSuccess('Order marked as completed.')
           }}
+          zIndexClassName={nestedModalZIndexClassName}
         />
       )}
     </>

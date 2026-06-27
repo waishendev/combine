@@ -8,12 +8,14 @@ interface OrderRefundModalProps {
   orderId: number
   onClose: () => void
   onSuccess: () => void
+  zIndexClassName?: string
 }
 
 export default function OrderRefundModal({
   orderId,
   onClose,
   onSuccess,
+  zIndexClassName = 'z-[60]',
 }: OrderRefundModalProps) {
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
@@ -101,7 +103,7 @@ export default function OrderRefundModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+    <div className={`fixed inset-0 ${zIndexClassName} flex items-center justify-center p-4`}>
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {

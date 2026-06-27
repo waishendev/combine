@@ -35,6 +35,18 @@ body:has(.pos-appt-body-modals:not(:empty)) body > .pos-appt-right {
   z-index: 200;
 }
 
+.pos-body-stack-modal-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+}
+
+.pos-body-stack-modal-top {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
+}
+
 .gg-international-phone {
   width: 100%;
   --react-international-phone-height: 42px;

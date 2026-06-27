@@ -1,14 +1,11 @@
 'use client'
 /* eslint-disable @next/next/no-img-element */
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import OrderConfirmPaymentModal from '@/components/OrderConfirmPaymentModal'
-import OrderRejectPaymentModal from '@/components/OrderRejectPaymentModal'
-import OrderShipModal from '@/components/OrderShipModal'
 import OrderViewPanel from '@/components/OrderViewPanel'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
-import { calculateOrderStatus, type OrderApiItem } from '@/components/orderUtils'
+import { calculateOrderStatus, detectOrderType, type OrderApiItem } from '@/components/orderUtils'
 import type { PosAppointmentDetail } from '@/components/pos/posAppointmentTypes'
 
 export type PosRequestCenterProps = {
@@ -90,12 +87,56 @@ const ECOMMERCE_REQUEST_FILTERS = [
   { status: 'confirmed' },
   { status: 'ready_for_pickup' },
   { status: 'shipped' },
-  { status: 'reject_payment_proof' },
-  { status: 'cancelled' },
   { payment_status: 'failed' },
 ]
 
 const BOOKING_HOLD_FILTERS = ['HOLD', 'PENDING', 'PENDING_CONFIRMATION']
+
+const BTN_ICON = 'inline-flex h-9 w-9 shrink-0 touch-manipulation items-center justify-center rounded-lg border border-slate-300 bg-white text-slate-600 transition hover:bg-slate-50 hover:text-slate-900 disabled:cursor-not-allowed disabled:opacity-50'
+
+function ViewEyeIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+    </svg>
+  )
+}
+
+function RefreshIcon({ className = 'h-4 w-4' }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+  )
+}
+
+function dedupeByKey<T extends { key: string }>(rows: T[]): T[] {
+  return Array.from(new Map(rows.map((row) => [row.key, row])).values())
+}
+
+function shouldShowEcommerceOrder(order: OrderApiItem): boolean {
+  const orderType = order.order_type ?? detectOrderType(order)
+  if (orderType !== 'ecommerce') return false
+
+  const status = String(order.status ?? '').toLowerCase()
+  const payment = String(order.payment_status ?? '').toLowerCase()
+
+  if (status === 'cancelled' || status === 'completed') return false
+  if (status === 'reject_payment_proof') return false
+  if (payment === 'refunded' && status === 'cancelled') return false
+
+  return true
+}
+
+function ecommerceStatusBadgeClass(label: string): string {
+  if (label === 'Waiting for Verification') return 'bg-amber-100 text-amber-900 ring-amber-200'
+  if (label === 'Payment Confirmed' || label === 'Preparing') return 'bg-blue-100 text-blue-900 ring-blue-200'
+  if (label === 'Ready for Pickup' || label === 'Shipped') return 'bg-indigo-100 text-indigo-900 ring-indigo-200'
+  if (label === 'Payment Failed') return 'bg-rose-100 text-rose-900 ring-rose-200'
+  if (label === 'Awaiting Payment') return 'bg-slate-100 text-slate-800 ring-slate-200'
+  return 'bg-slate-100 text-slate-800 ring-slate-200'
+}
 
 function extractRows<T>(payload: unknown): T[] {
   const data = (payload as { data?: unknown } | null)?.data
@@ -189,14 +230,12 @@ export default function PosRequestCenter({
   const [bookingDetailLoading, setBookingDetailLoading] = useState(false)
   const [bookingDetailError, setBookingDetailError] = useState<string | null>(null)
   const [viewingOrderId, setViewingOrderId] = useState<number | null>(null)
-  const [confirmPaymentOrderId, setConfirmPaymentOrderId] = useState<number | null>(null)
-  const [rejectPaymentOrderId, setRejectPaymentOrderId] = useState<number | null>(null)
-  const [shipOrderId, setShipOrderId] = useState<number | null>(null)
-  const [readySubmittingOrderId, setReadySubmittingOrderId] = useState<number | null>(null)
+  const loadGenerationRef = useRef(0)
 
   const totalCount = bookingRows.length + ecommerceRows.length
 
   const load = useCallback(async () => {
+    const generation = ++loadGenerationRef.current
     setLoading(true)
     setError(null)
 
@@ -225,36 +264,54 @@ export default function PosRequestCenter({
 
       const cancellationRequests = extractRows<BookingCancellationRequestRow>(cancellationPayload).map(buildCancellationRequest)
       const holdPayloads = await Promise.all(holdResponses.map((res) => res.json().catch(() => null)))
-      const holdRequests = holdPayloads
-        .flatMap((payload) => extractRows<BookingHoldRow>(payload))
-        .filter((row) => ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'].includes(String(row.status ?? '').toUpperCase()))
-        .map(buildHoldRequest)
+      const holdRequests = dedupeByKey(
+        holdPayloads
+          .flatMap((payload) => extractRows<BookingHoldRow>(payload))
+          .filter((row) => ['HOLD', 'PENDING', 'PENDING_CONFIRMATION'].includes(String(row.status ?? '').toUpperCase()))
+          .map(buildHoldRequest),
+      )
 
-      setBookingRows([...cancellationRequests, ...holdRequests])
+      const nextBookingRows = dedupeByKey([...cancellationRequests, ...holdRequests])
 
       const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
       const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
       const uniqueOrders = Array.from(new Map(orders.map((order) => [Number(order.id), order])).values())
-      setEcommerceRows(uniqueOrders.filter((order) => String(order.status ?? '').toLowerCase() !== 'completed').map((order) => ({
-        id: Number(order.id),
-        orderNo: order.order_no ?? order.order_number ?? `#${order.id}`,
-        customerName: order.customer?.name || '-',
-        contact: order.customer?.phone || order.customer?.email || '-',
-        createdAt: order.created_at ?? '',
-        statusLabel: calculateOrderStatus(order.status, order.payment_status, 'ecommerce'),
-        status: order.status ?? '',
-        paymentStatus: order.payment_status ?? '',
-        shippingMethod: order.shipping_method ?? null,
-      })))
+      const nextEcommerceRows = uniqueOrders
+        .filter(shouldShowEcommerceOrder)
+        .map((order) => {
+          const orderType = order.order_type ?? detectOrderType(order)
+          return {
+            id: Number(order.id),
+            orderNo: order.order_no ?? order.order_number ?? `#${order.id}`,
+            customerName: order.customer?.name || '-',
+            contact: order.customer?.phone || order.customer?.email || '-',
+            createdAt: order.created_at ?? '',
+            statusLabel: calculateOrderStatus(order.status, order.payment_status, orderType),
+            status: order.status ?? '',
+            paymentStatus: order.payment_status ?? '',
+            shippingMethod: order.shipping_method ?? null,
+          }
+        })
+
+      if (generation !== loadGenerationRef.current) return
+
+      setBookingRows(nextBookingRows)
+      setEcommerceRows(nextEcommerceRows)
     } catch (err) {
+      if (generation !== loadGenerationRef.current) return
       setError(err instanceof Error ? err.message : 'Failed to load requests.')
     } finally {
-      setLoading(false)
+      if (generation === loadGenerationRef.current) {
+        setLoading(false)
+      }
     }
   }, [])
 
   useEffect(() => { void load() }, [load])
-  useEffect(() => { if (open) void load() }, [open, load])
+  useEffect(() => {
+    if (!open) return
+    void load()
+  }, [open, load])
 
   const summaryCards = useMemo(() => [
     { label: 'Booking requests', value: bookingRows.length, className: 'border-amber-200 bg-amber-50 text-amber-900' },
@@ -287,24 +344,21 @@ export default function PosRequestCenter({
   }
 
 
-  const markOrderReadyForPickup = async (orderId: number) => {
-    setReadySubmittingOrderId(orderId)
-    setError(null)
-    try {
-      const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: 'ready_for_pickup' }),
-      })
-      const json = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(String(json?.message ?? 'Unable to mark order ready for pickup.'))
-      await load()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to mark order ready for pickup.')
-    } finally {
-      setReadySubmittingOrderId(null)
-    }
+  const renderViewAction = (onClick: () => void, label: string) => (
+    <div className="flex justify-end">
+      <button type="button" onClick={onClick} className={BTN_ICON} aria-label={label} title={label}>
+        <ViewEyeIcon />
+      </button>
+    </div>
+  )
+
+  const renderBookingActions = (row: BookingRequestRow) => {
+    if (row.bookingId <= 0) return null
+    return renderViewAction(() => void openBookingDetail(row), `View booking ${row.number}`)
   }
+
+  const renderEcommerceActions = (row: EcommerceRequestRow) =>
+    renderViewAction(() => setViewingOrderId(row.id), `View order ${row.orderNo}`)
 
   const submitBookingReview = async () => {
     if (!bookingConfirm) return
@@ -335,6 +389,9 @@ export default function PosRequestCenter({
     }
   }
 
+  const detailStackOpen = viewingBooking !== null || viewingOrderId !== null
+  const confirmStackOpen = bookingConfirm !== null
+
   return (
     <>
       <button
@@ -355,90 +412,196 @@ export default function PosRequestCenter({
 
       {renderPosBodyModalPortal(
         open ? (
-        <div className="pos-body-stack-modal flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-sm">
-          <div className="flex max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-white/60 bg-white shadow-2xl">
-            <div className="border-b border-slate-200 bg-gradient-to-r from-slate-950 via-slate-900 to-slate-800 px-6 py-5 text-white">
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <h3 className="text-xl font-bold">Pending Tasks</h3>
-                  <p className="mt-1 text-sm text-slate-200">Request Center · pending booking and ecommerce requests that need staff action.</p>
+        <div className={`pos-body-stack-modal flex items-end justify-center bg-slate-950/55 p-0 backdrop-blur-sm sm:items-center sm:p-4${detailStackOpen || confirmStackOpen ? ' pointer-events-none' : ''}`}>
+          <div className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-t-2xl border border-slate-200 bg-white shadow-2xl sm:max-h-[90vh] sm:rounded-2xl">
+            <div className="border-b border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 px-4 py-4 text-white sm:px-6 sm:py-5">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-amber-300/90">Request Center</p>
+                  <h3 className="mt-1 text-xl font-bold sm:text-2xl">Pending Tasks</h3>
+                  <p className="mt-1 text-sm text-slate-300">Booking and ecommerce requests that need staff action.</p>
                 </div>
-                <button type="button" onClick={() => setOpen(false)} className="rounded-full p-1 text-2xl leading-none text-slate-200 hover:bg-white/10 hover:text-white" aria-label="Close Request Center">×</button>
+                <button type="button" onClick={() => setOpen(false)} className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-2xl leading-none text-slate-200 hover:bg-white/10 hover:text-white" aria-label="Close Request Center">×</button>
               </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="mt-4 grid grid-cols-3 gap-2 sm:mt-5 sm:gap-3">
                 {summaryCards.map((card) => (
-                  <div key={card.label} className={`rounded-xl border px-4 py-3 shadow-sm ${card.className}`}>
-                    <p className="text-xs font-semibold uppercase tracking-wide opacity-75">{card.label}</p>
-                    <p className="mt-1 text-2xl font-bold">{card.value}</p>
+                  <div key={card.label} className={`rounded-xl border px-3 py-2.5 shadow-sm sm:px-4 sm:py-3 ${card.className}`}>
+                    <p className="truncate text-[10px] font-semibold uppercase tracking-wide opacity-75 sm:text-xs">{card.label}</p>
+                    <p className="mt-0.5 text-xl font-bold sm:mt-1 sm:text-2xl">{card.value}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="border-b border-slate-200 bg-white px-6 pt-4">
-              {(['booking', 'ecommerce'] as const).map((key) => (
+            <div className="border-b border-slate-200 bg-white px-3 py-3 sm:px-6">
+              <div className="flex items-center gap-2">
+                <div className="flex min-w-0 flex-1 gap-1 rounded-xl bg-slate-100 p-1 sm:inline-flex sm:rounded-none sm:bg-transparent sm:p-0">
+                  {(['booking', 'ecommerce'] as const).map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setTab(key)}
+                      className={`flex-1 rounded-lg px-3 py-2.5 text-xs font-bold transition sm:mr-2 sm:flex-none sm:rounded-t-xl sm:border sm:border-b-0 sm:px-5 sm:text-sm ${
+                        tab === key
+                          ? 'bg-white text-slate-950 shadow-sm sm:border-slate-200 sm:bg-slate-100 sm:shadow-none'
+                          : 'text-slate-500 hover:bg-white/70 hover:text-slate-800 sm:border-transparent sm:hover:bg-slate-50'
+                      }`}
+                    >
+                      {key === 'booking' ? `Booking (${bookingRows.length})` : `Ecommerce (${ecommerceRows.length})`}
+                    </button>
+                  ))}
+                </div>
                 <button
-                  key={key}
                   type="button"
-                  onClick={() => setTab(key)}
-                  className={`mr-2 rounded-t-xl border border-b-0 px-5 py-2.5 text-sm font-bold transition ${tab === key ? 'border-slate-200 bg-slate-100 text-slate-950' : 'border-transparent text-slate-500 hover:bg-slate-50 hover:text-slate-800'}`}
+                  onClick={() => void load()}
+                  disabled={loading}
+                  className={`${BTN_ICON} shrink-0 border-slate-200 text-slate-500 sm:h-10 sm:w-10`}
+                  aria-label="Refresh requests"
+                  title="Refresh"
                 >
-                  {key === 'booking' ? `Booking (${bookingRows.length})` : `Ecommerce (${ecommerceRows.length})`}
+                  <RefreshIcon className={loading ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
                 </button>
-              ))}
+              </div>
             </div>
 
-            <div className="max-h-[58vh] overflow-y-auto bg-slate-50 p-6">
+            <div key={tab} className="min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-3 sm:p-6">
               {error ? <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">{error}</div> : null}
-              {loading ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">Loading requests...</p> : tab === 'booking' ? (
-                <div className="space-y-3">
-                  {bookingRows.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No pending booking requests.</p> : bookingRows.map((row) => (
-                    <div key={row.key} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_0.8fr_auto] lg:items-center">
-                        <div>
-                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${row.badgeClassName}`}>{row.requestType}</span>
-                          <p className="mt-2 text-base font-bold text-slate-950">{row.number}</p>
-                          <p className="text-sm text-slate-600">{row.customerName} · {row.contact}</p>
-                        </div>
-                        <div className="text-sm text-slate-600"><span className="font-semibold text-slate-800">Requested:</span> {fmtDateTime(row.requestedAt)}</div>
-                        <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-700">{row.status}</span>
-                        <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                          {row.bookingId > 0 ? <button type="button" onClick={() => void openBookingDetail(row)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View booking</button> : null}
-                          {canReviewBookingRequests && row.requestType === 'Cancellation request' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row, action: 'approve' })} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Approve cancel</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row, action: 'reject' })} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject cancel</button></> : null}
-                          {canReviewBookingRequests && row.requestType === 'Hold confirmation' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row, action: 'approve' })} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row, action: 'reject' })} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject / cancel</button></> : null}
-                        </div>
-                      </div>
+              {loading && totalCount === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-8 text-center text-sm text-slate-600">Loading requests…</div>
+              ) : tab === 'booking' ? (
+                bookingRows.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending booking requests.</div>
+                ) : (
+                  <>
+                    <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+                      <table className="w-full table-fixed text-left text-sm">
+                        <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                          <tr>
+                            <th className="w-[20%] px-4 py-3">Booking</th>
+                            <th className="w-[24%] px-4 py-3">Customer</th>
+                            <th className="w-[22%] px-4 py-3">Requested</th>
+                            <th className="w-[18%] px-4 py-3">Status</th>
+                            <th className="w-[16%] px-4 py-3 text-right">Actions</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {bookingRows.map((row) => (
+                            <tr key={row.key} className="hover:bg-slate-50/80">
+                              <td className="px-4 py-3 align-top">
+                                <p className="truncate font-bold text-slate-950" title={row.number}>{row.number}</p>
+                                {row.requestType === 'Cancellation request' ? (
+                                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">{row.requestType}</p>
+                                ) : null}
+                              </td>
+                              <td className="px-4 py-3 align-top">
+                                <p className="truncate font-semibold text-slate-900" title={row.customerName}>{row.customerName}</p>
+                                <p className="truncate text-xs text-slate-500" title={row.contact}>{row.contact}</p>
+                              </td>
+                              <td className="px-4 py-3 align-top text-slate-600">{fmtDateTime(row.requestedAt)}</td>
+                              <td className="px-4 py-3 align-top">
+                                <span className="inline-flex max-w-full truncate rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase text-slate-700" title={row.status}>
+                                  {row.status}
+                                </span>
+                              </td>
+                              <td className="px-4 py-3 align-top">{renderBookingActions(row)}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
-                  ))}
-                </div>
+                    <div className="space-y-3 md:hidden">
+                      {bookingRows.map((row) => (
+                        <article key={row.key} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="truncate text-base font-bold text-slate-950" title={row.number}>{row.number}</p>
+                              {row.requestType === 'Cancellation request' ? (
+                                <p className="mt-0.5 truncate text-[11px] text-slate-500">{row.requestType}</p>
+                              ) : null}
+                            </div>
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{row.status}</span>
+                          </div>
+                          <dl className="mt-3 space-y-2 text-sm">
+                            <div className="flex justify-between gap-3 border-b border-slate-100 pb-2">
+                              <dt className="font-semibold text-slate-500">Customer</dt>
+                              <dd className="max-w-[60%] truncate text-right font-medium text-slate-900" title={row.customerName}>{row.customerName}</dd>
+                            </div>
+                            <div className="flex justify-between gap-3">
+                              <dt className="font-semibold text-slate-500">Requested</dt>
+                              <dd className="text-right text-slate-700">{fmtDateTime(row.requestedAt)}</dd>
+                            </div>
+                          </dl>
+                          <div className="mt-4 border-t border-slate-100 pt-4">{renderBookingActions(row)}</div>
+                        </article>
+                      ))}
+                    </div>
+                  </>
+                )
+              ) : ecommerceRows.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">No pending ecommerce requests.</div>
               ) : (
-                <div className="space-y-3">
-                  {ecommerceRows.length === 0 ? <p className="rounded-xl border border-slate-200 bg-white p-5 text-sm text-slate-600">No pending ecommerce requests.</p> : ecommerceRows.map((row) => (
-                    <div key={row.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                      <div className="grid gap-4 lg:grid-cols-[1.4fr_1fr_0.8fr_auto] lg:items-center">
-                        <div>
-                          <span className="inline-flex rounded-full bg-blue-100 px-2.5 py-1 text-xs font-bold text-blue-800 ring-1 ring-blue-200">{row.statusLabel}</span>
-                          <p className="mt-2 text-base font-bold text-slate-950">{row.orderNo}</p>
-                          <p className="text-sm text-slate-600">{row.customerName} · {row.contact}</p>
+                <>
+                  <div className="hidden overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+                    <table className="w-full table-fixed text-left text-sm">
+                      <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
+                        <tr>
+                          <th className="w-[20%] px-4 py-3">Order</th>
+                          <th className="w-[24%] px-4 py-3">Customer</th>
+                          <th className="w-[22%] px-4 py-3">Created</th>
+                          <th className="w-[18%] px-4 py-3">Status</th>
+                          <th className="w-[16%] px-4 py-3 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {ecommerceRows.map((row) => (
+                          <tr key={row.id} className="hover:bg-slate-50/80">
+                            <td className="px-4 py-3 align-top">
+                              <p className="truncate font-bold text-slate-950" title={row.orderNo}>{row.orderNo}</p>
+                            </td>
+                            <td className="px-4 py-3 align-top">
+                              <p className="truncate font-semibold text-slate-900" title={row.customerName}>{row.customerName}</p>
+                              <p className="truncate text-xs text-slate-500" title={row.contact}>{row.contact}</p>
+                            </td>
+                            <td className="px-4 py-3 align-top text-slate-600">{fmtDateTime(row.createdAt)}</td>
+                            <td className="px-4 py-3 align-top">
+                              <span
+                                className={`inline-flex max-w-full truncate rounded-full px-2.5 py-1 text-xs font-bold ring-1 ${ecommerceStatusBadgeClass(row.statusLabel)}`}
+                                title={row.statusLabel}
+                              >
+                                {row.statusLabel}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 align-top">{renderEcommerceActions(row)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="space-y-3 md:hidden">
+                    {ecommerceRows.map((row) => (
+                      <article key={row.id} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="min-w-0 flex-1 truncate text-base font-bold text-slate-950" title={row.orderNo}>{row.orderNo}</p>
+                          <span className={`shrink-0 rounded-full px-2.5 py-1 text-[10px] font-bold ring-1 ${ecommerceStatusBadgeClass(row.statusLabel)}`}>
+                            {row.statusLabel}
+                          </span>
                         </div>
-                        <div className="text-sm text-slate-600"><span className="font-semibold text-slate-800">Created:</span> {fmtDateTime(row.createdAt)}</div>
-                        <span className="w-fit rounded-full bg-slate-100 px-3 py-1 text-xs font-bold uppercase tracking-wide text-slate-700">{row.statusLabel}</span>
-                        <div className="flex flex-wrap justify-start gap-2 lg:justify-end">
-                          <button type="button" onClick={() => setViewingOrderId(row.id)} className="rounded-lg border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-50">View order</button>
-                          {row.statusLabel === 'Waiting for Verification' ? <><button type="button" onClick={() => setConfirmPaymentOrderId(row.id)} className="rounded-lg bg-green-600 px-3 py-2 text-xs font-bold text-white hover:bg-green-700">Confirm payment</button><button type="button" onClick={() => setRejectPaymentOrderId(row.id)} className="rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white hover:bg-red-700">Reject payment proof</button></> : null}
-                          {['Payment Confirmed', 'Preparing'].includes(row.statusLabel) && row.shippingMethod !== 'pickup' ? <button type="button" onClick={() => setShipOrderId(row.id)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700">Mark as Shipped</button> : null}
-                          {['Payment Confirmed', 'Preparing'].includes(row.statusLabel) && row.shippingMethod === 'pickup' ? <button type="button" disabled={readySubmittingOrderId === row.id} onClick={() => void markOrderReadyForPickup(row.id)} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">{readySubmittingOrderId === row.id ? 'Updating...' : 'Mark Ready'}</button> : null}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                        <dl className="mt-3 space-y-2 text-sm">
+                          <div className="flex justify-between gap-3 border-b border-slate-100 pb-2">
+                            <dt className="font-semibold text-slate-500">Customer</dt>
+                            <dd className="max-w-[60%] truncate text-right font-medium text-slate-900" title={row.customerName}>{row.customerName}</dd>
+                          </div>
+                          <div className="flex justify-between gap-3">
+                            <dt className="font-semibold text-slate-500">Created</dt>
+                            <dd className="text-right text-slate-700">{fmtDateTime(row.createdAt)}</dd>
+                          </div>
+                        </dl>
+                        <div className="mt-4 border-t border-slate-100 pt-4">{renderEcommerceActions(row)}</div>
+                      </article>
+                    ))}
+                  </div>
+                </>
               )}
-            </div>
-
-            <div className="flex justify-end gap-2 border-t border-slate-200 bg-white px-6 py-4">
-              <button type="button" onClick={() => void load()} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">Refresh</button>
-              <button type="button" onClick={() => setOpen(false)} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Close</button>
             </div>
           </div>
         </div>
@@ -446,7 +609,7 @@ export default function PosRequestCenter({
 
       {renderPosBodyModalPortal(
         bookingConfirm ? (
-        <div className="pos-body-stack-modal flex items-center justify-center bg-slate-950/50 p-4">
+        <div className="pos-body-stack-modal-top flex items-center justify-center bg-slate-950/50 p-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl">
             <h3 className="text-lg font-bold text-slate-950">
               {bookingConfirm.kind === 'hold'
@@ -465,14 +628,16 @@ export default function PosRequestCenter({
 
       {renderPosBodyModalPortal(
         viewingBooking ? (
-        <div className="pos-body-stack-modal flex items-center justify-end bg-slate-950/50" role="dialog" aria-modal="true" onClick={closeBookingDetail}>
-          <aside className="flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className={`pos-body-stack-modal-detail flex items-center justify-end bg-slate-950/50${confirmStackOpen ? ' pointer-events-none' : ''}`} role="dialog" aria-modal="true" onClick={closeBookingDetail}>
+          <aside className="pointer-events-auto flex h-full w-full max-w-2xl flex-col bg-white shadow-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="border-b border-slate-200 px-5 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-amber-600">Booking Detail</p>
                   <h3 className="mt-1 text-xl font-bold text-slate-950">{bookingDetail?.booking_code ?? viewingBooking.number}</h3>
-                  <p className="text-sm text-slate-500">{viewingBooking.requestType} · requested {fmtDateTime(viewingBooking.requestedAt)}</p>
+                  <p className="text-sm text-slate-500">
+                    {viewingBooking.requestType === 'Cancellation request' ? viewingBooking.requestType : viewingBooking.status} · requested {fmtDateTime(viewingBooking.requestedAt)}
+                  </p>
                 </div>
                 <button type="button" onClick={closeBookingDetail} className="rounded-full p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-800" aria-label="Close booking detail">×</button>
               </div>
@@ -542,7 +707,6 @@ export default function PosRequestCenter({
               ) : null}
             </div>
             <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
-              <button type="button" onClick={() => void openBookingDetail(viewingBooking)} className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50">View</button>
               {canReviewBookingRequests && viewingBooking.requestType === 'Cancellation request' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Approve</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
               {canReviewBookingRequests && viewingBooking.requestType === 'Hold confirmation' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
               <button type="button" onClick={closeBookingDetail} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Close</button>
@@ -552,16 +716,7 @@ export default function PosRequestCenter({
       ) : null)}
 
       {renderPosBodyModalPortal(
-        shipOrderId !== null ? <OrderShipModal orderId={shipOrderId} onClose={() => setShipOrderId(null)} onSuccess={() => { setShipOrderId(null); void load() }} zIndexClassName="pos-body-stack-modal" /> : null,
-      )}
-      {renderPosBodyModalPortal(
-        viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="pos-body-stack-modal" /> : null,
-      )}
-      {renderPosBodyModalPortal(
-        confirmPaymentOrderId !== null ? <OrderConfirmPaymentModal orderId={confirmPaymentOrderId} onClose={() => setConfirmPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="pos-body-stack-modal" /> : null,
-      )}
-      {renderPosBodyModalPortal(
-        rejectPaymentOrderId !== null ? <OrderRejectPaymentModal orderId={rejectPaymentOrderId} onClose={() => setRejectPaymentOrderId(null)} onSuccess={() => void load()} zIndexClassName="pos-body-stack-modal" /> : null,
+        viewingOrderId !== null ? <OrderViewPanel orderId={viewingOrderId} onClose={() => setViewingOrderId(null)} onOrderUpdated={() => void load()} zIndexClassName="pos-body-stack-modal-detail" /> : null,
       )}
     </>
   )
