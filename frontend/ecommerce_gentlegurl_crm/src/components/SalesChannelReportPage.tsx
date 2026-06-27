@@ -12,6 +12,7 @@ import OfflineOrderActions from './reports/OfflineOrderActions'
 import OrderReceiptAction from './reports/OrderReceiptAction'
 import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
+import { BookingAppointmentDetailDrawer, type AppointmentHistoryRow } from './booking/BookingAppointmentHistoryPage'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 
 type Mode = 'ecommerce' | 'booking'
@@ -453,6 +454,10 @@ export default function SalesChannelReportPage({
   const [detailTab, setDetailTab] = useState<'details' | 'photos'>('details')
   const [detailBookingId, setDetailBookingId] = useState<number | null>(null)
   const [selectedDetailLine, setSelectedDetailLine] = useState<OrderDetailLine | null>(null)
+  const [bookingDetailOpen, setBookingDetailOpen] = useState(false)
+  const [bookingDetail, setBookingDetail] = useState<AppointmentHistoryRow | null>(null)
+  const [bookingDetailLoading, setBookingDetailLoading] = useState(false)
+  const [bookingDetailError, setBookingDetailError] = useState<string | null>(null)
 
   useEffect(() => {
     setInputs(resolved)
@@ -581,6 +586,57 @@ export default function SalesChannelReportPage({
     } finally {
       setDetailLoading(false)
     }
+  }
+
+  const fetchBookingDetailById = async (bookingId: number) => {
+    const response = await fetch(`/api/proxy/admin/booking/appointment-history/${bookingId}`, { cache: 'no-store' })
+    const data = await response.json().catch(() => null) as { data?: AppointmentHistoryRow; message?: string } | null
+    if (!response.ok) {
+      throw new Error(data?.message ?? 'Unable to load booking details.')
+    }
+    return data?.data ?? null
+  }
+
+  const resolveBookingIdFromNo = async (bookingNo: string) => {
+    const qs = new URLSearchParams({ q: bookingNo, per_page: '10' })
+    const response = await fetch(`/api/proxy/admin/booking/appointment-history?${qs.toString()}`, { cache: 'no-store' })
+    const data = await response.json().catch(() => null) as { data?: { data?: AppointmentHistoryRow[] }; message?: string } | null
+    if (!response.ok) {
+      throw new Error(data?.message ?? 'Unable to find booking details.')
+    }
+    const rows = Array.isArray(data?.data?.data) ? data.data.data : []
+    return rows.find((row) => row.booking_code === bookingNo)?.id ?? rows[0]?.id ?? null
+  }
+
+  const openBookingDetail = async (row: BookingRow) => {
+    const bookingNo = row.booking_no?.trim()
+    if (!bookingNo) {
+      await openOrderDetail(row.order_id, row.booking_id)
+      return
+    }
+
+    setBookingDetailOpen(true)
+    setBookingDetailLoading(true)
+    setBookingDetailError(null)
+    setBookingDetail(null)
+
+    try {
+      const bookingId = row.booking_id ?? await resolveBookingIdFromNo(bookingNo)
+      if (!bookingId) {
+        throw new Error(`Unable to find booking details for ${bookingNo}.`)
+      }
+      setBookingDetail(await fetchBookingDetailById(bookingId))
+    } catch (error) {
+      setBookingDetailError(error instanceof Error ? error.message : 'Unable to load booking details.')
+    } finally {
+      setBookingDetailLoading(false)
+    }
+  }
+
+  const closeBookingDetail = () => {
+    setBookingDetailOpen(false)
+    setBookingDetail(null)
+    setBookingDetailError(null)
   }
 
   const closeOrderDetail = () => {
@@ -892,7 +948,7 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.status)}</td>
                   <td className="px-4 py-2 border border-gray-200 text-center">
                     <div className="inline-flex items-center justify-center gap-2">
-                      <ReportViewDetailsButton onClick={() => void openOrderDetail(row.order_id, row.booking_id)} title={`View details for ${row.order_no}`} />
+                      <ReportViewDetailsButton onClick={() => void openBookingDetail(row)} title={row.booking_no ? `View booking details for ${row.booking_no}` : `View details for ${row.order_no}`} />
                       <OrderReceiptAction orderId={row.order_id} orderNo={row.order_no} />
                     <OfflineOrderActions
                       orderId={row.order_id}
@@ -970,6 +1026,15 @@ export default function SalesChannelReportPage({
           </tfoot>
         </table>
       </div>
+
+      {bookingDetailOpen ? (
+        <BookingAppointmentDetailDrawer
+          row={bookingDetail}
+          loading={bookingDetailLoading}
+          error={bookingDetailError}
+          onClose={closeBookingDetail}
+        />
+      ) : null}
 
       {detailOpen ? (
         <ReportDetailDrawer

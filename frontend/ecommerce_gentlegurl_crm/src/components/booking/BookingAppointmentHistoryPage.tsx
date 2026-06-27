@@ -12,7 +12,7 @@ import { formatDateTime12Hour } from '@/lib/formatDateTime'
 type StaffOption = { id: number; name: string }
 type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
 
-type AppointmentHistoryRow = {
+export type AppointmentHistoryRow = {
   id: number
   booking_code: string
   customer: { id: number; name: string; phone?: string | null; email?: string | null } | null
@@ -176,7 +176,7 @@ function StaffSplitList({ splits, inherited }: { splits?: StaffSplit[]; inherite
   )
 }
 
-function DetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistoryRow | null; loading: boolean; error: string | null; onClose: () => void }) {
+export function BookingAppointmentDetailDrawer({ row, loading, error, onClose }: { row: AppointmentHistoryRow | null; loading: boolean; error: string | null; onClose: () => void }) {
   if (!row && !loading && !error) return null
 
   return (
@@ -506,7 +506,7 @@ export default function BookingAppointmentHistoryPage() {
         <PaginationControls currentPage={page} totalPages={totalPages} pageSize={pageSize} onPageChange={setPage} disabled={loading} />
       </div>
 
-      <DetailDrawer row={detail} loading={detailLoading} error={detailError} onClose={() => { setDetailId(null); setDetail(null); setDetailError(null) }} />
+      <BookingAppointmentDetailDrawer row={detail} loading={detailLoading} error={detailError} onClose={() => { setDetailId(null); setDetail(null); setDetailError(null) }} />
     </div>
   )
 }
