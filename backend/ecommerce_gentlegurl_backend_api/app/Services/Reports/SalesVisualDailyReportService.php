@@ -224,7 +224,7 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         return [
@@ -294,7 +294,7 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         $serviceConsumedQuery = $this->applyOrderScope(
@@ -386,7 +386,7 @@ class SalesVisualDailyReportService
         $staffSales = $this->padStaffWithEcommerceProductSales($roster, $ecKeyed);
         $salesTotal = round(array_sum(array_column($staffSales, 'product_sales')), 2);
 
-        $svcKeyed = $this->keyRowsByStaffId($this->completedBookingServiceActivityByStaff($start, $end, $lineTotal));
+        $svcKeyed = $this->keyRowsByStaffId($this->bookingStaffCommissionSales($start, $end));
         $staffService = $this->padStaffWithServiceActivity($roster, $svcKeyed);
 
         $serviceConsumedAmount = round((float) $this->applyOrderScope(
@@ -533,6 +533,53 @@ class SalesVisualDailyReportService
             'product_sales' => round((float) $r->product_sales, 2),
             'total' => round((float) $r->product_sales, 2),
         ])->values()->all();
+    }
+
+
+    private function bookingStaffCommissionSales(Carbon $start, Carbon $end): array
+    {
+        $rows = $this->baseBookingOrderItemSplitQuery($start, $end)
+            ->join('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
+            ->groupBy('staffs.id', 'staffs.name')
+            ->orderByDesc(DB::raw('service_amount'))
+            ->selectRaw('staffs.id as staff_id')
+            ->selectRaw('staffs.name as staff_name')
+            ->selectRaw('COUNT(order_item_staff_splits.id) as service_count')
+            ->selectRaw("COALESCE(SUM(({$this->effectiveBookingLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as service_amount")
+            ->get();
+
+        return $rows->map(fn ($row) => [
+            'staff_id' => (int) $row->staff_id,
+            'name' => (string) $row->staff_name,
+            'service_count' => (int) $row->service_count,
+            'service_amount' => round((float) $row->service_amount, 2),
+            'total' => round((float) $row->service_amount, 2),
+        ])->values()->all();
+    }
+
+    private function baseBookingOrderItemSplitQuery(Carbon $start, Carbon $end): Builder
+    {
+        return $this->applyOrderScope(
+            DB::table('orders')
+                ->join('order_items', 'order_items.order_id', '=', 'orders.id')
+                ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
+                ->whereBetween('orders.created_at', [$start, $end]),
+            'orders'
+        )
+            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product']);
+    }
+
+    /**
+     * Matches StaffCommissionService::effectiveLineTotalExpr for booking commissions so the
+     * visual report allocates each service/product base/add-on line from its own split source.
+     */
+    private function effectiveBookingLineTotalExpr(): string
+    {
+        $lineTotalExpr = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+        $optionTotalExpr = "COALESCE((SELECT SUM(COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(order_items.quantity, 1)::numeric, 0)) FROM jsonb_array_elements(COALESCE(order_items.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option)), 0)";
+        $matchingOptionExpr = "COALESCE((SELECT COALESCE(NULLIF(option_row.option->>'line_total_after_discount', '')::numeric, NULLIF(option_row.option->>'extra_price', '')::numeric * COALESCE(order_items.quantity, 1)::numeric, 0) FROM jsonb_array_elements(COALESCE(order_items.selected_booking_product_options::jsonb, '[]'::jsonb)) AS question_row(question) CROSS JOIN LATERAL jsonb_array_elements(COALESCE(question_row.question->'options', '[]'::jsonb)) AS option_row(option) WHERE option_row.option->>'id' = order_item_staff_splits.line_ref_id LIMIT 1), order_item_staff_splits.amount_basis)";
+
+        return "(CASE WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_base' THEN GREATEST(0, ($lineTotalExpr) - ($optionTotalExpr)) WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_option' THEN COALESCE($matchingOptionExpr, order_item_staff_splits.amount_basis, $lineTotalExpr) ELSE COALESCE(order_item_staff_splits.amount_basis, $lineTotalExpr) END)::numeric";
     }
 
     /**
