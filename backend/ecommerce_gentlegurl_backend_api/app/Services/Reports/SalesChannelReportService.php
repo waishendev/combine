@@ -5,6 +5,7 @@ namespace App\Services\Reports;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\User;
 use Carbon\Carbon;
@@ -27,6 +28,11 @@ class SalesChannelReportService
     public const BOOKING_TYPE_PRODUCT = 'booking_product';
 
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
+
+    private function orderBillAtSql(string $alias = 'o'): string
+    {
+        return "COALESCE({$alias}.placed_at, {$alias}.created_at)";
+    }
 
     /**
      * Mirror MyPosSummaryReportController::baseOrdersScopeQuery logic so that
@@ -117,7 +123,9 @@ class SalesChannelReportService
             'order' => [
                 'id' => (int) $order->id,
                 'order_no' => (string) $order->order_number,
-                'order_datetime' => optional($order->created_at)?->toIso8601String(),
+                'order_datetime' => optional($order->placed_at ?? $order->created_at)?->toIso8601String(),
+                'placed_at' => optional($order->placed_at)?->toIso8601String(),
+                'created_at' => optional($order->created_at)?->toIso8601String(),
                 'customer' => (string) ($order->customer?->name ?: $order->shipping_name ?: $order->billing_name ?: 'Walk-in Customer'),
                 'payment_method' => (string) ($order->payment_method ?: 'unknown'),
                 'payments' => $payments->all(),
@@ -130,7 +138,41 @@ class SalesChannelReportService
                 'customer_email' => $this->resolveReceiptCustomerEmail($order),
             ],
             'lines' => $order->items->map(fn (OrderItem $item) => $this->formatOrderDetailLine($item, $overrideUsers->all()))->values()->all(),
+            'action_logs' => $this->orderActionLogs((int) $order->id),
         ];
+    }
+
+    private function orderActionLogs(int $orderId): array
+    {
+        $logs = OrderActionLog::query()
+            ->where('entity_type', 'order')
+            ->where('entity_id', $orderId)
+            ->orderByDesc('id')
+            ->limit(40)
+            ->get();
+
+        if ($logs->isEmpty()) {
+            return [];
+        }
+
+        $users = User::query()
+            ->whereIn('id', $logs->pluck('created_by')->filter()->unique()->all())
+            ->get(['id', 'name', 'email'])
+            ->keyBy('id');
+
+        return $logs->map(function (OrderActionLog $log) use ($users) {
+            $user = $log->created_by ? $users->get((int) $log->created_by) : null;
+
+            return [
+                'id' => (int) $log->id,
+                'action_type' => (string) $log->action_type,
+                'before_value' => $log->before_value,
+                'after_value' => $log->after_value,
+                'remark' => $log->remark,
+                'created_at' => $log->created_at?->toIso8601String(),
+                'created_by_name' => $user ? (string) ($user->name ?: $user->email) : null,
+            ];
+        })->values()->all();
     }
 
 
@@ -695,13 +737,13 @@ class SalesChannelReportService
             DB::table('orders as o')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
-            ->groupBy('o.id', 'o.order_number', 'order_datetime', 'c.name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total')
+            ->groupBy('o.id', 'o.order_number', 'c.name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', DB::raw($this->orderBillAtSql()))
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
-            ->selectRaw('o.created_at as order_datetime')
+            ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
             ->selectRaw('c.name as customer_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
@@ -745,12 +787,12 @@ class SalesChannelReportService
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
                 ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
-            ->selectRaw('o.created_at as order_datetime')
+            ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
             ->selectRaw('c.name as customer_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')

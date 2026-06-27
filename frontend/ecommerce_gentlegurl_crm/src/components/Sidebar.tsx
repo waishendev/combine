@@ -390,8 +390,8 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
           //   requiredPermission: 'ecommerce.reports.sales.view',
           // },
           {
-            key: 'sales-daily',
-            label: 'Sales Report',
+            key: 'yearly-sales-daily',
+            label: 'Yearly Sales Report',
             href: '/reports/sales',
             requiredPermission: 'ecommerce.reports.sales.view',
           },

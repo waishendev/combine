@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\Order;
 use App\Services\Ecommerce\OfflineOrderManagementService;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use RuntimeException;
 
@@ -118,6 +119,32 @@ class OfflineOrderManagementController extends Controller
         }
 
         return $this->respond($updated, 'Payment method updated successfully.');
+    }
+
+    public function updateBillDate(Request $request, Order $order)
+    {
+        $validated = $request->validate([
+            'bill_date' => ['required', 'date'],
+            'remark' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        try {
+            $updated = $this->service->updateBillDate(
+                $order,
+                Carbon::parse((string) $validated['bill_date']),
+                isset($validated['remark']) ? trim((string) $validated['remark']) : null,
+                $request->user()?->id,
+            );
+        } catch (RuntimeException $e) {
+            return $this->respondError($e->getMessage(), 422);
+        }
+
+        return $this->respond([
+            'id' => (int) $updated->id,
+            'order_no' => (string) $updated->order_number,
+            'placed_at' => $updated->placed_at?->toIso8601String(),
+            'created_at' => $updated->created_at?->toIso8601String(),
+        ], 'Bill date updated successfully.');
     }
 
     public function voidOrder(Request $request, Order $order)

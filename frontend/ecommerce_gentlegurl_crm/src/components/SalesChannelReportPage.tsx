@@ -12,7 +12,6 @@ import OfflineOrderActions from './reports/OfflineOrderActions'
 import OrderReceiptAction from './reports/OrderReceiptAction'
 import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
-import { BookingAppointmentDetailDrawer, type AppointmentHistoryRow } from './booking/BookingAppointmentHistoryPage'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 
 type Mode = 'ecommerce' | 'booking'
@@ -175,6 +174,16 @@ type OrderDetailLine = {
   children?: OrderDetailLine[]
 }
 
+type OrderActionLogEntry = {
+  id: number
+  action_type: string
+  before_value?: Record<string, unknown> | null
+  after_value?: Record<string, unknown> | null
+  remark?: string | null
+  created_at?: string | null
+  created_by_name?: string | null
+}
+
 type OrderDetail = {
   order: {
     id: number
@@ -192,6 +201,7 @@ type OrderDetail = {
     customer_email?: string | null
   }
   lines: OrderDetailLine[]
+  action_logs?: OrderActionLogEntry[]
 }
 
 
@@ -254,6 +264,31 @@ const labelize = (value: string) =>
   value
     .replaceAll('_', ' ')
     .replace(/\b\w/g, (char) => char.toUpperCase())
+
+const actionLogTitle = (actionType: string) => {
+  const labels: Record<string, string> = {
+    edit_bill_date: 'Bill date updated',
+    edit_payment_method: 'Payment method updated',
+    edit_sales_person: 'Sales person updated',
+    edit_worker: 'Worker updated',
+    void_order: 'Order voided',
+  }
+  return labels[actionType] ?? actionType.replace(/_/g, ' ')
+}
+
+const actionLogChangeSummary = (log: OrderActionLogEntry) => {
+  if (log.action_type === 'edit_bill_date') {
+    const before = typeof log.before_value?.placed_at === 'string' ? log.before_value.placed_at : null
+    const after = typeof log.after_value?.placed_at === 'string' ? log.after_value.placed_at : null
+    if (before && after) return `${formatDisplayDateTime(before)} → ${formatDisplayDateTime(after)}`
+  }
+  if (log.action_type === 'edit_payment_method') {
+    const before = log.before_value?.payment_method
+    const after = log.after_value?.payment_method
+    if (before || after) return `${labelize(String(before ?? '—'))} → ${labelize(String(after ?? '—'))}`
+  }
+  return null
+}
 
 /** Table display: match gateway / order `payment_method` keys to readable labels. */
 const PAYMENT_METHOD_TABLE_LABELS: Record<string, string> = {
@@ -454,10 +489,6 @@ export default function SalesChannelReportPage({
   const [detailTab, setDetailTab] = useState<'details' | 'photos'>('details')
   const [detailBookingId, setDetailBookingId] = useState<number | null>(null)
   const [selectedDetailLine, setSelectedDetailLine] = useState<OrderDetailLine | null>(null)
-  const [bookingDetailOpen, setBookingDetailOpen] = useState(false)
-  const [bookingDetail, setBookingDetail] = useState<AppointmentHistoryRow | null>(null)
-  const [bookingDetailLoading, setBookingDetailLoading] = useState(false)
-  const [bookingDetailError, setBookingDetailError] = useState<string | null>(null)
 
   useEffect(() => {
     setInputs(resolved)
@@ -588,55 +619,8 @@ export default function SalesChannelReportPage({
     }
   }
 
-  const fetchBookingDetailById = async (bookingId: number) => {
-    const response = await fetch(`/api/proxy/admin/booking/appointment-history/${bookingId}`, { cache: 'no-store' })
-    const data = await response.json().catch(() => null) as { data?: AppointmentHistoryRow; message?: string } | null
-    if (!response.ok) {
-      throw new Error(data?.message ?? 'Unable to load booking details.')
-    }
-    return data?.data ?? null
-  }
-
-  const resolveBookingIdFromNo = async (bookingNo: string) => {
-    const qs = new URLSearchParams({ q: bookingNo, per_page: '10' })
-    const response = await fetch(`/api/proxy/admin/booking/appointment-history?${qs.toString()}`, { cache: 'no-store' })
-    const data = await response.json().catch(() => null) as { data?: { data?: AppointmentHistoryRow[] }; message?: string } | null
-    if (!response.ok) {
-      throw new Error(data?.message ?? 'Unable to find booking details.')
-    }
-    const rows = Array.isArray(data?.data?.data) ? data.data.data : []
-    return rows.find((row) => row.booking_code === bookingNo)?.id ?? rows[0]?.id ?? null
-  }
-
   const openBookingDetail = async (row: BookingRow) => {
-    const bookingNo = row.booking_no?.trim()
-    if (!bookingNo) {
-      await openOrderDetail(row.order_id, row.booking_id)
-      return
-    }
-
-    setBookingDetailOpen(true)
-    setBookingDetailLoading(true)
-    setBookingDetailError(null)
-    setBookingDetail(null)
-
-    try {
-      const bookingId = row.booking_id ?? await resolveBookingIdFromNo(bookingNo)
-      if (!bookingId) {
-        throw new Error(`Unable to find booking details for ${bookingNo}.`)
-      }
-      setBookingDetail(await fetchBookingDetailById(bookingId))
-    } catch (error) {
-      setBookingDetailError(error instanceof Error ? error.message : 'Unable to load booking details.')
-    } finally {
-      setBookingDetailLoading(false)
-    }
-  }
-
-  const closeBookingDetail = () => {
-    setBookingDetailOpen(false)
-    setBookingDetail(null)
-    setBookingDetailError(null)
+    await openOrderDetail(row.order_id, row.booking_id ?? null)
   }
 
   const closeOrderDetail = () => {
@@ -874,13 +858,13 @@ export default function SalesChannelReportPage({
           <thead className="bg-slate-300/70">
             <tr>
               {mode === 'ecommerce' ? (
-                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
+                ['Order No', 'Bill Date', 'Customer', 'Channel', 'Payment Method', 'Item Count', 'Product Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                     {reportTableColumnHeader(h)}
                   </th>
                 ))
               ) : (
-                ['Order No', 'Date/Time', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
+                ['Order No', 'Bill Date', 'Customer', 'Channel', 'Payment Method', 'Type', 'Booking No', 'Name', 'Gross Amount', 'Discount', 'Net Amount', 'Status', 'Actions'].map((h) => (
                   <th key={h} className="px-4 py-2 font-semibold text-left text-gray-600">
                     {reportTableColumnHeader(h)}
                   </th>
@@ -914,6 +898,7 @@ export default function SalesChannelReportPage({
                       <OfflineOrderActions
                         orderId={row.order_id}
                         channel={row.channel}
+                        billDate={row.order_datetime}
                         currentPaymentMethod={row.payment_method}
                         orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
                         paymentBreakdown={row.payments}
@@ -953,6 +938,7 @@ export default function SalesChannelReportPage({
                     <OfflineOrderActions
                       orderId={row.order_id}
                       channel={row.channel}
+                      billDate={row.order_datetime}
                       currentPaymentMethod={row.payment_method}
                       orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
                       paymentBreakdown={row.payments}
@@ -1027,23 +1013,11 @@ export default function SalesChannelReportPage({
         </table>
       </div>
 
-      {bookingDetailOpen ? (
-        <BookingAppointmentDetailDrawer
-          row={bookingDetail}
-          loading={bookingDetailLoading}
-          error={bookingDetailError}
-          onClose={closeBookingDetail}
-          onServicePhotosChanged={(photos) => {
-            setBookingDetail((current) => (current ? { ...current, service_photos: photos, service_photos_count: photos.length } : current))
-          }}
-        />
-      ) : null}
-
       {detailOpen ? (
         <ReportDetailDrawer
           open={detailOpen}
           title={orderDetail?.order.order_no ?? 'Loading…'}
-          subtitle="Transaction details"
+          subtitle={orderDetail?.order.booking_no ? `Booking ${orderDetail.order.booking_no}` : 'Transaction details'}
           onClose={closeOrderDetail}
           loading={detailLoading}
           loadingText="Loading order details…"
@@ -1064,21 +1038,30 @@ export default function SalesChannelReportPage({
                 <BookingServicePhotosPanel bookingId={detailBookingId} />
               ) : orderDetail ? (
                 <div className="space-y-5">
-                  <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2 lg:grid-cols-3">
-                    <DetailMeta label="Order no" value={orderDetail.order.order_no} />
-                    <DetailMeta label="Date/time" value={formatDisplayDateTime(orderDetail.order.order_datetime)} />
-                    <DetailMeta label="Customer" value={orderDetail.order.customer} />
-                    <DetailMeta label="Payment method" value={<PaymentMethodCell method={orderDetail.order.payment_method} payments={orderDetail.order.payments} />} />
-                    <DetailMeta label="Type" value={orderDetail.order.type} />
-                    <DetailMeta label="Booking no" value={orderDetail.order.booking_no ?? '—'} />
-                  </div>
-
-                  <section className="rounded-xl border border-slate-200 bg-white p-4">
-                    <h4 className="mb-3 text-sm font-bold text-slate-900">Payment Proof (Optional)</h4>
-                    <PaymentProofPreview proofs={orderDetail.order.payment_proofs} />
+                  <section className="rounded-xl border border-slate-200 p-4">
+                    <h4 className="font-semibold text-slate-900">Order Info</h4>
+                    <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+                      <DetailMeta label="Order no" value={orderDetail.order.order_no} />
+                      <DetailMeta label="Bill date" value={formatDisplayDateTime(orderDetail.order.order_datetime)} />
+                      <DetailMeta label="Customer" value={orderDetail.order.customer} />
+                      <DetailMeta label="Payment method" value={<PaymentMethodCell method={orderDetail.order.payment_method} payments={orderDetail.order.payments} />} />
+                      <DetailMeta label="Type" value={orderDetail.order.type} />
+                      <DetailMeta label="Booking no" value={orderDetail.order.booking_no ?? '—'} />
+                      <DetailMeta label="Status" value={labelize(orderDetail.order.status)} />
+                      <DetailMeta label="Grand total" value={`RM ${formatAmount(orderDetail.order.grand_total)}`} />
+                    </div>
                   </section>
 
-                  <div className="overflow-x-auto rounded-xl border border-slate-200">
+                  <section className="rounded-xl border border-slate-200 p-4">
+                    <h4 className="font-semibold text-slate-900">Payment Proof</h4>
+                    <div className="mt-3">
+                      <PaymentProofPreview proofs={orderDetail.order.payment_proofs} />
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-slate-200 p-4">
+                    <h4 className="mb-3 font-semibold text-slate-900">Line Items</h4>
+                    <div className="overflow-x-auto rounded-xl border border-slate-200">
                     <table className="min-w-full divide-y divide-slate-200 text-sm">
                       <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-500">
                         <tr>
@@ -1134,7 +1117,32 @@ export default function SalesChannelReportPage({
                         ))}
                       </tbody>
                     </table>
-                  </div>
+                    </div>
+                  </section>
+
+                  <section className="rounded-xl border border-slate-200 p-4">
+                    <h4 className="font-semibold text-slate-900">Activity Log</h4>
+                    {(orderDetail.action_logs ?? []).length > 0 ? (
+                      <div className="mt-4 space-y-3">
+                        {orderDetail.action_logs?.map((log) => {
+                          const changeSummary = actionLogChangeSummary(log)
+                          return (
+                            <div key={log.id} className="rounded-lg bg-slate-50 px-3 py-3 text-sm">
+                              <div className="flex flex-wrap items-start justify-between gap-2">
+                                <span className="font-semibold text-slate-900">{actionLogTitle(log.action_type)}</span>
+                                <span className="text-xs text-slate-500">{log.created_at ? formatDisplayDateTime(log.created_at) : '—'}</span>
+                              </div>
+                              {log.created_by_name ? <p className="mt-1 text-xs text-slate-500">By {log.created_by_name}</p> : null}
+                              {changeSummary ? <p className="mt-2 text-xs text-slate-700">{changeSummary}</p> : null}
+                              {log.remark ? <p className="mt-2 rounded bg-amber-50 px-2 py-1.5 text-xs text-amber-900">{log.remark}</p> : null}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-500">No staff actions recorded for this order.</p>
+                    )}
+                  </section>
                 </div>
               ) : null}
             </div>

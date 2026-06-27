@@ -16,6 +16,11 @@ class SalesVisualDailyReportService
 {
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
+    private function orderBillAtSql(string $alias = 'o'): string
+    {
+        return "COALESCE({$alias}.placed_at, {$alias}.created_at)";
+    }
+
     /**
      * Apply the same order-inclusion logic used by POS Summary so that online booking orders
      * (which may have status=pending + payment_status=paid) are counted.
@@ -63,7 +68,7 @@ class SalesVisualDailyReportService
             ];
         }
 
-        $bucketExpression = 'EXTRACT(MONTH FROM o.created_at)::int';
+        $bucketExpression = 'EXTRACT(MONTH FROM ' . $this->orderBillAtSql() . ')::int';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (int) $row->bucket;
@@ -106,7 +111,7 @@ class SalesVisualDailyReportService
             ];
         }
 
-        $bucketExpression = 'DATE(o.created_at)';
+        $bucketExpression = 'DATE(' . $this->orderBillAtSql() . ')';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (string) $row->bucket;
@@ -136,7 +141,7 @@ class SalesVisualDailyReportService
         return $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
             ->selectRaw("{$bucketExpression} as bucket")
@@ -153,7 +158,7 @@ class SalesVisualDailyReportService
         return $this->applyOrderScope(
             DB::table('orders as o')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw("{$bucketExpression} as bucket")
@@ -206,7 +211,7 @@ class SalesVisualDailyReportService
         $itemAgg = $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
@@ -276,7 +281,7 @@ class SalesVisualDailyReportService
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
                 ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
@@ -300,7 +305,7 @@ class SalesVisualDailyReportService
         $serviceConsumedQuery = $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_settlement')
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as v");
@@ -354,7 +359,7 @@ class SalesVisualDailyReportService
         $itemEcommerce = $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
@@ -368,7 +373,7 @@ class SalesVisualDailyReportService
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
                 ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
@@ -392,7 +397,7 @@ class SalesVisualDailyReportService
         $serviceConsumedAmount = round((float) $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_settlement')
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as v")
@@ -517,7 +522,7 @@ class SalesVisualDailyReportService
                 ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->join('staffs as st', 'st.id', '=', 'sps.staff_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
             ->groupBy('st.id', 'st.name')
@@ -563,7 +568,7 @@ class SalesVisualDailyReportService
             DB::table('orders')
                 ->join('order_items', 'order_items.order_id', '=', 'orders.id')
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
-                ->whereBetween('orders.created_at', [$start, $end]),
+                ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end]),
             'orders'
         )
             ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product']);
@@ -677,7 +682,7 @@ class SalesVisualDailyReportService
         $q = $this->applyOrderScope(
             DB::table('orders as o')
                 ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where(function ($q) use ($methodVariants) {
                 $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
@@ -828,7 +833,7 @@ class SalesVisualDailyReportService
         $q = $this->applyOrderScope(
             DB::table('orders as o')
                 ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where(function ($q) use ($methodVariants) {
                 $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
@@ -931,7 +936,7 @@ class SalesVisualDailyReportService
             DB::table('order_item_staff_splits as sps')
                 ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_product')
             ->whereNotNull('sps.staff_id')
@@ -954,7 +959,7 @@ class SalesVisualDailyReportService
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->leftJoin('users as creator', 'creator.id', '=', 'o.created_by_user_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_product')
             ->whereNotExists(function (Builder $q) {

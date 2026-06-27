@@ -485,6 +485,25 @@ class OfflineOrderManagementService
         return $order->fresh();
     }
 
+    public function updateBillDate(Order $order, Carbon $billDate, ?string $remark, ?int $actorId): Order
+    {
+        $this->ensureOfflineOrder($order);
+
+        $before = [
+            'placed_at' => $order->placed_at?->toIso8601String(),
+            'created_at' => $order->created_at?->toIso8601String(),
+        ];
+
+        $order->placed_at = $billDate;
+        $order->save();
+
+        $this->log('order', (int) $order->id, 'edit_bill_date', $before, [
+            'placed_at' => $order->placed_at?->toIso8601String(),
+        ], $remark, $actorId);
+
+        return $order->fresh();
+    }
+
     private function normalizePaymentRows(?array $payments, float $expectedTotal, string $fallbackMethod): array
     {
         $allowed = ['cash', 'qrpay', 'credit_card'];
