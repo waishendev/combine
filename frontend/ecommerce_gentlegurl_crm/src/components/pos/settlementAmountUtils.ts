@@ -226,6 +226,115 @@ export function collectionHasUnsettledRangePricing(
   return (items ?? []).some((item) => posLineHasUnsettledRangePricing(item))
 }
 
+export function computePosServiceCartItemPayableAmount(item: {
+  deposit_payable_total?: number | string | null
+  deposit_contribution?: number | string | null
+  deposit_addon_total?: number | string | null
+}): number {
+  return Number(
+    item.deposit_payable_total
+    ?? Number(item.deposit_contribution ?? 0) + Number(item.deposit_addon_total ?? 0),
+  )
+}
+
+export function computePosCartGrossAmountBounds(input: {
+  cartItems: Array<{ line_total?: number | string | null }>
+  cartServiceItems: Array<{
+    deposit_payable_total?: number | string | null
+    deposit_contribution?: number | string | null
+    deposit_addon_total?: number | string | null
+  }>
+  cartPackageItems: Array<{ line_total?: number | string | null }>
+  cartAppointmentSettlementItems: Parameters<typeof computeSettlementCartItemDueBounds>[0][]
+}): PosPriceBounds {
+  let min = 0
+  let max = 0
+  let hasRange = false
+
+  const addBounds = (bounds: PosPriceBounds) => {
+    min += bounds.min
+    max += bounds.max
+    if (bounds.hasRange) hasRange = true
+  }
+
+  for (const item of input.cartItems) {
+    const amount = Number(item.line_total ?? 0)
+    addBounds({ min: amount, max: amount, hasRange: false })
+  }
+  for (const item of input.cartServiceItems) {
+    const amount = computePosServiceCartItemPayableAmount(item)
+    addBounds({ min: amount, max: amount, hasRange: false })
+  }
+  for (const item of input.cartPackageItems) {
+    const amount = Number(item.line_total ?? 0)
+    addBounds({ min: amount, max: amount, hasRange: false })
+  }
+  for (const settlement of input.cartAppointmentSettlementItems) {
+    addBounds(computeSettlementCartItemDueBounds(settlement))
+  }
+
+  if (!hasRange && Math.abs(min - max) > 0.0001) hasRange = true
+  return { min, max, hasRange }
+}
+
+export function applyPosCartDiscountsToBounds(
+  bounds: PosPriceBounds,
+  discountTotal: number,
+): PosPriceBounds {
+  const deduct = Math.max(0, Number(discountTotal ?? 0))
+  const min = Math.max(0, bounds.min - deduct)
+  const max = Math.max(0, bounds.max - deduct)
+  const hasRange = bounds.hasRange || Math.abs(min - max) > 0.0001
+  return { min, max, hasRange }
+}
+
+export function resolveSettlementLineFullPrice(line?: {
+  gross_amount?: number | string | null
+  extra_price?: number | string | null
+  balance_due?: number | string | null
+} | null): number {
+  if (!line) return 0
+  return Number(line.gross_amount ?? line.extra_price ?? line.balance_due ?? 0)
+}
+
+export function resolveSettlementLineAmountDue(line?: {
+  line_total_after_discount?: number | string | null
+  balance_due?: number | string | null
+  gross_amount?: number | string | null
+  extra_price?: number | string | null
+  discount_amount?: number | string | null
+} | null): number {
+  if (!line) return 0
+  if (line.line_total_after_discount != null && line.line_total_after_discount !== '') {
+    return Number(line.line_total_after_discount)
+  }
+  if (line.balance_due != null && line.balance_due !== '') {
+    return Number(line.balance_due)
+  }
+  const fullPrice = resolveSettlementLineFullPrice(line)
+  const discount = Number(line.discount_amount ?? 0)
+  return Math.max(0, fullPrice - discount)
+}
+
+export function settlementShowsSeparateDepositCredit(settlement?: {
+  deposit_contribution?: number | string | null
+  main_service_settlement_items?: Array<{
+    is_original?: boolean
+    gross_amount?: number | string | null
+    extra_price?: number | string | null
+    balance_due?: number | string | null
+    line_total_after_discount?: number | string | null
+  }> | null
+} | null): boolean {
+  const deposit = Number(settlement?.deposit_contribution ?? 0)
+  if (deposit <= 0.0001) return false
+  const original = (settlement?.main_service_settlement_items ?? []).find((line, idx) => line.is_original ?? idx === 0)
+  if (!original) return true
+  const fullPrice = resolveSettlementLineFullPrice(original)
+  const amountDue = resolveSettlementLineAmountDue(original)
+  return fullPrice > amountDue + 0.0001
+}
+
 export function computeSettlementCartItemDueBounds(settlement?: {
   is_range_priced?: boolean | null
   requires_settled_amount?: boolean | null

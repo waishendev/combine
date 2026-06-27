@@ -7625,17 +7625,22 @@ class PosController extends Controller
 
             $lineTotal = round($balanceDue, 2);
             $rawMainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
-            $mainSettlementItems = $rawMainSettlementItems->map(function (array $line) use ($item) {
-                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+            $mainSettlementItems = $rawMainSettlementItems->map(function (array $line) use ($item, $summary) {
+                $lineFullAmount = max(0.0, (float) ($line['extra_price'] ?? 0));
                 $lineKey = (string) ($line['line_key'] ?? '');
-                $priceOverride = $this->applyPriceOverrideToAmount($item, $lineKey, $gross);
+                $priceOverride = $this->applyPriceOverrideToAmount($item, $lineKey, $lineFullAmount);
                 $gross = (float) $priceOverride['amount'];
-                $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $gross);
+                $isOriginal = (bool) ($line['is_original'] ?? false);
+                $paidAmount = max(0.0, (float) ($line['paid_amount'] ?? 0));
+                $depositCredit = $isOriginal ? max(0.0, (float) ($summary['deposit_contribution'] ?? 0)) : 0.0;
+                $packageOffset = $isOriginal ? max(0.0, (float) ($summary['package_offset'] ?? 0)) : 0.0;
+                $balanceDue = max(0.0, $gross - $paidAmount - $depositCredit - $packageOffset);
+                $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $balanceDue);
 
                 return [
                     ...$line,
-                    'gross_amount' => $gross,
-                    'balance_due' => $gross,
+                    'gross_amount' => round($gross, 2),
+                    'balance_due' => round($balanceDue, 2),
                     'price_override' => $priceOverride['override'],
                     'discount_type' => $discount['discount_type'],
                     'discount_value' => $discount['discount_value'],
@@ -7645,25 +7650,31 @@ class PosController extends Controller
                 ];
             })->values();
             $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []))->map(function (array $line) use ($item) {
-                $gross = max(0.0, (float) ($line['balance_due'] ?? 0));
+                $lineFullAmount = max(0.0, (float) ($line['extra_price'] ?? $line['balance_due'] ?? 0));
                 $lineKey = (string) ($line['line_key'] ?? '');
-                $priceOverride = $this->applyPriceOverrideToAmount($item, $lineKey, $gross);
+                $priceOverride = $this->applyPriceOverrideToAmount($item, $lineKey, $lineFullAmount);
                 $gross = (float) $priceOverride['amount'];
-                $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $gross);
+                $paidAmount = max(0.0, (float) ($line['paid_amount'] ?? 0));
+                $balanceDue = max(0.0, $gross - $paidAmount);
+                $discount = $this->resolveAppointmentSettlementLineDiscount($item, $lineKey, $balanceDue);
 
                 return [
                     ...$line,
-                    'gross_amount' => $gross,
+                    'gross_amount' => round($gross, 2),
+                    'balance_due' => round($balanceDue, 2),
                     'price_override' => $priceOverride['override'],
                     'discount_type' => $discount['discount_type'],
                     'discount_value' => $discount['discount_value'],
                     'discount_amount' => $discount['discount_amount'],
                     'discount_remark' => $discount['discount_remark'],
                     'line_total_after_discount' => $discount['line_total_after_discount'],
-                    'balance_due' => $discount['line_total_after_discount'],
                 ];
             })->values();
-            $lineTotal = round((float) $mainSettlementItems->sum('gross_amount') + (float) $addonSettlementItems->sum('gross_amount'), 2);
+            $lineTotal = round(
+                (float) $mainSettlementItems->sum(fn (array $row) => (float) ($row['line_total_after_discount'] ?? $row['balance_due'] ?? 0))
+                + (float) $addonSettlementItems->sum(fn (array $row) => (float) ($row['line_total_after_discount'] ?? $row['balance_due'] ?? 0)),
+                2,
+            );
             $hasPerLineDiscounts = ! empty($this->normalizeAppointmentSettlementDiscountLines($item->discount_lines ?? []));
             $discountAmount = $hasPerLineDiscounts
                 ? round((float) $mainSettlementItems->sum('discount_amount') + (float) $addonSettlementItems->sum('discount_amount'), 2)

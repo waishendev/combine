@@ -11,8 +11,10 @@ import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
 import {
   accumulatePosPriceBounds,
+  applyPosCartDiscountsToBounds,
   appointmentDetailHasUnsettledRangePricing,
   bookingServiceSettlementSource,
+  computePosCartGrossAmountBounds,
   formatPosAccumulatedPriceDisplay,
   formatPosCurrentOrRangeDisplay,
   formatPosPriceDisplay,
@@ -24,8 +26,11 @@ import {
   posPriceDisplayWithOverride,
   seedFinalizedAddonPriceOverrides,
   computeSettlementCartItemDueBounds,
+  resolveSettlementLineAmountDue,
+  resolveSettlementLineFullPrice,
   settlementCartItemHasUnsettledRangePricing,
   settlementNeedsSettledAmount,
+  settlementShowsSeparateDepositCredit,
   UNSETTLED_RANGE_CHECKOUT_MESSAGE,
   type PosPriceDisplaySource,
 } from '@/components/pos/settlementAmountUtils'
@@ -821,7 +826,7 @@ const BookingProductOptionsModal = memo(function BookingProductOptionsModal({ dr
           {draft.price_mode === 'range' ? (
             <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
               <p className="text-xs font-bold uppercase tracking-wide text-amber-800">Product Base Price</p>
-              <p className="mt-1 text-xs text-gray-600">Reference range: {formatBookingProductCatalogPrice(draft)}</p>
+              <p className="mt-1 text-xs text-gray-600">Ref range: {formatBookingProductCatalogPrice(draft)}</p>
               <p className="mt-1 text-xs text-gray-500">Enter any base price. Selected options are added separately.</p>
               <div className="relative mt-2 max-w-xs"><span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400">RM</span><input type="text" inputMode="decimal" value={basePriceDraft} onChange={(e) => setBasePriceDraft(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-3 text-sm text-gray-900" /></div>
             </div>
@@ -2187,48 +2192,21 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     return Number(cart?.voucher?.discount_amount ?? 0)
   }, [cart?.voucher?.discount_amount])
 
-  const cartTotalDisplayBounds = useMemo(() => {
-    let min = 0
-    let max = 0
-    let hasRange = false
-
-    const addBounds = (bounds: { min: number; max: number; hasRange: boolean }) => {
-      min += bounds.min
-      max += bounds.max
-      if (bounds.hasRange) hasRange = true
-    }
-
-    for (const item of cartItems) {
-      const amount = Number(item.line_total ?? 0)
-      addBounds({ min: amount, max: amount, hasRange: false })
-    }
-    for (const item of cartServiceItems) {
-      const amount = Number(item.line_total ?? 0)
-      addBounds({ min: amount, max: amount, hasRange: false })
-    }
-    for (const item of cartPackageItems) {
-      const amount = Number(item.line_total ?? 0)
-      addBounds({ min: amount, max: amount, hasRange: false })
-    }
-    for (const settlement of cartAppointmentSettlementItems) {
-      addBounds(computeSettlementCartItemDueBounds(settlement))
-    }
-
-    const deduct = promotionDiscount + voucherDiscount
-    min = Math.max(0, min - deduct)
-    max = Math.max(0, max - deduct)
-    if (!hasRange && Math.abs(min - max) > 0.0001) hasRange = true
-
-    return { min, max, hasRange }
-  }, [
-    cartAppointmentSettlementItems,
-    cartItems,
-    cartPackageItems,
-    cartServiceItems,
-    promotionDiscount,
-    voucherDiscount,
-  ])
-  const cartTotalDisplayLabel = formatPosAccumulatedPriceDisplay(cartTotalDisplayBounds)
+  const cartGrossAmountBounds = useMemo(
+    () => computePosCartGrossAmountBounds({
+      cartItems,
+      cartServiceItems,
+      cartPackageItems,
+      cartAppointmentSettlementItems,
+    }),
+    [cartAppointmentSettlementItems, cartItems, cartPackageItems, cartServiceItems],
+  )
+  const cartNetAmountBounds = useMemo(
+    () => applyPosCartDiscountsToBounds(cartGrossAmountBounds, promotionDiscount + voucherDiscount),
+    [cartGrossAmountBounds, promotionDiscount, voucherDiscount],
+  )
+  const cartSubtotalDisplayLabel = formatPosAccumulatedPriceDisplay(cartGrossAmountBounds)
+  const cartTotalDisplayLabel = formatPosAccumulatedPriceDisplay(cartNetAmountBounds)
   
   const discount = Math.max(0, cartSubtotal - cartTotal)
   const appliedVoucher = cart?.voucher ?? null
@@ -8360,19 +8338,18 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               <div className="space-y-2 border-b border-gray-200 pb-2">
                                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">Service</p>
                                 {serviceBlocks.map((service, idx) => {
-                                  const gross = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
+                                  const fullPrice = resolveSettlementLineFullPrice(service)
                                   const discount = Number(service.discount_amount ?? 0)
-                                  const net = Number(service.line_total_after_discount ?? Math.max(0, gross - discount))
+                                  const amountDue = resolveSettlementLineAmountDue(service)
                                   const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
-                                  const displayGross = coveredByPackage
+                                  const displayFullPrice = coveredByPackage
                                     ? resolveSettlementLineOriginalPrice(
                                         service,
                                         originalServiceReference,
                                         settlement.service_total,
                                         pkgOffset,
                                       )
-                                    : gross
-                                  const displayNet = coveredByPackage ? 0 : net
+                                    : fullPrice
                                   return (
                                     <div key={`settlement-service-block-${settlement.id}-${service.id ?? service.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-800">
@@ -8385,10 +8362,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           ) : null}
                                         </div>
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayGross })}</span> : null}
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: displayFullPrice })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayNet })}</span>
-                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</span> : null}
+                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: coveredByPackage ? 0 : displayFullPrice })}</span>
+                                          {!coveredByPackage && !discount && amountDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? (
+                                            <span className="block text-[10px] font-medium text-gray-500">Due now: RM {amountDue.toFixed(2)}</span>
+                                          ) : null}
+                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(service)}</span> : null}
                                           {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
@@ -8411,7 +8391,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
                                           <span className="block">{formatPosCurrentOrRangeDisplay({ ...addon, extra_price: displayNet })}</span>
-                                          {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</span> : null}
+                                          {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(addon)}</span> : null}
                                           {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
@@ -8428,10 +8408,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                               </p>
                             ) : null}
 
-                            {depositCredit > 0.0001 ? (
+                            {settlementShowsSeparateDepositCredit(settlement) ? (
                               <div className="flex justify-between gap-2 border-b border-gray-200 pb-2">
-                                <span className="text-gray-700">Deposit</span>
-                                <span className="font-semibold tabular-nums text-gray-900">
+                                <span className="text-gray-700">Deposit paid</span>
+                                <span className="font-semibold tabular-nums text-emerald-700">
                                   − RM {depositCredit.toFixed(2)}
                                 </span>
                               </div>
@@ -9004,7 +8984,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       {settlementNeedsSettledAmount(cartEditOriginalSettlementSource) ? (
                         <>
                           <p className="mt-2 text-xs text-gray-500">
-                            Reference range: RM {getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} – RM{' '}
+                            Ref range: RM {getSettlementRangeBounds(cartEditOriginalSettlementSource).min.toFixed(2)} – RM{' '}
                             {getSettlementRangeBounds(cartEditOriginalSettlementSource).max.toFixed(2)}
                           </p>
                           <div className="relative mt-2 max-w-xs">
@@ -9433,7 +9413,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       <div>
                         <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Service Block · Added</p>
                         <ServiceNameStack name={block.service_name} cnName={block.service_cn_name} />
-                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
+                        <div className="mt-1 flex flex-wrap items-center gap-2"><p className="text-xs text-gray-600">{formatPosCurrentOrRangeDisplay({ ...block, extra_price: block.price })}{block.duration_min > 0 ? ` · ${block.duration_min}min` : ''}{posPriceDisplayHasRange(block) && posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(block)}</span> : null}{posPriceDisplayHasRange(block) && !posPriceDisplayHasFinalPrice(block) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}</p><button type="button" onClick={() => editCartAddedMainServicePrice(block.tmp_id, Number(block.price ?? 0))} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button></div>
                       </div>
                       <button
                         type="button"
@@ -10249,11 +10229,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                           {hasServiceBlocks ? (
                             <>
                               {checkoutServiceBlocks.map((service, idx) => {
-                                const servicePrice = Number(service.gross_amount ?? service.balance_due ?? service.extra_price ?? 0)
+                                const serviceFullPrice = resolveSettlementLineFullPrice(service)
                                 const serviceDiscount = Number(service.discount_amount ?? 0)
-                                const serviceNet = Number(service.line_total_after_discount ?? Math.max(0, servicePrice - serviceDiscount))
+                                const serviceDue = resolveSettlementLineAmountDue(service)
                                 const coveredByPackage = mainCoveredByPkg && (service.is_original ?? idx === 0)
-                                const displayServiceNet = coveredByPackage ? 0 : serviceNet
+                                const displayFullPrice = coveredByPackage ? 0 : serviceFullPrice
                                 const serviceSettlementSplitKey = `settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`
                                 const packageOriginalPrice = resolveSettlementLineOriginalPrice(
                                   service,
@@ -10279,10 +10259,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           {renderCheckoutLineSplitSummary(serviceSettlementSplitKey, settlementInheritedSplits)}
                                           <div className="flex flex-wrap gap-2">
                                           {renderCheckoutStaffSplitButtons(serviceSettlementSplitKey, service.name ?? 'Settlement service', settlementInheritedSplits)}
-                                          <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: servicePrice, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
+                                          <button type="button" onClick={() => service.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key, name: service.name, lineTotal: serviceDue, discountType: service.discount_type ?? null, discountValue: Number(service.discount_value ?? 0), discountRemark: service.discount_remark ?? null })} disabled={!service.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">
                                           {serviceDiscount > 0 ? 'Edit Discount' : 'Discount'}
                                         </button>
-                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: servicePrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? servicePrice), priceSource: service })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
+                                        {!coveredByPackage && service.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: service.line_key!, name: service.name, currentUnitPrice: serviceFullPrice, originalUnitPrice: Number(service.price_override?.original_unit_price ?? service.extra_price ?? serviceFullPrice), priceSource: service })} className="inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}
                                           </div>
                                         </div>
                                       </td>
@@ -10291,7 +10271,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} inline />
                                         ) : (
                                           <>
-                                            <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: serviceNet })}</span>
+                                            <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayFullPrice })}</span>
                                             {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(service)}</span> : null}
                                             {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                           </>
@@ -10302,13 +10282,13 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                           <PosPackageIncludedAmount originalAmount={packageOriginalPrice} />
                                         ) : serviceDiscount > 0 ? (
                                           <div className="space-y-0.5">
-                                            <p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: servicePrice })}</p>
+                                            <p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: serviceFullPrice })}</p>
                                             <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
-                                            <p className="text-lg font-bold leading-tight text-orange-700">RM {displayServiceNet.toFixed(2)}</p>
-                                            {posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}
+                                            <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceDue.toFixed(2)}</p>
+                                            {posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(service)}</p> : null}
                                           </div>
                                         ) : (
-                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: serviceNet })}</p>{posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(service)}</p> : null}{posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</p> : null}</div>
+                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayFullPrice })}</p>{serviceDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? <p className="text-[10px] font-medium text-gray-500">Due now: RM {serviceDue.toFixed(2)}</p> : null}{posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(service)}</p> : null}{posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</p> : null}</div>
                                         )}
                                       </td>
                                       <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
@@ -10348,7 +10328,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                       </div>
                                     </td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <><span className="block">RM {due.toFixed(2)}</span>{posPriceDisplayHasRange(addon) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(addon)}</span> : null}</>}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: gross })}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</p> : null}</div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Reference range: {formatPosPriceDisplay(addon)}</p> : null}</div>)}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: gross })}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(addon)}</p> : null}</div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(addon)}</p> : null}</div>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
@@ -10434,16 +10414,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                             </>
                           )}
 
-                          {depositCredit > 0.0001 ? (
+                          {settlementShowsSeparateDepositCredit(settlement) ? (
                             <tr className={`${stRowClass} align-top`}>
                               <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                               <td className="px-4 py-2 pl-7 text-xs text-gray-700 sm:px-5 sm:pl-8">
-                                Deposit
+                                Deposit paid
                               </td>
                               <td className="min-w-[260px] px-4 py-2" aria-hidden />
                               <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
                               <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
-                                <p className="text-lg font-bold leading-tight text-orange-700">− RM {depositCredit.toFixed(2)}</p>
+                                <p className="text-lg font-bold leading-tight text-emerald-700">− RM {depositCredit.toFixed(2)}</p>
                               </td>
                               <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                             </tr>
@@ -10544,7 +10524,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="text-sm font-medium text-gray-600">Subtotal</p>
-                    <p className="text-sm font-semibold text-gray-700">RM {cartSubtotal.toFixed(2)}</p>
+                    <p className="text-sm font-semibold text-gray-700">{cartSubtotalDisplayLabel}</p>
                   </div>
                   {promotionDiscount > 0 && (
                     <div className="flex items-center justify-between">
