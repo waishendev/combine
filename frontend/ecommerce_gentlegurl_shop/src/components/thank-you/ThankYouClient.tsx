@@ -183,9 +183,29 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
     return statusKey === "cancelled";
   }, [order]);
 
+  const showUploadReminderHeading =
+    isManualTransfer &&
+    !isCancelled &&
+    !isPaymentConfirmed &&
+    (order ? String(order.payment_status ?? "").toLowerCase() !== "paid" : true);
+
   return (
     <main className="mx-auto max-w-xl px-4 py-16 text-center text-[var(--foreground)]">
-      <h1 className="text-3xl font-semibold">Thank you for your order!</h1>
+      {isCancelled && order ? (
+        <>
+          <h1 className="text-3xl font-semibold">Order cancelled</h1>
+          <p className="mt-3 text-lg text-[var(--foreground)]/80">
+            This order is no longer active. If payment was not completed in time, please place a new order.
+          </p>
+        </>
+      ) : showUploadReminderHeading ? (
+        <>
+          <h1 className="text-3xl font-semibold">⚠️ One Last Step!</h1>
+          <p className="mt-3 text-lg text-[var(--foreground)]/80">Please upload your payment receipt below</p>
+        </>
+      ) : (
+        <h1 className="text-3xl font-semibold">Thank you for your order!</h1>
+      )}
 
       <p className="mt-4 text-sm text-[var(--foreground)]/80">
         Your order number is <span className="font-mono font-semibold">{orderNo}</span>.
@@ -239,7 +259,7 @@ export default function ThankYouClient({ orderNo, orderId, paymentMethod }: Prop
             )} */}
           </div>
 
-          {isManualTransfer && (
+          {isManualTransfer && !isCancelled && (
             <div className="rounded-lg border border-[var(--card-border)] bg-[var(--card)]/90 p-4 shadow-sm">
               <p className="font-medium">Manual Bank Transfer</p>
               {order.bank_account ? (

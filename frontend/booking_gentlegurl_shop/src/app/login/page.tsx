@@ -50,8 +50,8 @@ function LoginPageContent() {
         <div className="relative mx-auto flex min-h-[70vh] max-w-6xl items-center justify-center px-4 py-14">
           <div className="w-full max-w-md">
             <div className="mb-6 text-center">
-              <h1 className="mt-2 text-3xl font-semibold text-[var(--foreground)]">Welcome back</h1>
-              <p className="mt-2 text-sm text-[var(--foreground)]/70">
+              <h1 className="mt-2 text-3xl font-semibold text-[var(--foreground)]">Welcome back to Gentlegurls</h1>
+              <p className="mt-2 text-sm text-[var(--foreground)]/70">  
                 Sign in to manage bookings, view history, and checkout faster.
               </p>
             </div>
