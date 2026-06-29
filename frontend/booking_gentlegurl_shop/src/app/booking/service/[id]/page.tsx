@@ -634,39 +634,6 @@ export default function ServiceAddonsPage() {
               </>
             ) : null}
 
-            {/* Mobile: collapse optional section */}
-            <details className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:hidden">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
-                <span className="font-[var(--font-heading)] text-base font-semibold">Remarks (optional)</span>
-                <i className="fa-solid fa-chevron-down text-xs text-[var(--text-muted)]" aria-hidden />
-              </summary>
-              <div className="mt-3">
-                <textarea
-                  value={customerRemarks}
-                  onChange={(event) => setCustomerRemarks(event.target.value)}
-                  placeholder="Add a note…"
-                  rows={3}
-                  maxLength={2000}
-                  className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-                />
-              </div>
-            </details>
-
-            <section className="hidden rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm sm:block sm:p-6">
-              <h2 className="font-[var(--font-heading)] text-lg font-semibold">Remarks (Optional)</h2>
-              <p className="mt-1 text-sm text-[var(--text-muted)]">
-                Let us know if you have any special request or notes for this booking.
-              </p>
-              <textarea
-                value={customerRemarks}
-                onChange={(event) => setCustomerRemarks(event.target.value)}
-                placeholder="Share any requests, preferences, or notes for our team"
-                rows={4}
-                maxLength={2000}
-                className="mt-3 w-full rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
-              />
-            </section>
-
             <section
               id="booking-summary"
               className="overflow-hidden rounded-2xl border-2 border-[var(--status-warning-border)] bg-[var(--card)] shadow-md ring-1 ring-[var(--status-warning)]/25"
@@ -843,7 +810,22 @@ export default function ServiceAddonsPage() {
                 </div>
               </div>
 
-              <div className="mt-6 border-t border-[var(--card-border)] pt-6">
+              <div className="mt-6 space-y-5 border-t border-[var(--card-border)] pt-6">
+                <div>
+                  <h3 className="font-[var(--font-heading)] text-base font-semibold sm:text-lg">Remarks (Optional)</h3>
+                  <p className="mt-1 text-sm text-[var(--text-muted)]">
+                    Let us know if you have any special request or notes for this booking.
+                  </p>
+                  <textarea
+                    value={customerRemarks}
+                    onChange={(event) => setCustomerRemarks(event.target.value)}
+                    placeholder="Share any requests, preferences, or notes for our team"
+                    rows={3}
+                    maxLength={2000}
+                    className="mt-3 w-full rounded-xl border border-[var(--card-border)] bg-[var(--background)]/40 px-3 py-2 text-sm outline-none transition focus:border-[var(--accent)]"
+                  />
+                </div>
+
                 <button
                   type="button"
                   onClick={goToStylist}

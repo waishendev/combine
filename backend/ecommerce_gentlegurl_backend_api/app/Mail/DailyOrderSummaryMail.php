@@ -18,8 +18,10 @@ class DailyOrderSummaryMail extends Mailable
      *   total_revenue:float|int|string,
      *   orders:array<int, array{
      *     order_number:string|int|null,
+     *     order_kind:string,
      *     status:string|null,
      *     payment_status:string|null,
+     *     status_label:string,
      *     customer_name:string|null,
      *     total_amount:float|int|string|null,
      *     product_names:array<int, string>

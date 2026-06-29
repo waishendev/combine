@@ -352,6 +352,17 @@ function SlotPageContent() {
         <p className="mt-3 text-center text-lg text-[var(--text-muted)]">
           <span className="font-semibold tabular-nums text-[var(--foreground)]">{durationMin} min</span>
         </p>
+
+        {shouldShowSlotsHelpNote ? (
+          <aside className="mt-6 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm leading-relaxed text-[var(--text-muted)] shadow-[var(--shadow)] sm:p-6">
+            <div className="flex gap-3">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[var(--accent-strong)]">
+                <i className="fa-regular fa-message text-sm" />
+              </span>
+              <p>{slotsHelpNote.text}</p>
+            </div>
+          </aside>
+        ) : null}
       </div>
 
       {/* Date picker: strip + calendar toggle */}
@@ -564,16 +575,7 @@ function SlotPageContent() {
         </section>
       )}
 
-      {shouldShowSlotsHelpNote ? (
-        <aside className="mt-6 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 text-sm leading-relaxed text-[var(--text-muted)] shadow-[var(--shadow)] sm:p-6">
-          <div className="flex gap-3">
-            <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)]/15 text-[var(--accent-strong)]">
-              <i className="fa-regular fa-message text-sm" />
-            </span>
-            <p>{slotsHelpNote.text}</p>
-          </div>
-        </aside>
-      ) : null}
+
 
     </main>
   );

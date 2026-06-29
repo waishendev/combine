@@ -15,13 +15,13 @@
         <hr style="border: 0; border-top: 1px solid #ddd; margin: 20px 0;">
 
         @if ($summary['total_orders'] === 0)
-            <p>No pending orders matched the criteria today.</p>
+            <p>No pending orders need attention right now.</p>
         @else
             <h2 style="color: #333;">Orders</h2>
             @foreach ($summary['orders'] as $order)
                 <div style="padding: 15px; border: 1px solid #e0e0e0; border-radius: 6px; margin-bottom: 15px; background-color: #ffffff;">
-                    <p style="margin: 0 0 8px;"><strong>Order:</strong> {{ $order['order_number'] }}</p>
-                    <p style="margin: 0 0 8px;"><strong>Status:</strong> {{ $order['status'] }} / {{ $order['payment_status'] }}</p>
+                    <p style="margin: 0 0 8px;"><strong>Order:</strong> {{ $order['order_number'] }} <span style="color:#666;">({{ $order['order_kind'] ?? 'Shop' }})</span></p>
+                    <p style="margin: 0 0 8px;"><strong>Status:</strong> {{ $order['status_label'] ?? ($order['status'] . ' / ' . $order['payment_status']) }}</p>
                     <p style="margin: 0 0 8px;"><strong>Customer:</strong> {{ $order['customer_name'] }}</p>
                     <p style="margin: 0 0 8px;"><strong>Total Amount:</strong> {{ number_format((float) $order['total_amount'], 2) }}</p>
                     <p style="margin: 0;"><strong>Products:</strong>
