@@ -39,7 +39,7 @@ function LoginPageContent() {
     if (user && !isRedirecting) {
       setIsSubmitting(false);
       setIsRedirecting(true);
-      router.replace(redirectTarget ?? "/reports/sales/visual");
+      router.replace(redirectTarget ?? "/");
     }
   }, [user, redirectTarget, router, isRedirecting]);
 
