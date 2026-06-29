@@ -232,6 +232,7 @@ type AppointmentSettlementCartItem = {
   guest_phone?: string | null
   guest_email?: string | null
   notes?: string | null
+  settlement_notes?: string | null
   reschedule_reason?: string | null
   rescheduled_at?: string | null
   service_name?: string | null
@@ -1758,6 +1759,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementDepositOriginal, setCartEditSettlementDepositOriginal] = useState(0)
   const [cartEditSettlementDepositDraft, setCartEditSettlementDepositDraft] = useState('')
   const [cartEditSettlementDepositRemarkDraft, setCartEditSettlementDepositRemarkDraft] = useState('')
+  const [cartEditSettlementNoteDraft, setCartEditSettlementNoteDraft] = useState('')
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -4613,6 +4615,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSettlementDepositOriginal(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0))
     setCartEditSettlementDepositDraft(String(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0)))
     setCartEditSettlementDepositRemarkDraft('')
+    setCartEditSettlementNoteDraft('')
 
     setCartEditAddonOptionsLoading(true)
     setCartEditMainServiceCatalogLoading(true)
@@ -4930,6 +4933,11 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         return
       }
       payload.staff_splits = normalizedSplits
+
+      const settlementNote = cartEditSettlementNoteDraft.trim()
+      if (settlementNote) {
+        payload.settlement_note = settlementNote
+      }
 
       const phonePattern = /^\+?[0-9]{8,15}$/
       if (cartEditSettlementIdentityMode === 'member') {
@@ -9468,6 +9476,24 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <label className="text-xs font-semibold text-gray-700">Settlement Notes</label>
+                    {cartEditSettlementItem.settlement_notes ? (
+                      <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">{cartEditSettlementItem.settlement_notes}</pre>
+                    ) : (
+                      <p className="mt-1 text-xs text-gray-500">No settlement notes yet.</p>
+                    )}
+                    <textarea
+                      value={cartEditSettlementNoteDraft}
+                      onChange={(e) => setCartEditSettlementNoteDraft(e.target.value)}
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Append service execution notes, pricing explanations, or internal staff notes."
+                      className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">New text will be appended with timestamp and staff name when saved.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">

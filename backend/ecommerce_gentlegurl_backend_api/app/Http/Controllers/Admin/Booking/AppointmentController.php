@@ -340,6 +340,7 @@ class AppointmentController extends Controller
             'status' => (string) $booking->status,
             'booking_payment_status' => (string) $booking->payment_status,
             'payment_status' => (string) ($financial['computed_payment_status'] ?? $booking->payment_status),
+            'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
             ...$financial,
         ];
     }

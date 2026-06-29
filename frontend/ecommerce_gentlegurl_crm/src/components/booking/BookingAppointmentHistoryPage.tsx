@@ -47,6 +47,7 @@ export type AppointmentHistoryRow = {
   package_offset: number
   balance_due: number
   notes?: string | null
+  settlement_notes?: string | null
   source?: string | null
   customer_reference_photos_count?: number
   customer_reference_photos?: Array<{ id: number; file_url?: string | null; original_name?: string | null }>
@@ -237,6 +238,11 @@ export function BookingAppointmentDetailDrawer({
                   <DetailField label="Paid Amount" value={formatMoney(row.paid_amount)} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
                   <DetailField label="Balance Due" value={formatMoney(row.balance_due)} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 p-4">
+                <h4 className="font-semibold text-slate-900">Settlement Notes</h4>
+                <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{row.settlement_notes || '—'}</p>
               </section>
 
               <BookingPhotosPaymentProofSection

@@ -16,7 +16,7 @@ class Booking extends Model
         'booking_code', 'source', 'customer_id', 'guest_name', 'guest_phone', 'guest_email',
         'billing_name', 'billing_phone', 'billing_email',
         'staff_id', 'service_id', 'start_at', 'end_at', 'buffer_min', 'addon_duration_min', 'status', 'deposit_amount', 'addon_price', 'addon_items_json', 'settled_service_amount',
-        'payment_status', 'hold_expires_at', 'completed_at', 'commission_counted_at', 'created_by_staff_id', 'cancelled_at', 'cancellation_type', 'notes',
+        'payment_status', 'hold_expires_at', 'completed_at', 'commission_counted_at', 'created_by_staff_id', 'cancelled_at', 'cancellation_type', 'notes', 'settlement_notes',
         'reschedule_count', 'rescheduled_at', 'rescheduled_from_booking_id', 'reschedule_reason',
         'schedule_override_used', 'schedule_override_type', 'scheduled_staff_start_at', 'scheduled_staff_end_at',
         'actual_booking_start_at', 'actual_booking_end_at', 'schedule_override_by', 'schedule_override_at',

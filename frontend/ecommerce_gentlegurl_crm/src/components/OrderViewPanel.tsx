@@ -29,6 +29,7 @@ type BookingDetailData = {
   guest_name?: string | null
   guest_phone?: string | null
   guest_email?: string | null
+  settlement_notes?: string | null
   service?: {
     id?: number
     name?: string | null
@@ -1439,6 +1440,13 @@ export default function OrderViewPanel({
                     <p className="font-medium text-slate-900">{formatBookingMoney(viewingBookingDetail.balance_due)}</p>
                   </div>
                 </div>
+              </section>
+
+              <section className="rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                  <p className="font-semibold text-slate-900">Settlement Notes</p>
+                </div>
+                <div className="px-4 py-3 text-sm whitespace-pre-wrap text-slate-800">{viewingBookingDetail.settlement_notes || '—'}</div>
               </section>
 
               {((viewingBookingDetail.uploaded_item_photos?.length ?? 0) > 0 || (viewingBookingDetail.service_photos?.length ?? 0) > 0) && (

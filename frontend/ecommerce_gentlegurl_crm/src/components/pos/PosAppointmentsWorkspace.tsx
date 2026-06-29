@@ -436,6 +436,7 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementDepositOriginal, setEditSettlementDepositOriginal] = useState(0)
   const [editSettlementDepositDraft, setEditSettlementDepositDraft] = useState('')
   const [editSettlementDepositRemarkDraft, setEditSettlementDepositRemarkDraft] = useState('')
+  const [editSettlementNoteDraft, setEditSettlementNoteDraft] = useState('')
   const [memberPickerForEditSettlement, setMemberPickerForEditSettlement] = useState(false)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
@@ -2116,6 +2117,7 @@ export default function PosAppointmentsWorkspace({
     setEditSettlementDepositOriginal(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0))
     setEditSettlementDepositDraft(String(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0)))
     setEditSettlementDepositRemarkDraft('')
+    setEditSettlementNoteDraft('')
 
     setEditAddonOptionsLoading(true)
     setEditMainServiceCatalogLoading(true)
@@ -2439,6 +2441,11 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      const settlementNote = editSettlementNoteDraft.trim()
+      if (settlementNote) {
+        payload.settlement_note = settlementNote
+      }
+
       const phonePattern = /^\+?[0-9]{8,15}$/
       if (editSettlementIdentityMode === 'member') {
         if (!editSettlementCustomerId) {
@@ -2511,7 +2518,7 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -6221,6 +6228,24 @@ export default function PosAppointmentsWorkspace({
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <label className="text-xs font-semibold text-gray-700">Settlement Notes</label>
+                    {appointmentDetail.settlement_notes ? (
+                      <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">{appointmentDetail.settlement_notes}</pre>
+                    ) : (
+                      <p className="mt-1 text-xs text-gray-500">No settlement notes yet.</p>
+                    )}
+                    <textarea
+                      value={editSettlementNoteDraft}
+                      onChange={(e) => setEditSettlementNoteDraft(e.target.value)}
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Append service execution notes, pricing explanations, or internal staff notes."
+                      className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">New text will be appended with timestamp and staff name when saved.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">

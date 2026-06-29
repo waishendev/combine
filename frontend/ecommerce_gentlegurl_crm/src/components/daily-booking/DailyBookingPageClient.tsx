@@ -44,6 +44,7 @@ type DailyBookingRow = {
   service_photos_count?: number
   service_photos?: BookingServicePhoto[]
   payment_proofs?: PaymentProof[]
+  settlement_notes?: string | null
 }
 
 type DailyBookingResponse = {
@@ -293,6 +294,11 @@ export default function DailyBookingPageClient() {
                 <p><span className="font-semibold text-slate-500">Add-on amount</span><br />{money(selected.add_ons?.reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0))}</p>
                 <p><span className="font-semibold text-slate-500">Package offset</span><br />{money(selected.package_offset)}</p>
                 <p><span className="font-semibold text-slate-500">Balance due</span><br />{money(selected.balance_due)}</p>
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
+                <p className="font-semibold text-slate-500">Settlement Notes</p>
+                <p className="mt-2 whitespace-pre-wrap text-slate-800">{selected.settlement_notes || '—'}</p>
               </section>
 
               <BookingPhotosPaymentProofSection

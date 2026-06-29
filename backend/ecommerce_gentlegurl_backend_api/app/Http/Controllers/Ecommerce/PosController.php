@@ -505,6 +505,7 @@ class PosController extends Controller
             'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
             'guest_email' => $guestEmail !== '' ? $guestEmail : null,
             'notes' => ($bookingNotes = trim((string) ($booking->notes ?? ''))) !== '' ? $bookingNotes : null,
+            'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
             'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
             'rescheduled_at' => optional($booking->rescheduled_at)?->toIso8601String(),
             'reschedule_count' => max(0, (int) ($booking->reschedule_count ?? 0)),
@@ -1140,11 +1141,12 @@ class PosController extends Controller
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:32'],
             'guest_email' => ['nullable', 'string', 'email', 'max:255'],
+            'settlement_note' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $isDepositOnlyAdjustment = $request->has('adjusted_deposit_amount')
             && ! $isEditingSettlement
-            && ! $request->hasAny(['customer_id', 'guest_name', 'guest_phone', 'guest_email']);
+            && ! $request->hasAny(['customer_id', 'guest_name', 'guest_phone', 'guest_email', 'settlement_note']);
 
         if ($isDepositOnlyAdjustment) {
             try {
@@ -1214,6 +1216,19 @@ class PosController extends Controller
                 $booking->guest_name = $guestName !== '' ? $guestName : 'UNKNOWN';
                 $booking->guest_phone = $guestPhone !== '' ? $guestPhone : null;
                 $booking->guest_email = $guestEmail !== '' ? Str::lower($guestEmail) : null;
+            }
+        }
+
+        if ($request->has('settlement_note')) {
+            $note = trim((string) ($validated['settlement_note'] ?? ''));
+            if ($note !== '') {
+                $author = trim((string) ($request->user()?->name ?? ''));
+                if ($author === '') {
+                    $author = 'Staff #' . (int) $request->user()->id;
+                }
+                $entry = now()->format('Y-m-d H:i') . "\n" . $author . ":\n" . $note;
+                $existingNotes = trim((string) ($booking->settlement_notes ?? ''));
+                $booking->settlement_notes = $existingNotes !== '' ? ($existingNotes . "\n\n" . $entry) : $entry;
             }
         }
 
@@ -7696,6 +7711,7 @@ class PosController extends Controller
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
                 'notes' => ($bookingNotes = trim((string) ($booking->notes ?? ''))) !== '' ? $bookingNotes : null,
+                'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
                 'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
                 'rescheduled_at' => optional($booking->rescheduled_at)?->toIso8601String(),
                 'service_name' => (string) ($booking->service?->name ?? '-'),
@@ -8840,6 +8856,7 @@ class PosController extends Controller
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'schedule_override' => $this->serializeScheduleOverride($booking),
+            'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
             'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
                 ? 'Walk-in / Unknown'
                 : (($booking->customer?->name ?? '') !== ''
