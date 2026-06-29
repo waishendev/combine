@@ -221,6 +221,34 @@ const getGuestContactLines = (source: GuestContactSource): string[] => {
   return lines
 }
 
+
+function SettlementNotesHistory({ notes, emptyText = 'No settlement notes yet.' }: { notes?: string | null; emptyText?: string }) {
+  const entries = String(notes ?? '').trim().split(/\n{2,}/).map((entry) => entry.trim()).filter(Boolean).slice().reverse()
+  if (entries.length === 0) return <p className="mt-2 text-xs text-slate-500">{emptyText}</p>
+
+  return (
+    <ul className="mt-2 space-y-2">
+      {entries.map((entry, idx) => {
+        const lines = entry.split('\n')
+        const dateLine = lines[0]?.trim() ?? ''
+        const staffLine = lines[1]?.trim().replace(/:$/, '') ?? ''
+        const content = lines.slice(2).join('\n').trim() || entry
+        return (
+          <li key={`${dateLine}-${staffLine}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            {dateLine || staffLine ? (
+              <div className="mb-1 flex flex-wrap gap-x-2 gap-y-0.5 font-semibold text-slate-900">
+                {dateLine ? <span>{dateLine}</span> : null}
+                {staffLine ? <span>{staffLine}</span> : null}
+              </div>
+            ) : null}
+            <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 type AppointmentSettlementCartItem = {
   id: number
   booking_id: number
@@ -5019,6 +5047,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         })
       }
       showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
+      setCartEditSettlementNoteDraft('')
       setCartEditSettlementOpen(false)
       await loadCart()
       void fetchUnpaidCompletedAppointments(settlementQuery)
@@ -9479,21 +9508,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   </div>
 
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <label className="text-xs font-semibold text-gray-700">Settlement Notes</label>
-                    {cartEditSettlementItem.settlement_notes ? (
-                      <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">{cartEditSettlementItem.settlement_notes}</pre>
-                    ) : (
-                      <p className="mt-1 text-xs text-gray-500">No settlement notes yet.</p>
-                    )}
+                    <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
                     <textarea
                       value={cartEditSettlementNoteDraft}
                       onChange={(e) => setCartEditSettlementNoteDraft(e.target.value)}
                       rows={3}
                       maxLength={2000}
-                      placeholder="Append service execution notes, pricing explanations, or internal staff notes."
+                      placeholder="Add new settlement note..."
                       className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     />
-                    <p className="mt-1 text-[11px] text-gray-500">New text will be appended with timestamp and staff name when saved.</p>
+                    <p className="mt-1 text-[11px] text-gray-500">This note will be appended after saving.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -10315,6 +10339,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   </p>
                                 ) : null}
                                 <p>Duration: {getSettlementDurationMin(settlement) > 0 ? `${getSettlementDurationMin(settlement)} min` : '—'}</p>
+                              </div>
+                              <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
+                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-700">Settlement Notes</p>
+                                <SettlementNotesHistory notes={settlement.settlement_notes} />
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">

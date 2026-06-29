@@ -172,6 +172,33 @@ function PosServiceNameStack({
   )
 }
 
+function SettlementNotesHistory({ notes, emptyText = 'No settlement notes yet.' }: { notes?: string | null; emptyText?: string }) {
+  const entries = String(notes ?? '').trim().split(/\n{2,}/).map((entry) => entry.trim()).filter(Boolean).slice().reverse()
+  if (entries.length === 0) return <p className="mt-2 text-xs text-slate-500">{emptyText}</p>
+
+  return (
+    <ul className="mt-2 space-y-2">
+      {entries.map((entry, idx) => {
+        const lines = entry.split('\n')
+        const dateLine = lines[0]?.trim() ?? ''
+        const staffLine = lines[1]?.trim().replace(/:$/, '') ?? ''
+        const content = lines.slice(2).join('\n').trim() || entry
+        return (
+          <li key={`${dateLine}-${staffLine}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            {dateLine || staffLine ? (
+              <div className="mb-1 flex flex-wrap gap-x-2 gap-y-0.5 font-semibold text-slate-900">
+                {dateLine ? <span>{dateLine}</span> : null}
+                {staffLine ? <span>{staffLine}</span> : null}
+              </div>
+            ) : null}
+            <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 type CreateExtraServiceBlock = {
   id: string
   service: BookingServiceOption | null
@@ -2512,6 +2539,7 @@ export default function PosAppointmentsWorkspace({
         ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
         : []
       showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
+      setEditSettlementNoteDraft('')
       setEditSettlementOpen(false)
       await refreshOpenedAppointmentDetail()
       await fetchAppointments({ silent: true })
@@ -4066,6 +4094,11 @@ export default function PosAppointmentsWorkspace({
                         </button>
                       </div>
                     ) : null}
+
+                    <div className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
+                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Settlement Notes</p>
+                      <SettlementNotesHistory notes={appointmentDetail.settlement_notes} />
+                    </div>
 
                     <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                       <div className="flex gap-3 text-sm">
@@ -6231,21 +6264,16 @@ export default function PosAppointmentsWorkspace({
                   </div>
 
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
-                    <label className="text-xs font-semibold text-gray-700">Settlement Notes</label>
-                    {appointmentDetail.settlement_notes ? (
-                      <pre className="mt-2 max-h-36 overflow-y-auto whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">{appointmentDetail.settlement_notes}</pre>
-                    ) : (
-                      <p className="mt-1 text-xs text-gray-500">No settlement notes yet.</p>
-                    )}
+                    <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
                     <textarea
                       value={editSettlementNoteDraft}
                       onChange={(e) => setEditSettlementNoteDraft(e.target.value)}
                       rows={3}
                       maxLength={2000}
-                      placeholder="Append service execution notes, pricing explanations, or internal staff notes."
+                      placeholder="Add new settlement note..."
                       className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     />
-                    <p className="mt-1 text-[11px] text-gray-500">New text will be appended with timestamp and staff name when saved.</p>
+                    <p className="mt-1 text-[11px] text-gray-500">This note will be appended after saving.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
