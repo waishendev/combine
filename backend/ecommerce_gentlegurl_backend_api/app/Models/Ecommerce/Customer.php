@@ -151,7 +151,7 @@ class Customer extends Authenticatable implements MustVerifyEmailContract
 
     public function sendPasswordResetNotification($token)
     {
-        $this->notify(new CustomerResetPassword($token));
+        $this->notify(new CustomerResetPassword($token, FrontendUrlResolver::resolveBaseUrl()));
     }
 
     public function orders()

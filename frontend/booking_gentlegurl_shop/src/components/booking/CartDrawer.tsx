@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
@@ -61,6 +61,22 @@ function isPremiumService(serviceType: string | null | undefined): boolean {
   return String(serviceType ?? "").toLowerCase() === "premium";
 }
 
+const FIELD_ERROR_ORDER = [
+  "guest_name",
+  "guest_phone",
+  "guest_email",
+  "billing_name",
+  "billing_phone",
+  "billing_email",
+] as const;
+
+function getFirstFieldErrorKey(errors: Record<string, string>): string | null {
+  for (const key of FIELD_ERROR_ORDER) {
+    if (errors[key]) return key;
+  }
+  return Object.keys(errors)[0] ?? null;
+}
+
 interface CartDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -96,6 +112,17 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [depositTncText, setDepositTncText] = useState("");
   const [depositTncImage, setDepositTncImage] = useState<string | null>(null);
   const [depositTncImagePreviewOpen, setDepositTncImagePreviewOpen] = useState(false);
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
+
+  const scrollToField = useCallback((fieldKey: string) => {
+    requestAnimationFrame(() => {
+      const el = fieldRefs.current[fieldKey];
+      if (!el) return;
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      const focusable = el.querySelector<HTMLElement>("input:not([type='hidden']), textarea, select, button");
+      focusable?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const loadCart = useCallback(async () => {
     try {
@@ -282,16 +309,20 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       if (Object.keys(nextErrors).length > 0) {
         setFieldErrors(nextErrors);
         setMessage("Please complete the required contact information before checkout.");
+        const firstErrorKey = getFirstFieldErrorKey(nextErrors);
+        if (firstErrorKey) scrollToField(firstErrorKey);
         return;
       }
 
       if (!isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" && !selectedBankAccountId) {
         setMessage("Please select a bank account for manual transfer.");
+        scrollToField("bank_account");
         return;
       }
       if (!isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
         if (onlineBankingOptions.length > 0) {
           setMessage("Please select an online banking option.");
+          scrollToField("online_banking");
           return;
         }
       }
@@ -1117,7 +1148,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   {isLoggedIn ? "Contact details" : "Guest details"}
                 </p>
                 <div className="grid gap-3">
-                  <div>
+                  <div ref={(el) => { fieldRefs.current.guest_name = el; }}>
                     <input
                       value={guestName}
                       onChange={(e) => {
@@ -1129,7 +1160,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     />
                     {fieldErrors.guest_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_name}</p> : null}
                   </div>
-                  <div>
+                  <div ref={(el) => { fieldRefs.current.guest_phone = el; }}>
                     <InternationalPhoneInput
                       value={guestPhone}
                       onChange={(phone) => {
@@ -1142,6 +1173,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                     />
                     {fieldErrors.guest_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_phone}</p> : null}
                   </div>
+                  <div ref={(el) => { fieldRefs.current.guest_email = el; }}>
                   <input
                     type="email"
                     value={guestEmail}
@@ -1149,10 +1181,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       setGuestEmail(e.target.value);
                       setFieldErrors((prev) => ({ ...prev, guest_email: "" }));
                     }}
-                    className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                    className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                     placeholder="Email *"
                   />
                   {fieldErrors.guest_email ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.guest_email}</p> : null}
+                  </div>
                 </div>
               </div>
 
@@ -1174,7 +1207,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                   </div>
                 ) : (
                   <div className="grid gap-3">
-                    <div>
+                    <div ref={(el) => { fieldRefs.current.billing_name = el; }}>
                       <input
                         value={billingName}
                         onChange={(e) => {
@@ -1186,7 +1219,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       />
                       {fieldErrors.billing_name ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_name}</p> : null}
                     </div>
-                    <div>
+                    <div ref={(el) => { fieldRefs.current.billing_phone = el; }}>
                       <InternationalPhoneInput
                         value={billingPhone}
                         onChange={(phone) => {
@@ -1199,6 +1232,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                       />
                       {fieldErrors.billing_phone ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_phone}</p> : null}
                     </div>
+                    <div ref={(el) => { fieldRefs.current.billing_email = el; }}>
                     <input
                       type="email"
                       value={billingEmail}
@@ -1206,10 +1240,11 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
                         setBillingEmail(e.target.value);
                         setFieldErrors((prev) => ({ ...prev, billing_email: "" }));
                       }}
-                      className="rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
+                      className="w-full rounded-xl border border-[var(--input-border)] bg-[var(--input-bg)] px-4 py-3 text-sm outline-none ring-[var(--ring)] transition-shadow focus:ring-2"
                       placeholder="Billing Email *"
                     />
                     {fieldErrors.billing_email ? <p className="mt-1 text-xs text-[var(--status-error)]">{fieldErrors.billing_email}</p> : null}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1242,7 +1277,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               ) : null}
 
               {!isZeroPayableCheckout && selectedPaymentMethod === "manual_transfer" ? (
-                <div>
+                <div ref={(el) => { fieldRefs.current.bank_account = el; }}>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Bank account</p>
                   <div className="space-y-2">
                     {bankAccounts.map((account) => (
@@ -1294,7 +1329,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               ) : null}
 
               {!isZeroPayableCheckout && selectedPaymentMethod === "billplz_online_banking" ? (
-                <div>
+                <div ref={(el) => { fieldRefs.current.online_banking = el; }}>
                   <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Online Banking</p>
                   {onlineBankingOptions.length === 0 ? (
                     <p className="rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-3 text-sm text-[var(--text-muted)]">

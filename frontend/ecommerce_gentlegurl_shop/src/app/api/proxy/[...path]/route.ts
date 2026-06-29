@@ -97,6 +97,9 @@ async function handleRequest(
       fetchHeaders["Cookie"] = cookieHeader;
     }
 
+    const workspace = request.headers.get("x-workspace") || "ecommerce";
+    fetchHeaders["X-Workspace"] = workspace;
+
     const backendResponse = await fetch(fullUrl, {
       method,
       headers: fetchHeaders,
