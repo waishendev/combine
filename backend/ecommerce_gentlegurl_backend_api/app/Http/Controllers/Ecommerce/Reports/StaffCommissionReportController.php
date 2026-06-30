@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 class StaffCommissionReportController extends Controller
 {
+    private const COMMISSIONABLE_LINE_TYPES = ['product', 'booking_settlement', 'booking_addon', 'booking_product'];
+
     public function summary(Request $request)
     {
         $validated = $request->validate([
@@ -241,6 +243,7 @@ class StaffCommissionReportController extends Controller
                     ->orWhereNull('orders.payment_status');
             })
             ->whereNull('orders.refunded_at')
+            ->whereIn('order_items.line_type', self::COMMISSIONABLE_LINE_TYPES)
             ->when(isset($filters['staff_id']), function (Builder $query) use ($filters) {
                 $query->where('order_item_staff_splits.staff_id', $filters['staff_id']);
             });

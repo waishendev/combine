@@ -890,7 +890,8 @@ class PosController extends Controller
 
                 $serviceLineKey = (string) ($mainLine['line_key'] ?? $this->appointmentSettlementLineKey('service', (array) $mainLine, (int) $mainIdx));
                 $serviceSplits = $resolveLineSplits($serviceLineKey, $mainLine['staff_splits'] ?? [], $bookingSplits);
-                $persistLineSplits($serviceOrderItem, $serviceSplits, 'settlement_service', $serviceLineKey, $serviceLineNet, [
+                $serviceCommissionBasis = $serviceLineNet + (((bool) ($mainLine['is_original'] ?? false)) ? max(0.0, (float) ($summary['deposit_contribution'] ?? 0)) : 0.0);
+                $persistLineSplits($serviceOrderItem, $serviceSplits, 'settlement_service', $serviceLineKey, $serviceCommissionBasis, [
                     'booking_id' => (int) $booking->id,
                     'line_key' => $serviceLineKey,
                     'line_type' => 'settlement_service',
@@ -6565,7 +6566,8 @@ class PosController extends Controller
                             $uniqueCount = $lineSplits->pluck('staff_id')->unique()->count();
                             if ($splitSum === 100 && $uniqueCount === $lineSplits->count()) {
                                 $submittedSettlementSplits = $resolveLineSplits($lineStaffSplitsBySettlementItemId->get((int) $settlementItem->id, []), $lineKey, $lineSplits->values()->all());
-                                $persistOrderItemLineSplits($settlementOrderItem, $submittedSettlementSplits, 'settlement_service', $lineKey, (float) $serviceLineNet, [
+                                $serviceCommissionBasis = $serviceLineNet + (((bool) ($mainLine['is_original'] ?? false)) ? max(0.0, (float) ($summary['deposit_contribution'] ?? 0)) : 0.0);
+                                $persistOrderItemLineSplits($settlementOrderItem, $submittedSettlementSplits, 'settlement_service', $lineKey, $serviceCommissionBasis, [
                                     'settlement_cart_item_id' => (int) $settlementItem->id,
                                     'booking_id' => (int) $booking->id,
                                     'line_key' => $lineKey,
