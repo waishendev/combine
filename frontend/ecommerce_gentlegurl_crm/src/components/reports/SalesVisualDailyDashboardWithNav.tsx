@@ -171,7 +171,7 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
           <h3 className="text-sm font-semibold text-slate-800">Payment method</h3>
           <p className="mt-1 text-xs text-slate-500">
             All gateways from settings ({mode === 'ecommerce' ? 'ecommerce' : mode === 'booking' ? 'booking' : 'ecommerce + booking merged'}
-            ). Online vs offline by order creator.
+            ). Net amount after discount; online vs offline by order creator.
           </p>
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">Loading…</p>
