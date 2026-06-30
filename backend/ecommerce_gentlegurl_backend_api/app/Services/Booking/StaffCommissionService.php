@@ -380,7 +380,7 @@ class StaffCommissionService
         return DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
             ->where(function ($query) {
@@ -446,16 +446,16 @@ class StaffCommissionService
         return "(CASE WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_base' THEN GREATEST(0, ($lineTotalExpr) - ($optionTotalExpr)) WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_option' THEN COALESCE($matchingOptionExpr, order_item_staff_splits.amount_basis, $lineTotalExpr) ELSE COALESCE(order_item_staff_splits.amount_basis, $lineTotalExpr) END)::numeric";
     }
 
-    private function resolveBookingCommissionableNetAmount(int $bookingId, float $fallback): float
+    private function resolveBookingCommissionableNetAmount(int $bookingId, float $settledFallback): float
     {
         if ($bookingId <= 0) {
-            return round(max(0, $fallback), 2);
+            return round(max(0, $settledFallback), 2);
         }
 
         $net = (float) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('order_items.booking_id', $bookingId)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
@@ -469,7 +469,7 @@ class StaffCommissionService
             return round($net, 2);
         }
 
-        return round(max(0, $fallback), 2);
+        return round(max(0, $settledFallback), 2);
     }
 
     private function resolveBookingNetTotalsByIds(array $bookingIds): array
@@ -482,7 +482,7 @@ class StaffCommissionService
         return DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereIn('order_items.booking_id', $ids)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
@@ -520,7 +520,7 @@ class StaffCommissionService
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn ($query) => $query->where('order_item_staff_splits.staff_id', $staffId))
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -556,7 +556,7 @@ class StaffCommissionService
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->where('order_items.booking_id', $bookingId)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -589,7 +589,7 @@ class StaffCommissionService
             return $lineRows;
         }
 
-        $servicePrice = $this->resolveBookingCommissionableNetAmount($bookingId, (float) optional($booking->service)->service_price);
+        $servicePrice = $this->resolveBookingCommissionableNetAmount($bookingId, (float) ($booking->settled_service_amount ?? 0));
 
         return $this->resolveBookingStaffSplits($booking)
             ->map(fn ($split) => [

@@ -571,7 +571,7 @@ class SalesVisualDailyReportService
                 ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end]),
             'orders'
         )
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product']);
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product']);
     }
 
     /**

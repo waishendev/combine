@@ -241,6 +241,7 @@ class StaffCommissionReportController extends Controller
                     ->orWhereNull('orders.payment_status');
             })
             ->whereNull('orders.refunded_at')
+            ->where('order_items.line_type', '!=', 'booking_deposit')
             ->when(isset($filters['staff_id']), function (Builder $query) use ($filters) {
                 $query->where('order_item_staff_splits.staff_id', $filters['staff_id']);
             });
