@@ -37,7 +37,7 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
-import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
+import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -232,6 +232,8 @@ type AppointmentSettlementCartItem = {
   guest_phone?: string | null
   guest_email?: string | null
   notes?: string | null
+  void_remarks?: string | null
+  settlement_notes?: string | null
   reschedule_reason?: string | null
   rescheduled_at?: string | null
   service_name?: string | null
@@ -1758,6 +1760,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [cartEditSettlementDepositOriginal, setCartEditSettlementDepositOriginal] = useState(0)
   const [cartEditSettlementDepositDraft, setCartEditSettlementDepositDraft] = useState('')
   const [cartEditSettlementDepositRemarkDraft, setCartEditSettlementDepositRemarkDraft] = useState('')
+  const [cartEditSettlementNoteDraft, setCartEditSettlementNoteDraft] = useState('')
 
   const [memberOpen, setMemberOpen] = useState(false)
   const [memberQuery, setMemberQuery] = useState('')
@@ -4613,6 +4616,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSettlementDepositOriginal(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0))
     setCartEditSettlementDepositDraft(String(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0)))
     setCartEditSettlementDepositRemarkDraft('')
+    setCartEditSettlementNoteDraft(String(settlement.settlement_notes ?? '').trim())
 
     setCartEditAddonOptionsLoading(true)
     setCartEditMainServiceCatalogLoading(true)
@@ -4931,6 +4935,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
       payload.staff_splits = normalizedSplits
 
+      payload.settlement_note = cartEditSettlementNoteDraft.trim()
+
       const phonePattern = /^\+?[0-9]{8,15}$/
       if (cartEditSettlementIdentityMode === 'member') {
         if (!cartEditSettlementCustomerId) {
@@ -5011,6 +5017,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
         })
       }
       showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
+      setCartEditSettlementNoteDraft('')
       setCartEditSettlementOpen(false)
       await loadCart()
       void fetchUnpaidCompletedAppointments(settlementQuery)
@@ -8344,9 +8351,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         {getGuestContactLines(settlement).map((line) => (
                           <p key={`cart-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
                         ))}
-                        {getAppointmentRemarkLines(settlement).map((line) => (
-                          <p key={`cart-settlement-remark-${settlement.id}-${line.key}`} className="whitespace-pre-wrap">
-                            {line.label}: {line.value}
+                        {getAppointmentDisplayRemarkLines(settlement).map((line) => (
+                          <p key={`cart-settlement-remark-${settlement.id}-${line.key}`} className="text-xs font-medium text-slate-600">
+                            <span className="text-slate-500">{line.label}:</span>{' '}
+                            <span className="whitespace-pre-wrap">{line.value}</span>
                           </p>
                         ))}
                         <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
@@ -9470,6 +9478,19 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                     )}
                   </div>
 
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
+                    <textarea
+                      value={cartEditSettlementNoteDraft}
+                      onChange={(e) => setCartEditSettlementNoteDraft(e.target.value)}
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Edit settlement note..."
+                      className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">Changes replace the current note when you save.</p>
+                  </div>
+
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
                     <button
                       type="button"
@@ -10278,9 +10299,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 {getGuestContactLines(settlement).map((line) => (
                                   <p key={`checkout-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
                                 ))}
-                                {getAppointmentRemarkLines(settlement).map((line) => (
-                                  <p key={`checkout-settlement-remark-${settlement.id}-${line.key}`} className="whitespace-pre-wrap">
-                                    {line.label}: {line.value}
+                                {getAppointmentDisplayRemarkLines(settlement).map((line) => (
+                                  <p key={`checkout-settlement-remark-${settlement.id}-${line.key}`} className="text-xs font-medium text-slate-600">
+                                    <span className="text-slate-500">{line.label}:</span>{' '}
+                                    <span className="whitespace-pre-wrap">{line.value}</span>
                                   </p>
                                 ))}
                                 {settlement.appointment_start_at ? (

@@ -495,6 +495,7 @@ class OrderController extends Controller
             'guest_name' => $booking->guest_name,
             'guest_phone' => $booking->guest_phone,
             'guest_email' => $booking->guest_email,
+            'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
             'service' => $booking->service ? [
                 'id' => (int) $booking->service->id,
                 'name' => (string) $booking->service->name,

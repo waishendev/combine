@@ -43,7 +43,7 @@ import {
   formatAppointmentCustomerDisplayName,
   formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
-  getAppointmentRemarkLines,
+  getAppointmentDisplayRemarkLines,
   formatBookingAddonSummary,
   buildPosAppointmentSlots,
   formatDateTimeRange,
@@ -436,6 +436,7 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementDepositOriginal, setEditSettlementDepositOriginal] = useState(0)
   const [editSettlementDepositDraft, setEditSettlementDepositDraft] = useState('')
   const [editSettlementDepositRemarkDraft, setEditSettlementDepositRemarkDraft] = useState('')
+  const [editSettlementNoteDraft, setEditSettlementNoteDraft] = useState('')
   const [memberPickerForEditSettlement, setMemberPickerForEditSettlement] = useState(false)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
@@ -2116,6 +2117,7 @@ export default function PosAppointmentsWorkspace({
     setEditSettlementDepositOriginal(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0))
     setEditSettlementDepositDraft(String(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0)))
     setEditSettlementDepositRemarkDraft('')
+    setEditSettlementNoteDraft(String(appointmentDetail.settlement_notes ?? '').trim())
 
     setEditAddonOptionsLoading(true)
     setEditMainServiceCatalogLoading(true)
@@ -2439,6 +2441,8 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      payload.settlement_note = editSettlementNoteDraft.trim()
+
       const phonePattern = /^\+?[0-9]{8,15}$/
       if (editSettlementIdentityMode === 'member') {
         if (!editSettlementCustomerId) {
@@ -2505,13 +2509,14 @@ export default function PosAppointmentsWorkspace({
         ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
         : []
       showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
+      setEditSettlementNoteDraft('')
       setEditSettlementOpen(false)
       await refreshOpenedAppointmentDetail()
       await fetchAppointments({ silent: true })
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -3805,10 +3810,10 @@ export default function PosAppointmentsWorkspace({
                           <span className="text-slate-500">{line.label}:</span> {line.value}
                         </p>
                       ))}
-                      {getAppointmentRemarkLines(appointmentDetail).map((line) => (
-                        <p key={`appointment-remark-${line.key}`} className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
-                          <span className="font-semibold text-slate-500">{line.label}:</span>{' '}
-                          {line.value}
+                      {getAppointmentDisplayRemarkLines(appointmentDetail).map((line) => (
+                        <p key={`appointment-remark-${line.key}`} className="text-xs font-medium text-slate-600">
+                          <span className="text-slate-500">{line.label}:</span>{' '}
+                          <span className="whitespace-pre-wrap">{line.value}</span>
                           {line.key === 'reschedule_reason' && appointmentDetail.rescheduled_at ? (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-400">
                               Last rescheduled {formatDateTime12Hour(appointmentDetail.rescheduled_at)}
@@ -6221,6 +6226,19 @@ export default function PosAppointmentsWorkspace({
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
+                    <textarea
+                      value={editSettlementNoteDraft}
+                      onChange={(e) => setEditSettlementNoteDraft(e.target.value)}
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Edit settlement note..."
+                      className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">Changes replace the current note when you save.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">

@@ -550,16 +550,64 @@ export type AppointmentRemarkLine = {
 }
 
 /** Create-time notes and latest reschedule reason for settlement / cart display. */
-export function getAppointmentRemarkLines(source: {
+export function bookingCustomerRemarksForDisplay(notes?: string | null): string | null {
+  let raw = String(notes ?? '').trim()
+  if (!raw) return null
+
+  raw = raw.replace(/\s*\[VOID REMARK\].*$/is, '').trim()
+  if (!raw) return null
+
+  const customerRemarksMatch = raw.match(/(?:^|\|\s*)customer_remarks:\s*(.+?)(?:\s*\|\s*deposit_waived_for_member\s*)?$/is)
+  if (customerRemarksMatch?.[1]?.trim()) {
+    return customerRemarksMatch[1].trim()
+  }
+
+  let stripped = raw
+    .replace(/(?:^|\|\s*)guest_token:[^\s|]+/gi, '')
+    .replace(/(?:^|\|\s*)deposit_waived_for_member/gi, '')
+    .replace(/\s*\|\s*/g, ' ')
+    .trim()
+
+  if (!stripped || /^(guest_token:|Booking cart checkout|\[VOID REMARK\])/i.test(stripped)) {
+    return null
+  }
+
+  return stripped
+}
+
+export function voidRemarksForDisplay(notes?: string | null, voidRemarks?: string | null): string | null {
+  const explicit = String(voidRemarks ?? '').trim()
+  if (explicit) return explicit
+
+  const raw = String(notes ?? '')
+  const match = raw.match(/\[VOID REMARK\]\s*(.+)/is)
+  if (match?.[1]?.trim()) return match[1].trim()
+
+  return null
+}
+
+export function getAppointmentDisplayRemarkLines(source: {
   notes?: string | null
+  void_remarks?: string | null
+  settlement_notes?: string | null
   reschedule_reason?: string | null
 } | null | undefined): AppointmentRemarkLine[] {
   if (!source) return []
 
   const lines: AppointmentRemarkLine[] = []
-  const notes = source.notes?.trim()
-  if (notes) {
-    lines.push({ key: 'notes', label: 'Remarks', value: notes })
+  const remarks = bookingCustomerRemarksForDisplay(source.notes)
+  if (remarks) {
+    lines.push({ key: 'notes', label: 'Remarks', value: remarks })
+  }
+
+  const voidRemarks = voidRemarksForDisplay(source.notes, source.void_remarks)
+  if (voidRemarks) {
+    lines.push({ key: 'void_remarks', label: 'Void Remarks', value: voidRemarks })
+  }
+
+  const settlementRemarks = settlementRemarksDisplayText(source.settlement_notes)
+  if (settlementRemarks) {
+    lines.push({ key: 'settlement_notes', label: 'Settlement Remarks', value: settlementRemarks })
   }
 
   const rescheduleReason = source.reschedule_reason?.trim()
@@ -568,4 +616,38 @@ export function getAppointmentRemarkLines(source: {
   }
 
   return lines
+}
+
+/** @deprecated Use getAppointmentDisplayRemarkLines */
+export function getAppointmentRemarkLines(source: {
+  notes?: string | null
+  reschedule_reason?: string | null
+} | null | undefined): AppointmentRemarkLine[] {
+  return getAppointmentDisplayRemarkLines(source)
+}
+
+const SETTLEMENT_NOTE_APPEND_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}$/
+
+/** Plain settlement remark text for display (strips legacy append timestamp/staff headers). */
+export function settlementRemarksDisplayText(notes?: string | null): string | null {
+  const raw = String(notes ?? '').trim()
+  if (!raw) return null
+
+  const blocks = raw.split(/\n{2,}/).map((entry) => entry.trim()).filter(Boolean)
+  const bodies = blocks.map((entry) => {
+    const lines = entry.split('\n')
+    if (lines.length === 1) return entry
+
+    const first = lines[0]?.trim() ?? ''
+    const second = lines[1]?.trim() ?? ''
+    if (SETTLEMENT_NOTE_APPEND_TIMESTAMP_RE.test(first) && second.endsWith(':')) {
+      const body = lines.slice(2).join('\n').trim()
+      return body || entry
+    }
+
+    return entry
+  }).filter(Boolean)
+
+  if (bodies.length === 0) return null
+  return bodies.join('\n')
 }

@@ -8,6 +8,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\User;
+use App\Support\BookingNotes;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
@@ -65,7 +66,8 @@ class SalesChannelReportService
                 'items' => fn ($query) => $query->orderBy('id'),
                 'items.product:id,name,cn_name',
                 'items.productVariant:id,title,sku,cn_name',
-                'items.booking:id,booking_code,service_id,guest_name,guest_phone,guest_email',
+                'items.booking:id,booking_code,service_id,staff_id,guest_name,guest_phone,guest_email,notes,settlement_notes,reschedule_reason',
+                'items.booking.staff:id,name',
                 'items.booking.service:id,name,cn_name',
                 'items.bookingService:id,name,cn_name',
                 'items.staff:id,name',
@@ -98,6 +100,12 @@ class SalesChannelReportService
             ->unique()
             ->values();
 
+        $assignedStaffNames = $order->items
+            ->map(fn (OrderItem $item) => $item->booking?->staff?->name)
+            ->filter()
+            ->unique()
+            ->values();
+
         $paymentProofs = $this->paymentProofsForOrder($order);
 
         $lineTypes = $order->items
@@ -120,6 +128,8 @@ class SalesChannelReportService
                 ->get(['id', 'name', 'email'])
                 ->mapWithKeys(fn (User $user) => [(int) $user->id => (string) ($user->email ?: $user->name ?: ('User #' . $user->id))]);
 
+        $bookingRemarks = $this->resolveOrderBookingRemarks($order);
+
         return [
             'order' => [
                 'id' => (int) $order->id,
@@ -132,14 +142,55 @@ class SalesChannelReportService
                 'payments' => $payments->all(),
                 'type' => $lineTypes->isEmpty() ? 'Order' : $lineTypes->implode(', '),
                 'booking_no' => $bookingNumbers->isEmpty() ? null : $bookingNumbers->implode(', '),
+                'assigned_staff_name' => $assignedStaffNames->isEmpty() ? null : $assignedStaffNames->implode(', '),
                 'status' => (string) $order->status,
                 'grand_total' => (float) $order->grand_total,
                 'payment_proofs' => $paymentProofs,
                 'receipt_public_url' => $this->resolveReceiptPublicUrl($order),
                 'customer_email' => $this->resolveReceiptCustomerEmail($order),
+                ...$bookingRemarks,
             ],
             'lines' => $order->items->map(fn (OrderItem $item) => $this->formatOrderDetailLine($item, $overrideUsers->all()))->values()->all(),
             'action_logs' => $this->orderActionLogs((int) $order->id),
+        ];
+    }
+
+    private function resolveOrderBookingRemarks(Order $order): array
+    {
+        $bookings = $order->items
+            ->map(fn (OrderItem $item) => $item->booking)
+            ->filter()
+            ->unique('id');
+
+        $notes = [];
+        $voidRemarks = [];
+        $settlementNotes = [];
+        $rescheduleReasons = [];
+
+        foreach ($bookings as $booking) {
+            if ($value = BookingNotes::customerRemarksForDisplay($booking->notes)) {
+                $notes[] = $value;
+            }
+            if ($value = BookingNotes::voidRemarksForDisplay($booking->notes)) {
+                $voidRemarks[] = $value;
+            }
+            if ($value = trim((string) ($booking->settlement_notes ?? ''))) {
+                $settlementNotes[] = $value;
+            }
+            if ($value = trim((string) ($booking->reschedule_reason ?? ''))) {
+                $rescheduleReasons[] = $value;
+            }
+        }
+
+        $joinUnique = static fn (array $values): ?string => ($filtered = array_values(array_unique(array_filter($values)))) === []
+            ? null
+            : implode("\n", $filtered);
+
+        return [
+            'notes' => $joinUnique($notes),
+            'void_remarks' => $joinUnique($voidRemarks),
+            'settlement_notes' => $joinUnique($settlementNotes),
+            'reschedule_reason' => $joinUnique($rescheduleReasons),
         ];
     }
 
@@ -272,6 +323,10 @@ class SalesChannelReportService
             ])
             ->values();
 
+        $staffSplits = $this->resolveBookingStaffSplitsForLine($item, $staffSplits);
+        $assignedStaffName = $item->booking?->staff?->name
+            ?: ($staffSplits->first()['staff_name'] ?? null);
+
         return [
             'id' => (int) $item->id,
             'line_type' => (string) ($item->line_type ?? 'product'),
@@ -292,9 +347,64 @@ class SalesChannelReportService
             'discount_remark' => $item->discount_remark,
             'price_override' => $this->normalizeOrderItemPriceOverride($item, $overrideUsers),
             'children' => $children,
-            'staff_name' => $item->staff?->name,
+            'staff_name' => $item->staff?->name ?: $assignedStaffName,
+            'assigned_staff_name' => $assignedStaffName,
             'staff_splits' => $staffSplits->all(),
         ];
+    }
+
+    private function resolveBookingStaffSplitsForLine(OrderItem $item, $existingSplits)
+    {
+        if ($existingSplits->isNotEmpty()) {
+            return $existingSplits;
+        }
+
+        $bookingId = (int) ($item->booking_id ?? 0);
+        if ($bookingId <= 0) {
+            return $existingSplits;
+        }
+
+        $lineType = (string) ($item->line_type ?? '');
+        if (! in_array($lineType, ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'], true)) {
+            return $existingSplits;
+        }
+
+        $bookingSplits = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.booking_id', $bookingId)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'staff_name' => (string) ($row->staff_name ?? ('Staff #' . ($row->staff_id ?? 0))),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->values();
+
+        if ($bookingSplits->isNotEmpty()) {
+            return $bookingSplits;
+        }
+
+        $fallbackStaffId = (int) ($item->booking?->staff_id ?? 0);
+        if ($fallbackStaffId <= 0) {
+            return $existingSplits;
+        }
+
+        $fallbackName = (string) ($item->booking?->staff?->name ?? ('Staff #' . $fallbackStaffId));
+
+        return collect([[
+            'staff_id' => $fallbackStaffId,
+            'staff_name' => $fallbackName,
+            'share_percent' => 100,
+            'commission_rate_snapshot' => 0.0,
+        ]]);
     }
 
 

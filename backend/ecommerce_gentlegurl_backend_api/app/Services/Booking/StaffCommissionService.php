@@ -229,14 +229,89 @@ class StaffCommissionService
         $start = Carbon::create($year, $month, 1)->startOfMonth();
         $nextMonthStart = $start->copy()->addMonth();
 
-        $bookingLineRows = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart)
+        // Step 1: Get amounts and booking IDs from order_item_staff_splits (most cases)
+        $mainQueryRows = $this->baseBookingOrderItemSplitQuery($start, $nextMonthStart)
             ->where('order_item_staff_splits.staff_id', $staffId)
-            ->selectRaw("COALESCE(SUM(({$this->effectiveLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as total_sales")
-            ->selectRaw('COUNT(order_item_staff_splits.id) as row_count')
-            ->first();
+            ->selectRaw("({$this->effectiveLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100) as split_sales")
+            ->selectRaw('order_items.booking_id as booking_id')
+            ->get();
 
-        $totalSales = (float) ($bookingLineRows->total_sales ?? 0);
-        $bookingCount = (int) ($bookingLineRows->row_count ?? 0);
+        $totalSales = (float) $mainQueryRows->sum('split_sales');
+        $alreadyCountedBookingIds = $mainQueryRows
+            ->pluck('booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->flip()
+            ->all();
+        $bookingCount = count($alreadyCountedBookingIds);
+
+        // Step 2: Fallback for order_items WITHOUT order_item_staff_splits (e.g., online deposits)
+        // These should use booking_service_staff_splits for attribution
+        $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+
+        $fallbackItems = $this->applyBaseOrderScope(
+            DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereNotNull('order_items.booking_id')
+                ->where('orders.created_at', '>=', $start)
+                ->where('orders.created_at', '<', $nextMonthStart)
+                ->whereNotExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('order_item_staff_splits')
+                        ->whereColumn('order_item_staff_splits.order_item_id', 'order_items.id');
+                })
+        )
+            ->selectRaw('order_items.booking_id as booking_id')
+            ->selectRaw("SUM($lineTotal) as line_amount")
+            ->groupBy('order_items.booking_id')
+            ->get();
+
+        if ($fallbackItems->isNotEmpty()) {
+            $fallbackBookingIds = $fallbackItems->pluck('booking_id')->map(fn ($id) => (int) $id)->filter(fn ($id) => $id > 0)->unique()->values()->all();
+
+            // Get staff splits from booking_service_staff_splits
+            $bookingSplits = DB::table('booking_service_staff_splits')
+                ->whereIn('booking_id', $fallbackBookingIds)
+                ->where('staff_id', $staffId)
+                ->get(['booking_id', 'split_percent'])
+                ->keyBy('booking_id');
+
+            // Fallback to bookings.staff_id if no explicit splits
+            $bookingPrimaryStaff = DB::table('bookings')
+                ->whereIn('id', $fallbackBookingIds)
+                ->where('staff_id', $staffId)
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->flip()
+                ->all();
+
+            foreach ($fallbackItems as $item) {
+                $bookingId = (int) $item->booking_id;
+                $lineAmount = (float) $item->line_amount;
+
+                $split = $bookingSplits->get($bookingId);
+                if ($split) {
+                    $sharePercent = (float) $split->split_percent;
+                    $totalSales += $lineAmount * ($sharePercent / 100);
+                    // Only count as new booking if not already counted from main query
+                    if (! isset($alreadyCountedBookingIds[$bookingId])) {
+                        $alreadyCountedBookingIds[$bookingId] = true;
+                        $bookingCount++;
+                    }
+                } elseif (isset($bookingPrimaryStaff[$bookingId])) {
+                    // Booking's primary staff matches - give 100%
+                    $totalSales += $lineAmount;
+                    // Only count as new booking if not already counted from main query
+                    if (! isset($alreadyCountedBookingIds[$bookingId])) {
+                        $alreadyCountedBookingIds[$bookingId] = true;
+                        $bookingCount++;
+                    }
+                }
+            }
+        }
+
         $totalSales = round($totalSales, 2);
 
         $monthly = StaffMonthlySale::query()->firstOrCreate(
@@ -265,6 +340,24 @@ class StaffCommissionService
         $monthly->save();
 
         return $this->recalculateMonthly($monthly, $force);
+    }
+
+    /**
+     * Apply base order scope for fallback queries without order_item_staff_splits join.
+     */
+    private function applyBaseOrderScope($query)
+    {
+        return $query
+            ->where(function ($q) {
+                $q->where('orders.status', 'completed')
+                    ->orWhere('orders.payment_status', 'paid');
+            })
+            ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
+            ->where(function ($q) {
+                $q->where('orders.payment_status', '!=', 'refunded')
+                    ->orWhereNull('orders.payment_status');
+            })
+            ->whereNull('orders.refunded_at');
     }
 
     private function recalculateBookingForMonthAll(int $year, int $month, bool $force = false): array
@@ -552,6 +645,7 @@ class StaffCommissionService
             return collect();
         }
 
+        // Step 1: Get rows from order_item_staff_splits (lines that have explicit splits)
         $lineRows = DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
@@ -585,24 +679,75 @@ class StaffCommissionService
             ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0 && $row['amount_basis'] > 0)
             ->values();
 
-        if ($lineRows->isNotEmpty()) {
-            return $lineRows;
+        // Step 2: Also check for order_items WITHOUT order_item_staff_splits (e.g., online deposits)
+        // These should use booking_service_staff_splits for attribution
+        $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+
+        $fallbackItems = $this->applyBaseOrderScope(
+            DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.booking_id', $bookingId)
+                ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereNotExists(function ($sub) {
+                    $sub->selectRaw('1')
+                        ->from('order_item_staff_splits')
+                        ->whereColumn('order_item_staff_splits.order_item_id', 'order_items.id');
+                })
+        )
+            ->selectRaw('order_items.id as order_item_id')
+            ->selectRaw('order_items.line_type as line_type')
+            ->selectRaw("$lineTotal as line_amount")
+            ->get();
+
+        if ($fallbackItems->isNotEmpty()) {
+            $bookingSplits = $this->resolveBookingStaffSplits($booking);
+
+            foreach ($fallbackItems as $item) {
+                $lineAmount = (float) $item->line_amount;
+                $lineType = (string) $item->line_type;
+
+                foreach ($bookingSplits as $split) {
+                    $staffId = (int) ($split['staff_id'] ?? 0);
+                    $sharePercent = (float) ($split['share_percent'] ?? 0);
+
+                    if ($staffId <= 0 || $sharePercent <= 0 || $lineAmount <= 0) {
+                        continue;
+                    }
+
+                    $splitSales = round($lineAmount * ($sharePercent / 100), 2);
+
+                    $lineRows->push([
+                        'staff_id' => $staffId,
+                        'share_percent' => $sharePercent,
+                        'amount_basis' => round($lineAmount, 2),
+                        'split_sales' => $splitSales,
+                        'order_line_type' => $lineType,
+                        'split_line_type' => 'fallback_from_booking_splits',
+                        'source' => 'booking_service_staff_splits',
+                    ]);
+                }
+            }
         }
 
-        $servicePrice = $this->resolveBookingCommissionableNetAmount($bookingId, (float) optional($booking->service)->service_price);
+        // If still empty after all attempts, use legacy fallback with total booking amount
+        if ($lineRows->isEmpty()) {
+            $servicePrice = $this->resolveBookingCommissionableNetAmount($bookingId, (float) optional($booking->service)->service_price);
 
-        return $this->resolveBookingStaffSplits($booking)
-            ->map(fn ($split) => [
-                'staff_id' => (int) ($split['staff_id'] ?? 0),
-                'share_percent' => (float) ($split['share_percent'] ?? 0),
-                'amount_basis' => $servicePrice,
-                'split_sales' => round($servicePrice * (((float) ($split['share_percent'] ?? 0)) / 100), 2),
-                'order_line_type' => 'legacy_booking_total',
-                'split_line_type' => 'legacy_booking_total',
-                'source' => 'booking_service_staff_splits',
-            ])
-            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0 && $row['amount_basis'] > 0)
-            ->values();
+            return $this->resolveBookingStaffSplits($booking)
+                ->map(fn ($split) => [
+                    'staff_id' => (int) ($split['staff_id'] ?? 0),
+                    'share_percent' => (float) ($split['share_percent'] ?? 0),
+                    'amount_basis' => $servicePrice,
+                    'split_sales' => round($servicePrice * (((float) ($split['share_percent'] ?? 0)) / 100), 2),
+                    'order_line_type' => 'legacy_booking_total',
+                    'split_line_type' => 'legacy_booking_total',
+                    'source' => 'booking_service_staff_splits',
+                ])
+                ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0 && $row['amount_basis'] > 0)
+                ->values();
+        }
+
+        return $lineRows;
     }
 
     private function resolveBookingStaffSplits(Booking $booking): Collection
