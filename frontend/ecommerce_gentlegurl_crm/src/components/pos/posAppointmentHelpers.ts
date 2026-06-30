@@ -554,10 +554,10 @@ export function bookingCustomerRemarksForDisplay(notes?: string | null): string 
   let raw = String(notes ?? '').trim()
   if (!raw) return null
 
-  raw = raw.replace(/\s*\[VOID REMARK\].*$/is, '').trim()
+  raw = raw.replace(/\s*\[VOID REMARK\][\s\S]*$/i, '').trim()
   if (!raw) return null
 
-  const customerRemarksMatch = raw.match(/(?:^|\|\s*)customer_remarks:\s*(.+?)(?:\s*\|\s*deposit_waived_for_member\s*)?$/is)
+  const customerRemarksMatch = raw.match(/(?:^|\|\s*)customer_remarks:\s*([\s\S]+?)(?:\s*\|\s*deposit_waived_for_member\s*)?$/i)
   if (customerRemarksMatch?.[1]?.trim()) {
     return customerRemarksMatch[1].trim()
   }
@@ -580,7 +580,7 @@ export function voidRemarksForDisplay(notes?: string | null, voidRemarks?: strin
   if (explicit) return explicit
 
   const raw = String(notes ?? '')
-  const match = raw.match(/\[VOID REMARK\]\s*(.+)/is)
+  const match = raw.match(/\[VOID REMARK\]\s*([\s\S]+)/i)
   if (match?.[1]?.trim()) return match[1].trim()
 
   return null
