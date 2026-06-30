@@ -10,6 +10,7 @@ import BookingServicesAddOnsSection, {
 } from '@/components/booking/BookingServicesAddOnsSection'
 import { type PaymentProof } from '@/components/payment/PaymentProofPreview'
 import StatusBadge from '@/components/StatusBadge'
+import { getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
 
 type Photo = {
   id: number
@@ -44,7 +45,10 @@ type DailyBookingRow = {
   service_photos_count?: number
   service_photos?: BookingServicePhoto[]
   payment_proofs?: PaymentProof[]
+  notes?: string | null
+  void_remarks?: string | null
   settlement_notes?: string | null
+  reschedule_reason?: string | null
 }
 
 type DailyBookingResponse = {
@@ -284,6 +288,20 @@ export default function DailyBookingPageClient() {
                 <p><span className="font-semibold text-slate-500">Status</span><br />{selected.status}</p>
                 <p><span className="font-semibold text-slate-500">Payment status</span><br />{selected.payment_status ?? selected.computed_payment_status ?? '—'}</p>
                 <p><span className="font-semibold text-slate-500">Paid / Balance</span><br />{money(selected.paid_amount)} / {money(selected.balance_due)}</p>
+                {(() => {
+                  const remarkLines = getAppointmentDisplayRemarkLines(selected)
+                  if (remarkLines.length === 0) return null
+                  return (
+                    <div className="col-span-full space-y-1 border-t border-slate-200 pt-3">
+                      {remarkLines.map((line) => (
+                        <p key={`daily-booking-remark-${line.key}`} className="text-xs font-medium text-slate-600">
+                          <span className="text-slate-500">{line.label}:</span>{' '}
+                          <span className="whitespace-pre-wrap">{line.value}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )
+                })()}
               </section>
 
               <BookingServicesAddOnsSection row={selected} className="rounded-xl border border-slate-200 bg-white p-4" />
@@ -294,11 +312,6 @@ export default function DailyBookingPageClient() {
                 <p><span className="font-semibold text-slate-500">Add-on amount</span><br />{money(selected.add_ons?.reduce((sum, addon) => sum + Number(addon.extra_price ?? 0), 0))}</p>
                 <p><span className="font-semibold text-slate-500">Package offset</span><br />{money(selected.package_offset)}</p>
                 <p><span className="font-semibold text-slate-500">Balance due</span><br />{money(selected.balance_due)}</p>
-              </section>
-
-              <section className="rounded-xl border border-slate-200 bg-white p-4 text-sm">
-                <p className="font-semibold text-slate-500">Settlement Notes</p>
-                <p className="mt-2 whitespace-pre-wrap text-slate-800">{selected.settlement_notes || '—'}</p>
               </section>
 
               <BookingPhotosPaymentProofSection

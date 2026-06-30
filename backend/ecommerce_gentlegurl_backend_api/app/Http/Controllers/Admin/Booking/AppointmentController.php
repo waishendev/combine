@@ -210,7 +210,11 @@ class AppointmentController extends Controller
     {
         $row = $this->mapHistoryBooking($booking);
 
-        return array_merge($row, $this->mapBookingMediaFields($booking));
+        return array_merge($row, [
+            'notes' => BookingNotes::customerRemarksForDisplay($booking->notes),
+            'void_remarks' => BookingNotes::voidRemarksForDisplay($booking->notes),
+            'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
+        ], $this->mapBookingMediaFields($booking));
     }
 
     private function mapBookingMediaFields(Booking $booking): array
@@ -469,9 +473,13 @@ class AppointmentController extends Controller
         $paidAmount = round($depositPaid + $settlementPaid, 2);
         $balanceDue = round((float) ($summary['balance_due'] ?? 0), 2);
         $amountBounds = $this->resolveHistoryAmountDisplayBounds($booking, $summary);
-        $computedPaymentStatus = $balanceDue <= 0.0001
-            ? 'paid'
-            : ($paidAmount > 0.0001 || $packageOffset > 0.0001 ? 'partial' : 'unpaid');
+        $computedPaymentStatus = $this->resolveHistoryPaymentStatus(
+            $summary,
+            $balanceDue,
+            $paidAmount,
+            $packageOffset,
+            $amountBounds,
+        );
 
         return [
             'total_amount' => $payableTotal,
@@ -493,6 +501,28 @@ class AppointmentController extends Controller
             'service_total' => round((float) ($summary['service_total'] ?? 0), 2),
             'addon_total_price' => round((float) ($summary['addon_total_price'] ?? 0), 2),
         ];
+    }
+
+    private function resolveHistoryPaymentStatus(
+        array $summary,
+        float $balanceDue,
+        float $paidAmount,
+        float $packageOffset,
+        array $amountBounds,
+    ): string {
+        $requiresSettledAmount = (bool) ($summary['requires_settled_amount'] ?? false);
+        $hasOutstandingRangeBalance = (bool) ($amountBounds['balance_has_range'] ?? false)
+            && (float) ($amountBounds['balance_max'] ?? 0) > 0.0001;
+
+        if ($requiresSettledAmount || $hasOutstandingRangeBalance) {
+            return ($paidAmount > 0.0001 || $packageOffset > 0.0001) ? 'partial' : 'unpaid';
+        }
+
+        if ($balanceDue <= 0.0001) {
+            return 'paid';
+        }
+
+        return ($paidAmount > 0.0001 || $packageOffset > 0.0001) ? 'partial' : 'unpaid';
     }
 
     private function mapHistoryRawStaffSplits($rawSplits, array $fallback = []): array

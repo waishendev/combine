@@ -100,23 +100,6 @@ const emptyFilters: Filters = {
   q: '',
 }
 
-const APPOINTMENT_HISTORY_TABLE_MIN_WIDTH = '78rem'
-
-const APPOINTMENT_HISTORY_COLUMN_WIDTHS = [
-  '9.5rem', // Booking No
-  '11rem', // Customer / Guest
-  '7rem', // Service
-  '6.5rem', // Staff
-  '10.5rem', // Appointment date & time
-  '7rem', // Status
-  '6.5rem', // Payment status
-  '6.5rem', // Total amount
-  '6.5rem', // Paid amount
-  '6.5rem', // Balance due
-  '9rem', // Created at
-  '4.5rem', // Actions
-] as const
-
 const STATUS_OPTIONS = ['HOLD', 'CONFIRMED', 'COMPLETED', 'CANCELLED', 'NO_SHOW', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION', 'EXPIRED', 'VOIDED']
 const PAYMENT_OPTIONS = [
   { value: 'paid', label: 'Paid' },
@@ -129,6 +112,60 @@ const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) ||
 const formatMoney = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`
 
 type HistoryMoneyField = 'total' | 'balance' | 'paid'
+
+type HistoryMoneyDisplay =
+  | { type: 'single'; text: string }
+  | { type: 'range'; minText: string; maxText: string }
+
+const resolveHistoryMoneyDisplay = (
+  row: Pick<
+    AppointmentHistoryRow,
+    | 'total_amount'
+    | 'total_amount_min'
+    | 'total_amount_max'
+    | 'amount_has_range'
+    | 'balance_due'
+    | 'balance_due_min'
+    | 'balance_due_max'
+    | 'balance_has_range'
+    | 'paid_amount'
+  >,
+  field: HistoryMoneyField,
+): HistoryMoneyDisplay => {
+  if (field === 'paid') {
+    return { type: 'single', text: formatMoney(row.paid_amount) }
+  }
+  if (
+    field === 'total' &&
+    row.amount_has_range &&
+    row.total_amount_min != null &&
+    row.total_amount_max != null &&
+    Math.abs(Number(row.total_amount_min) - Number(row.total_amount_max)) > 0.0001
+  ) {
+    return {
+      type: 'range',
+      minText: `RM ${Number(row.total_amount_min).toFixed(2)} -`,
+      maxText: `RM ${Number(row.total_amount_max).toFixed(2)}`,
+    }
+  }
+  if (
+    field === 'balance' &&
+    row.balance_has_range &&
+    row.balance_due_min != null &&
+    row.balance_due_max != null &&
+    Math.abs(Number(row.balance_due_min) - Number(row.balance_due_max)) > 0.0001
+  ) {
+    return {
+      type: 'range',
+      minText: `RM ${Number(row.balance_due_min).toFixed(2)} -`,
+      maxText: `RM ${Number(row.balance_due_max).toFixed(2)}`,
+    }
+  }
+  return {
+    type: 'single',
+    text: formatMoney(field === 'total' ? row.total_amount : row.balance_due),
+  }
+}
 
 const formatHistoryMoneyDisplay = (
   row: Pick<
@@ -145,26 +182,38 @@ const formatHistoryMoneyDisplay = (
   >,
   field: HistoryMoneyField,
 ) => {
-  if (field === 'paid') return formatMoney(row.paid_amount)
-  if (
-    field === 'total' &&
-    row.amount_has_range &&
-    row.total_amount_min != null &&
-    row.total_amount_max != null &&
-    Math.abs(Number(row.total_amount_min) - Number(row.total_amount_max)) > 0.0001
-  ) {
-    return `RM ${Number(row.total_amount_min).toFixed(2)} - RM ${Number(row.total_amount_max).toFixed(2)}`
+  const display = resolveHistoryMoneyDisplay(row, field)
+  if (display.type === 'range') {
+    return `${display.minText}\n${display.maxText}`
   }
-  if (
-    field === 'balance' &&
-    row.balance_has_range &&
-    row.balance_due_min != null &&
-    row.balance_due_max != null &&
-    Math.abs(Number(row.balance_due_min) - Number(row.balance_due_max)) > 0.0001
-  ) {
-    return `RM ${Number(row.balance_due_min).toFixed(2)} - RM ${Number(row.balance_due_max).toFixed(2)}`
+  return display.text
+}
+
+function HistoryMoneyDisplayValue({
+  row,
+  field,
+  className,
+}: {
+  row: AppointmentHistoryRow
+  field: HistoryMoneyField
+  className?: string
+}) {
+  const display = resolveHistoryMoneyDisplay(row, field)
+
+  if (display.type === 'range') {
+    return (
+      <span className={`block text-xs leading-snug tabular-nums ${className ?? ''}`} title={formatHistoryMoneyDisplay(row, field)}>
+        <span className="block">{display.minText}</span>
+        <span className="block">{display.maxText}</span>
+      </span>
+    )
   }
-  return formatMoney(field === 'total' ? row.total_amount : row.balance_due)
+
+  return (
+    <span className={`block text-xs leading-snug tabular-nums ${className ?? ''}`} title={display.text}>
+      {display.text}
+    </span>
+  )
 }
 
 const paidAmountClass = (value?: number | string | null) => {
@@ -197,6 +246,69 @@ const formatPaymentStatus = (status?: string | null) => {
   if (s === 'paid') return 'Paid'
   if (s === 'partial') return 'Partial'
   return 'Unpaid'
+}
+
+const formatAppointmentSlot = (start?: string | null, end?: string | null) => {
+  if (!start) return '—'
+  const startDate = new Date(start)
+  const endDate = end ? new Date(end) : null
+  const datePart = startDate.toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })
+  const startTime = startDate.toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit' })
+  const endTime = endDate ? endDate.toLocaleTimeString('en-MY', { hour: 'numeric', minute: '2-digit' }) : null
+  return { datePart, timePart: endTime ? `${startTime} – ${endTime}` : startTime }
+}
+
+function TableCustomerCell({ row }: { row: AppointmentHistoryRow }) {
+  const contact = row.customer?.phone ?? row.guest_phone ?? row.customer?.email ?? row.guest_email ?? null
+  const name = row.customer_display_name || 'Walk-in / Unknown'
+
+  return (
+    <div className="min-w-0">
+      <p className="line-clamp-2 font-medium leading-snug text-slate-900" title={name}>
+        {name}
+      </p>
+      {contact ? (
+        <p className="mt-0.5 truncate text-xs text-slate-500" title={contact}>
+          {contact}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function TableServiceCell({ row }: { row: AppointmentHistoryRow }) {
+  const serviceName = row.service?.name || '—'
+  const addonCount = row.add_ons?.length ?? 0
+
+  return (
+    <div className="min-w-0">
+      <p className="line-clamp-2 font-medium leading-snug text-slate-900" title={row.service?.name ?? undefined}>
+        {serviceName}
+      </p>
+      {row.service?.cn_name ? (
+        <p className="mt-0.5 truncate text-xs text-slate-500" title={row.service.cn_name}>
+          {row.service.cn_name}
+        </p>
+      ) : null}
+      {addonCount > 0 ? (
+        <p className="mt-0.5 text-xs font-medium text-slate-500">
+          +{addonCount} add-on{addonCount === 1 ? '' : 's'}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
+function TableMoneyCell({
+  row,
+  field,
+  className,
+}: {
+  row: AppointmentHistoryRow
+  field: HistoryMoneyField
+  className?: string
+}) {
+  return <HistoryMoneyDisplayValue row={row} field={field} className={className} />
 }
 
 function DetailField({
@@ -298,12 +410,12 @@ export function BookingAppointmentDetailDrawer({
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Payment Breakdown</h4>
                 <dl className="mt-4 grid gap-4 md:grid-cols-2">
-                  <DetailField label="Total Amount" value={formatHistoryMoneyDisplay(row, 'total')} />
+                  <DetailField label="Total Amount" value={<HistoryMoneyDisplayValue row={row} field="total" className="text-sm" />} />
                   <DetailField label="Deposit" value={formatMoney(row.deposit_paid)} />
                   <DetailField label="Settlement Paid" value={formatMoney(row.settlement_paid)} />
                   <DetailField label="Package Offset" value={formatMoney(row.package_offset)} />
                   <DetailField label="Paid Amount" value={formatHistoryMoneyDisplay(row, 'paid')} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
-                  <DetailField label="Balance Due" value={formatHistoryMoneyDisplay(row, 'balance')} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
+                  <DetailField label="Balance Due" value={<HistoryMoneyDisplayValue row={row} field="balance" className={`text-sm ${balanceDueClass(row.balance_due)}`} />} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
 
@@ -501,58 +613,77 @@ export default function BookingAppointmentHistoryPage() {
 
       {error ? <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</div> : null}
 
-      <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-        <div className="w-full overflow-x-auto">
-        <table
-          className="w-full border-collapse text-sm"
-          style={{ minWidth: APPOINTMENT_HISTORY_TABLE_MIN_WIDTH, tableLayout: 'fixed' }}
-        >
-          <colgroup>
-            {APPOINTMENT_HISTORY_COLUMN_WIDTHS.map((width, index) => (
-              <col key={`appointment-history-col-${index}`} style={{ width }} />
-            ))}
-          </colgroup>
+      <div className="rounded-xl border border-slate-200 bg-white shadow-sm">
+        <div className="w-full overflow-x-auto overscroll-x-contain">
+        <table className="w-max min-w-full border-collapse text-sm">
           <thead className="bg-slate-100 text-left text-xs font-semibold uppercase tracking-wide text-slate-600">
             <tr>
-              <th className="px-3 py-3 whitespace-nowrap">Booking No</th>
-              <th className="px-3 py-3">Customer / Guest / Walk-in</th>
-              <th className="px-3 py-3">Service</th>
-              <th className="px-3 py-3">Staff</th>
-              <th className="px-3 py-3 whitespace-nowrap">Appointment Date & Time</th>
+              <th className="sticky left-0 z-10 bg-slate-100 px-3 py-3 whitespace-nowrap shadow-[1px_0_0_0_rgb(226_232_240)]">Booking No</th>
+              <th className="min-w-[10rem] px-3 py-3">Customer</th>
+              <th className="min-w-[10rem] px-3 py-3">Service</th>
+              <th className="min-w-[8.5rem] px-3 py-3 whitespace-nowrap">Appointment</th>
               <th className="px-3 py-3 whitespace-nowrap">Status</th>
-              <th className="px-3 py-3 whitespace-nowrap">Payment Status</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap">Total Amount</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap text-emerald-700">Paid Amount</th>
-              <th className="px-3 py-3 text-right whitespace-nowrap text-amber-700">Balance Due</th>
-              <th className="px-3 py-3 whitespace-nowrap">Created At</th>
+              <th className="px-3 py-3 whitespace-nowrap">Payment</th>
+              <th className="min-w-[6.5rem] px-3 py-3 text-right whitespace-nowrap">Total</th>
+              <th className="min-w-[6rem] px-3 py-3 text-right whitespace-nowrap text-emerald-700">Paid</th>
+              <th className="min-w-[6rem] px-3 py-3 text-right whitespace-nowrap text-amber-700">Balance</th>
+              <th className="min-w-[9rem] px-3 py-3 whitespace-nowrap">Created</th>
               <th className="px-3 py-3 whitespace-nowrap">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <TableLoadingRow colSpan={12} />
-            ) : rows.length > 0 ? rows.map((row) => (
-              <tr key={row.id} className="hover:bg-slate-50">
-                <td className="px-3 py-3 font-semibold text-slate-900 whitespace-nowrap">{row.booking_code}</td>
-                <td className="px-3 py-3 align-top">
-                  <div className="font-medium text-slate-900 break-words">{row.customer_display_name || 'Walk-in / Unknown'}</div>
-                  <div className="text-xs text-slate-500 break-all">{row.customer?.phone ?? row.guest_phone ?? row.customer?.email ?? row.guest_email ?? '—'}</div>
+              <TableLoadingRow colSpan={11} />
+            ) : rows.length > 0 ? rows.map((row) => {
+              const appointmentSlot = formatAppointmentSlot(row.start_at, row.end_at)
+
+              return (
+              <tr key={row.id} className="group hover:bg-slate-50">
+                <td className="sticky left-0 z-10 bg-white px-3 py-3 align-top whitespace-nowrap shadow-[1px_0_0_0_rgb(241_245_249)] group-hover:bg-slate-50">
+                  <span className="font-mono text-xs font-semibold text-slate-900">{row.booking_code}</span>
                 </td>
-                <td className="px-3 py-3 align-top break-words">{row.service?.name ?? '—'}</td>
-                <td className="px-3 py-3 align-top break-words">{row.staff?.name ?? '—'}</td>
-                <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap align-top">{formatDateTime(row.start_at)}<br /><span className="text-slate-500">to {formatDateTime(row.end_at)}</span></td>
-                <td className="px-3 py-3 whitespace-nowrap align-top"><BookingStatusBadge status={row.status} label={row.status} /></td>
-                <td className="px-3 py-3 whitespace-nowrap align-top"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>{formatPaymentStatus(resolvedPaymentStatus(row))}</span></td>
-                <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap align-top">{formatHistoryMoneyDisplay(row, 'total')}</td>
-                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${paidAmountClass(row.paid_amount)}`}>{formatHistoryMoneyDisplay(row, 'paid')}</td>
-                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${balanceDueClass(row.balance_due)}`}>{formatHistoryMoneyDisplay(row, 'balance')}</td>
-                <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap align-top">{formatDateTime(row.created_at)}</td>
-                <td className="px-3 py-3 whitespace-nowrap align-top">
+                <td className="min-w-[10rem] max-w-[13rem] overflow-hidden px-3 py-3 align-top">
+                  <TableCustomerCell row={row} />
+                </td>
+                <td className="min-w-[10rem] max-w-[13rem] overflow-hidden px-3 py-3 align-top">
+                  <TableServiceCell row={row} />
+                </td>
+                <td className="min-w-[8.5rem] max-w-[10rem] px-3 py-3 align-top text-xs tabular-nums">
+                  {typeof appointmentSlot === 'string' ? (
+                    appointmentSlot
+                  ) : (
+                    <div className="min-w-0 leading-snug">
+                      <p className="text-slate-900">{appointmentSlot.datePart}</p>
+                      <p className="mt-0.5 text-slate-500">{appointmentSlot.timePart}</p>
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-3 align-top whitespace-nowrap">
+                  <BookingStatusBadge status={row.status} label={row.status} />
+                </td>
+                <td className="px-3 py-3 align-top whitespace-nowrap">
+                  <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>
+                    {formatPaymentStatus(resolvedPaymentStatus(row))}
+                  </span>
+                </td>
+                <td className="min-w-[6.5rem] px-3 py-3 text-right align-top tabular-nums">
+                  <TableMoneyCell row={row} field="total" />
+                </td>
+                <td className={`min-w-[6rem] px-3 py-3 text-right align-top tabular-nums ${paidAmountClass(row.paid_amount)}`}>
+                  <TableMoneyCell row={row} field="paid" className={paidAmountClass(row.paid_amount)} />
+                </td>
+                <td className={`min-w-[6rem] px-3 py-3 text-right align-top tabular-nums ${balanceDueClass(row.balance_due)}`}>
+                  <TableMoneyCell row={row} field="balance" className={balanceDueClass(row.balance_due)} />
+                </td>
+                <td className="min-w-[9rem] px-3 py-3 align-top text-xs tabular-nums whitespace-nowrap">
+                  {formatDateTime(row.created_at)}
+                </td>
+                <td className="px-3 py-3 align-top whitespace-nowrap">
                   <ReportViewDetailsButton onClick={() => { setDetail(row); setDetailId(row.id) }} title={`View details for ${row.booking_code}`} />
                 </td>
               </tr>
-            )) : (
-              <TableEmptyState colSpan={12} />
+            )}) : (
+              <TableEmptyState colSpan={11} />
             )}
           </tbody>
         </table>
