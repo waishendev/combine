@@ -9173,6 +9173,16 @@ class PosController extends Controller
         return round($lineTotal, 2);
     }
 
+    /**
+     * Shared read-only financial summary for admin history and other booking views.
+     */
+    public function appointmentFinancialSummaryForBooking(Booking $booking): array
+    {
+        $booking->loadMissing(['service', 'customer']);
+
+        return $this->resolveAppointmentFinancialSummary($booking);
+    }
+
     protected function resolveAppointmentFinancialSummary(Booking $booking): array
     {
         $settledServiceAmount = $booking->settled_service_amount !== null ? (float) $booking->settled_service_amount : null;

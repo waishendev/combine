@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Ecommerce\PosController;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingPhoto;
@@ -12,7 +13,6 @@ use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
 use App\Models\Booking\BookingPayment;
-use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Setting;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -296,9 +296,11 @@ class AppointmentController extends Controller
 
     private function mapHistoryBooking(Booking $booking): array
     {
-        $financial = $this->resolveHistoryFinancials($booking);
+        $booking->loadMissing(['service', 'staff', 'customer']);
+        $summary = app(PosController::class)->appointmentFinancialSummaryForBooking($booking);
+        $financial = $this->resolveHistoryFinancialsFromSummary($booking, $summary);
         $mainStaffSplits = $this->resolveHistoryStaffSplits($booking);
-        $services = $this->mapHistoryServiceBlocks($booking, $mainStaffSplits);
+        $services = $this->mapHistoryServiceBlocksFromSummary($booking, $summary, $mainStaffSplits);
         $addonItems = collect($services)->flatMap(fn (array $service) => $service['add_ons'] ?? [])->values()->all();
         $guestName = trim((string) ($booking->guest_name ?? ''));
         $primaryService = $services[0] ?? null;
@@ -323,6 +325,10 @@ class AppointmentController extends Controller
                 'cn_name' => $primaryService['cn_name'] ?? null,
                 'duration_min' => (int) ($primaryService['duration_min'] ?? 0),
                 'amount' => (float) ($primaryService['amount'] ?? 0),
+                'price_mode' => $primaryService['price_mode'] ?? null,
+                'price_range_min' => $primaryService['price_range_min'] ?? null,
+                'price_range_max' => $primaryService['price_range_max'] ?? null,
+                'price_finalized' => (bool) ($primaryService['price_finalized'] ?? true),
                 'staff_splits' => $primaryService['staff_splits'] ?? $mainStaffSplits,
             ] : null,
             'services' => $services,
@@ -345,59 +351,145 @@ class AppointmentController extends Controller
         ];
     }
 
-    private function mapHistoryServiceBlocks(Booking $booking, array $defaultStaffSplits): array
+    private function mapHistoryServiceBlocksFromSummary(Booking $booking, array $summary, array $defaultStaffSplits): array
     {
-        $rawItems = collect(is_array($booking->addon_items_json) ? $booking->addon_items_json : []);
-        $mainItems = $rawItems
-            ->filter(fn ($item) => is_array($item) && strtolower((string) ($item['item_kind'] ?? $item['line_type'] ?? '')) === 'main_service')
-            ->values();
-        $originalMainItem = $mainItems->first(fn ($item) => (bool) ($item['is_original'] ?? false));
-        $originalAddonSource = is_array($originalMainItem)
-            ? collect((array) ($originalMainItem['addon_items'] ?? []))
-            : $rawItems->filter(fn ($item) => is_array($item) && strtolower((string) ($item['item_kind'] ?? $item['line_type'] ?? 'addon')) !== 'main_service');
+        return collect($summary['main_services'] ?? [])->map(function (array $service) use ($booking, $defaultStaffSplits) {
+            $staffSplits = $this->mapHistoryRawStaffSplits($service['staff_splits'] ?? [], $defaultStaffSplits);
+            $isOriginal = (bool) ($service['is_original'] ?? false);
 
-        $originalServiceAmount = $booking->settled_service_amount !== null
-            ? (float) $booking->settled_service_amount
-            : (float) ($booking->service?->service_price ?? $booking->service?->price ?? 0);
-
-        $services = collect();
-        if ($booking->service) {
-            $services->push([
-                'id' => (int) $booking->service->id,
-                'service_id' => (int) $booking->service->id,
-                'name' => (string) $booking->service->name,
-                'cn_name' => $booking->service->cn_name,
-                'amount' => round(max(0, $originalServiceAmount), 2),
-                'duration_min' => (int) ($booking->service->duration_min ?? 0),
+            return [
+                'id' => isset($service['id']) ? (int) $service['id'] : null,
+                'service_id' => isset($service['linked_booking_service_id'])
+                    ? (int) $service['linked_booking_service_id']
+                    : (isset($service['id']) ? (int) $service['id'] : null),
+                'name' => (string) ($service['name'] ?? 'Service'),
+                'cn_name' => $service['cn_name'] ?? null,
+                'amount' => round(max(0, (float) ($service['extra_price'] ?? 0)), 2),
+                'price_mode' => $service['price_mode'] ?? null,
+                'price_range_min' => $service['price_range_min'] ?? null,
+                'price_range_max' => $service['price_range_max'] ?? null,
+                'price_finalized' => (bool) ($service['price_finalized'] ?? true),
+                'duration_min' => max(0, (int) ($service['extra_duration_min'] ?? ($isOriginal ? ($booking->service?->duration_min ?? 0) : 0))),
                 'start_at' => optional($booking->start_at)?->toIso8601String(),
                 'end_at' => optional($booking->end_at)?->toIso8601String(),
-                'staff_splits' => $this->mapHistoryRawStaffSplits($originalMainItem['staff_splits'] ?? [], $defaultStaffSplits),
-                'is_original' => true,
-                'add_ons' => $this->mapAddonItems($originalAddonSource->values()->all(), $defaultStaffSplits),
-            ]);
+                'staff_splits' => $staffSplits,
+                'is_original' => $isOriginal,
+                'add_ons' => collect($service['add_ons'] ?? [])->map(function (array $addon) use ($staffSplits) {
+                    $addonStaffSplits = $this->mapHistoryRawStaffSplits($addon['staff_splits'] ?? [], $staffSplits);
+
+                    return [
+                        'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                        'name' => (string) ($addon['name'] ?? 'Add-on'),
+                        'cn_name' => $addon['cn_name'] ?? null,
+                        'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
+                        'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
+                        'price_mode' => $addon['price_mode'] ?? null,
+                        'price_range_min' => $addon['price_range_min'] ?? null,
+                        'price_range_max' => $addon['price_range_max'] ?? null,
+                        'price_finalized' => (bool) ($addon['price_finalized'] ?? true),
+                        'staff_splits' => $addonStaffSplits,
+                        'staff_split_source' => ! empty($addon['staff_splits'] ?? []) ? 'explicit' : 'inherited',
+                    ];
+                })->values()->all(),
+            ];
+        })->values()->all();
+    }
+
+    private function resolveHistoryAmountDisplayBounds(Booking $booking, array $summary): array
+    {
+        $min = 0.0;
+        $max = 0.0;
+        $hasRange = false;
+
+        foreach (collect($summary['main_services'] ?? []) as $service) {
+            $mode = strtolower((string) ($service['price_mode'] ?? 'fixed'));
+            $finalized = (bool) ($service['price_finalized'] ?? true);
+            if ($mode === 'range' && ! $finalized) {
+                $rangeMin = (float) ($service['price_range_min'] ?? 0);
+                $rangeMax = (float) ($service['price_range_max'] ?? 0);
+                $min += min($rangeMin, $rangeMax);
+                $max += max($rangeMin, $rangeMax);
+                $hasRange = true;
+            } else {
+                $amount = max(0, (float) ($service['extra_price'] ?? 0));
+                $min += $amount;
+                $max += $amount;
+            }
         }
 
-        $mainItems
-            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
-            ->filter(fn ($item) => (int) ($item['linked_booking_service_id'] ?? 0) !== (int) ($booking->service_id ?? 0))
-            ->each(function (array $item) use ($services, $booking, $defaultStaffSplits) {
-                $staffSplits = $this->mapHistoryRawStaffSplits($item['staff_splits'] ?? [], $defaultStaffSplits);
-                $services->push([
-                    'id' => isset($item['id']) ? (int) $item['id'] : null,
-                    'service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
-                    'name' => (string) ($item['name'] ?? $item['label'] ?? 'Service'),
-                    'cn_name' => $item['cn_name'] ?? $item['cn_label'] ?? $item['linked_cn_name'] ?? null,
-                    'amount' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
-                    'duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
-                    'start_at' => optional($booking->start_at)?->toIso8601String(),
-                    'end_at' => optional($booking->end_at)?->toIso8601String(),
-                    'staff_splits' => $staffSplits,
-                    'is_original' => false,
-                    'add_ons' => $this->mapAddonItems($item['addon_items'] ?? [], $staffSplits),
-                ]);
-            });
+        foreach (collect($summary['add_ons'] ?? []) as $addon) {
+            $mode = strtolower((string) ($addon['price_mode'] ?? 'fixed'));
+            $finalized = (bool) ($addon['price_finalized'] ?? true);
+            if ($mode === 'range' && ! $finalized) {
+                $rangeMin = (float) ($addon['price_range_min'] ?? 0);
+                $rangeMax = (float) ($addon['price_range_max'] ?? 0);
+                $min += min($rangeMin, $rangeMax);
+                $max += max($rangeMin, $rangeMax);
+                $hasRange = true;
+            } else {
+                $amount = max(0, (float) ($addon['extra_price'] ?? 0));
+                $min += $amount;
+                $max += $amount;
+            }
+        }
 
-        return $services->values()->all();
+        $payableTotal = round((float) ($summary['service_total'] ?? 0) + (float) ($summary['addon_total_price'] ?? 0), 2);
+        if (! $hasRange) {
+            $min = $max = $payableTotal;
+        }
+
+        $paidTotal = round(
+            (float) ($summary['deposit_paid'] ?? 0)
+            + (float) ($summary['settlement_paid'] ?? 0)
+            + (float) ($summary['package_offset'] ?? 0),
+            2,
+        );
+        $balanceMin = max(0, round($min - $paidTotal, 2));
+        $balanceMax = max(0, round($max - $paidTotal, 2));
+
+        return [
+            'min' => round($min, 2),
+            'max' => round($max, 2),
+            'has_range' => $hasRange && abs($min - $max) > 0.0001,
+            'balance_min' => $balanceMin,
+            'balance_max' => $balanceMax,
+            'balance_has_range' => $hasRange && abs($balanceMin - $balanceMax) > 0.0001,
+        ];
+    }
+
+    private function resolveHistoryFinancialsFromSummary(Booking $booking, array $summary): array
+    {
+        $payableTotal = round((float) ($summary['service_total'] ?? 0) + (float) ($summary['addon_total_price'] ?? 0), 2);
+        $depositPaid = round((float) ($summary['deposit_paid'] ?? 0), 2);
+        $settlementPaid = round((float) ($summary['settlement_paid'] ?? 0), 2);
+        $packageOffset = round((float) ($summary['package_offset'] ?? 0), 2);
+        $paidAmount = round($depositPaid + $settlementPaid, 2);
+        $balanceDue = round((float) ($summary['balance_due'] ?? 0), 2);
+        $amountBounds = $this->resolveHistoryAmountDisplayBounds($booking, $summary);
+        $computedPaymentStatus = $balanceDue <= 0.0001
+            ? 'paid'
+            : ($paidAmount > 0.0001 || $packageOffset > 0.0001 ? 'partial' : 'unpaid');
+
+        return [
+            'total_amount' => $payableTotal,
+            'total_amount_min' => $amountBounds['min'],
+            'total_amount_max' => $amountBounds['max'],
+            'amount_has_range' => $amountBounds['has_range'],
+            'paid_amount' => $paidAmount,
+            'deposit_paid' => $depositPaid,
+            'settlement_paid' => $settlementPaid,
+            'package_offset' => $packageOffset,
+            'balance_due' => $balanceDue,
+            'balance_due_min' => $amountBounds['balance_min'],
+            'balance_due_max' => $amountBounds['balance_max'],
+            'balance_has_range' => $amountBounds['balance_has_range'],
+            'computed_payment_status' => $computedPaymentStatus,
+            'is_range_priced' => (bool) ($summary['is_range_priced'] ?? false),
+            'requires_settled_amount' => (bool) ($summary['requires_settled_amount'] ?? false),
+            'settled_service_amount' => $summary['settled_service_amount'] ?? null,
+            'service_total' => round((float) ($summary['service_total'] ?? 0), 2),
+            'addon_total_price' => round((float) ($summary['addon_total_price'] ?? 0), 2),
+        ];
     }
 
     private function mapHistoryRawStaffSplits($rawSplits, array $fallback = []): array
@@ -418,64 +510,6 @@ class AppointmentController extends Controller
             ->all();
 
         return ! empty($mapped) ? $mapped : $fallback;
-    }
-
-    private function resolveHistoryFinancials(Booking $booking): array
-    {
-        $serviceBlocks = $this->mapHistoryServiceBlocks($booking, $this->resolveHistoryStaffSplits($booking));
-        $addonTotal = collect($serviceBlocks)
-            ->flatMap(fn (array $service) => $service['add_ons'] ?? [])
-            ->sum(fn (array $item) => (float) ($item['extra_price'] ?? 0));
-        $serviceTotal = collect($serviceBlocks)->sum(fn (array $service) => (float) ($service['amount'] ?? 0));
-        $totalAmount = round(max(0, $serviceTotal + $addonTotal), 2);
-
-        $orderItems = OrderItem::query()
-            ->whereHas('order', function ($query) {
-                $query->whereIn(DB::raw('LOWER(payment_status)'), ['paid'])
-                    ->where(function ($statusQuery) {
-                        $statusQuery->whereNull('status')
-                            ->orWhereNotIn(DB::raw('LOWER(status)'), ['cancelled', 'failed']);
-                    });
-            })
-            ->where('booking_id', (int) $booking->id)
-            ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
-            ->get(['line_type', 'line_total', 'line_total_snapshot', 'variant_name_snapshot']);
-        $orderDepositPaid = (float) $orderItems->where('line_type', 'booking_deposit')->sum(fn (OrderItem $item) => (float) ($item->line_total ?? 0));
-        $settlementPaid = (float) $orderItems
-            ->filter(fn (OrderItem $item) => in_array((string) $item->line_type, ['booking_settlement', 'booking_addon'], true))
-            ->sum(fn (OrderItem $item) => $this->resolveOrderItemSettlementGrossAmount($item));
-        $bookingPaymentPaid = (float) BookingPayment::query()
-            ->where('booking_id', (int) $booking->id)
-            ->where('status', 'PAID')
-            ->sum('amount');
-        $depositPaid = max($orderDepositPaid, $bookingPaymentPaid, (float) ($booking->payment_status === 'PAID' ? $booking->deposit_amount : 0));
-
-        $packageUsage = CustomerServicePackageUsage::query()
-            ->where(function ($query) use ($booking) {
-                $query->where('booking_id', (int) $booking->id)
-                    ->orWhere(function ($posQuery) use ($booking) {
-                        $posQuery->where('used_from', 'POS')
-                            ->where('used_ref_id', (int) $booking->id);
-                    });
-            })
-            ->whereIn('status', ['reserved', 'consumed'])
-            ->first();
-        $packageOffset = $packageUsage ? max(0, $serviceTotal) : 0.0;
-        $paidAmount = round(max(0, $depositPaid + $settlementPaid), 2);
-        $balanceDue = round(max(0, $totalAmount - $paidAmount - $packageOffset), 2);
-        $computedPaymentStatus = $balanceDue <= 0.0001
-            ? 'paid'
-            : ($paidAmount > 0.0001 || $packageOffset > 0.0001 ? 'partial' : 'unpaid');
-
-        return [
-            'total_amount' => $totalAmount,
-            'paid_amount' => $paidAmount,
-            'deposit_paid' => round($depositPaid, 2),
-            'settlement_paid' => round($settlementPaid, 2),
-            'package_offset' => round($packageOffset, 2),
-            'balance_due' => $balanceDue,
-            'computed_payment_status' => $computedPaymentStatus,
-        ];
     }
 
     public function show(int $id)
@@ -823,16 +857,5 @@ class AppointmentController extends Controller
         ]);
 
         return $this->respond($photo);
-    }
-
-    private function resolveOrderItemSettlementGrossAmount(OrderItem $item): float
-    {
-        $lineTotal = (float) ($item->line_total ?? 0);
-        $snapshot = (float) ($item->line_total_snapshot ?? 0);
-        if ($snapshot > $lineTotal + 0.0001) {
-            return round($snapshot, 2);
-        }
-
-        return round($lineTotal, 2);
     }
 }

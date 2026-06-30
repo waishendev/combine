@@ -146,6 +146,7 @@ type OrderDetailLine = {
   discount_value?: number
   discount_remark?: string | null
   staff_name?: string | null
+  assigned_staff_name?: string | null
   price_override?: {
     original_unit_price?: number | string | null
     original_unit_price_snapshot?: number | string | null
@@ -194,6 +195,7 @@ type OrderDetail = {
     payments?: PaymentBreakdownRow[]
     type: string
     booking_no?: string | null
+    assigned_staff_name?: string | null
     status: string
     grand_total: number
     payment_proofs?: PaymentProof[]
@@ -338,12 +340,20 @@ const priceOverrideDisplay = (line: OrderDetailLine) => {
   )
 }
 
+const isBookingWorkerSplitLine = (lineType?: string | null) => {
+  const t = normalizeBookingType(lineType)
+  return t === 'booking_deposit' || t === 'deposit' || t === 'booking_settlement' || t === 'final_settlement'
+}
+
+const staffSplitColumnLabel = (lineType?: string | null) =>
+  isBookingWorkerSplitLine(lineType) ? 'Assigned staff' : 'Staff split'
+
 const staffSplitDisplay = (line: OrderDetailLine) => {
   const splits = Array.isArray(line.staff_splits) ? line.staff_splits : []
   if (splits.length > 0) {
     return splits.map((split) => `${split.staff_name} ${split.share_percent}%`).join(', ')
   }
-  return line.staff_name || '—'
+  return line.assigned_staff_name || line.staff_name || '—'
 }
 
 type DisplayOrderDetailLine = OrderDetailLine & { isChildLine?: boolean; parentName?: string }
@@ -1047,6 +1057,9 @@ export default function SalesChannelReportPage({
                       <DetailMeta label="Payment method" value={<PaymentMethodCell method={orderDetail.order.payment_method} payments={orderDetail.order.payments} />} />
                       <DetailMeta label="Type" value={orderDetail.order.type} />
                       <DetailMeta label="Booking no" value={orderDetail.order.booking_no ?? '—'} />
+                      {orderDetail.order.assigned_staff_name ? (
+                        <DetailMeta label="Assigned staff" value={orderDetail.order.assigned_staff_name} />
+                      ) : null}
                       <DetailMeta label="Status" value={labelize(orderDetail.order.status)} />
                       <DetailMeta label="Grand total" value={`RM ${formatAmount(orderDetail.order.grand_total)}`} />
                     </div>
@@ -1072,7 +1085,9 @@ export default function SalesChannelReportPage({
                           <th className="px-3 py-2 text-right font-semibold">Net</th>
                           <th className="px-3 py-2 text-left font-semibold">Discount details</th>
                           <th className="px-3 py-2 text-left font-semibold">Price override</th>
-                          <th className="px-3 py-2 text-left font-semibold">Staff split</th>
+                          <th className="px-3 py-2 text-left font-semibold">
+                            {detailLines.some((line) => isBookingWorkerSplitLine(line.line_type)) ? 'Assigned staff' : 'Staff split'}
+                          </th>
                           <th className="px-3 py-2 text-left font-semibold">Action</th>
                         </tr>
                       </thead>
@@ -1220,7 +1235,9 @@ export default function SalesChannelReportPage({
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-4">
-              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Staff Split</h4>
+              <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+                {staffSplitColumnLabel(selectedDetailLine.line_type)}
+              </h4>
               <p className="mt-3 text-sm text-slate-700">{staffSplitDisplay(selectedDetailLine)}</p>
             </section>
           </div>

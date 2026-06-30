@@ -41,11 +41,22 @@ export type AppointmentHistoryRow = {
   booking_payment_status?: string
   computed_payment_status?: 'paid' | 'partial' | 'unpaid' | string
   total_amount: number
+  total_amount_min?: number
+  total_amount_max?: number
+  amount_has_range?: boolean
   paid_amount: number
   deposit_paid: number
   settlement_paid: number
   package_offset: number
   balance_due: number
+  balance_due_min?: number
+  balance_due_max?: number
+  balance_has_range?: boolean
+  is_range_priced?: boolean
+  requires_settled_amount?: boolean
+  settled_service_amount?: number | null
+  service_total?: number
+  addon_total_price?: number
   notes?: string | null
   settlement_notes?: string | null
   source?: string | null
@@ -113,6 +124,45 @@ const PAYMENT_OPTIONS = [
 const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 
 const formatMoney = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`
+
+type HistoryMoneyField = 'total' | 'balance' | 'paid'
+
+const formatHistoryMoneyDisplay = (
+  row: Pick<
+    AppointmentHistoryRow,
+    | 'total_amount'
+    | 'total_amount_min'
+    | 'total_amount_max'
+    | 'amount_has_range'
+    | 'balance_due'
+    | 'balance_due_min'
+    | 'balance_due_max'
+    | 'balance_has_range'
+    | 'paid_amount'
+  >,
+  field: HistoryMoneyField,
+) => {
+  if (field === 'paid') return formatMoney(row.paid_amount)
+  if (
+    field === 'total' &&
+    row.amount_has_range &&
+    row.total_amount_min != null &&
+    row.total_amount_max != null &&
+    Math.abs(Number(row.total_amount_min) - Number(row.total_amount_max)) > 0.0001
+  ) {
+    return `RM ${Number(row.total_amount_min).toFixed(2)} - RM ${Number(row.total_amount_max).toFixed(2)}`
+  }
+  if (
+    field === 'balance' &&
+    row.balance_has_range &&
+    row.balance_due_min != null &&
+    row.balance_due_max != null &&
+    Math.abs(Number(row.balance_due_min) - Number(row.balance_due_max)) > 0.0001
+  ) {
+    return `RM ${Number(row.balance_due_min).toFixed(2)} - RM ${Number(row.balance_due_max).toFixed(2)}`
+  }
+  return formatMoney(field === 'total' ? row.total_amount : row.balance_due)
+}
 
 const paidAmountClass = (value?: number | string | null) => {
   const amount = Number(value ?? 0)
@@ -231,12 +281,12 @@ export function BookingAppointmentDetailDrawer({
               <section className="rounded-xl border border-slate-200 p-4">
                 <h4 className="font-semibold text-slate-900">Payment Breakdown</h4>
                 <dl className="mt-4 grid gap-4 md:grid-cols-2">
-                  <DetailField label="Total Amount" value={formatMoney(row.total_amount)} />
+                  <DetailField label="Total Amount" value={formatHistoryMoneyDisplay(row, 'total')} />
                   <DetailField label="Deposit" value={formatMoney(row.deposit_paid)} />
                   <DetailField label="Settlement Paid" value={formatMoney(row.settlement_paid)} />
                   <DetailField label="Package Offset" value={formatMoney(row.package_offset)} />
-                  <DetailField label="Paid Amount" value={formatMoney(row.paid_amount)} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
-                  <DetailField label="Balance Due" value={formatMoney(row.balance_due)} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
+                  <DetailField label="Paid Amount" value={formatHistoryMoneyDisplay(row, 'paid')} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
+                  <DetailField label="Balance Due" value={formatHistoryMoneyDisplay(row, 'balance')} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
 
@@ -481,9 +531,9 @@ export default function BookingAppointmentHistoryPage() {
                 <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap align-top">{formatDateTime(row.start_at)}<br /><span className="text-slate-500">to {formatDateTime(row.end_at)}</span></td>
                 <td className="px-3 py-3 whitespace-nowrap align-top"><BookingStatusBadge status={row.status} label={row.status} /></td>
                 <td className="px-3 py-3 whitespace-nowrap align-top"><span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${paymentBadgeClass(resolvedPaymentStatus(row))}`}>{formatPaymentStatus(resolvedPaymentStatus(row))}</span></td>
-                <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap align-top">{formatMoney(row.total_amount)}</td>
-                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${paidAmountClass(row.paid_amount)}`}>{formatMoney(row.paid_amount)}</td>
-                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${balanceDueClass(row.balance_due)}`}>{formatMoney(row.balance_due)}</td>
+                <td className="px-3 py-3 text-right tabular-nums whitespace-nowrap align-top">{formatHistoryMoneyDisplay(row, 'total')}</td>
+                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${paidAmountClass(row.paid_amount)}`}>{formatHistoryMoneyDisplay(row, 'paid')}</td>
+                <td className={`px-3 py-3 text-right tabular-nums whitespace-nowrap align-top ${balanceDueClass(row.balance_due)}`}>{formatHistoryMoneyDisplay(row, 'balance')}</td>
                 <td className="px-3 py-3 text-xs tabular-nums whitespace-nowrap align-top">{formatDateTime(row.created_at)}</td>
                 <td className="px-3 py-3 whitespace-nowrap align-top">
                   <ReportViewDetailsButton onClick={() => { setDetail(row); setDetailId(row.id) }} title={`View details for ${row.booking_code}`} />

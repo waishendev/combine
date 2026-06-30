@@ -65,7 +65,8 @@ class SalesChannelReportService
                 'items' => fn ($query) => $query->orderBy('id'),
                 'items.product:id,name,cn_name',
                 'items.productVariant:id,title,sku,cn_name',
-                'items.booking:id,booking_code,service_id,guest_name,guest_phone,guest_email',
+                'items.booking:id,booking_code,service_id,staff_id,guest_name,guest_phone,guest_email',
+                'items.booking.staff:id,name',
                 'items.booking.service:id,name,cn_name',
                 'items.bookingService:id,name,cn_name',
                 'items.staff:id,name',
@@ -94,6 +95,12 @@ class SalesChannelReportService
 
         $bookingNumbers = $order->items
             ->map(fn (OrderItem $item) => $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null))
+            ->filter()
+            ->unique()
+            ->values();
+
+        $assignedStaffNames = $order->items
+            ->map(fn (OrderItem $item) => $item->booking?->staff?->name)
             ->filter()
             ->unique()
             ->values();
@@ -132,6 +139,7 @@ class SalesChannelReportService
                 'payments' => $payments->all(),
                 'type' => $lineTypes->isEmpty() ? 'Order' : $lineTypes->implode(', '),
                 'booking_no' => $bookingNumbers->isEmpty() ? null : $bookingNumbers->implode(', '),
+                'assigned_staff_name' => $assignedStaffNames->isEmpty() ? null : $assignedStaffNames->implode(', '),
                 'status' => (string) $order->status,
                 'grand_total' => (float) $order->grand_total,
                 'payment_proofs' => $paymentProofs,
@@ -272,6 +280,10 @@ class SalesChannelReportService
             ])
             ->values();
 
+        $staffSplits = $this->resolveBookingStaffSplitsForLine($item, $staffSplits);
+        $assignedStaffName = $item->booking?->staff?->name
+            ?: ($staffSplits->first()['staff_name'] ?? null);
+
         return [
             'id' => (int) $item->id,
             'line_type' => (string) ($item->line_type ?? 'product'),
@@ -292,9 +304,64 @@ class SalesChannelReportService
             'discount_remark' => $item->discount_remark,
             'price_override' => $this->normalizeOrderItemPriceOverride($item, $overrideUsers),
             'children' => $children,
-            'staff_name' => $item->staff?->name,
+            'staff_name' => $item->staff?->name ?: $assignedStaffName,
+            'assigned_staff_name' => $assignedStaffName,
             'staff_splits' => $staffSplits->all(),
         ];
+    }
+
+    private function resolveBookingStaffSplitsForLine(OrderItem $item, $existingSplits)
+    {
+        if ($existingSplits->isNotEmpty()) {
+            return $existingSplits;
+        }
+
+        $bookingId = (int) ($item->booking_id ?? 0);
+        if ($bookingId <= 0) {
+            return $existingSplits;
+        }
+
+        $lineType = (string) ($item->line_type ?? '');
+        if (! in_array($lineType, ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'], true)) {
+            return $existingSplits;
+        }
+
+        $bookingSplits = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.booking_id', $bookingId)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'staff_name' => (string) ($row->staff_name ?? ('Staff #' . ($row->staff_id ?? 0))),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->values();
+
+        if ($bookingSplits->isNotEmpty()) {
+            return $bookingSplits;
+        }
+
+        $fallbackStaffId = (int) ($item->booking?->staff_id ?? 0);
+        if ($fallbackStaffId <= 0) {
+            return $existingSplits;
+        }
+
+        $fallbackName = (string) ($item->booking?->staff?->name ?? ('Staff #' . $fallbackStaffId));
+
+        return collect([[
+            'staff_id' => $fallbackStaffId,
+            'staff_name' => $fallbackName,
+            'share_percent' => 100,
+            'commission_rate_snapshot' => 0.0,
+        ]]);
     }
 
 

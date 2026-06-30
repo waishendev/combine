@@ -1,5 +1,6 @@
 'use client'
 
+import { formatPosCurrentOrRangeDisplay } from '@/components/pos/settlementAmountUtils'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
@@ -10,6 +11,10 @@ export type BookingServiceAddOn = {
   cn_name?: string | null
   extra_duration_min?: number | null
   extra_price: number
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+  price_finalized?: boolean | null
   staff_splits?: StaffSplit[]
   staff_split_source?: 'explicit' | 'inherited' | string | null
   service_ref?: string | null
@@ -24,6 +29,10 @@ export type BookingServiceBlock = {
   name: string
   cn_name?: string | null
   amount?: number | null
+  price_mode?: string | null
+  price_range_min?: number | null
+  price_range_max?: number | null
+  price_finalized?: boolean | null
   duration_min?: number | null
   start_at?: string | null
   end_at?: string | null
@@ -51,7 +60,23 @@ export type BookingServicesAddOnsRow = {
 
 const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 
-const formatMoney = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`
+const formatServiceAmount = (service: Pick<BookingServiceBlock, 'amount' | 'price_mode' | 'price_range_min' | 'price_range_max' | 'price_finalized'>) =>
+  formatPosCurrentOrRangeDisplay({
+    price_mode: service.price_mode,
+    price_range_min: service.price_range_min,
+    price_range_max: service.price_range_max,
+    price_finalized: service.price_finalized,
+    extra_price: service.amount,
+  })
+
+const formatAddonAmount = (addon: Pick<BookingServiceAddOn, 'extra_price' | 'price_mode' | 'price_range_min' | 'price_range_max' | 'price_finalized'>) =>
+  formatPosCurrentOrRangeDisplay({
+    price_mode: addon.price_mode,
+    price_range_min: addon.price_range_min,
+    price_range_max: addon.price_range_max,
+    price_finalized: addon.price_finalized,
+    extra_price: addon.extra_price,
+  })
 
 const visibleAddOns = (row: Pick<BookingServicesAddOnsRow, 'add_ons'>) =>
   (row.add_ons ?? []).filter((item) => {
@@ -116,7 +141,7 @@ export default function BookingServicesAddOnsSection({ row, className }: Booking
                   <p className="text-sm font-medium text-slate-900">{service.name || '—'}</p>
                   {service.cn_name ? <p className="text-xs text-slate-500">{service.cn_name}</p> : null}
                 </div>
-                <p className="text-sm text-slate-700">Amount: {formatMoney(service.amount)}</p>
+                <p className="text-sm text-slate-700">Amount: {formatServiceAmount(service)}</p>
                 <p className="text-sm text-slate-700">Duration: {service.duration_min != null ? `${service.duration_min} min` : '—'}</p>
                 <p className="text-sm text-slate-700">
                   Schedule: {`${formatDateTime(service.start_at ?? row.start_at)} - ${formatDateTime(service.end_at ?? row.end_at)}`}
@@ -133,7 +158,7 @@ export default function BookingServicesAddOnsSection({ row, className }: Booking
                     <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
                       <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
                       {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
-                      <p className="mt-2 text-sm text-slate-700">Amount: {formatMoney(item.extra_price)}</p>
+                      <p className="mt-2 text-sm text-slate-700">Amount: {formatAddonAmount(item)}</p>
                       <p className="text-sm text-slate-700">Duration: {item.extra_duration_min != null ? `${item.extra_duration_min} min` : '—'}</p>
                       <div className="mt-2">
                         <StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} />
