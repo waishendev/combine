@@ -18,7 +18,8 @@ class StaffCommissionService
     public const STATUS_FROZEN = 'FROZEN';
 
     private const BOOKING_STAFF_COMMISSION_LINE_TYPES = ['booking_settlement', 'booking_addon', 'booking_product'];
-    private const BOOKING_SETTLEMENT_SERVICE_LINE_TYPES = ['booking_settlement', 'booking_addon'];
+    private const BOOKING_SETTLED_SERVICE_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon'];
+    private const BOOKING_SETTLEMENT_TRIGGER_LINE_TYPES = ['booking_settlement', 'booking_addon'];
 
     public function normalizeType(?string $type): string
     {
@@ -458,7 +459,24 @@ class StaffCommissionService
         $net = (float) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('order_items.booking_id', $bookingId)
-            ->whereIn('order_items.line_type', self::BOOKING_SETTLEMENT_SERVICE_LINE_TYPES)
+            ->whereIn('order_items.line_type', self::BOOKING_SETTLED_SERVICE_LINE_TYPES)
+            ->whereExists(function ($query) use ($bookingId) {
+                $query->selectRaw('1')
+                    ->from('order_items as settled_items')
+                    ->join('orders as settled_orders', 'settled_orders.id', '=', 'settled_items.order_id')
+                    ->where('settled_items.booking_id', $bookingId)
+                    ->whereIn('settled_items.line_type', self::BOOKING_SETTLEMENT_TRIGGER_LINE_TYPES)
+                    ->whereNotIn('settled_orders.status', ['cancelled', 'draft', 'voided'])
+                    ->where(function ($statusQuery) {
+                        $statusQuery->where('settled_orders.status', 'completed')
+                            ->orWhere('settled_orders.payment_status', 'paid');
+                    })
+                    ->where(function ($refundQuery) {
+                        $refundQuery->where('settled_orders.payment_status', '!=', 'refunded')
+                            ->orWhereNull('settled_orders.payment_status');
+                    })
+                    ->whereNull('settled_orders.refunded_at');
+            })
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
@@ -485,7 +503,24 @@ class StaffCommissionService
         return DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereIn('order_items.booking_id', $ids)
-            ->whereIn('order_items.line_type', self::BOOKING_SETTLEMENT_SERVICE_LINE_TYPES)
+            ->whereIn('order_items.line_type', self::BOOKING_SETTLED_SERVICE_LINE_TYPES)
+            ->whereExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('order_items as settled_items')
+                    ->join('orders as settled_orders', 'settled_orders.id', '=', 'settled_items.order_id')
+                    ->whereColumn('settled_items.booking_id', 'order_items.booking_id')
+                    ->whereIn('settled_items.line_type', self::BOOKING_SETTLEMENT_TRIGGER_LINE_TYPES)
+                    ->whereNotIn('settled_orders.status', ['cancelled', 'draft', 'voided'])
+                    ->where(function ($statusQuery) {
+                        $statusQuery->where('settled_orders.status', 'completed')
+                            ->orWhere('settled_orders.payment_status', 'paid');
+                    })
+                    ->where(function ($refundQuery) {
+                        $refundQuery->where('settled_orders.payment_status', '!=', 'refunded')
+                            ->orWhereNull('settled_orders.payment_status');
+                    })
+                    ->whereNull('settled_orders.refunded_at');
+            })
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
