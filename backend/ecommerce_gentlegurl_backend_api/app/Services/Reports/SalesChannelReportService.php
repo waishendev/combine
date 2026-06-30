@@ -8,6 +8,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\User;
+use App\Support\BookingNotes;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
@@ -65,7 +66,7 @@ class SalesChannelReportService
                 'items' => fn ($query) => $query->orderBy('id'),
                 'items.product:id,name,cn_name',
                 'items.productVariant:id,title,sku,cn_name',
-                'items.booking:id,booking_code,service_id,staff_id,guest_name,guest_phone,guest_email',
+                'items.booking:id,booking_code,service_id,staff_id,guest_name,guest_phone,guest_email,notes,settlement_notes,reschedule_reason',
                 'items.booking.staff:id,name',
                 'items.booking.service:id,name,cn_name',
                 'items.bookingService:id,name,cn_name',
@@ -127,6 +128,8 @@ class SalesChannelReportService
                 ->get(['id', 'name', 'email'])
                 ->mapWithKeys(fn (User $user) => [(int) $user->id => (string) ($user->email ?: $user->name ?: ('User #' . $user->id))]);
 
+        $bookingRemarks = $this->resolveOrderBookingRemarks($order);
+
         return [
             'order' => [
                 'id' => (int) $order->id,
@@ -145,9 +148,49 @@ class SalesChannelReportService
                 'payment_proofs' => $paymentProofs,
                 'receipt_public_url' => $this->resolveReceiptPublicUrl($order),
                 'customer_email' => $this->resolveReceiptCustomerEmail($order),
+                ...$bookingRemarks,
             ],
             'lines' => $order->items->map(fn (OrderItem $item) => $this->formatOrderDetailLine($item, $overrideUsers->all()))->values()->all(),
             'action_logs' => $this->orderActionLogs((int) $order->id),
+        ];
+    }
+
+    private function resolveOrderBookingRemarks(Order $order): array
+    {
+        $bookings = $order->items
+            ->map(fn (OrderItem $item) => $item->booking)
+            ->filter()
+            ->unique('id');
+
+        $notes = [];
+        $voidRemarks = [];
+        $settlementNotes = [];
+        $rescheduleReasons = [];
+
+        foreach ($bookings as $booking) {
+            if ($value = BookingNotes::customerRemarksForDisplay($booking->notes)) {
+                $notes[] = $value;
+            }
+            if ($value = BookingNotes::voidRemarksForDisplay($booking->notes)) {
+                $voidRemarks[] = $value;
+            }
+            if ($value = trim((string) ($booking->settlement_notes ?? ''))) {
+                $settlementNotes[] = $value;
+            }
+            if ($value = trim((string) ($booking->reschedule_reason ?? ''))) {
+                $rescheduleReasons[] = $value;
+            }
+        }
+
+        $joinUnique = static fn (array $values): ?string => ($filtered = array_values(array_unique(array_filter($values)))) === []
+            ? null
+            : implode("\n", $filtered);
+
+        return [
+            'notes' => $joinUnique($notes),
+            'void_remarks' => $joinUnique($voidRemarks),
+            'settlement_notes' => $joinUnique($settlementNotes),
+            'reschedule_reason' => $joinUnique($rescheduleReasons),
         ];
     }
 

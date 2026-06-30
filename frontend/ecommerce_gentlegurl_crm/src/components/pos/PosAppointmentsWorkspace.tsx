@@ -43,7 +43,7 @@ import {
   formatAppointmentCustomerDisplayName,
   formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
-  getAppointmentRemarkLines,
+  getAppointmentDisplayRemarkLines,
   formatBookingAddonSummary,
   buildPosAppointmentSlots,
   formatDateTimeRange,
@@ -169,33 +169,6 @@ function PosServiceNameStack({
       <p className={primaryClassName}>{name || '—'}</p>
       {cnName ? <p className={secondaryClassName}>{cnName}</p> : null}
     </div>
-  )
-}
-
-function SettlementNotesHistory({ notes, emptyText = 'No settlement notes yet.' }: { notes?: string | null; emptyText?: string }) {
-  const entries = String(notes ?? '').trim().split(/\n{2,}/).map((entry) => entry.trim()).filter(Boolean).slice().reverse()
-  if (entries.length === 0) return <p className="mt-2 text-xs text-slate-500">{emptyText}</p>
-
-  return (
-    <ul className="mt-2 space-y-2">
-      {entries.map((entry, idx) => {
-        const lines = entry.split('\n')
-        const dateLine = lines[0]?.trim() ?? ''
-        const staffLine = lines[1]?.trim().replace(/:$/, '') ?? ''
-        const content = lines.slice(2).join('\n').trim() || entry
-        return (
-          <li key={`${dateLine}-${staffLine}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-            {dateLine || staffLine ? (
-              <div className="mb-1 flex flex-wrap gap-x-2 gap-y-0.5 font-semibold text-slate-900">
-                {dateLine ? <span>{dateLine}</span> : null}
-                {staffLine ? <span>{staffLine}</span> : null}
-              </div>
-            ) : null}
-            <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
-          </li>
-        )
-      })}
-    </ul>
   )
 }
 
@@ -2144,7 +2117,7 @@ export default function PosAppointmentsWorkspace({
     setEditSettlementDepositOriginal(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0))
     setEditSettlementDepositDraft(String(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0)))
     setEditSettlementDepositRemarkDraft('')
-    setEditSettlementNoteDraft('')
+    setEditSettlementNoteDraft(String(appointmentDetail.settlement_notes ?? '').trim())
 
     setEditAddonOptionsLoading(true)
     setEditMainServiceCatalogLoading(true)
@@ -2468,10 +2441,7 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
-      const settlementNote = editSettlementNoteDraft.trim()
-      if (settlementNote) {
-        payload.settlement_note = settlementNote
-      }
+      payload.settlement_note = editSettlementNoteDraft.trim()
 
       const phonePattern = /^\+?[0-9]{8,15}$/
       if (editSettlementIdentityMode === 'member') {
@@ -3840,10 +3810,10 @@ export default function PosAppointmentsWorkspace({
                           <span className="text-slate-500">{line.label}:</span> {line.value}
                         </p>
                       ))}
-                      {getAppointmentRemarkLines(appointmentDetail).map((line) => (
-                        <p key={`appointment-remark-${line.key}`} className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
-                          <span className="font-semibold text-slate-500">{line.label}:</span>{' '}
-                          {line.value}
+                      {getAppointmentDisplayRemarkLines(appointmentDetail).map((line) => (
+                        <p key={`appointment-remark-${line.key}`} className="text-xs font-medium text-slate-600">
+                          <span className="text-slate-500">{line.label}:</span>{' '}
+                          <span className="whitespace-pre-wrap">{line.value}</span>
                           {line.key === 'reschedule_reason' && appointmentDetail.rescheduled_at ? (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-400">
                               Last rescheduled {formatDateTime12Hour(appointmentDetail.rescheduled_at)}
@@ -4094,11 +4064,6 @@ export default function PosAppointmentsWorkspace({
                         </button>
                       </div>
                     ) : null}
-
-                    <div className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-3 shadow-sm">
-                      <p className="text-[11px] font-bold uppercase tracking-wide text-slate-800">Settlement Notes</p>
-                      <SettlementNotesHistory notes={appointmentDetail.settlement_notes} />
-                    </div>
 
                     <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                       <div className="flex gap-3 text-sm">
@@ -6270,10 +6235,10 @@ export default function PosAppointmentsWorkspace({
                       onChange={(e) => setEditSettlementNoteDraft(e.target.value)}
                       rows={3}
                       maxLength={2000}
-                      placeholder="Add new settlement note..."
+                      placeholder="Edit settlement note..."
                       className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     />
-                    <p className="mt-1 text-[11px] text-gray-500">This note will be appended after saving.</p>
+                    <p className="mt-1 text-[11px] text-gray-500">Changes replace the current note when you save.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">

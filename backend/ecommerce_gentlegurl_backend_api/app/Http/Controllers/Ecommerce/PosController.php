@@ -51,6 +51,7 @@ use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
+use App\Support\BookingNotes;
 use App\Support\OrderReceiptEmailLabels;
 use App\Support\Pricing\ProductPricing;
 use Carbon\Carbon;
@@ -504,7 +505,8 @@ class PosController extends Controller
             'guest_name' => $guestName !== '' ? $guestName : null,
             'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
             'guest_email' => $guestEmail !== '' ? $guestEmail : null,
-            'notes' => ($bookingNotes = trim((string) ($booking->notes ?? ''))) !== '' ? $bookingNotes : null,
+            'notes' => ($bookingNotes = BookingNotes::customerRemarksForDisplay($booking->notes)) !== null && $bookingNotes !== '' ? $bookingNotes : null,
+            'void_remarks' => ($voidRemarks = BookingNotes::voidRemarksForDisplay($booking->notes)) !== null && $voidRemarks !== '' ? $voidRemarks : null,
             'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
             'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
             'rescheduled_at' => optional($booking->rescheduled_at)?->toIso8601String(),
@@ -1221,15 +1223,7 @@ class PosController extends Controller
 
         if ($request->has('settlement_note')) {
             $note = trim((string) ($validated['settlement_note'] ?? ''));
-            if ($note !== '') {
-                $author = trim((string) ($request->user()?->name ?? ''));
-                if ($author === '') {
-                    $author = 'Staff #' . (int) $request->user()->id;
-                }
-                $entry = now()->format('Y-m-d H:i') . "\n" . $author . ":\n" . $note;
-                $existingNotes = trim((string) ($booking->settlement_notes ?? ''));
-                $booking->settlement_notes = $existingNotes !== '' ? ($existingNotes . "\n\n" . $entry) : $entry;
-            }
+            $booking->settlement_notes = $note !== '' ? $note : null;
         }
 
         if ($effectiveService && (int) ($booking->service_id ?? 0) !== (int) $effectiveService->id) {
@@ -7710,7 +7704,8 @@ class PosController extends Controller
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
-                'notes' => ($bookingNotes = trim((string) ($booking->notes ?? ''))) !== '' ? $bookingNotes : null,
+                'notes' => ($bookingNotes = BookingNotes::customerRemarksForDisplay($booking->notes)) !== null && $bookingNotes !== '' ? $bookingNotes : null,
+                'void_remarks' => ($voidRemarks = BookingNotes::voidRemarksForDisplay($booking->notes)) !== null && $voidRemarks !== '' ? $voidRemarks : null,
                 'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
                 'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
                 'rescheduled_at' => optional($booking->rescheduled_at)?->toIso8601String(),

@@ -12,6 +12,7 @@ use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\Voucher;
 use App\Services\Booking\StaffCommissionService;
 use App\Services\Booking\CustomerServicePackageService;
+use App\Support\BookingNotes;
 use App\Models\Booking\BookingPayment;
 use App\Models\Setting;
 use Carbon\Carbon;
@@ -195,7 +196,9 @@ class AppointmentController extends Controller
             ])->values();
 
         return $this->respond(array_merge($row, [
-            'notes' => $booking->notes,
+            'notes' => BookingNotes::customerRemarksForDisplay($booking->notes),
+            'void_remarks' => BookingNotes::voidRemarksForDisplay($booking->notes),
+            'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
             'source' => $booking->source,
             'logs' => $logs,
             ...$this->mapBookingMediaFields($booking),

@@ -14,6 +14,7 @@ use App\Models\Ecommerce\PaymentGateway;
 use App\Services\SettingService;
 use App\Services\Payments\BillplzConfigResolver;
 use App\Support\BillplzBaseUrl;
+use App\Support\BookingNotes;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
@@ -749,13 +750,9 @@ class PaymentController extends Controller
 
         if ($booking->source === 'GUEST' && empty($booking->customer_id)) {
             $guestToken = (string) $request->header('X-Booking-Guest-Token', '');
-            $storedToken = '';
+            $storedToken = (string) (BookingNotes::extractGuestToken($booking->notes) ?? '');
 
-            if (is_string($booking->notes) && str_starts_with($booking->notes, 'guest_token:')) {
-                $storedToken = substr($booking->notes, strlen('guest_token:'));
-            }
-
-            abort_unless($guestToken !== '' && hash_equals($storedToken, $guestToken), 403, 'Forbidden booking access.');
+            abort_unless($guestToken !== '' && $storedToken !== '' && hash_equals($storedToken, $guestToken), 403, 'Forbidden booking access.');
             return;
         }
 

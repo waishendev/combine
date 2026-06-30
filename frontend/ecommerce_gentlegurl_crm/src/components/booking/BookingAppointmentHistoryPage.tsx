@@ -12,6 +12,7 @@ import TableLoadingRow from '@/components/TableLoadingRow'
 import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { type PaymentProof } from '@/components/payment/PaymentProofPreview'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
 
 export type { StaffSplit, BookingServiceAddOn, BookingServiceBlock } from './BookingServicesAddOnsSection'
 import type { StaffSplit, BookingServiceAddOn, BookingServiceBlock } from './BookingServicesAddOnsSection'
@@ -58,7 +59,9 @@ export type AppointmentHistoryRow = {
   service_total?: number
   addon_total_price?: number
   notes?: string | null
+  void_remarks?: string | null
   settlement_notes?: string | null
+  reschedule_reason?: string | null
   source?: string | null
   customer_reference_photos_count?: number
   customer_reference_photos?: Array<{ id: number; file_url?: string | null; original_name?: string | null }>
@@ -274,6 +277,20 @@ export function BookingAppointmentDetailDrawer({
                   <DetailField label="Phone" value={row.customer?.phone ?? row.guest_phone ?? '—'} />
                   <DetailField label="Email" value={row.customer?.email ?? row.guest_email ?? '—'} />
                 </dl>
+                {(() => {
+                  const remarkLines = getAppointmentDisplayRemarkLines(row)
+                  if (remarkLines.length === 0) return null
+                  return (
+                    <div className="mt-4 space-y-1">
+                      {remarkLines.map((line) => (
+                        <p key={`appointment-remark-${line.key}`} className="text-xs font-medium text-slate-600">
+                          <span className="text-slate-500">{line.label}:</span>{' '}
+                          <span className="whitespace-pre-wrap">{line.value}</span>
+                        </p>
+                      ))}
+                    </div>
+                  )
+                })()}
               </section>
 
               <BookingServicesAddOnsSection row={row} />
@@ -288,11 +305,6 @@ export function BookingAppointmentDetailDrawer({
                   <DetailField label="Paid Amount" value={formatHistoryMoneyDisplay(row, 'paid')} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
                   <DetailField label="Balance Due" value={formatHistoryMoneyDisplay(row, 'balance')} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
-              </section>
-
-              <section className="rounded-xl border border-slate-200 p-4">
-                <h4 className="font-semibold text-slate-900">Settlement Notes</h4>
-                <p className="mt-3 whitespace-pre-wrap text-sm text-slate-700">{row.settlement_notes || '—'}</p>
               </section>
 
               <BookingPhotosPaymentProofSection

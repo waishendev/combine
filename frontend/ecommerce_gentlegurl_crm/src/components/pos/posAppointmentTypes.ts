@@ -88,6 +88,8 @@ export type PosAppointmentDetail = {
   guest_email?: string | null
   /** Booking remarks entered at create / reschedule. */
   notes?: string | null
+  /** Void order remark from POS void flow. */
+  void_remarks?: string | null
   /** Internal settlement notes appended from Edit Settlement. */
   settlement_notes?: string | null
   /** Latest reschedule reason (overwritten on each reschedule). */

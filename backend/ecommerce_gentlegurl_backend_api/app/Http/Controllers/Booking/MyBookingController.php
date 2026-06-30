@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Booking;
 
+use App\Support\BookingNotes;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCancellationRequest;
@@ -113,7 +114,7 @@ class MyBookingController extends Controller
                 'total_paid' => (float) $summary['total_paid'],
                 'estimated_duration_min' => (int) $summary['estimated_duration_min'],
                 'staff_name' => $booking->staff?->name,
-                'customer_remarks' => $this->extractCustomerRemarks($booking->notes),
+                'customer_remarks' => BookingNotes::customerRemarksForDisplay($booking->notes),
                 'service' => $booking->service ? [
                     'id' => (int) $booking->service->id,
                     'name' => $booking->service->name,
@@ -469,21 +470,6 @@ class MyBookingController extends Controller
         return $this->respond(['uploaded_item_photos' => $booking->fresh('itemPhotos')->itemPhotos->values()]);
     }
 
-
-    private function extractCustomerRemarks(?string $notes): ?string
-    {
-        $raw = trim((string) ($notes ?? ''));
-        if ($raw === '') {
-            return null;
-        }
-
-        if (preg_match('/(?:^|\|\s*)customer_remarks:\s*(.+?)(?:\s*\|\s*deposit_waived_for_member|$)/i', $raw, $matches)) {
-            $value = trim((string) ($matches[1] ?? ''));
-            return $value !== '' ? $value : null;
-        }
-
-        return null;
-    }
 
     private function canManagePhotos(Booking $booking): bool
     {

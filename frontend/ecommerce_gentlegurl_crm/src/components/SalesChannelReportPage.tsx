@@ -13,6 +13,7 @@ import OrderReceiptAction from './reports/OrderReceiptAction'
 import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportActions'
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
+import { getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
 
 type Mode = 'ecommerce' | 'booking'
 
@@ -201,6 +202,10 @@ type OrderDetail = {
     payment_proofs?: PaymentProof[]
     receipt_public_url?: string | null
     customer_email?: string | null
+    notes?: string | null
+    void_remarks?: string | null
+    settlement_notes?: string | null
+    reschedule_reason?: string | null
   }
   lines: OrderDetailLine[]
   action_logs?: OrderActionLogEntry[]
@@ -1063,6 +1068,20 @@ export default function SalesChannelReportPage({
                       <DetailMeta label="Status" value={labelize(orderDetail.order.status)} />
                       <DetailMeta label="Grand total" value={`RM ${formatAmount(orderDetail.order.grand_total)}`} />
                     </div>
+                    {(() => {
+                      const remarkLines = getAppointmentDisplayRemarkLines(orderDetail.order)
+                      if (remarkLines.length === 0) return null
+                      return (
+                        <div className="mt-4 space-y-1 border-t border-slate-100 pt-4">
+                          {remarkLines.map((line) => (
+                            <p key={`order-remark-${line.key}`} className="text-xs font-medium text-slate-600">
+                              <span className="text-slate-500">{line.label}:</span>{' '}
+                              <span className="whitespace-pre-wrap">{line.value}</span>
+                            </p>
+                          ))}
+                        </div>
+                      )
+                    })()}
                   </section>
 
                   <section className="rounded-xl border border-slate-200 p-4">

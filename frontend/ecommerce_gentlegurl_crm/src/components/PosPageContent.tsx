@@ -37,7 +37,7 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
-import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
+import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppointmentDisplayRemarkLines, posGuestIdentityKeysCompatible, resolvePosGuestIdentityKey } from '@/components/pos/posAppointmentHelpers'
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
@@ -221,34 +221,6 @@ const getGuestContactLines = (source: GuestContactSource): string[] => {
   return lines
 }
 
-
-function SettlementNotesHistory({ notes, emptyText = 'No settlement notes yet.' }: { notes?: string | null; emptyText?: string }) {
-  const entries = String(notes ?? '').trim().split(/\n{2,}/).map((entry) => entry.trim()).filter(Boolean).slice().reverse()
-  if (entries.length === 0) return <p className="mt-2 text-xs text-slate-500">{emptyText}</p>
-
-  return (
-    <ul className="mt-2 space-y-2">
-      {entries.map((entry, idx) => {
-        const lines = entry.split('\n')
-        const dateLine = lines[0]?.trim() ?? ''
-        const staffLine = lines[1]?.trim().replace(/:$/, '') ?? ''
-        const content = lines.slice(2).join('\n').trim() || entry
-        return (
-          <li key={`${dateLine}-${staffLine}-${idx}`} className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-            {dateLine || staffLine ? (
-              <div className="mb-1 flex flex-wrap gap-x-2 gap-y-0.5 font-semibold text-slate-900">
-                {dateLine ? <span>{dateLine}</span> : null}
-                {staffLine ? <span>{staffLine}</span> : null}
-              </div>
-            ) : null}
-            <p className="whitespace-pre-wrap leading-relaxed">{content}</p>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
 type AppointmentSettlementCartItem = {
   id: number
   booking_id: number
@@ -260,6 +232,7 @@ type AppointmentSettlementCartItem = {
   guest_phone?: string | null
   guest_email?: string | null
   notes?: string | null
+  void_remarks?: string | null
   settlement_notes?: string | null
   reschedule_reason?: string | null
   rescheduled_at?: string | null
@@ -4643,7 +4616,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     setCartEditSettlementDepositOriginal(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0))
     setCartEditSettlementDepositDraft(String(Number(settlement.deposit_contribution ?? settlement.deposit_previously_collected_amount ?? 0)))
     setCartEditSettlementDepositRemarkDraft('')
-    setCartEditSettlementNoteDraft('')
+    setCartEditSettlementNoteDraft(String(settlement.settlement_notes ?? '').trim())
 
     setCartEditAddonOptionsLoading(true)
     setCartEditMainServiceCatalogLoading(true)
@@ -4962,10 +4935,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       }
       payload.staff_splits = normalizedSplits
 
-      const settlementNote = cartEditSettlementNoteDraft.trim()
-      if (settlementNote) {
-        payload.settlement_note = settlementNote
-      }
+      payload.settlement_note = cartEditSettlementNoteDraft.trim()
 
       const phonePattern = /^\+?[0-9]{8,15}$/
       if (cartEditSettlementIdentityMode === 'member') {
@@ -8381,9 +8351,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         {getGuestContactLines(settlement).map((line) => (
                           <p key={`cart-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
                         ))}
-                        {getAppointmentRemarkLines(settlement).map((line) => (
-                          <p key={`cart-settlement-remark-${settlement.id}-${line.key}`} className="whitespace-pre-wrap">
-                            {line.label}: {line.value}
+                        {getAppointmentDisplayRemarkLines(settlement).map((line) => (
+                          <p key={`cart-settlement-remark-${settlement.id}-${line.key}`} className="text-xs font-medium text-slate-600">
+                            <span className="text-slate-500">{line.label}:</span>{' '}
+                            <span className="whitespace-pre-wrap">{line.value}</span>
                           </p>
                         ))}
                         <p>Staff: {formatSettlementStaffLabel(settlement)}</p>
@@ -9514,10 +9485,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                       onChange={(e) => setCartEditSettlementNoteDraft(e.target.value)}
                       rows={3}
                       maxLength={2000}
-                      placeholder="Add new settlement note..."
+                      placeholder="Edit settlement note..."
                       className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
                     />
-                    <p className="mt-1 text-[11px] text-gray-500">This note will be appended after saving.</p>
+                    <p className="mt-1 text-[11px] text-gray-500">Changes replace the current note when you save.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -10328,9 +10299,10 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                 {getGuestContactLines(settlement).map((line) => (
                                   <p key={`checkout-settlement-guest-contact-${settlement.id}-${line}`}>{line}</p>
                                 ))}
-                                {getAppointmentRemarkLines(settlement).map((line) => (
-                                  <p key={`checkout-settlement-remark-${settlement.id}-${line.key}`} className="whitespace-pre-wrap">
-                                    {line.label}: {line.value}
+                                {getAppointmentDisplayRemarkLines(settlement).map((line) => (
+                                  <p key={`checkout-settlement-remark-${settlement.id}-${line.key}`} className="text-xs font-medium text-slate-600">
+                                    <span className="text-slate-500">{line.label}:</span>{' '}
+                                    <span className="whitespace-pre-wrap">{line.value}</span>
                                   </p>
                                 ))}
                                 {settlement.appointment_start_at ? (
@@ -10339,10 +10311,6 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                                   </p>
                                 ) : null}
                                 <p>Duration: {getSettlementDurationMin(settlement) > 0 ? `${getSettlementDurationMin(settlement)} min` : '—'}</p>
-                              </div>
-                              <div className="mt-3 rounded-lg border border-slate-200 bg-white/80 px-3 py-2">
-                                <p className="text-[11px] font-bold uppercase tracking-wide text-slate-700">Settlement Notes</p>
-                                <SettlementNotesHistory notes={settlement.settlement_notes} />
                               </div>
                             </td>
                             <td className="min-w-[260px] px-4 py-3.5 align-top">
