@@ -15,6 +15,8 @@ use Illuminate\Support\Facades\DB;
 class SalesVisualDailyReportService
 {
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
+    private const BOOKING_STAFF_SERVICE_LINE_TYPES = ['booking_settlement', 'booking_addon', 'booking_product'];
+    private const BOOKING_SETTLEMENT_SERVICE_LINE_TYPES = ['booking_settlement', 'booking_addon'];
 
     private function orderBillAtSql(string $alias = 'o'): string
     {
@@ -571,7 +573,7 @@ class SalesVisualDailyReportService
                 ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end]),
             'orders'
         )
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product']);
+            ->whereIn('order_items.line_type', self::BOOKING_STAFF_SERVICE_LINE_TYPES);
     }
 
     /**
@@ -896,7 +898,7 @@ class SalesVisualDailyReportService
                     ->join('orders as o', 'o.id', '=', 'oi.order_id')
                     ->whereIn('oi.booking_id', $bookingIds)
             )
-                ->whereIn('oi.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereIn('oi.line_type', self::BOOKING_SETTLEMENT_SERVICE_LINE_TYPES)
                 ->groupBy('oi.booking_id')
                 ->selectRaw('oi.booking_id as booking_id')
                 ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")
