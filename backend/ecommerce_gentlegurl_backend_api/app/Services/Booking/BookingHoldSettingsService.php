@@ -9,7 +9,7 @@ use Carbon\Carbon;
 
 class BookingHoldSettingsService
 {
-    public function applyHoldMinutesChange(int $holdMinutes): void
+    public function applyCartHoldMinutesChange(int $holdMinutes): void
     {
         $holdMinutes = max(1, $holdMinutes);
 
@@ -18,22 +18,6 @@ class BookingHoldSettingsService
             'deposit_base_amount_if_only_standard' => 30,
             'cart_hold_minutes' => $holdMinutes,
         ])->update(['cart_hold_minutes' => $holdMinutes]);
-
-        Booking::query()
-            ->where('status', 'HOLD')
-            ->whereNotNull('hold_expires_at')
-            ->orderBy('id')
-            ->chunkById(100, function ($bookings) use ($holdMinutes) {
-                foreach ($bookings as $booking) {
-                    $base = $booking->created_at instanceof Carbon
-                        ? $booking->created_at->copy()
-                        : Carbon::now();
-
-                    $booking->update([
-                        'hold_expires_at' => $base->addMinutes($holdMinutes),
-                    ]);
-                }
-            });
 
         BookingCartItem::query()
             ->where('status', 'active')
@@ -50,5 +34,45 @@ class BookingHoldSettingsService
                     ]);
                 }
             });
+    }
+
+    public function applyManualTransferHoldMinutesChange(int $holdMinutes): void
+    {
+        $holdMinutes = max(1, $holdMinutes);
+
+        Booking::query()
+            ->where('status', 'HOLD')
+            ->whereNotNull('hold_expires_at')
+            ->whereHas('orderItems.order', function ($query) {
+                $query->where('payment_method', 'manual_transfer')
+                    ->where('payment_status', 'unpaid');
+            })
+            ->with(['orderItems.order'])
+            ->orderBy('id')
+            ->chunkById(100, function ($bookings) use ($holdMinutes) {
+                foreach ($bookings as $booking) {
+                    $order = $booking->orderItems
+                        ->map(fn ($item) => $item->order)
+                        ->filter(fn ($order) => $order
+                            && $order->payment_method === 'manual_transfer'
+                            && $order->payment_status === 'unpaid')
+                        ->sortByDesc('id')
+                        ->first();
+
+                    $base = $order?->placed_at?->copy()
+                        ?? ($booking->created_at instanceof Carbon ? $booking->created_at->copy() : Carbon::now());
+
+                    $booking->update([
+                        'hold_expires_at' => $base->addMinutes($holdMinutes),
+                    ]);
+                }
+            });
+    }
+
+    /** @deprecated Use applyCartHoldMinutesChange() or applyManualTransferHoldMinutesChange() */
+    public function applyHoldMinutesChange(int $holdMinutes): void
+    {
+        $this->applyCartHoldMinutesChange($holdMinutes);
+        $this->applyManualTransferHoldMinutesChange($holdMinutes);
     }
 }

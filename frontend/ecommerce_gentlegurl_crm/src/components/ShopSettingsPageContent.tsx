@@ -106,6 +106,7 @@ type ShopSettingsResponse = {
     return_tracking_submit_days?: number
     order_reserve_minutes?: number
     booking_hold_minutes?: number
+    booking_manual_transfer_hold_minutes?: number
   }
 }
 
@@ -236,6 +237,7 @@ const defaultOrderReserveSettings = {
 
 const defaultBookingHoldSettings = {
   booking_hold_minutes: 10,
+  booking_manual_transfer_hold_minutes: 10,
 }
 
 type ShopSettingsPageContentProps = {
@@ -462,6 +464,9 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
         setBookingHoldSettings({
           booking_hold_minutes:
             payload.data?.booking_hold_minutes ?? defaultBookingHoldSettings.booking_hold_minutes,
+          booking_manual_transfer_hold_minutes:
+            payload.data?.booking_manual_transfer_hold_minutes ??
+            defaultBookingHoldSettings.booking_manual_transfer_hold_minutes,
         })
       } catch (err) {
         if (controller.signal.aborted) return
@@ -953,21 +958,35 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
     setBookingHoldFeedback(null)
 
     try {
-      const response = await fetch(withType('/api/ecommerce/shop-settings/BOOKING_HOLD_MINUTES'), {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          type: workspaceType,
-          value: Number(bookingHoldSettings.booking_hold_minutes) || defaultBookingHoldSettings.booking_hold_minutes,
+      const [cartHoldResponse, manualTransferResponse] = await Promise.all([
+        fetch(withType('/api/ecommerce/shop-settings/BOOKING_HOLD_MINUTES'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: workspaceType,
+            value:
+              Number(bookingHoldSettings.booking_hold_minutes) ||
+              defaultBookingHoldSettings.booking_hold_minutes,
+          }),
         }),
-      })
+        fetch(withType('/api/ecommerce/shop-settings/BOOKING_MANUAL_TRANSFER_HOLD_MINUTES'), {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            type: workspaceType,
+            value:
+              Number(bookingHoldSettings.booking_manual_transfer_hold_minutes) ||
+              defaultBookingHoldSettings.booking_manual_transfer_hold_minutes,
+          }),
+        }),
+      ])
 
-      if (!response.ok) {
+      if (!cartHoldResponse.ok || !manualTransferResponse.ok) {
         throw new Error('Failed to save booking hold minutes')
       }
 
       setBookingHoldSaveState('saved')
-      setBookingHoldFeedback({ type: 'success', message: 'Booking hold minutes saved.' })
+      setBookingHoldFeedback({ type: 'success', message: 'Booking hold settings saved.' })
     } catch (err) {
       console.error(err)
       setBookingHoldSaveState('error')
@@ -1558,7 +1577,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
             <div>
               <h3 className="text-2xl font-semibold text-slate-900 mt-1">Booking Hold Settings</h3>
               <p className="text-sm text-slate-500 mt-2 max-w-2xl">
-                Configure how long a booking slot stays in HOLD before it expires, and how long customers have to pay for unpaid booking-related orders before those orders are auto-cancelled.
+                Configure cart slot hold time separately from the manual bank transfer payment window.
               </p>
             </div>
           </div>
@@ -1584,7 +1603,7 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
             )}
             <div className="grid gap-4 md:grid-cols-2">
               <label className="space-y-2">
-                <span className="block text-sm font-medium text-slate-800">Hold Duration (Minutes)</span>
+                <span className="block text-sm font-medium text-slate-800">Cart Slot Hold (Minutes)</span>
                 <input
                   type="number"
                   min={1}
@@ -1600,7 +1619,27 @@ export default function ShopSettingsPageContent({ canEdit, forcedWorkspace }: Sh
                   className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
                 <p className="text-xs text-slate-500">
-                  Applies to booking slot holds and unpaid booking orders on the booking storefront (My Orders countdown and auto-cancel).
+                  How long a selected slot stays reserved in the booking cart before it expires (booking website cart countdown).
+                </p>
+              </label>
+              <label className="space-y-2">
+                <span className="block text-sm font-medium text-slate-800">Manual Transfer Payment Window (Minutes)</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={bookingHoldSettings.booking_manual_transfer_hold_minutes}
+                  disabled={!canEdit}
+                  onChange={(event) =>
+                    setBookingHoldSettings((prev) => ({
+                      ...prev,
+                      booking_manual_transfer_hold_minutes: Number(event.target.value),
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 shadow-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="text-xs text-slate-500">
+                  After checkout with manual bank transfer, how long customers have to pay before the booking becomes EXPIRED and the order is auto-cancelled (My Orders countdown).
                 </p>
               </label>
             </div>

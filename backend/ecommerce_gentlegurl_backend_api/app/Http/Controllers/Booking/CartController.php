@@ -549,6 +549,10 @@ class CartController extends Controller
                     $noteParts[] = 'customer_remarks: ' . $customerRemarks;
                 }
 
+                $holdExpiresAt = $paymentMethod === 'manual_transfer'
+                    ? now()->addMinutes(app(OrderReserveService::class)->getBookingManualTransferHoldMinutes())
+                    : $item->expires_at;
+
                 $booking = Booking::create([
                     'booking_code' => 'BK-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
                     'source' => $customer ? 'CUSTOMER' : 'GUEST',
@@ -569,7 +573,7 @@ class CartController extends Controller
                     'addon_price' => (float) ($item->addon_price ?? 0),
                     'addon_items_json' => $item->question_answers_json['selected_options'] ?? [],
                     'payment_status' => 'UNPAID',
-                    'hold_expires_at' => $item->expires_at,
+                    'hold_expires_at' => $holdExpiresAt,
                     'notes' => ! empty($noteParts) ? implode(' | ', $noteParts) : null,
                 ]);
 
@@ -791,7 +795,9 @@ class CartController extends Controller
                 'redirect_url' => $order
                     ? '/payment-result?' . http_build_query(['order_id' => (int) $order->id, 'order_no' => (string) $order->order_number])
                     : null,
-                'payment_expires_at' => $activeItems->min('expires_at')?->toIso8601String(),
+                'payment_expires_at' => $order && $paymentMethod === 'manual_transfer'
+                    ? app(OrderReserveService::class)->getReserveExpiresAt($order)->toIso8601String()
+                    : $activeItems->min('expires_at')?->toIso8601String(),
                 'payment_instruction' => $order && (float) $order->grand_total <= 0
                     ? 'No payment required for this booking.'
                     : 'Complete payment before hold expires to confirm booking.',
@@ -1301,7 +1307,7 @@ class CartController extends Controller
 
     private function getCartHoldMinutes(): int
     {
-        return app(OrderReserveService::class)->getBookingHoldMinutes();
+        return app(OrderReserveService::class)->getBookingCartHoldMinutes();
     }
 
     private function getSettings(): BookingSetting

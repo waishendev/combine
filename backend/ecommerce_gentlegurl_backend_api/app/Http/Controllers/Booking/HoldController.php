@@ -42,7 +42,7 @@ class HoldController extends Controller
         $startAt = Carbon::parse($validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
-        $holdMinutes = app(OrderReserveService::class)->getBookingHoldMinutes();
+        $holdMinutes = app(OrderReserveService::class)->getBookingCartHoldMinutes();
 
         $booking = DB::transaction(function () use ($validated, $customer, $service, $startAt, $endAt, $holdMinutes) {
             if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)

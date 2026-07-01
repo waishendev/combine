@@ -63,6 +63,11 @@ class SettingSeeder extends Seeder
             ['value' => 10]
         );
 
+        Setting::updateOrCreate(
+            ['type' => 'booking', 'key' => 'BOOKING_MANUAL_TRANSFER_HOLD_MINUTES'],
+            ['value' => 10]
+        );
+
 
         Setting::updateOrCreate(
             ['type' => 'booking', 'key' => 'booking_deposit_tnc_enabled'],
