@@ -41,6 +41,8 @@ import { buildPosAppointmentSlots, formatDateTimeRange, formatTimeRange, getAppo
 import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 import OrderViewPanel from './OrderViewPanel'
+import CustomerCreateModal from './CustomerCreateModal'
+import type { CustomerRowData } from './CustomerRow'
 import {
   printReceipt,
   printReceiptBluetooth,
@@ -1574,9 +1576,11 @@ const buildPosProductGalleryImages = (
 
 type PosPageContentProps = {
   currentUser: PosCurrentUser
+  permissions?: string[]
 }
 
-export default function PosPageContent({ currentUser }: PosPageContentProps) {
+export default function PosPageContent({ currentUser, permissions = [] }: PosPageContentProps) {
+  const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const { hasOpenShift, cashShiftLoading } = usePosCashShift()
   const { isCompactLayout } = usePosWideLayout()
   const scannerInputRef = useRef<HTMLInputElement | null>(null)
@@ -1680,6 +1684,7 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
   const [packageMembersLoading, setPackageMembersLoading] = useState(false)
   const [packageMemberPickerOpen, setPackageMemberPickerOpen] = useState(false)
   const [assignMemberContext, setAssignMemberContext] = useState<'checkout' | 'service' | 'package' | 'cartEditSettlement'>('checkout')
+  const [isCreateMemberModalOpen, setIsCreateMemberModalOpen] = useState(false)
   const [packageModalError, setPackageModalError] = useState<string | null>(null)
   const packageRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
   const [packageSubmitting, setPackageSubmitting] = useState(false)
@@ -6576,6 +6581,55 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
     }
   }, [])
 
+  const customerRowToMember = (customer: CustomerRowData): Member => ({
+    id: customer.id,
+    name: customer.name,
+    phone: customer.phone?.trim() || null,
+    email: customer.email?.trim() || null,
+    phone_masked: customer.phone?.trim() || null,
+  })
+
+  const handleMemberCreated = async (customer: CustomerRowData) => {
+    setIsCreateMemberModalOpen(false)
+    if (!customer.id) {
+      showMsg('Member created, but could not assign automatically. Please search again.', 'warning')
+      return
+    }
+
+    const member = await hydrateMemberProfile(customerRowToMember(customer))
+
+    if (packageMemberPickerOpen) {
+      if (assignMemberContext === 'package') {
+        setPackageSelectedMember(member)
+      } else if (assignMemberContext === 'cartEditSettlement') {
+        setCartEditSettlementCustomerId(member.id)
+        setCartEditSettlementMemberSummary({
+          id: member.id,
+          name: member.name,
+          phone: member.phone_masked ?? member.phone ?? null,
+        })
+        setCartEditSettlementIdentityMode('member')
+        reportCartEditSettlementError(null)
+      } else {
+        await onAssignMember(member)
+      }
+      setPackageMemberQuery('')
+      setPackageMemberPickerOpen(false)
+      showMsg('Member created and assigned.', 'success')
+      return
+    }
+
+    if (memberOpen) {
+      setLookupMember(member)
+      void fetchMemberDetail(member.id, { page: 1, appointmentsPage: 1, updateSelectedMember: false })
+      showMsg('Member created.', 'success')
+      return
+    }
+
+    await onAssignMember(member)
+    showMsg('Member created and assigned.', 'success')
+  }
+
   useEffect(() => {
     if (!selectedMember?.id) return
     if (selectedMember.phone && selectedMember.phone.trim()) return
@@ -7265,6 +7319,16 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
             Appointments
           </Link> */}
           <PosRequestCenter />
+          {canCreateMember ? (
+            <button
+              type="button"
+              onClick={() => setIsCreateMemberModalOpen(true)}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-blue-600"
+            >
+              <i className="fa-solid fa-user-plus" />
+              Create Member
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => void openMemberQuickLookupPanel()}
@@ -11434,7 +11498,15 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
       )}
 
       {packageMemberPickerOpen ? (
-        <div className={`fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4 ${assignMemberContext === 'cartEditSettlement' || cartEditSettlementOpen ? 'z-[150]' : 'z-[130]'}`}>
+        <div
+          className={`fixed inset-0 flex items-center justify-center overflow-y-auto bg-black/50 backdrop-blur-sm p-4 ${
+            bookingModalOpen
+              ? 'pos-body-stack-modal-top'
+              : assignMemberContext === 'cartEditSettlement' || cartEditSettlementOpen
+                ? 'z-[150]'
+                : 'z-[130]'
+          }`}
+        >
           <div className="relative mx-auto flex w-full max-w-2xl lg:max-w-4xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
@@ -12079,14 +12151,26 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                   <h4 className="text-lg font-bold text-gray-900">Member Quick Lookup</h4>
                   <p className="text-xs text-gray-500">Search member by name or phone</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={closeMemberPanel}
-                  aria-label="Close member panel"
-                  className="inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
-                >
-                  <span className="text-2xl leading-none">×</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {canCreateMember ? (
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateMemberModalOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-600"
+                    >
+                      <i className="fa-solid fa-user-plus" />
+                      Create Member
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={closeMemberPanel}
+                    aria-label="Close member panel"
+                    className="inline-flex h-11 w-11 shrink-0 touch-manipulation items-center justify-center rounded-full text-gray-500 transition hover:bg-gray-100 hover:text-gray-700"
+                  >
+                    <span className="text-2xl leading-none">×</span>
+                  </button>
+                </div>
               </div>
 
               {hasCartAppointmentSettlements ? (
@@ -12169,8 +12253,8 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
                         <h5 className="text-sm font-bold text-gray-900">Overview</h5>
                         <div className="mt-2 grid grid-cols-1 gap-2 text-sm text-gray-700">
                           <p><span className="font-semibold text-gray-900">Full Name:</span> {memberDetail.name || '—'}</p>
-                          <p><span className="font-semibold text-gray-900">Phone:</span> {memberDetail.phone || '—'}</p>
-                          <p><span className="font-semibold text-gray-900">Email:</span> {memberDetail.email || '—'}</p>
+                          {/* <p><span className="font-semibold text-gray-900">Phone:</span> {memberDetail.phone || '—'}</p>
+                          <p><span className="font-semibold text-gray-900">Email:</span> {memberDetail.email || '—'}</p> */}
                           <p><span className="font-semibold text-gray-900">Join Date:</span> {memberDetail.join_date ? new Date(memberDetail.join_date).toLocaleString() : '—'}</p>
                           <p><span className="font-semibold text-gray-900">Customer Type:</span> {memberDetail.customer_type || '—'}</p>
                           <p><span className="font-semibold text-gray-900">Total Orders:</span> {memberDetail.total_orders ?? 0}</p>
@@ -12642,6 +12726,14 @@ export default function PosPageContent({ currentUser }: PosPageContentProps) {
           })}
         </div>
       )}
+
+      {isCreateMemberModalOpen ? (
+        <CustomerCreateModal
+          zIndexClass={bookingModalOpen ? 'pos-body-stack-modal-top' : 'z-[200]'}
+          onClose={() => setIsCreateMemberModalOpen(false)}
+          onSuccess={(customer) => void handleMemberCreated(customer)}
+        />
+      ) : null}
 
     </div>
   )

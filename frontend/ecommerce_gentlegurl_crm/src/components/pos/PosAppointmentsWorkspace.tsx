@@ -27,6 +27,8 @@ import {
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
+import CustomerCreateModal from '@/components/CustomerCreateModal'
+import type { CustomerRowData } from '@/components/CustomerRow'
 import PaymentProofModal from '@/components/payment/PaymentProofModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
@@ -271,6 +273,7 @@ export default function PosAppointmentsWorkspace({
   currentUser: PosAppointmentCurrentUser
   permissions?: string[]
 }) {
+  const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const appointmentQrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const appointmentQrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const appointmentQrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
@@ -438,6 +441,7 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementDepositRemarkDraft, setEditSettlementDepositRemarkDraft] = useState('')
   const [editSettlementNoteDraft, setEditSettlementNoteDraft] = useState('')
   const [memberPickerForEditSettlement, setMemberPickerForEditSettlement] = useState(false)
+  const [isCreateMemberModalOpen, setIsCreateMemberModalOpen] = useState(false)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
@@ -1169,6 +1173,55 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentMemberResults([])
     setMemberPickerForEditSettlement(false)
   }, [])
+
+  const handleMemberCreated = useCallback(
+    (customer: CustomerRowData) => {
+      setIsCreateMemberModalOpen(false)
+      if (!customer.id) {
+        showMsg('Member created, but could not assign automatically. Please search again.', 'warning')
+        return
+      }
+
+      const phone = customer.phone?.trim() || null
+      const summary = { id: customer.id, name: customer.name, phone }
+
+      if (memberPickerForEditSettlement) {
+        setEditSettlementCustomerId(customer.id)
+        setEditSettlementMemberSummary(summary)
+        setEditSettlementIdentityMode('member')
+        closeCreateAppointmentMemberPicker()
+        showMsg('Member created and assigned.', 'success')
+        return
+      }
+
+      if (createAppointmentMemberPickerOpen || createAppointmentModalOpen) {
+        setCreateAppointmentCustomerId(customer.id)
+        setCreateAppointmentMemberSummary(summary)
+        setCreateAppointmentIdentityMode('member')
+        closeCreateAppointmentMemberPicker()
+        showMsg('Member created and assigned.', 'success')
+        return
+      }
+
+      if (editSettlementOpen) {
+        setEditSettlementCustomerId(customer.id)
+        setEditSettlementMemberSummary(summary)
+        setEditSettlementIdentityMode('member')
+        showMsg('Member created and assigned.', 'success')
+        return
+      }
+
+      showMsg('Member created.', 'success')
+    },
+    [
+      closeCreateAppointmentMemberPicker,
+      createAppointmentMemberPickerOpen,
+      createAppointmentModalOpen,
+      editSettlementOpen,
+      memberPickerForEditSettlement,
+      showMsg,
+    ],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -3558,6 +3611,16 @@ export default function PosAppointmentsWorkspace({
                   </svg>
                   Refresh
                 </button>
+                {canCreateMember ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateMemberModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+                  >
+                    <i className="fa-solid fa-user-plus" />
+                    Create Member
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={openCreateAppointmentModal}
@@ -5108,13 +5171,25 @@ export default function PosAppointmentsWorkspace({
           <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
-              <button
-                type="button"
-                onClick={closeCreateAppointmentMemberPicker}
-                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
-              >
-                <span className="text-2xl leading-none">×</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {canCreateMember && memberPickerForEditSettlement ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateMemberModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-600"
+                  >
+                    <i className="fa-solid fa-user-plus" />
+                    Create Member
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeCreateAppointmentMemberPicker}
+                  className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <span className="text-2xl leading-none">×</span>
+                </button>
+              </div>
             </div>
 
             <div className="shrink-0 border-b-2 border-gray-200 bg-white p-5">
@@ -6070,21 +6145,38 @@ export default function PosAppointmentsWorkspace({
                       <div className="mt-3">
                         <div className="flex items-center justify-between gap-2">
                           <label className="text-xs font-semibold text-gray-600">Member</label>
-                          <button
-                            type="button"
-                            disabled={appointmentPackageApplied}
-                            title={appointmentPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
-                            onClick={() => {
-                              if (appointmentPackageApplied) return
-                              setMemberPickerForEditSettlement(true)
-                              setCreateAppointmentMemberQuery('')
-                              setCreateAppointmentMemberResults([])
-                              setCreateAppointmentMemberPickerOpen(true)
-                            }}
-                            className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
-                          >
-                            {editSettlementMemberSummary ? 'change member' : 'assign member'}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {canCreateMember ? (
+                              <button
+                                type="button"
+                                disabled={appointmentPackageApplied}
+                                title={appointmentPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
+                                onClick={() => {
+                                  if (appointmentPackageApplied) return
+                                  setIsCreateMemberModalOpen(true)
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                              >
+                                <i className="fa-solid fa-user-plus" />
+                                Create
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={appointmentPackageApplied}
+                              title={appointmentPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
+                              onClick={() => {
+                                if (appointmentPackageApplied) return
+                                setMemberPickerForEditSettlement(true)
+                                setCreateAppointmentMemberQuery('')
+                                setCreateAppointmentMemberResults([])
+                                setCreateAppointmentMemberPickerOpen(true)
+                              }}
+                              className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
+                            >
+                              {editSettlementMemberSummary ? 'change member' : 'assign member'}
+                            </button>
+                          </div>
                         </div>
                         <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                           {editSettlementMemberSummary
@@ -7152,6 +7244,14 @@ export default function PosAppointmentsWorkspace({
           })}
         </div>
       )}
+
+      {isCreateMemberModalOpen ? (
+        <CustomerCreateModal
+          zIndexClass="z-[200]"
+          onClose={() => setIsCreateMemberModalOpen(false)}
+          onSuccess={handleMemberCreated}
+        />
+      ) : null}
     </div>
   )
 }
