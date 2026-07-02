@@ -33,6 +33,8 @@ type OfflineOrderActionsProps = {
   paymentBreakdown?: PaymentBreakdownRow[] | null
   staffActionLabel?: 'sales_person' | 'worker'
   hideStaffAction?: boolean
+  /** When false, hides Edit Sales Person / Edit Worker (e.g. sales report without ecommerce.orders.update). */
+  canEditStaffSplit?: boolean
   onDone: () => void
 }
 
@@ -76,7 +78,7 @@ const isFinalSettlementType = (value?: string | null) => {
   return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
 }
 
-export default function OfflineOrderActions({ orderId, channel, billDate, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, onDone }: OfflineOrderActionsProps) {
+export default function OfflineOrderActions({ orderId, channel, billDate, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, canEditStaffSplit, onDone }: OfflineOrderActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [modal, setModal] = useState<'sales_person' | 'payment_method' | 'bill_date' | 'void' | null>(null)
   const [submitting, setSubmitting] = useState(false)
@@ -148,11 +150,17 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
 
   useEffect(() => {
     if (modal !== 'sales_person') return
+    if (canEditStaffSplit === false) {
+      setDraftItems([])
+      setError('You do not have permission to edit staff split.')
+      return
+    }
     void loadSalesDraft()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modal, orderId, staffActionLabel])
+  }, [modal, orderId, staffActionLabel, canEditStaffSplit])
 
   const loadSalesDraft = async () => {
+    setError(null)
     const staffEndpoint = staffActionLabel === 'worker'
       ? `/api/proxy/ecommerce/orders/${orderId}/offline-actions/booking-worker`
       : `/api/proxy/ecommerce/orders/${orderId}/offline-actions/sales-person`
@@ -175,9 +183,19 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
       )
     }
 
-    if (draftRes.ok) {
+    if (!draftRes.ok) {
       const draftJson = await draftRes.json().catch(() => ({}))
-      const items: unknown[] = Array.isArray(draftJson?.data?.items) ? draftJson.data.items : []
+      setDraftItems([])
+      if (draftRes.status === 403) {
+        setError('You do not have permission to edit staff split. Required permission: ecommerce.orders.update')
+      } else {
+        setError(typeof draftJson?.message === 'string' ? draftJson.message : 'Unable to load order items.')
+      }
+      return
+    }
+
+    const draftJson = await draftRes.json().catch(() => ({}))
+    const items: unknown[] = Array.isArray(draftJson?.data?.items) ? draftJson.data.items : []
       type DraftApiItem = {
         order_item_id?: number
         item_type?: string
@@ -217,12 +235,11 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
           return acc
         }, {} as Record<number, boolean>),
       )
-    }
   }
 
   const isOffline = useMemo(() => channel.trim().toLowerCase() === 'offline', [channel])
   if (!isOffline) return null
-  const canShowStaffAction = !hideStaffAction
+  const canShowStaffAction = !hideStaffAction && canEditStaffSplit !== false
   const staffActionButtonLabel = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Sales Person'
   const staffActionModalTitle = staffActionLabel === 'worker' ? 'Edit Worker' : 'Edit Item Staff Split'
 
@@ -255,6 +272,11 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
       let payload: Record<string, unknown> = {}
 
       if (modal === 'sales_person') {
+        if (canEditStaffSplit === false) {
+          setError('You do not have permission to edit staff split.')
+          setSubmitting(false)
+          return
+        }
         for (const item of draftItems) {
           const validationError = validateItem(item)
           if (validationError) {
@@ -505,7 +527,17 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
 
             <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
               <button type="button" onClick={closeModal} className="rounded border border-slate-300 px-3 py-2 text-xs">Cancel</button>
-              <button type="button" onClick={() => void submit()} disabled={submitting || (modal === 'payment_method' && !paymentTotalMatches) || (modal === 'bill_date' && !billDateInput.trim())} className={`rounded px-3 py-2 text-xs text-white ${modal === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60`}>
+              <button
+                type="button"
+                onClick={() => void submit()}
+                disabled={
+                  submitting
+                  || (modal === 'payment_method' && !paymentTotalMatches)
+                  || (modal === 'bill_date' && !billDateInput.trim())
+                  || (modal === 'sales_person' && (canEditStaffSplit === false || draftItems.length === 0))
+                }
+                className={`rounded px-3 py-2 text-xs text-white ${modal === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60`}
+              >
                 {submitting ? 'Saving...' : modal === 'void' ? 'Confirm Void' : 'Save'}
               </button>
             </div>

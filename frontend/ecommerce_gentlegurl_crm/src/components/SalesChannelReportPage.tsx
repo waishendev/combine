@@ -444,6 +444,7 @@ const reportTableColumnHeader = (label: string) =>
 export default function SalesChannelReportPage({
   mode,
   canExport = false,
+  canUpdateOrder,
   defaultDatePreset = 'month',
   paramPrefix,
   isAllWorkspace = false,
@@ -452,6 +453,7 @@ export default function SalesChannelReportPage({
 }: {
   mode: Mode
   canExport?: boolean
+  canUpdateOrder?: boolean
   defaultDatePreset?: 'month' | 'today'
   /** When set (e.g. `ec_`), URL uses `{prefix}page` and `{prefix}per_page` instead of `page` / `per_page`. */
   paramPrefix?: string
@@ -917,6 +919,7 @@ export default function SalesChannelReportPage({
                         currentPaymentMethod={row.payment_method}
                         orderAmount={Number(row.order_total ?? row.net_amount ?? 0)}
                         paymentBreakdown={row.payments}
+                        canEditStaffSplit={canUpdateOrder}
                         onDone={() => {
                           setRefreshKey((prev) => prev + 1)
                           onDataChanged?.()
@@ -959,6 +962,7 @@ export default function SalesChannelReportPage({
                       paymentBreakdown={row.payments}
                       staffActionLabel={isBookingWorkerType(row.type) ? 'worker' : 'sales_person'}
                       hideStaffAction={isBookingDepositType(row.type)}
+                      canEditStaffSplit={canUpdateOrder}
                       onDone={() => {
                         setRefreshKey((prev) => prev + 1)
                         onDataChanged?.()
