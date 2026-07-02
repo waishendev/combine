@@ -112,6 +112,9 @@ async function handleRequest(
       fetchHeaders["Authorization"] = authorization;
     }
 
+    const workspace = request.headers.get("x-workspace") || "booking";
+    fetchHeaders["X-Workspace"] = workspace;
+
     const backendResponse = await fetch(fullUrl, {
       method,
       headers: fetchHeaders,

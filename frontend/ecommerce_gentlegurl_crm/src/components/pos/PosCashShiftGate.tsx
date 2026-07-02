@@ -79,6 +79,7 @@ function normalizeStaffOptions(raw: unknown): StaffOption[] {
 
 export default function PosCashShiftGate({ children, defaultStaffId = null }: PosCashShiftGateProps) {
   const [shift, setShift] = useState<PosCashShift | null>(null)
+  const [closeModalShift, setCloseModalShift] = useState<PosCashShift | null>(null)
   const [cashShiftLoading, setCashShiftLoading] = useState(true)
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
@@ -135,7 +136,23 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
     void loadCurrentShift()
   }, [loadCurrentShift, loadStaffOptions])
 
-  const expectedCash = Number(shift?.expected_cash ?? 0)
+  useEffect(() => {
+    if (!shift) return
+    const refreshShift = () => {
+      void loadCurrentShift()
+    }
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') refreshShift()
+    }
+    window.addEventListener('focus', refreshShift)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      window.removeEventListener('focus', refreshShift)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [loadCurrentShift, shift])
+
+  const expectedCash = Number((closeModalShift ?? shift)?.expected_cash ?? 0)
   const closeDifference = useMemo(() => Number(closingAmountInput || 0) - expectedCash, [closingAmountInput, expectedCash])
   const openStaffMissing = !openedStaffId
   const closeStaffMissing = !closedStaffId
@@ -218,6 +235,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to close cash shift.')
       setShift(null)
+      setCloseModalShift(null)
       setClosingAmountInput('')
       setRemark('')
       setCloseModalOpen(false)
@@ -261,6 +279,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
             <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white">Current Shift: OPEN</span>
             <span><b>Staff:</b> {shift.opened_staff_name ?? '—'}</span>
             <span><b>Opening:</b> {currency(shift.opening_amount)}</span>
+            <span><b>Cash Sales:</b> {currency(shift.cash_sales)}</span>
+            <span><b>Expected:</b> {currency(shift.expected_cash)}</span>
             <span><b>Opened At:</b> {formatDateTime(shift.opened_at)}</span>
             <button
               type="button"
@@ -268,6 +288,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
                 setError(null)
                 void loadCurrentShift().then((currentShift) => {
                   const shiftForClose = currentShift ?? shift
+                  if (!shiftForClose) return
+                  setCloseModalShift(shiftForClose)
                   setClosingAmountInput(Number(shiftForClose.expected_cash ?? 0).toFixed(2))
                   setClosedStaffId(shiftForClose.opened_staff_id ? String(shiftForClose.opened_staff_id) : (defaultStaffId ? String(defaultStaffId) : ''))
                   setCloseModalOpen(true)
@@ -350,9 +372,12 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
         </PosModalShell>
       ) : null}
 
-      {closeModalOpen && shift ? (
+      {closeModalOpen && (closeModalShift ?? shift) ? (
         <PosModalShell
-          onClose={() => setCloseModalOpen(false)}
+          onClose={() => {
+            setCloseModalOpen(false)
+            setCloseModalShift(null)
+          }}
           closeDisabled={closing}
           zIndexClassName="z-[210]"
           overlayClassName="bg-black/55 backdrop-blur-sm"
@@ -366,13 +391,19 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
         >
           <div className="space-y-4 p-6">
             {error ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{error}</p> : null}
+            {(() => {
+              const modalShift = closeModalShift ?? shift
+              if (!modalShift) return null
+              return (
             <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opened Staff</p><p className="font-bold">{shift.opened_staff_name ?? '—'}</p></div>
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opening Amount</p><p className="font-bold">{currency(shift.opening_amount)}</p></div>
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Cash Sales</p><p className="font-bold">{currency(shift.cash_sales)}</p></div>
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Expected Cash</p><p className="font-bold">{currency(shift.expected_cash)}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opened Staff</p><p className="font-bold">{modalShift.opened_staff_name ?? '—'}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opening Amount</p><p className="font-bold">{currency(modalShift.opening_amount)}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Cash Sales</p><p className="font-bold">{currency(modalShift.cash_sales)}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Expected Cash</p><p className="font-bold">{currency(modalShift.expected_cash)}</p></div>
               <div className={`rounded-xl p-3 ${closeDifference < 0 ? 'bg-red-50' : closeDifference > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}><p className="text-gray-500">Difference Preview</p><p className="font-bold">{currency(closeDifference)}</p></div>
             </div>
+              )
+            })()}
             <label className="block text-sm font-semibold text-gray-700">
               Closing Staff
               {staffSelect(closedStaffId, setClosedStaffId, closing)}

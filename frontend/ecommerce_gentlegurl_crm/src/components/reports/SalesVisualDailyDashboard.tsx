@@ -57,7 +57,18 @@ function formatDisplayDay(ymd: string) {
 const fmtRm = (n: number) =>
   `RM ${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 
-export default function SalesVisualDailyDashboard({ mode, refreshKey = 0 }: { mode: Mode; refreshKey?: number }) {
+const dayNavButtonClass =
+  'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-lg leading-none text-slate-700 shadow-sm transition hover:bg-slate-50 hover:text-slate-900'
+
+export default function SalesVisualDailyDashboard({
+  mode,
+  refreshKey = 0,
+  onShiftDay,
+}: {
+  mode: Mode
+  refreshKey?: number
+  onShiftDay?: (delta: number) => void
+}) {
   const searchParams = useSearchParams()
   const date = searchParams.get('date') ?? formatYmd(new Date())
 
@@ -106,24 +117,18 @@ export default function SalesVisualDailyDashboard({ mode, refreshKey = 0 }: { mo
 
   return (
     <div className="mb-8 space-y-4">
-      <div className="flex flex-wrap items-center justify-center gap-3">
-        {/* <button
-          type="button"
-          onClick={() => shiftDay(-1)}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-600 text-white shadow-sm hover:bg-blue-700"
-          aria-label="Previous day"
-        >
-          ‹
-        </button> */}
-        <span className="min-w-[10rem] text-center text-base font-semibold text-slate-800">{formatDisplayDay(date)}</span>
-        {/* <button
-          type="button"
-          onClick={() => shiftDay(1)}
-          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-blue-200 bg-blue-600 text-white shadow-sm hover:bg-blue-700"
-          aria-label="Next day"
-        >
-          ›
-        </button> */}
+      <div className="flex items-center justify-center gap-2">
+        {onShiftDay ? (
+          <button type="button" onClick={() => onShiftDay(-1)} className={dayNavButtonClass} aria-label="Previous day">
+            ‹
+          </button>
+        ) : null}
+        <span className="min-w-[9.5rem] text-center text-base font-semibold text-slate-800">{formatDisplayDay(date)}</span>
+        {onShiftDay ? (
+          <button type="button" onClick={() => onShiftDay(1)} className={dayNavButtonClass} aria-label="Next day">
+            ›
+          </button>
+        ) : null}
       </div>
 
       {oo ? (
@@ -145,7 +150,7 @@ export default function SalesVisualDailyDashboard({ mode, refreshKey = 0 }: { mo
           <p className="mt-1 text-xs text-slate-500">
             All gateways from settings (
             {mode === 'ecommerce' ? 'ecommerce' : mode === 'booking' ? 'booking' : 'ecommerce + booking merged'}
-            ). Online vs offline by order creator.
+            ). Net amount after discount; online vs offline by order creator.
           </p>
           {loading ? (
             <p className="mt-3 text-sm text-slate-500">Loading…</p>

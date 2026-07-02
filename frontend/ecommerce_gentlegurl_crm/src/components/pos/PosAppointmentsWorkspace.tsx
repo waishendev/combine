@@ -1,12 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type ReactNode, type RefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ChangeEventHandler, type RefObject } from 'react'
 import { createPortal } from 'react-dom'
-
-function renderPosBodyModalPortal(node: ReactNode, root: HTMLElement | null | undefined) {
-  if (!node || typeof document === 'undefined') return null
-  return createPortal(node, root ?? document.body)
-}
+import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
@@ -31,6 +27,8 @@ import {
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
+import CustomerCreateModal from '@/components/CustomerCreateModal'
+import type { CustomerRowData } from '@/components/CustomerRow'
 import PaymentProofModal from '@/components/payment/PaymentProofModal'
 import { usePosCashShift } from '@/components/pos/PosCashShiftGate'
 import { formatPosAvailabilityErrorMessage, formatPosNoStaffAvailableMessage, POS_HARD_AVAILABILITY_REASONS, POS_SCHEDULE_OVERRIDE_REASONS } from '@/components/pos/posAvailabilityMessages'
@@ -47,7 +45,7 @@ import {
   formatAppointmentCustomerDisplayName,
   formatAppointmentCustomerContactLines,
   formatAppointmentReceiptDefaultEmail,
-  getAppointmentRemarkLines,
+  getAppointmentDisplayRemarkLines,
   formatBookingAddonSummary,
   buildPosAppointmentSlots,
   formatDateTimeRange,
@@ -126,7 +124,7 @@ type AppointmentLineSplitDraftRow = { staff_id: number | null; share_percent: st
 
 type AppointmentLineSplitTarget =
   | { type: 'line'; lineKey: string; title: string; inheritedSplits: AppointmentLineStaffSplit[] }
-  | { type: 'bulk'; lineKeys: string[]; title: string; inheritedSplits: AppointmentLineStaffSplit[] }
+  | { type: 'bulk'; lineKeys: string[]; title: string; inheritedSplits: AppointmentLineStaffSplit[]; applyEditSettlementMainServices?: boolean }
 
 function durationMinutesFromRange(startAt?: string | null, endAt?: string | null): number {
   if (!startAt || !endAt) return 0
@@ -275,6 +273,7 @@ export default function PosAppointmentsWorkspace({
   currentUser: PosAppointmentCurrentUser
   permissions?: string[]
 }) {
+  const canCreateMember = useMemo(() => permissions.includes('customers.create'), [permissions])
   const appointmentQrUploadInputRef = useRef<HTMLInputElement | null>(null)
   const appointmentQrCameraBackInputRef = useRef<HTMLInputElement | null>(null)
   const appointmentQrCameraFrontInputRef = useRef<HTMLInputElement | null>(null)
@@ -440,7 +439,9 @@ export default function PosAppointmentsWorkspace({
   const [editSettlementDepositOriginal, setEditSettlementDepositOriginal] = useState(0)
   const [editSettlementDepositDraft, setEditSettlementDepositDraft] = useState('')
   const [editSettlementDepositRemarkDraft, setEditSettlementDepositRemarkDraft] = useState('')
+  const [editSettlementNoteDraft, setEditSettlementNoteDraft] = useState('')
   const [memberPickerForEditSettlement, setMemberPickerForEditSettlement] = useState(false)
+  const [isCreateMemberModalOpen, setIsCreateMemberModalOpen] = useState(false)
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
@@ -752,17 +753,29 @@ export default function PosAppointmentsWorkspace({
     reportAppointmentLineSplitError(null)
   }, [activeStaffs, appointmentLineStaffSplits, fetchStaffOptions])
 
-  const openAppointmentBulkLineSplitEditor = useCallback(async (title: string, lineKeys: string[], inheritedSplits: AppointmentLineStaffSplit[] = []) => {
+  const openAppointmentBulkLineSplitEditor = useCallback(async (
+    title: string,
+    lineKeys: string[],
+    inheritedSplits: AppointmentLineStaffSplit[] = [],
+    options?: { applyEditSettlementMainServices?: boolean },
+  ) => {
     let nextStaffs = activeStaffs
     if (!nextStaffs.length) {
       nextStaffs = await fetchStaffOptions('')
       setActiveStaffs(nextStaffs)
     }
     const uniqueLineKeys = Array.from(new Set(lineKeys)).filter(Boolean)
-    setAppointmentLineSplitTarget({ type: 'bulk', lineKeys: uniqueLineKeys, title, inheritedSplits })
+    const applyEditSettlementMainServices = options?.applyEditSettlementMainServices ?? false
+    setAppointmentLineSplitTarget({
+      type: 'bulk',
+      lineKeys: uniqueLineKeys,
+      title,
+      inheritedSplits,
+      applyEditSettlementMainServices,
+    })
     setAppointmentLineSplitDraftRows(inheritedSplits.length ? inheritedSplits.map((split) => ({ staff_id: split.staff_id, share_percent: String(split.share_percent) })) : [{ staff_id: null, share_percent: '100' }])
     setAppointmentLineSplitAutoBalance(true)
-    setAppointmentLineSplitOverwrite(false)
+    setAppointmentLineSplitOverwrite(applyEditSettlementMainServices)
     reportAppointmentLineSplitError(null)
   }, [activeStaffs, fetchStaffOptions])
 
@@ -785,13 +798,25 @@ export default function PosAppointmentsWorkspace({
     if (appointmentLineSplitTarget.type === 'line') {
       setAppointmentLineStaffSplits((prev) => ({ ...prev, [appointmentLineSplitTarget.lineKey]: mappedSplits }))
     } else {
+      const forceOverwrite = appointmentLineSplitTarget.applyEditSettlementMainServices || appointmentLineSplitOverwrite
       setAppointmentLineStaffSplits((prev) => {
         const next = { ...prev }
         appointmentLineSplitTarget.lineKeys.forEach((lineKey) => {
-          if (appointmentLineSplitOverwrite || !next[lineKey]?.length) next[lineKey] = mappedSplits
+          if (forceOverwrite || !next[lineKey]?.length) next[lineKey] = mappedSplits
         })
         return next
       })
+      if (appointmentLineSplitTarget.applyEditSettlementMainServices) {
+        const draftRows = mappedSplits.map((row) => ({
+          staff_id: row.staff_id,
+          share_percent: String(row.share_percent),
+        }))
+        setEditStaffSplits(draftRows)
+        setEditAddedMainBlocks((prev) => prev.map((block) => ({
+          ...block,
+          staff_splits: draftRows.map((row) => ({ ...row })),
+        })))
+      }
     }
     setAppointmentLineSplitTarget(null)
   }, [appointmentLineSplitDraftRows, appointmentLineSplitOverwrite, appointmentLineSplitTarget])
@@ -1148,6 +1173,55 @@ export default function PosAppointmentsWorkspace({
     setCreateAppointmentMemberResults([])
     setMemberPickerForEditSettlement(false)
   }, [])
+
+  const handleMemberCreated = useCallback(
+    (customer: CustomerRowData) => {
+      setIsCreateMemberModalOpen(false)
+      if (!customer.id) {
+        showMsg('Member created, but could not assign automatically. Please search again.', 'warning')
+        return
+      }
+
+      const phone = customer.phone?.trim() || null
+      const summary = { id: customer.id, name: customer.name, phone }
+
+      if (memberPickerForEditSettlement) {
+        setEditSettlementCustomerId(customer.id)
+        setEditSettlementMemberSummary(summary)
+        setEditSettlementIdentityMode('member')
+        closeCreateAppointmentMemberPicker()
+        showMsg('Member created and assigned.', 'success')
+        return
+      }
+
+      if (createAppointmentMemberPickerOpen || createAppointmentModalOpen) {
+        setCreateAppointmentCustomerId(customer.id)
+        setCreateAppointmentMemberSummary(summary)
+        setCreateAppointmentIdentityMode('member')
+        closeCreateAppointmentMemberPicker()
+        showMsg('Member created and assigned.', 'success')
+        return
+      }
+
+      if (editSettlementOpen) {
+        setEditSettlementCustomerId(customer.id)
+        setEditSettlementMemberSummary(summary)
+        setEditSettlementIdentityMode('member')
+        showMsg('Member created and assigned.', 'success')
+        return
+      }
+
+      showMsg('Member created.', 'success')
+    },
+    [
+      closeCreateAppointmentMemberPicker,
+      createAppointmentMemberPickerOpen,
+      createAppointmentModalOpen,
+      editSettlementOpen,
+      memberPickerForEditSettlement,
+      showMsg,
+    ],
+  )
 
   useEffect(() => {
     let cancelled = false
@@ -2096,6 +2170,7 @@ export default function PosAppointmentsWorkspace({
     setEditSettlementDepositOriginal(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0))
     setEditSettlementDepositDraft(String(Number(appointmentDetail.deposit_contribution ?? appointmentDetail.deposit_previously_collected_amount ?? 0)))
     setEditSettlementDepositRemarkDraft('')
+    setEditSettlementNoteDraft(String(appointmentDetail.settlement_notes ?? '').trim())
 
     setEditAddonOptionsLoading(true)
     setEditMainServiceCatalogLoading(true)
@@ -2419,6 +2494,8 @@ export default function PosAppointmentsWorkspace({
       }
       payload.staff_splits = normalizedSplits
 
+      payload.settlement_note = editSettlementNoteDraft.trim()
+
       const phonePattern = /^\+?[0-9]{8,15}$/
       if (editSettlementIdentityMode === 'member') {
         if (!editSettlementCustomerId) {
@@ -2485,13 +2562,14 @@ export default function PosAppointmentsWorkspace({
         ? json.data.policy_warnings.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
         : []
       showMsg(warnings.length ? 'Settlement updated with schedule override warning.' : 'Settlement updated.', 'success')
+      setEditSettlementNoteDraft('')
       setEditSettlementOpen(false)
       await refreshOpenedAppointmentDetail()
       await fetchAppointments({ silent: true })
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
@@ -3370,6 +3448,14 @@ export default function PosAppointmentsWorkspace({
 
   const compactPosBodyModalOpen = useMemo(
     () =>
+      createAppointmentModalOpen ||
+      createAppointmentMemberPickerOpen ||
+      cancellationRequestsModalOpen ||
+      appointmentRescheduleOpen ||
+      editSettlementOpen ||
+      appointmentLineSplitTarget != null ||
+      appointmentPriceEditTarget != null ||
+      editMainServicePickerOpen ||
       appointmentCheckoutConfirmationOpen ||
       holdApproveConfirmOpen ||
       holdRejectConfirmOpen ||
@@ -3379,12 +3465,20 @@ export default function PosAppointmentsWorkspace({
       appointmentQrCodeFullscreen,
     [
       appointmentCheckoutConfirmationOpen,
-      holdApproveConfirmOpen,
-      holdRejectConfirmOpen,
-      holdCancelConfirmOpen,
-      cancellationConfirmOpen,
-      appointmentSettlementResult,
+      appointmentLineSplitTarget,
+      appointmentPriceEditTarget,
       appointmentQrCodeFullscreen,
+      appointmentRescheduleOpen,
+      appointmentSettlementResult,
+      cancellationConfirmOpen,
+      cancellationRequestsModalOpen,
+      createAppointmentMemberPickerOpen,
+      createAppointmentModalOpen,
+      editMainServicePickerOpen,
+      editSettlementOpen,
+      holdApproveConfirmOpen,
+      holdCancelConfirmOpen,
+      holdRejectConfirmOpen,
     ],
   )
 
@@ -3517,6 +3611,16 @@ export default function PosAppointmentsWorkspace({
                   </svg>
                   Refresh
                 </button>
+                {canCreateMember ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateMemberModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+                  >
+                    <i className="fa-solid fa-user-plus" />
+                    Create Member
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={openCreateAppointmentModal}
@@ -3769,10 +3873,10 @@ export default function PosAppointmentsWorkspace({
                           <span className="text-slate-500">{line.label}:</span> {line.value}
                         </p>
                       ))}
-                      {getAppointmentRemarkLines(appointmentDetail).map((line) => (
-                        <p key={`appointment-remark-${line.key}`} className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
-                          <span className="font-semibold text-slate-500">{line.label}:</span>{' '}
-                          {line.value}
+                      {getAppointmentDisplayRemarkLines(appointmentDetail).map((line) => (
+                        <p key={`appointment-remark-${line.key}`} className="text-xs font-medium text-slate-600">
+                          <span className="text-slate-500">{line.label}:</span>{' '}
+                          <span className="whitespace-pre-wrap">{line.value}</span>
                           {line.key === 'reschedule_reason' && appointmentDetail.rescheduled_at ? (
                             <span className="mt-0.5 block text-[10px] font-medium text-slate-400">
                               Last rescheduled {formatDateTime12Hour(appointmentDetail.rescheduled_at)}
@@ -4391,7 +4495,14 @@ export default function PosAppointmentsWorkspace({
         createPortal(
           <>
             {!hasAppointmentSettlementTarget ? (
-              <div className="pos-floating-settlement-bar pos-floating-settlement-bar--placeholder touch-manipulation">
+              <div
+                className={[
+                  'pos-floating-settlement-bar pos-floating-settlement-bar--placeholder touch-manipulation',
+                  compactPosBodyModalOpen && 'pos-floating-settlement-bar--hidden',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+              >
                 <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -4414,6 +4525,7 @@ export default function PosAppointmentsWorkspace({
                 className={[
                   'pos-floating-settlement-bar touch-manipulation',
                   settlementBarPulse ? 'pos-floating-settlement-bar--pulse' : '',
+                  compactPosBodyModalOpen && 'pos-floating-settlement-bar--hidden',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -4471,8 +4583,9 @@ export default function PosAppointmentsWorkspace({
           document.body,
         )}
 
-      {createAppointmentModalOpen ? (
-        <div className="fixed inset-0 z-[135] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+      {renderPosBodyModalPortal(
+        createAppointmentModalOpen ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
           <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-4">
               <div>
@@ -5042,7 +5155,9 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {renderPosBodyModalPortal(
         createAppointmentMemberPickerOpen ? (
@@ -5056,13 +5171,25 @@ export default function PosAppointmentsWorkspace({
           <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border-2 border-gray-100 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between rounded-t-2xl border-b-2 border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
               <h4 className="text-xl font-bold text-gray-900">assign member</h4>
-              <button
-                type="button"
-                onClick={closeCreateAppointmentMemberPicker}
-                className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
-              >
-                <span className="text-2xl leading-none">×</span>
-              </button>
+              <div className="flex items-center gap-2">
+                {canCreateMember && memberPickerForEditSettlement ? (
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateMemberModalOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-500 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-emerald-600"
+                  >
+                    <i className="fa-solid fa-user-plus" />
+                    Create Member
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={closeCreateAppointmentMemberPicker}
+                  className="rounded-lg p-2 text-gray-400 transition-all hover:bg-gray-100 hover:text-gray-700"
+                >
+                  <span className="text-2xl leading-none">×</span>
+                </button>
+              </div>
             </div>
 
             <div className="shrink-0 border-b-2 border-gray-200 bg-white p-5">
@@ -5159,8 +5286,9 @@ export default function PosAppointmentsWorkspace({
         bodyModalRoot,
       )}
 
-      {cancellationRequestsModalOpen ? (
-        <div className="fixed inset-0 z-[125] flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
+      {renderPosBodyModalPortal(
+        cancellationRequestsModalOpen ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4 backdrop-blur-sm">
           <div
             className="relative mx-auto flex w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
             role="dialog"
@@ -5286,7 +5414,9 @@ export default function PosAppointmentsWorkspace({
             </div> */}
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {renderPosBodyModalPortal(
         holdApproveConfirmOpen && appointmentDetail ? (
@@ -5543,8 +5673,9 @@ export default function PosAppointmentsWorkspace({
         bodyModalRoot,
       )}
 
-      {appointmentRescheduleOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center overflow-y-auto bg-black/40 p-4">
+      {renderPosBodyModalPortal(
+        appointmentRescheduleOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/40 p-4">
           <div className="relative mx-auto flex w-full max-w-lg max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-xl bg-white shadow-xl">
             <div className="shrink-0 px-5 pt-5">
               <h3 className="text-lg font-bold text-gray-900">Reschedule Appointment</h3>
@@ -5666,10 +5797,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
-      {editSettlementOpen && appointmentDetail && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+      {renderPosBodyModalPortal(
+        editSettlementOpen && appointmentDetail ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
           <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -5728,7 +5862,7 @@ export default function PosAppointmentsWorkspace({
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
                       <p className="text-xs font-bold uppercase tracking-wide text-indigo-700">Staff Split Bulk Setup</p>
-                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply a split to selected settlement add-on lines; service blocks remain the inheritance source.</p>
+                      <p className="mt-0.5 text-[11px] text-indigo-700">Apply one split to the original main service, added service blocks, and all selected add-ons.</p>
                     </div>
                     <button
                       type="button"
@@ -5738,7 +5872,7 @@ export default function PosAppointmentsWorkspace({
                           ...Array.from(editSelectedAddonIds).map((id) => `appointment-settlement:${appointmentDetail.id}:addon:${id}`),
                           ...editAddedMainBlocks.flatMap((block) => Array.from(block.selected_addon_ids).map((id) => `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`)),
                         ]
-                        void openAppointmentBulkLineSplitEditor('Edit Settlement Lines', lineKeys, editStaffSplitsToLineSplits(editStaffSplits))
+                        void openAppointmentBulkLineSplitEditor('Edit Settlement Lines', lineKeys, editStaffSplitsToLineSplits(editStaffSplits), { applyEditSettlementMainServices: true })
                       }}
                       className="rounded-md border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
                     >
@@ -6011,21 +6145,38 @@ export default function PosAppointmentsWorkspace({
                       <div className="mt-3">
                         <div className="flex items-center justify-between gap-2">
                           <label className="text-xs font-semibold text-gray-600">Member</label>
-                          <button
-                            type="button"
-                            disabled={appointmentPackageApplied}
-                            title={appointmentPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
-                            onClick={() => {
-                              if (appointmentPackageApplied) return
-                              setMemberPickerForEditSettlement(true)
-                              setCreateAppointmentMemberQuery('')
-                              setCreateAppointmentMemberResults([])
-                              setCreateAppointmentMemberPickerOpen(true)
-                            }}
-                            className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
-                          >
-                            {editSettlementMemberSummary ? 'change member' : 'assign member'}
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {canCreateMember ? (
+                              <button
+                                type="button"
+                                disabled={appointmentPackageApplied}
+                                title={appointmentPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
+                                onClick={() => {
+                                  if (appointmentPackageApplied) return
+                                  setIsCreateMemberModalOpen(true)
+                                }}
+                                className="inline-flex items-center gap-1 rounded-md bg-emerald-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-emerald-600 disabled:opacity-50"
+                              >
+                                <i className="fa-solid fa-user-plus" />
+                                Create
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              disabled={appointmentPackageApplied}
+                              title={appointmentPackageApplied ? 'Cannot change member while a package is applied.' : undefined}
+                              onClick={() => {
+                                if (appointmentPackageApplied) return
+                                setMemberPickerForEditSettlement(true)
+                                setCreateAppointmentMemberQuery('')
+                                setCreateAppointmentMemberResults([])
+                                setCreateAppointmentMemberPickerOpen(true)
+                              }}
+                              className="rounded-md border border-indigo-300 bg-white px-2 py-1 text-[11px] font-semibold text-indigo-700"
+                            >
+                              {editSettlementMemberSummary ? 'change member' : 'assign member'}
+                            </button>
+                          </div>
                         </div>
                         <div className="mt-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                           {editSettlementMemberSummary
@@ -6167,6 +6318,19 @@ export default function PosAppointmentsWorkspace({
                         </div>
                       </div>
                     )}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+                    <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
+                    <textarea
+                      value={editSettlementNoteDraft}
+                      onChange={(e) => setEditSettlementNoteDraft(e.target.value)}
+                      rows={3}
+                      maxLength={2000}
+                      placeholder="Edit settlement note..."
+                      className="mt-2 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+                    />
+                    <p className="mt-1 text-[11px] text-gray-500">Changes replace the current note when you save.</p>
                   </div>
 
                   <div className="rounded-xl border border-gray-200 bg-white p-4">
@@ -6466,10 +6630,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
+      ) : null,
+        bodyModalRoot,
       )}
 
-      {appointmentLineSplitTarget ? (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      {renderPosBodyModalPortal(
+        appointmentLineSplitTarget ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 px-5 py-3">
               <h4 className="text-lg font-bold text-gray-900">
@@ -6478,7 +6645,7 @@ export default function PosAppointmentsWorkspace({
               <button type="button" onClick={() => setAppointmentLineSplitTarget(null)} className="text-2xl leading-none text-gray-500">×</button>
             </div>
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
-              {appointmentLineSplitTarget.type === 'bulk' ? (
+              {appointmentLineSplitTarget.type === 'bulk' && !appointmentLineSplitTarget.applyEditSettlementMainServices ? (
                 <label className="inline-flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                   <input type="checkbox" checked={appointmentLineSplitOverwrite} onChange={(event) => setAppointmentLineSplitOverwrite(event.target.checked)} className="h-4 w-4" />
                   Overwrite existing explicit staff splits
@@ -6568,10 +6735,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
-      {appointmentPriceEditTarget ? (
-        <div className="fixed inset-0 z-[180] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      {renderPosBodyModalPortal(
+        appointmentPriceEditTarget ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
@@ -6600,10 +6770,13 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
-      {editMainServicePickerOpen && editMainServicePickerTargetId ? (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
+      {renderPosBodyModalPortal(
+        editMainServicePickerOpen && editMainServicePickerTargetId ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
           <div className="relative mx-auto flex w-full max-w-2xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
             <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
               <div>
@@ -6648,7 +6821,9 @@ export default function PosAppointmentsWorkspace({
             </div>
           </div>
         </div>
-      ) : null}
+      ) : null,
+        bodyModalRoot,
+      )}
 
       {renderPosBodyModalPortal(
         appointmentCheckoutConfirmationOpen && appointmentDetail ? (
@@ -7069,6 +7244,14 @@ export default function PosAppointmentsWorkspace({
           })}
         </div>
       )}
+
+      {isCreateMemberModalOpen ? (
+        <CustomerCreateModal
+          zIndexClass="z-[200]"
+          onClose={() => setIsCreateMemberModalOpen(false)}
+          onSuccess={handleMemberCreated}
+        />
+      ) : null}
     </div>
   )
 }

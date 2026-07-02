@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Mail\DailyOrderSummaryMail;
 use App\Models\Ecommerce\Order;
+use App\Support\PendingEcommerceOrderQuery;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,26 +27,7 @@ class SendDailyOrderSummaryEmailJob implements ShouldQueue
             return;
         }
 
-        $orders = Order::query()
-            ->where(function ($query) {
-                $query
-                    ->where(function ($subQuery) {
-                        $subQuery->where('status', 'pending')
-                            ->where('payment_status', 'unpaid');
-                    })
-                    ->orWhere(function ($subQuery) {
-                        $subQuery->where('status', 'processing')
-                            ->where('payment_status', 'unpaid');
-                    })
-                    ->orWhere(function ($subQuery) {
-                        $subQuery->where('status', 'reject_payment_proof')
-                            ->where('payment_status', 'unpaid');
-                    })
-                    ->orWhere(function ($subQuery) {
-                        $subQuery->where('status', 'processing')
-                            ->where('payment_status', 'paid');
-                    });
-            })
+        $orders = PendingEcommerceOrderQuery::pendingRequestOrders()
             ->with(['items.product', 'customer'])
             ->get();
 
@@ -63,8 +45,10 @@ class SendDailyOrderSummaryEmailJob implements ShouldQueue
 
             return [
                 'order_number' => $order->order_number ?? $order->id,
+                'order_kind' => PendingEcommerceOrderQuery::orderKind($order),
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
+                'status_label' => PendingEcommerceOrderQuery::displayStatus($order),
                 'customer_name' => $order->customer?->name ?? $order->shipping_name ?? 'N/A',
                 'total_amount' => $order->grand_total ?? 0,
                 'product_names' => $productNames,

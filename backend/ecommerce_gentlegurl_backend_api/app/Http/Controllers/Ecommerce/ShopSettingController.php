@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce;
 
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
+use App\Services\Booking\BookingHoldSettingsService;
 use App\Services\SettingService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -13,6 +14,10 @@ use Illuminate\Validation\ValidationException;
 
 class ShopSettingController extends Controller
 {
+    public function __construct(private readonly BookingHoldSettingsService $bookingHoldSettingsService)
+    {
+    }
+
     /**
      * 返回当前支持的所有 shop 设置
      * GET /api/ecommerce/shop-settings
@@ -34,6 +39,7 @@ class ShopSettingController extends Controller
                 'invoice_profile' => SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfileSetting(), $type),
                 'booking_policy' => SettingService::get('booking_policy', $this->defaultBookingPolicySetting(), $type),
                 'booking_hold_minutes' => (int) SettingService::get('BOOKING_HOLD_MINUTES', 10, $type),
+                'booking_manual_transfer_hold_minutes' => (int) SettingService::get('BOOKING_MANUAL_TRANSFER_HOLD_MINUTES', 10, $type),
                 'booking_service_deposit_note' => SettingService::get('booking_service_deposit_note', null, $type),
                 'booking_reminder_email' => SettingService::get('booking_reminder_email', ['enabled' => true, 'send_at' => '10:00'], $type),
                 'booking_feedback_email' => SettingService::get('booking_feedback_email', ['enabled' => true, 'send_at' => '10:00'], $type),
@@ -137,6 +143,7 @@ class ShopSettingController extends Controller
             'ecommerce_payment_proof_notification' => ['enabled' => true, 'email' => ''],
             'booking_policy' => $this->defaultBookingPolicySetting(),
             'BOOKING_HOLD_MINUTES' => 10,
+            'BOOKING_MANUAL_TRANSFER_HOLD_MINUTES' => 10,
             'booking_service_deposit_note' => null,
             'booking_reminder_email' => ['enabled' => true, 'send_at' => '10:00'],
             'booking_feedback_email' => ['enabled' => true, 'send_at' => '10:00'],
@@ -229,6 +236,9 @@ class ShopSettingController extends Controller
             case 'BOOKING_HOLD_MINUTES':
                 $data = $this->validateBookingHoldMinutes($request);
                 break;
+            case 'BOOKING_MANUAL_TRANSFER_HOLD_MINUTES':
+                $data = $this->validateBookingHoldMinutes($request);
+                break;
             case 'booking_service_deposit_note':
                 $data = $this->validateBookingServiceDepositNote($request);
                 break;
@@ -274,6 +284,14 @@ class ShopSettingController extends Controller
             ['type' => $type, 'key' => $settingKey],
             ['value' => $data]
         );
+
+        if ($key === 'BOOKING_HOLD_MINUTES') {
+            $this->bookingHoldSettingsService->applyCartHoldMinutesChange((int) $data);
+        }
+
+        if ($key === 'BOOKING_MANUAL_TRANSFER_HOLD_MINUTES') {
+            $this->bookingHoldSettingsService->applyManualTransferHoldMinutesChange((int) $data);
+        }
 
         Cache::forget('public_homepage_v1');
         Cache::forget('public_homepage_v2_ecommerce');
@@ -835,6 +853,7 @@ class ShopSettingController extends Controller
                 'invoice_profile',
                 'booking_policy',
                 'BOOKING_HOLD_MINUTES',
+                'BOOKING_MANUAL_TRANSFER_HOLD_MINUTES',
                 'booking_service_deposit_note',
                 'booking_reminder_email',
                 'booking_feedback_email',

@@ -23,6 +23,16 @@ class BookingSettingsSeeder extends Seeder
             ]
         );
 
+        DB::table('settings')->updateOrInsert(
+            ['type' => 'booking', 'key' => 'BOOKING_MANUAL_TRANSFER_HOLD_MINUTES'],
+            [
+                'value' => json_encode(10),
+                'updated_at' => now(),
+                'created_at' => now(),
+            ]
+        );
+
         $this->command->info('Booking max advance days setting seeded.');
+        $this->command->info('Booking manual transfer hold minutes setting seeded.');
     }
 }

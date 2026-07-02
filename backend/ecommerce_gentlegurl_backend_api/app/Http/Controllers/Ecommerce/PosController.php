@@ -51,6 +51,7 @@ use App\Services\Ecommerce\InvoiceService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
+use App\Support\BookingNotes;
 use App\Support\OrderReceiptEmailLabels;
 use App\Support\Pricing\ProductPricing;
 use Carbon\Carbon;
@@ -504,7 +505,9 @@ class PosController extends Controller
             'guest_name' => $guestName !== '' ? $guestName : null,
             'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
             'guest_email' => $guestEmail !== '' ? $guestEmail : null,
-            'notes' => ($bookingNotes = trim((string) ($booking->notes ?? ''))) !== '' ? $bookingNotes : null,
+            'notes' => ($bookingNotes = BookingNotes::customerRemarksForDisplay($booking->notes)) !== null && $bookingNotes !== '' ? $bookingNotes : null,
+            'void_remarks' => ($voidRemarks = BookingNotes::voidRemarksForDisplay($booking->notes)) !== null && $voidRemarks !== '' ? $voidRemarks : null,
+            'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
             'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
             'rescheduled_at' => optional($booking->rescheduled_at)?->toIso8601String(),
             'reschedule_count' => max(0, (int) ($booking->reschedule_count ?? 0)),
@@ -1140,11 +1143,12 @@ class PosController extends Controller
             'guest_name' => ['nullable', 'string', 'max:255'],
             'guest_phone' => ['nullable', 'string', 'max:32'],
             'guest_email' => ['nullable', 'string', 'email', 'max:255'],
+            'settlement_note' => ['nullable', 'string', 'max:2000'],
         ]);
 
         $isDepositOnlyAdjustment = $request->has('adjusted_deposit_amount')
             && ! $isEditingSettlement
-            && ! $request->hasAny(['customer_id', 'guest_name', 'guest_phone', 'guest_email']);
+            && ! $request->hasAny(['customer_id', 'guest_name', 'guest_phone', 'guest_email', 'settlement_note']);
 
         if ($isDepositOnlyAdjustment) {
             try {
@@ -1215,6 +1219,11 @@ class PosController extends Controller
                 $booking->guest_phone = $guestPhone !== '' ? $guestPhone : null;
                 $booking->guest_email = $guestEmail !== '' ? Str::lower($guestEmail) : null;
             }
+        }
+
+        if ($request->has('settlement_note')) {
+            $note = trim((string) ($validated['settlement_note'] ?? ''));
+            $booking->settlement_notes = $note !== '' ? $note : null;
         }
 
         if ($effectiveService && (int) ($booking->service_id ?? 0) !== (int) $effectiveService->id) {
@@ -7695,7 +7704,9 @@ class PosController extends Controller
                 'guest_name' => $guestName !== '' ? $guestName : null,
                 'guest_phone' => $guestPhone !== '' ? $guestPhone : null,
                 'guest_email' => $guestEmail !== '' ? $guestEmail : null,
-                'notes' => ($bookingNotes = trim((string) ($booking->notes ?? ''))) !== '' ? $bookingNotes : null,
+                'notes' => ($bookingNotes = BookingNotes::customerRemarksForDisplay($booking->notes)) !== null && $bookingNotes !== '' ? $bookingNotes : null,
+                'void_remarks' => ($voidRemarks = BookingNotes::voidRemarksForDisplay($booking->notes)) !== null && $voidRemarks !== '' ? $voidRemarks : null,
+                'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
                 'reschedule_reason' => ($rescheduleReason = trim((string) ($booking->reschedule_reason ?? ''))) !== '' ? $rescheduleReason : null,
                 'rescheduled_at' => optional($booking->rescheduled_at)?->toIso8601String(),
                 'service_name' => (string) ($booking->service?->name ?? '-'),
@@ -8840,6 +8851,7 @@ class PosController extends Controller
             'appointment_start_at' => optional($booking->start_at)?->toIso8601String(),
             'appointment_end_at' => optional($booking->end_at)?->toIso8601String(),
             'schedule_override' => $this->serializeScheduleOverride($booking),
+            'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
             'customer_name' => (string) (str_starts_with(strtoupper($guestName), 'UNKNOWN')
                 ? 'Walk-in / Unknown'
                 : (($booking->customer?->name ?? '') !== ''
@@ -9154,6 +9166,16 @@ class PosController extends Controller
         }
 
         return round($lineTotal, 2);
+    }
+
+    /**
+     * Shared read-only financial summary for admin history and other booking views.
+     */
+    public function appointmentFinancialSummaryForBooking(Booking $booking): array
+    {
+        $booking->loadMissing(['service', 'customer']);
+
+        return $this->resolveAppointmentFinancialSummary($booking);
     }
 
     protected function resolveAppointmentFinancialSummary(Booking $booking): array

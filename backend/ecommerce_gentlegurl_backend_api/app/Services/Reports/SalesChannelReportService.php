@@ -5,8 +5,11 @@ namespace App\Services\Reports;
 use App\Models\Booking\BookingPayment;
 use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
+use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\User;
+use App\Support\BookingNotes;
+use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +30,11 @@ class SalesChannelReportService
     public const BOOKING_TYPE_PRODUCT = 'booking_product';
 
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
+
+    private function orderBillAtSql(string $alias = 'o'): string
+    {
+        return "COALESCE({$alias}.placed_at, {$alias}.created_at)";
+    }
 
     /**
      * Mirror MyPosSummaryReportController::baseOrdersScopeQuery logic so that
@@ -58,7 +66,8 @@ class SalesChannelReportService
                 'items' => fn ($query) => $query->orderBy('id'),
                 'items.product:id,name,cn_name',
                 'items.productVariant:id,title,sku,cn_name',
-                'items.booking:id,booking_code,service_id,guest_name,guest_phone,guest_email',
+                'items.booking:id,booking_code,service_id,staff_id,guest_name,guest_phone,guest_email,notes,settlement_notes,reschedule_reason',
+                'items.booking.staff:id,name',
                 'items.booking.service:id,name,cn_name',
                 'items.bookingService:id,name,cn_name',
                 'items.staff:id,name',
@@ -91,6 +100,12 @@ class SalesChannelReportService
             ->unique()
             ->values();
 
+        $assignedStaffNames = $order->items
+            ->map(fn (OrderItem $item) => $item->booking?->staff?->name)
+            ->filter()
+            ->unique()
+            ->values();
+
         $paymentProofs = $this->paymentProofsForOrder($order);
 
         $lineTypes = $order->items
@@ -113,24 +128,103 @@ class SalesChannelReportService
                 ->get(['id', 'name', 'email'])
                 ->mapWithKeys(fn (User $user) => [(int) $user->id => (string) ($user->email ?: $user->name ?: ('User #' . $user->id))]);
 
+        $bookingRemarks = $this->resolveOrderBookingRemarks($order);
+
         return [
             'order' => [
                 'id' => (int) $order->id,
                 'order_no' => (string) $order->order_number,
-                'order_datetime' => optional($order->created_at)?->toIso8601String(),
-                'customer' => (string) ($order->customer?->name ?: $order->shipping_name ?: $order->billing_name ?: 'Walk-in Customer'),
+                'order_datetime' => optional($order->placed_at ?? $order->created_at)?->toIso8601String(),
+                'placed_at' => optional($order->placed_at)?->toIso8601String(),
+                'created_at' => optional($order->created_at)?->toIso8601String(),
+                'customer' => $this->resolveOrderCustomerDisplayName($order),
                 'payment_method' => (string) ($order->payment_method ?: 'unknown'),
                 'payments' => $payments->all(),
                 'type' => $lineTypes->isEmpty() ? 'Order' : $lineTypes->implode(', '),
                 'booking_no' => $bookingNumbers->isEmpty() ? null : $bookingNumbers->implode(', '),
+                'assigned_staff_name' => $assignedStaffNames->isEmpty() ? null : $assignedStaffNames->implode(', '),
                 'status' => (string) $order->status,
                 'grand_total' => (float) $order->grand_total,
                 'payment_proofs' => $paymentProofs,
                 'receipt_public_url' => $this->resolveReceiptPublicUrl($order),
                 'customer_email' => $this->resolveReceiptCustomerEmail($order),
+                ...$bookingRemarks,
             ],
             'lines' => $order->items->map(fn (OrderItem $item) => $this->formatOrderDetailLine($item, $overrideUsers->all()))->values()->all(),
+            'action_logs' => $this->orderActionLogs((int) $order->id),
         ];
+    }
+
+    private function resolveOrderBookingRemarks(Order $order): array
+    {
+        $bookings = $order->items
+            ->map(fn (OrderItem $item) => $item->booking)
+            ->filter()
+            ->unique('id');
+
+        $notes = [];
+        $voidRemarks = [];
+        $settlementNotes = [];
+        $rescheduleReasons = [];
+
+        foreach ($bookings as $booking) {
+            if ($value = BookingNotes::customerRemarksForDisplay($booking->notes)) {
+                $notes[] = $value;
+            }
+            if ($value = BookingNotes::voidRemarksForDisplay($booking->notes)) {
+                $voidRemarks[] = $value;
+            }
+            if ($value = trim((string) ($booking->settlement_notes ?? ''))) {
+                $settlementNotes[] = $value;
+            }
+            if ($value = trim((string) ($booking->reschedule_reason ?? ''))) {
+                $rescheduleReasons[] = $value;
+            }
+        }
+
+        $joinUnique = static fn (array $values): ?string => ($filtered = array_values(array_unique(array_filter($values)))) === []
+            ? null
+            : implode("\n", $filtered);
+
+        return [
+            'notes' => $joinUnique($notes),
+            'void_remarks' => $joinUnique($voidRemarks),
+            'settlement_notes' => $joinUnique($settlementNotes),
+            'reschedule_reason' => $joinUnique($rescheduleReasons),
+        ];
+    }
+
+    private function orderActionLogs(int $orderId): array
+    {
+        $logs = OrderActionLog::query()
+            ->where('entity_type', 'order')
+            ->where('entity_id', $orderId)
+            ->orderByDesc('id')
+            ->limit(40)
+            ->get();
+
+        if ($logs->isEmpty()) {
+            return [];
+        }
+
+        $users = User::query()
+            ->whereIn('id', $logs->pluck('created_by')->filter()->unique()->all())
+            ->get(['id', 'name', 'email'])
+            ->keyBy('id');
+
+        return $logs->map(function (OrderActionLog $log) use ($users) {
+            $user = $log->created_by ? $users->get((int) $log->created_by) : null;
+
+            return [
+                'id' => (int) $log->id,
+                'action_type' => (string) $log->action_type,
+                'before_value' => $log->before_value,
+                'after_value' => $log->after_value,
+                'remark' => $log->remark,
+                'created_at' => $log->created_at?->toIso8601String(),
+                'created_by_name' => $user ? (string) ($user->name ?: $user->email) : null,
+            ];
+        })->values()->all();
     }
 
 
@@ -229,6 +323,10 @@ class SalesChannelReportService
             ])
             ->values();
 
+        $staffSplits = $this->resolveBookingStaffSplitsForLine($item, $staffSplits);
+        $assignedStaffName = $item->booking?->staff?->name
+            ?: ($staffSplits->first()['staff_name'] ?? null);
+
         return [
             'id' => (int) $item->id,
             'line_type' => (string) ($item->line_type ?? 'product'),
@@ -249,9 +347,64 @@ class SalesChannelReportService
             'discount_remark' => $item->discount_remark,
             'price_override' => $this->normalizeOrderItemPriceOverride($item, $overrideUsers),
             'children' => $children,
-            'staff_name' => $item->staff?->name,
+            'staff_name' => $item->staff?->name ?: $assignedStaffName,
+            'assigned_staff_name' => $assignedStaffName,
             'staff_splits' => $staffSplits->all(),
         ];
+    }
+
+    private function resolveBookingStaffSplitsForLine(OrderItem $item, $existingSplits)
+    {
+        if ($existingSplits->isNotEmpty()) {
+            return $existingSplits;
+        }
+
+        $bookingId = (int) ($item->booking_id ?? 0);
+        if ($bookingId <= 0) {
+            return $existingSplits;
+        }
+
+        $lineType = (string) ($item->line_type ?? '');
+        if (! in_array($lineType, ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'], true)) {
+            return $existingSplits;
+        }
+
+        $bookingSplits = DB::table('booking_service_staff_splits as splits')
+            ->leftJoin('staffs', 'staffs.id', '=', 'splits.staff_id')
+            ->where('splits.booking_id', $bookingId)
+            ->orderBy('splits.id')
+            ->get([
+                'splits.staff_id',
+                'staffs.name as staff_name',
+                'splits.split_percent',
+                'splits.service_commission_rate_snapshot',
+            ])
+            ->map(fn ($row) => [
+                'staff_id' => (int) ($row->staff_id ?? 0),
+                'staff_name' => (string) ($row->staff_name ?? ('Staff #' . ($row->staff_id ?? 0))),
+                'share_percent' => (int) ($row->split_percent ?? 0),
+                'commission_rate_snapshot' => (float) ($row->service_commission_rate_snapshot ?? 0),
+            ])
+            ->filter(fn (array $row) => $row['staff_id'] > 0 && $row['share_percent'] > 0)
+            ->values();
+
+        if ($bookingSplits->isNotEmpty()) {
+            return $bookingSplits;
+        }
+
+        $fallbackStaffId = (int) ($item->booking?->staff_id ?? 0);
+        if ($fallbackStaffId <= 0) {
+            return $existingSplits;
+        }
+
+        $fallbackName = (string) ($item->booking?->staff?->name ?? ('Staff #' . $fallbackStaffId));
+
+        return collect([[
+            'staff_id' => $fallbackStaffId,
+            'staff_name' => $fallbackName,
+            'share_percent' => 100,
+            'commission_rate_snapshot' => 0.0,
+        ]]);
     }
 
 
@@ -465,7 +618,12 @@ class SalesChannelReportService
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
-                'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                 'channel' => (string) $row->channel,
                 'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                 'payments' => $paymentRowsByOrder->get((int) $row->order_id, []),
@@ -527,7 +685,12 @@ class SalesChannelReportService
                     'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
-                    'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                    'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                     'channel' => (string) $row->channel,
                     'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                     'item_count' => (int) $row->item_count,
@@ -550,19 +713,47 @@ class SalesChannelReportService
 
         $baseQuery = $this->baseBookingRowsQuery($start, $end, $channel, $paymentMethod, $type, $customerId);
 
-        $paginator = (clone $baseQuery)
+        // Paginate by distinct order — UI groups line items (deposit/settlement/add-on) into one row per order.
+        $distinctOrdersQuery = (clone $baseQuery)
+            ->selectRaw('order_id')
+            ->selectRaw('MAX(order_datetime) as order_datetime')
+            ->groupBy('order_id');
+
+        $paginator = DB::query()
+            ->fromSub($distinctOrdersQuery, 'distinct_orders')
             ->orderByDesc('order_datetime')
+            ->orderByDesc('order_id')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        $cnNames = $this->resolveOrderItemCnNames(collect($paginator->items())->pluck('order_item_id')->all());
-        $paymentRowsByOrder = $this->paymentRowsByOrderIds(collect($paginator->items())->pluck('order_id')->all());
+        $orderIds = collect($paginator->items())
+            ->pluck('order_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->values()
+            ->all();
 
-        $rows = collect($paginator->items())->map(function ($row) use ($cnNames, $paymentRowsByOrder) {
+        $pageItems = $orderIds === []
+            ? collect()
+            : (clone $baseQuery)
+                ->whereIn('order_id', $orderIds)
+                ->orderByDesc('order_datetime')
+                ->orderBy('order_id')
+                ->get();
+
+        $cnNames = $this->resolveOrderItemCnNames($pageItems->pluck('order_item_id')->all());
+        $paymentRowsByOrder = $this->paymentRowsByOrderIds($pageItems->pluck('order_id')->all());
+
+        $rows = $pageItems->map(function ($row) use ($cnNames, $paymentRowsByOrder) {
             return [
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
                 'order_datetime' => (string) $row->order_datetime,
-                'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                 'channel' => (string) $row->channel,
                 'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                 'payments' => $paymentRowsByOrder->get((int) $row->order_id, []),
@@ -592,6 +783,7 @@ class SalesChannelReportService
             ->first();
 
         $totalsPage = $this->aggregateBookingTotals($rows);
+        $totalsPage['orders_count'] = (int) $rows->pluck('order_id')->unique()->count();
         $grandTotals = [
             'orders_count' => (int) ($summaryRow->total_transactions ?? 0),
             'gross_amount' => (float) ((clone $baseQuery)->sum('gross_amount') ?? 0),
@@ -643,7 +835,12 @@ class SalesChannelReportService
                     'order_id' => (int) $row->order_id,
                     'order_no' => (string) $row->order_no,
                     'date_time' => (string) $row->order_datetime,
-                    'customer' => (string) ($row->customer_name ?: 'Walk-in Customer'),
+                    'customer' => $this->formatCustomerDisplayName(
+                    $row->customer_name ?? null,
+                    $row->shipping_name ?? null,
+                    $row->billing_name ?? null,
+                    $row->booking_guest_name ?? null,
+                ),
                     'channel' => (string) $row->channel,
                     'payment_method' => (string) ($row->payment_method ?: 'unknown'),
                     'type' => (string) $row->type,
@@ -671,14 +868,16 @@ class SalesChannelReportService
             DB::table('orders as o')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
-            ->groupBy('o.id', 'o.order_number', 'order_datetime', 'c.name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total')
+            ->groupBy('o.id', 'o.order_number', 'c.name', 'o.shipping_name', 'o.billing_name', 'channel', 'o.payment_method', 'o.status', 'o.grand_total', DB::raw($this->orderBillAtSql()))
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
-            ->selectRaw('o.created_at as order_datetime')
+            ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
             ->selectRaw('c.name as customer_name')
+            ->selectRaw('o.shipping_name as shipping_name')
+            ->selectRaw('o.billing_name as billing_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
@@ -721,13 +920,16 @@ class SalesChannelReportService
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
                 ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.id as order_id')
             ->selectRaw('o.order_number as order_no')
-            ->selectRaw('o.created_at as order_datetime')
+            ->selectRaw($this->orderBillAtSql() . ' as order_datetime')
             ->selectRaw('c.name as customer_name')
+            ->selectRaw('o.shipping_name as shipping_name')
+            ->selectRaw('o.billing_name as billing_name')
+            ->selectRaw('b.guest_name as booking_guest_name')
             ->selectRaw("CASE WHEN o.created_by_user_id IS NULL THEN 'online' ELSE 'offline' END as channel")
             ->selectRaw('o.payment_method')
             ->selectRaw('o.grand_total as order_total')
@@ -901,6 +1103,77 @@ class SalesChannelReportService
         $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
 
         return $frontendUrl . '/api/proxy/public/receipt/' . $existingToken->token . '/invoice';
+    }
+
+    private function resolveOrderCustomerDisplayName(Order $order): string
+    {
+        return $this->formatCustomerDisplayName(
+            $order->customer?->name,
+            $order->shipping_name,
+            $order->billing_name,
+            $this->resolveBookingGuestDisplayName($order),
+        );
+    }
+
+    private function resolveBookingGuestDisplayName(Order $order): ?string
+    {
+        foreach ($order->items ?? [] as $item) {
+            $guest = trim((string) ($item->booking?->guest_name ?? ''));
+            if ($guest !== '' && strtoupper($guest) !== 'UNKNOWN') {
+                return $guest;
+            }
+        }
+
+        return null;
+    }
+
+    private function formatCustomerDisplayName(
+        ?string $memberName,
+        ?string $shippingName,
+        ?string $billingName,
+        ?string $bookingGuestName,
+    ): string {
+        $member = trim((string) ($memberName ?? ''));
+        if ($member !== '') {
+            return $member;
+        }
+
+        $shipping = trim((string) ($shippingName ?? ''));
+        if ($shipping !== '') {
+            return $shipping;
+        }
+
+        $billing = trim((string) ($billingName ?? ''));
+        if ($billing !== '' && ! $this->isPosWalkInPlaceholderName($billing)) {
+            return $billing;
+        }
+
+        $guest = trim((string) ($bookingGuestName ?? ''));
+        if ($guest !== '' && strtoupper($guest) !== 'UNKNOWN') {
+            return $guest;
+        }
+
+        return 'Walk-in Customer';
+    }
+
+    private function isPosWalkInPlaceholderName(string $name): bool
+    {
+        $normalized = strtoupper(trim($name));
+        if ($normalized === '' || $normalized === '-') {
+            return true;
+        }
+
+        $walkInName = strtoupper(trim((string) data_get(
+            SettingService::get('ecommerce.invoice_profile', []),
+            'pos_walk_in_bill_to.name',
+            'UNKNOWN'
+        )));
+
+        if ($walkInName !== '' && $normalized === $walkInName) {
+            return true;
+        }
+
+        return in_array($normalized, ['UNKNOWN', 'LOYALTY TESTER'], true);
     }
 
     private function resolveReceiptCustomerEmail(Order $order): ?string

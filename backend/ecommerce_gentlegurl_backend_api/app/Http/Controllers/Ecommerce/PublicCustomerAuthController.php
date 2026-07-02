@@ -309,7 +309,6 @@ class PublicCustomerAuthController extends Controller
             'email' => ['required', 'email'],
             'token' => ['required', 'string'],
             'password' => ['required', 'string', 'min:6', 'confirmed'],
-            'type' => ['required', 'string', 'max:100'],
         ]);
 
         $status = Password::broker('customers')->reset(

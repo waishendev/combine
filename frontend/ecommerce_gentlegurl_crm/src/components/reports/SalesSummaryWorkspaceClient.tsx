@@ -189,25 +189,27 @@ export default function SalesSummaryWorkspaceClient() {
       </nav>
 
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h2 className="text-3xl font-semibold text-slate-900">{selectedMonthTitle ? 'Monthly Sales Report' : 'Yearly Sales Report'}</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            {selectedMonthTitle
-              ? `Daily ecommerce and booking sales summary for ${selectedMonthTitle}.`
-              : `Yearly ecommerce and booking sales summary for ${selectedYear}.`}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="space-y-3">
           {selectedMonth ? (
             <button
               type="button"
               onClick={openYearSummary}
-              className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+              className="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
             >
               ← Back to yearly summary
             </button>
           ) : null}
+          <div>
+            <h2 className="text-3xl font-semibold text-slate-900">{selectedMonthTitle ? 'Monthly Sales Report' : 'Yearly Sales Report'}</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              {selectedMonthTitle
+                ? `Daily ecommerce and booking sales summary for ${selectedMonthTitle}.`
+                : `Yearly ecommerce and booking sales summary for ${selectedYear}.`}
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
             Year
             <select

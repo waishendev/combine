@@ -16,9 +16,16 @@ import BookingServiceQuestionsBuilder, {
 } from './BookingServiceQuestionsBuilder'
 import {
   BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE,
+  extractBookingServiceApiErrorMessage,
   mapBookingServiceApiItemToRow,
   type BookingServiceApiItem,
 } from './bookingServiceUtils'
+import BookingServiceProductLinkPanel, {
+  appendProductLinkFormData,
+  buildInitialProductLinkValue,
+  type BookingServiceProductLinkValue,
+  type LinkedBookingProductSummary,
+} from './BookingServiceProductLinkPanel'
 import { useI18n } from '@/lib/i18n'
 import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
@@ -186,6 +193,7 @@ export default function BookingServiceCreateModal({
   const [staffLoading, setStaffLoading] = useState(true)
   /** False while copying from server: must track readiness separately from props (first paint can miss copy id). */
   const [copySourceReady, setCopySourceReady] = useState(() => copySourceId == null)
+  const [productLink, setProductLink] = useState<BookingServiceProductLinkValue>(buildInitialProductLinkValue())
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -312,6 +320,7 @@ export default function BookingServiceCreateModal({
       setCopySourceReady(true)
       setForm({ ...initialFormState })
       setImagePreview(null)
+      setProductLink(buildInitialProductLinkValue())
       setError(null)
       return
     }
@@ -351,6 +360,7 @@ export default function BookingServiceCreateModal({
           return
         }
         setForm(mapBookingServiceApiToCreateFormState(service))
+        setProductLink(buildInitialProductLinkValue())
         const mapped = mapBookingServiceApiItemToRow(service)
         setImagePreview(mapped.imageUrl || null)
       } catch (err) {
@@ -516,6 +526,7 @@ export default function BookingServiceCreateModal({
         const compressed = await compressImage(form.imageFile)
         fd.append('image', compressed)
       }
+      appendProductLinkFormData(fd, productLink, false)
 
       const res = await fetch('/api/proxy/admin/booking/services', {
         method: 'POST',
@@ -525,13 +536,14 @@ export default function BookingServiceCreateModal({
 
       const data = await res.json().catch(() => null)
       if (!res.ok) {
-        setError((data as { message?: string } | null)?.message ?? 'Failed to create booking service')
+        setError(extractBookingServiceApiErrorMessage(data, 'Failed to create booking service'))
         return
       }
 
       const created = mapBookingServiceApiItemToRow((data?.data ?? {}) as BookingServiceApiItem)
       setForm({ ...initialFormState })
       setImagePreview(null)
+      setProductLink(buildInitialProductLinkValue())
       onSuccess(created)
     } catch (err) {
       console.error(err)
@@ -612,6 +624,15 @@ export default function BookingServiceCreateModal({
           className="relative z-[1] p-5"
           aria-busy={isWaitingForCopySource}
         >
+          <div className="mb-6">
+            <BookingServiceProductLinkPanel
+              mode="create"
+              value={productLink}
+              onChange={setProductLink}
+              disabled={disableForm}
+            />
+          </div>
+
           <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
             {/* Left Side - Image Upload */}
             <div className="space-y-4 w-full lg:w-1/2">

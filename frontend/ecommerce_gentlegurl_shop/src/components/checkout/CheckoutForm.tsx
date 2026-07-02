@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCart } from "@/contexts/CartContext";
@@ -69,6 +69,18 @@ const scopeLabels: Record<string, string> = {
   categories: "Specific Categories",
 };
 
+type CheckoutErrorField =
+  | "contact"
+  | "billing"
+  | "store"
+  | "payment"
+  | "bank"
+  | "online_banking"
+  | "summary"
+  | "general";
+
+const ADDRESS_FORM_FIELD_ORDER = ["name", "phone", "line1", "city", "state", "postcode"] as const;
+
 const normalizeCountryValue = (country?: string | null) => {
   if (!country) return "";
   const normalized = country.trim().toUpperCase();
@@ -82,6 +94,34 @@ const formatCountryLabel = (country?: string | null) => {
   const code = normalizeCountryValue(country);
   return COUNTRY_OPTIONS.find((option) => option.value === code)?.label ?? country ?? "";
 };
+
+const fieldLabelClass = "mb-1 block text-xs font-medium text-[var(--foreground)]/70";
+
+function RequiredMark() {
+  return (
+    <span className="ml-0.5 text-[var(--status-error)]" aria-hidden="true">
+      *
+    </span>
+  );
+}
+
+function FieldLabel({ children, required = true }: { children: ReactNode; required?: boolean }) {
+  return (
+    <label className={fieldLabelClass}>
+      {children}
+      {required ? <RequiredMark /> : null}
+    </label>
+  );
+}
+
+function SectionLabel({ children, required = true }: { children: ReactNode; required?: boolean }) {
+  return (
+    <div className={fieldLabelClass}>
+      {children}
+      {required ? <RequiredMark /> : null}
+    </div>
+  );
+}
 
 export default function CheckoutForm() {
   const router = useRouter();
@@ -112,6 +152,9 @@ export default function CheckoutForm() {
   const hasNavigatedRef = useRef(false);
   const [paymentMethod, setPaymentMethod] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [errorField, setErrorField] = useState<CheckoutErrorField | null>(null);
+  const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
+  const errorBannerRef = useRef<HTMLDivElement | null>(null);
   const [voucherCode, setVoucherCode] = useState("");
   const [selectedVoucherId, setSelectedVoucherId] = useState<number | null>(null);
   const [vouchers, setVouchers] = useState<CustomerVoucher[]>([]);
@@ -186,7 +229,43 @@ export default function CheckoutForm() {
   const hasMissingVariant = selectedItems.some(
     (item) => item.product_type === "variant" && !item.product_variant_id,
   );
-  
+
+  const scrollToCheckoutField = useCallback((field: CheckoutErrorField) => {
+    requestAnimationFrame(() => {
+      const target = fieldRefs.current[field] ?? errorBannerRef.current;
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, []);
+
+  const reportCheckoutError = useCallback(
+    (message: string, field: CheckoutErrorField) => {
+      setError(message);
+      setErrorField(field);
+      scrollToCheckoutField(field);
+    },
+    [scrollToCheckoutField],
+  );
+
+  const clearCheckoutError = useCallback(() => {
+    setError(null);
+    setErrorField(null);
+  }, []);
+
+  const sectionErrorClass = useCallback(
+    (field: CheckoutErrorField) =>
+      errorField === field
+        ? "border-[var(--status-error)] ring-2 ring-[var(--status-error)]/25"
+        : "border-[var(--card-border)]",
+    [errorField],
+  );
+
+  const setFieldRef = useCallback(
+    (field: CheckoutErrorField) => (el: HTMLElement | null) => {
+      fieldRefs.current[field] = el;
+    },
+    [],
+  );
+
   // Calculate promotion discounts for selected items
   const promotionDiscount = useMemo(() => {
     if (selectedItems.length === 0 || promotions.length === 0) {
@@ -586,6 +665,30 @@ export default function CheckoutForm() {
       .finally(() => setLoadingVouchers(false));
   }, [showVoucherModal]);
 
+  useEffect(() => {
+    if (!error) return;
+    setError(null);
+    setErrorField(null);
+  }, [
+    paymentMethod,
+    selectedBankId,
+    selectedBillplzGatewayOptionId,
+    selectedStoreId,
+    selectedAddressId,
+    billingSameAsShipping,
+    form,
+    billingForm,
+    shippingMethod,
+  ]);
+
+  useEffect(() => {
+    const firstKey = ADDRESS_FORM_FIELD_ORDER.find((key) => addressFormErrors[key]?.length);
+    if (!firstKey) return;
+    requestAnimationFrame(() => {
+      fieldRefs.current[`address_${firstKey}`]?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
+  }, [addressFormErrors]);
+
   const handleApplyCodeVoucher = async () => {
     const applied = await applyVoucher(voucherCode.trim() || undefined, undefined);
     if (applied) {
@@ -609,35 +712,35 @@ export default function CheckoutForm() {
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    setError(null);
+    clearCheckoutError();
 
     if (!selectedItems || selectedItems.length === 0) {
-      setError("Please select at least one item in your cart.");
+      reportCheckoutError("Please select at least one item in your cart.", "summary");
       return;
     }
     if (hasMissingVariant) {
-      setError("Please select variants for all variant items before checkout.");
+      reportCheckoutError("Please select variants for all variant items before checkout.", "summary");
       return;
     }
 
     if (!paymentMethod) {
-      setError("Please select a payment method.");
+      reportCheckoutError("Please select a payment method.", "payment");
       return;
     }
 
     if (paymentMethod === "manual_transfer" && !selectedBankId) {
-      setError("Please choose a bank account for manual transfer.");
+      reportCheckoutError("Please choose a bank account for manual transfer.", "bank");
       return;
     }
     if (paymentMethod === "billplz_online_banking" && !selectedBillplzGatewayOptionId) {
       if (onlineBankingOptions.length > 0) {
-        setError("Please choose an online banking option.");
+        reportCheckoutError("Please choose an online banking option.", "online_banking");
         return;
       }
     }
 
     if (shippingMethod === "self_pickup" && !selectedStoreId) {
-      setError("Please choose a store location for self pickup.");
+      reportCheckoutError("Please choose a store location for self pickup.", "store");
       return;
     }
 
@@ -646,20 +749,24 @@ export default function CheckoutForm() {
 
     if (shippingMethod === "self_pickup") {
       if (!form.shipping_name || !normalizedShippingPhone) {
-        setError("Please provide your name and phone number for pickup.");
+        reportCheckoutError("Please provide your name and phone number for pickup.", "contact");
         return;
       }
     }
 
     if (isLoggedIn && shippingMethod === "shipping" && !selectedAddress) {
-      setError("Please add and select an address.");
+      reportCheckoutError("Please add and select an address.", "contact");
+      setShowAddressModal(true);
+      setAddressMode("list");
       return;
     }
 
     if (isLoggedIn && shippingMethod === "shipping" && selectedAddress) {
       const selectedCountry = normalizeCountryValue(selectedAddress.country);
       if (selectedCountry === "MY" && !selectedAddress.state) {
-        setError("Please select a state for your shipping address.");
+        reportCheckoutError("Please select a state for your shipping address.", "contact");
+        setShowAddressModal(true);
+        setAddressMode("list");
         return;
       }
     }
@@ -674,12 +781,12 @@ export default function CheckoutForm() {
         form.shipping_postcode,
       ];
       if (required.some((v) => !v)) {
-        setError("Please complete your shipping details.");
+        reportCheckoutError("Please complete your shipping details.", "contact");
         return;
       }
 
       if (normalizeCountryValue(form.shipping_country) === "MY" && !form.shipping_state) {
-        setError("Please complete your shipping details.");
+        reportCheckoutError("Please complete your shipping details.", "contact");
         return;
       }
     }
@@ -694,12 +801,12 @@ export default function CheckoutForm() {
         billingForm.billing_postcode,
       ];
       if (required.some((v) => !v)) {
-        setError("Please complete your billing details.");
+        reportCheckoutError("Please complete your billing details.", "billing");
         return;
       }
 
       if (normalizeCountryValue(billingForm.billing_country) === "MY" && !billingForm.billing_state) {
-        setError("Please complete your billing details.");
+        reportCheckoutError("Please complete your billing details.", "billing");
         return;
       }
     }
@@ -758,7 +865,7 @@ export default function CheckoutForm() {
           hasNavigatedRef.current = true;
           window.location.href = paymentUrl;
         } else {
-          setError("Unable to start Billplz payment. Please try again.");
+          reportCheckoutError("Unable to start Billplz payment. Please try again.", "payment");
         }
         return;
       }
@@ -776,7 +883,7 @@ export default function CheckoutForm() {
       router.replace(`/payment-result?${searchParams.toString()}`);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Failed to create order.";
-      setError(message);
+      reportCheckoutError(message, "summary");
     } finally {
       if (!hasNavigatedRef.current) {
         setIsSubmitting(false);
@@ -812,7 +919,7 @@ export default function CheckoutForm() {
 
     // Clear previous errors
     setAddressFormErrors({});
-    setError(null);
+    clearCheckoutError();
 
     try {
       if (editingAddress) {
@@ -950,12 +1057,28 @@ export default function CheckoutForm() {
       <main className="mx-auto max-w-5xl px-4 py-8 pb-28 text-[var(--foreground)] md:pb-8">
       <h1 className="mb-6 text-2xl font-semibold">Checkout</h1>
 
+      {error && (
+        <div
+          ref={errorBannerRef}
+          role="alert"
+          className="sticky top-0 z-50 mb-4 rounded-xl border border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-3 text-sm font-medium text-[var(--status-error)] shadow-sm"
+        >
+          {error}
+        </div>
+      )}
+
       <form id="checkout-form" onSubmit={handleSubmit} className="grid gap-6 lg:grid-cols-[2fr,1fr]">
         <div className="space-y-4">
           {!isSelfPickup ? (
-            <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
+            <section
+              ref={setFieldRef("contact")}
+              className={`rounded-xl border ${sectionErrorClass("contact")} bg-[var(--card)]/80 p-4 shadow-sm sm:p-5`}
+            >
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Contact &amp; Address</h2>
+                <h2 className="text-lg font-semibold">
+                  Contact &amp; Address
+                  <RequiredMark />
+                </h2>
                 {isLoggedIn && (
                   <button
                     type="button"
@@ -1007,7 +1130,7 @@ export default function CheckoutForm() {
                 <div className="space-y-3">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Full Name</label>
+                      <FieldLabel>Full Name</FieldLabel>
                       <input
                         required
                         value={form.shipping_name}
@@ -1016,7 +1139,7 @@ export default function CheckoutForm() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone Number</label>
+                      <FieldLabel>Phone Number</FieldLabel>
                       <InternationalPhoneInput
                         value={form.shipping_phone}
                         onChange={(phone) => setForm((prev) => ({ ...prev, shipping_phone: phone }))}
@@ -1028,7 +1151,7 @@ export default function CheckoutForm() {
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 1</label>
+                      <FieldLabel>Address Line 1</FieldLabel>
                       <input
                         required
                         value={form.shipping_address_line1}
@@ -1037,7 +1160,7 @@ export default function CheckoutForm() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 2 (Optional)</label>
+                      <FieldLabel required={false}>Address Line 2 (Optional)</FieldLabel>
                       <input
                         value={form.shipping_address_line2}
                         onChange={(e) => setForm((prev) => ({ ...prev, shipping_address_line2: e.target.value }))}
@@ -1048,7 +1171,7 @@ export default function CheckoutForm() {
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">City</label>
+                      <FieldLabel>City</FieldLabel>
                       <input
                         required
                         value={form.shipping_city}
@@ -1057,7 +1180,7 @@ export default function CheckoutForm() {
                       />
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">State</label>
+                      <FieldLabel required={isShippingMalaysia}>State</FieldLabel>
                       {isShippingMalaysia ? (
                         <select
                           required
@@ -1086,7 +1209,7 @@ export default function CheckoutForm() {
                       )}
                     </div>
                     <div>
-                      <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Postcode</label>
+                      <FieldLabel>Postcode</FieldLabel>
                       <input
                         required
                         value={form.shipping_postcode}
@@ -1097,7 +1220,7 @@ export default function CheckoutForm() {
                   </div>
 
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Country</label>
+                    <FieldLabel>Country</FieldLabel>
                     <select
                       required
                       value={form.shipping_country}
@@ -1122,13 +1245,19 @@ export default function CheckoutForm() {
               )}
             </section>
           ) : (
-            <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
+            <section
+              ref={setFieldRef("contact")}
+              className={`rounded-xl border ${sectionErrorClass("contact")} bg-[var(--card)]/80 p-4 shadow-sm sm:p-5`}
+            >
               <div className="mb-3 flex items-center justify-between gap-2">
-                <h2 className="text-lg font-semibold">Pickup Contact</h2>
+                <h2 className="text-lg font-semibold">
+                  Pickup Contact
+                  <RequiredMark />
+                </h2>
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Full Name</label>
+                  <FieldLabel>Full Name</FieldLabel>
                   <input
                     required
                     value={form.shipping_name}
@@ -1137,7 +1266,7 @@ export default function CheckoutForm() {
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone Number</label>
+                  <FieldLabel>Phone Number</FieldLabel>
                   <InternationalPhoneInput
                     value={form.shipping_phone}
                     onChange={(phone) => setForm((prev) => ({ ...prev, shipping_phone: phone }))}
@@ -1152,7 +1281,10 @@ export default function CheckoutForm() {
             </section>
           )}
 
-          <section className="rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
+          <section
+            ref={setFieldRef("billing")}
+            className={`rounded-xl border ${sectionErrorClass("billing")} bg-[var(--card)]/80 p-4 shadow-sm sm:p-5`}
+          >
             <div className="mb-3 flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold">Billing Address</h2>
             </div>
@@ -1174,7 +1306,7 @@ export default function CheckoutForm() {
               <div className="mt-4 space-y-3">
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Full Name</label>
+                    <FieldLabel>Full Name</FieldLabel>
                     <input
                       required
                       value={billingForm.billing_name}
@@ -1183,7 +1315,7 @@ export default function CheckoutForm() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone Number</label>
+                    <FieldLabel>Phone Number</FieldLabel>
                     <InternationalPhoneInput
                       value={billingForm.billing_phone}
                       onChange={(phone) => setBillingForm((prev) => ({ ...prev, billing_phone: phone }))}
@@ -1195,7 +1327,7 @@ export default function CheckoutForm() {
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 1</label>
+                    <FieldLabel>Address Line 1</FieldLabel>
                     <input
                       required
                       value={billingForm.billing_address_line1}
@@ -1206,7 +1338,7 @@ export default function CheckoutForm() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 2 (Optional)</label>
+                    <FieldLabel required={false}>Address Line 2 (Optional)</FieldLabel>
                     <input
                       value={billingForm.billing_address_line2}
                       onChange={(e) =>
@@ -1219,7 +1351,7 @@ export default function CheckoutForm() {
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">City</label>
+                    <FieldLabel>City</FieldLabel>
                     <input
                       required
                       value={billingForm.billing_city}
@@ -1228,7 +1360,7 @@ export default function CheckoutForm() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">State</label>
+                    <FieldLabel required={isBillingMalaysia}>State</FieldLabel>
                     {isBillingMalaysia ? (
                       <select
                         required
@@ -1261,7 +1393,7 @@ export default function CheckoutForm() {
                     )}
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Postcode</label>
+                    <FieldLabel>Postcode</FieldLabel>
                     <input
                       required
                       value={billingForm.billing_postcode}
@@ -1274,7 +1406,7 @@ export default function CheckoutForm() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Country</label>
+                  <FieldLabel>Country</FieldLabel>
                   <select
                     required
                     value={billingForm.billing_country}
@@ -1415,7 +1547,10 @@ export default function CheckoutForm() {
           </section>
         </div>
 
-        <aside className="space-y-4 rounded-xl border border-[var(--card-border)] bg-[var(--card)]/80 p-4 shadow-sm sm:p-5">
+        <aside
+          ref={setFieldRef("summary")}
+          className={`space-y-4 rounded-xl border ${sectionErrorClass("summary")} bg-[var(--card)]/80 p-4 shadow-sm sm:p-5`}
+        >
           <h2 className="text-lg font-semibold">Order Summary</h2>
 
           <div className="flex items-start justify-between gap-3 rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/10 p-3 text-sm">
@@ -1504,8 +1639,15 @@ export default function CheckoutForm() {
           </div>
 
           {shippingMethod === "self_pickup" && (
-            <div className="rounded border border-[var(--muted)]/60 bg-[var(--muted)]/20 p-3 text-sm">
-              <div className="mb-1 text-xs font-medium text-[var(--foreground)]/70">Choose Store Location</div>
+            <div
+              ref={setFieldRef("store")}
+              className={`rounded border p-3 text-sm ${
+                errorField === "store"
+                  ? "border-[var(--status-error)] bg-[var(--status-error-bg)]/30 ring-2 ring-[var(--status-error)]/25"
+                  : "border-[var(--muted)]/60 bg-[var(--muted)]/20"
+              }`}
+            >
+              <SectionLabel>Choose Store Location</SectionLabel>
               {storeLocations.length === 0 && (
                 <p className="text-xs text-[var(--foreground)]/70">No active store locations available.</p>
               )}
@@ -1540,8 +1682,15 @@ export default function CheckoutForm() {
             </div>
           )}
 
-          <div>
-            <div className="mb-1 text-xs font-medium text-[var(--foreground)]/70">Payment Method</div>
+          <div
+            ref={setFieldRef("payment")}
+            className={
+              errorField === "payment"
+                ? "rounded-lg ring-2 ring-[var(--status-error)]/25"
+                : undefined
+            }
+          >
+            <SectionLabel>Payment Method</SectionLabel>
             <div className="space-y-2 text-sm">
               {isLoadingPaymentGateways ? (
                 <p className="text-xs text-[var(--foreground)]/70">Loading payment methods...</p>
@@ -1566,8 +1715,18 @@ export default function CheckoutForm() {
                         {isLoadingBankAccounts ? (
                           <p className="text-xs text-[var(--foreground)]/70">Loading bank accounts...</p>
                         ) : bankAccounts.length > 0 ? (
-                          <div className="rounded border border-[var(--muted)]/70 bg-[var(--muted)]/20 p-3 text-xs text-[var(--foreground)]">
-                            <p className="mb-2 font-medium text-[var(--foreground)]">Choose Bank</p>
+                          <div
+                            ref={setFieldRef("bank")}
+                            className={`rounded border p-3 text-xs text-[var(--foreground)] ${
+                              errorField === "bank"
+                                ? "border-[var(--status-error)] bg-[var(--status-error-bg)]/30 ring-2 ring-[var(--status-error)]/25"
+                                : "border-[var(--muted)]/70 bg-[var(--muted)]/20"
+                            }`}
+                          >
+                            <p className="mb-2 font-medium text-[var(--foreground)]">
+                              Choose Bank
+                              <RequiredMark />
+                            </p>
                             <div className="space-y-2">
                               {bankAccounts.map((bank) => (
                                 <label
@@ -1610,8 +1769,18 @@ export default function CheckoutForm() {
                     )}
 
                     {gateway.key === "billplz_online_banking" && paymentMethod === "billplz_online_banking" && (
-                      <div className="rounded border border-[var(--muted)]/70 bg-[var(--muted)]/20 p-3 text-xs text-[var(--foreground)]">
-                        <p className="mb-2 font-medium text-[var(--foreground)]">Choose Online Banking Bank</p>
+                      <div
+                        ref={setFieldRef("online_banking")}
+                        className={`rounded border p-3 text-xs text-[var(--foreground)] ${
+                          errorField === "online_banking"
+                            ? "border-[var(--status-error)] bg-[var(--status-error-bg)]/30 ring-2 ring-[var(--status-error)]/25"
+                            : "border-[var(--muted)]/70 bg-[var(--muted)]/20"
+                        }`}
+                      >
+                        <p className="mb-2 font-medium text-[var(--foreground)]">
+                          Choose Online Banking Bank
+                          <RequiredMark />
+                        </p>
                         {onlineBankingOptions.length === 0 ? (
                           <p className="text-[var(--foreground)]/70">
                             No banks configured yet. We&apos;ll continue with Billplz generic online banking flow.
@@ -1652,10 +1821,6 @@ export default function CheckoutForm() {
               )}
             </div>
           </div>
-
-          {error && (
-            <div className="rounded bg-[var(--muted)] px-3 py-2 text-xs text-[var(--accent-stronger)]">{error}</div>
-          )}
 
           <div className="space-y-2 rounded-lg border border-[var(--muted)]/70 bg-[var(--muted)]/10 p-3 text-sm">
             <div className="flex justify-between">
@@ -1708,6 +1873,14 @@ export default function CheckoutForm() {
       </form>
 
       <div className="fixed inset-x-0 bottom-0 z-40 border-t border-[var(--card-border)] bg-[var(--card)]/98 shadow-[0_-4px_24px_rgba(0,0,0,0.08)] backdrop-blur-sm md:hidden">
+        {error && (
+          <div
+            role="alert"
+            className="border-b border-[var(--status-error-border)] bg-[var(--status-error-bg)] px-4 py-2 text-xs font-medium text-[var(--status-error)]"
+          >
+            {error}
+          </div>
+        )}
         <div className="mx-auto flex max-w-5xl items-center gap-4 px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-[var(--foreground)]/55">Total</p>
@@ -1891,7 +2064,7 @@ export default function CheckoutForm() {
                 )}
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Label</label>
+                    <FieldLabel required={false}>Label</FieldLabel>
                     <input
                       value={addressForm.label ?? ""}
                       onChange={(e) => updateAddressForm("label", e.target.value)}
@@ -1899,7 +2072,7 @@ export default function CheckoutForm() {
                     />
                   </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Type</label>
+                    <FieldLabel required={false}>Type</FieldLabel>
                     <select
                       value={addressForm.type}
                       onChange={(e) => updateAddressForm("type", e.target.value as AddressPayload["type"])}
@@ -1912,8 +2085,8 @@ export default function CheckoutForm() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Full Name</label>
+                  <div ref={(el) => { fieldRefs.current.address_name = el; }}>
+                    <FieldLabel>Full Name</FieldLabel>
                     <input
                       value={addressForm.name}
                       onChange={(e) => updateAddressForm("name", e.target.value)}
@@ -1925,8 +2098,8 @@ export default function CheckoutForm() {
                       <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.name[0]}</p>
                     )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Phone</label>
+                  <div ref={(el) => { fieldRefs.current.address_phone = el; }}>
+                    <FieldLabel>Phone</FieldLabel>
                     <InternationalPhoneInput
                       value={addressForm.phone}
                       onChange={(phone) => updateAddressForm("phone", phone)}
@@ -1939,8 +2112,8 @@ export default function CheckoutForm() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 1</label>
+                <div ref={(el) => { fieldRefs.current.address_line1 = el; }}>
+                  <FieldLabel>Address Line 1</FieldLabel>
                   <input
                     value={addressForm.line1}
                     onChange={(e) => updateAddressForm("line1", e.target.value)}
@@ -1953,7 +2126,7 @@ export default function CheckoutForm() {
                   )}
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Address Line 2</label>
+                  <FieldLabel required={false}>Address Line 2 (Optional)</FieldLabel>
                   <input
                     value={addressForm.line2 ?? ""}
                     onChange={(e) => updateAddressForm("line2", e.target.value)}
@@ -1962,8 +2135,8 @@ export default function CheckoutForm() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">City</label>
+                  <div ref={(el) => { fieldRefs.current.address_city = el; }}>
+                    <FieldLabel>City</FieldLabel>
                     <input
                       value={addressForm.city}
                       onChange={(e) => updateAddressForm("city", e.target.value)}
@@ -1975,10 +2148,8 @@ export default function CheckoutForm() {
                       <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.city[0]}</p>
                     )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">
-                      State
-                    </label>
+                  <div ref={(el) => { fieldRefs.current.address_state = el; }}>
+                    <FieldLabel required={isAddressMalaysia}>State</FieldLabel>
                     {isAddressMalaysia ? (
                       <select
                         required
@@ -2013,8 +2184,8 @@ export default function CheckoutForm() {
                       <p className="mt-1 text-xs text-[var(--status-error)]">{addressFormErrors.state[0]}</p>
                     )}
                   </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Postcode</label>
+                  <div ref={(el) => { fieldRefs.current.address_postcode = el; }}>
+                    <FieldLabel>Postcode</FieldLabel>
                     <input
                       value={addressForm.postcode ?? ""}
                       onChange={(e) => updateAddressForm("postcode", e.target.value)}
@@ -2029,7 +2200,7 @@ export default function CheckoutForm() {
                 </div>
 
                 <div>
-                  <label className="mb-1 block text-xs font-medium text-[var(--foreground)]/70">Country</label>
+                  <FieldLabel>Country</FieldLabel>
                   <select
                     value={addressForm.country}
                     onChange={(e) => {

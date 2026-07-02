@@ -6,8 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
-use App\Models\Setting;
 use App\Services\Booking\BookingAvailabilityService;
+use App\Services\Ecommerce\OrderReserveService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -42,7 +42,7 @@ class HoldController extends Controller
         $startAt = Carbon::parse($validated['start_at']);
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
-        $holdMinutes = (int) (Setting::where('type', 'booking')->where('key', 'BOOKING_HOLD_MINUTES')->value('value') ?? 15);
+        $holdMinutes = app(OrderReserveService::class)->getBookingCartHoldMinutes();
 
         $booking = DB::transaction(function () use ($validated, $customer, $service, $startAt, $endAt, $holdMinutes) {
             if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)

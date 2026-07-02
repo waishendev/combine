@@ -122,9 +122,10 @@
     FROM php-extensions AS deps
     WORKDIR /var/www
 
-    # Composer
-    COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
-    ENV COMPOSER_ALLOW_SUPERUSER=1
+    # Composer (pin minor version for reproducible installs)
+    COPY --from=composer:2.8 /usr/bin/composer /usr/bin/composer
+    ENV COMPOSER_ALLOW_SUPERUSER=1 \
+        COMPOSER_MEMORY_LIMIT=-1
 
     # 复制 composer 文件（用于缓存）
     COPY composer.json composer.lock ./
@@ -139,13 +140,18 @@
         chown -R www-data:www-data bootstrap/cache storage
 
     # 安装依赖（production）
+    # Do not pass --prefer-dist: it disables git source fallback when GitHub zip downloads fail.
     RUN set -eux; \
-        composer install \
-          --no-dev \
-          --prefer-dist \
-          --no-interaction \
-          --no-progress \
-          --optimize-autoloader
+        for attempt in 1 2 3; do \
+          composer install \
+            --no-dev \
+            --no-interaction \
+            --no-progress \
+            --optimize-autoloader && break; \
+          if [ "$attempt" -eq 3 ]; then exit 1; fi; \
+          echo "composer install failed (attempt ${attempt}), retrying..."; \
+          sleep 5; \
+        done
 
 
     # ---------- Stage 3: Runtime ----------

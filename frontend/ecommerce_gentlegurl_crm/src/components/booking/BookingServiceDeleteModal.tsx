@@ -1,8 +1,9 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
+import type { LinkedBookingProductSummary } from './BookingServiceProductLinkPanel'
 import { useI18n } from '@/lib/i18n'
 
 interface BookingServiceDeleteModalProps {
@@ -19,13 +20,73 @@ export default function BookingServiceDeleteModal({
   const { t } = useI18n()
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [deleteLinkedProduct, setDeleteLinkedProduct] = useState(false)
+  const [linkedProduct, setLinkedProduct] = useState<LinkedBookingProductSummary | null>(null)
+  const [loadingLink, setLoadingLink] = useState(true)
+
+  useEffect(() => {
+    let ignore = false
+    const controller = new AbortController()
+
+    const loadLinkedProduct = async () => {
+      setLoadingLink(true)
+      try {
+        const res = await fetch(`/api/proxy/admin/booking/services/${service.id}`, {
+          cache: 'no-store',
+          signal: controller.signal,
+          headers: { Accept: 'application/json' },
+        })
+        const data = await res.json().catch(() => null)
+        if (ignore || !res.ok) return
+
+        const linked = (data as { data?: { linked_booking_product?: LinkedBookingProductSummary | null } } | null)?.data
+          ?.linked_booking_product
+        if (linked && typeof linked === 'object' && Number(linked.id) > 0) {
+          setLinkedProduct({
+            id: Number(linked.id),
+            name: String(linked.name ?? ''),
+            cn_name: linked.cn_name ?? null,
+            price: linked.price != null ? Number(linked.price) : undefined,
+            is_active: linked.is_active !== false,
+          })
+          setDeleteLinkedProduct(true)
+        } else {
+          setLinkedProduct(null)
+          setDeleteLinkedProduct(false)
+        }
+      } catch {
+        if (!ignore) {
+          setLinkedProduct(null)
+          setDeleteLinkedProduct(false)
+        }
+      } finally {
+        if (!ignore) setLoadingLink(false)
+      }
+    }
+
+    void loadLinkedProduct()
+    return () => {
+      ignore = true
+      controller.abort()
+    }
+  }, [service.id])
 
   const handleDelete = async () => {
     setSubmitting(true)
     setError(null)
 
     try {
-      const res = await fetch(`/api/proxy/admin/booking/services/${service.id}`, {
+      const params = new URLSearchParams()
+      if (deleteLinkedProduct && linkedProduct) {
+        params.set('delete_linked_product', '1')
+      }
+
+      const url =
+        params.size > 0
+          ? `/api/proxy/admin/booking/services/${service.id}?${params.toString()}`
+          : `/api/proxy/admin/booking/services/${service.id}`
+
+      const res = await fetch(url, {
         method: 'DELETE',
         headers: {
           Accept: 'application/json',
@@ -107,6 +168,25 @@ export default function BookingServiceDeleteModal({
             )}
           </div>
 
+          {!loadingLink && linkedProduct ? (
+            <label className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900">
+              <input
+                type="checkbox"
+                checked={deleteLinkedProduct}
+                onChange={(event) => setDeleteLinkedProduct(event.target.checked)}
+                disabled={submitting}
+                className="mt-1"
+              />
+              <span>
+                <span className="font-medium">Also delete linked booking product</span>
+                <span className="mt-1 block text-xs">
+                  {linkedProduct.name}
+                  {linkedProduct.cn_name ? ` (${linkedProduct.cn_name})` : ''}
+                </span>
+              </span>
+            </label>
+          ) : null}
+
           {error && (
             <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
               {error}
@@ -128,7 +208,7 @@ export default function BookingServiceDeleteModal({
               type="button"
               className="px-4 py-2 text-sm text-white bg-red-600 rounded-md hover:bg-red-700 disabled:opacity-50"
               onClick={handleDelete}
-              disabled={submitting}
+              disabled={submitting || loadingLink}
             >
               {submitting ? 'Deleting...' : t('common.delete')}
             </button>

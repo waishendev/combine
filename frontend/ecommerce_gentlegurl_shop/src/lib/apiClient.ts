@@ -606,7 +606,6 @@ export async function resetCustomerPassword(payload: {
   token: string;
   password: string;
   password_confirmation: string;
-  type: string;
 }) {
   return post<{ success: boolean; message?: string }>("/public/shop/auth/password/reset", payload);
 }

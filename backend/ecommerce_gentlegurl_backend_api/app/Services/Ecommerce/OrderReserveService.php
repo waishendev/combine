@@ -26,15 +26,34 @@ class OrderReserveService
 
     public function getBookingHoldMinutes(): int
     {
-        $value = SettingService::get('BOOKING_HOLD_MINUTES', 10, 'booking');
+        return $this->getBookingCartHoldMinutes();
+    }
 
+    public function getBookingCartHoldMinutes(): int
+    {
+        return $this->resolvePositiveMinutes(
+            SettingService::get('BOOKING_HOLD_MINUTES', 10, 'booking'),
+            10,
+        );
+    }
+
+    public function getBookingManualTransferHoldMinutes(): int
+    {
+        return $this->resolvePositiveMinutes(
+            SettingService::get('BOOKING_MANUAL_TRANSFER_HOLD_MINUTES', 10, 'booking'),
+            10,
+        );
+    }
+
+    private function resolvePositiveMinutes(mixed $value, int $fallback): int
+    {
         if (is_array($value)) {
-            $value = data_get($value, 'minutes', data_get($value, 'value', 10));
+            $value = data_get($value, 'minutes', data_get($value, 'value', $fallback));
         }
 
         $minutes = (int) $value;
 
-        return $minutes > 0 ? $minutes : 10;
+        return $minutes > 0 ? $minutes : $fallback;
     }
 
     public function isBookingRelatedOrder(Order $order): bool
@@ -58,9 +77,15 @@ class OrderReserveService
 
     public function getReserveMinutesForOrder(Order $order): int
     {
-        return $this->isBookingRelatedOrder($order)
-            ? $this->getBookingHoldMinutes()
-            : $this->getReserveMinutes();
+        if (! $this->isBookingRelatedOrder($order)) {
+            return $this->getReserveMinutes();
+        }
+
+        if ($order->payment_method === 'manual_transfer') {
+            return $this->getBookingManualTransferHoldMinutes();
+        }
+
+        return $this->getBookingCartHoldMinutes();
     }
 
     public function getReserveExpiresAt(Order $order): Carbon

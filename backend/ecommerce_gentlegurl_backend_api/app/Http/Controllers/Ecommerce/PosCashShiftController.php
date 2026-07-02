@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class PosCashShiftController extends Controller
 {
@@ -16,7 +17,7 @@ class PosCashShiftController extends Controller
 
     public function current(Request $request)
     {
-        $shift = $this->currentOpenShiftQuery($request)->first();
+        $shift = $this->globalOpenShiftQuery()->first();
 
         return $this->respond([
             'shift' => $shift ? $this->serializeShift($shift) : null,
@@ -31,9 +32,11 @@ class PosCashShiftController extends Controller
         ]);
 
         $shift = DB::transaction(function () use ($request, $validated) {
-            $existing = $this->currentOpenShiftQuery($request)->lockForUpdate()->first();
+            $existing = $this->globalOpenShiftQuery()->lockForUpdate()->first();
             if ($existing) {
-                return $existing;
+                throw ValidationException::withMessages([
+                    'shift' => [__('A cash shift is already open. Close the current shift before opening a new one.')],
+                ]);
             }
 
             return PosCashShift::query()->create([
@@ -59,7 +62,7 @@ class PosCashShiftController extends Controller
         ]);
 
         $shift = DB::transaction(function () use ($request, $validated) {
-            $shift = $this->currentOpenShiftQuery($request)->lockForUpdate()->firstOrFail();
+            $shift = $this->globalOpenShiftQuery()->lockForUpdate()->firstOrFail();
             $shift->closing_amount = round((float) $validated['closing_amount'], 2);
             $shift->closed_by = $request->user()?->id;
             $shift->closed_staff_id = (int) $validated['closed_staff_id'];
@@ -113,12 +116,11 @@ class PosCashShiftController extends Controller
         return $this->respond($paginator);
     }
 
-    private function currentOpenShiftQuery(Request $request): Builder
+    private function globalOpenShiftQuery(): Builder
     {
         return PosCashShift::query()
             ->with(['opener:id,name,email', 'closer:id,name,email', 'openedStaff:id,name,email,phone', 'closedStaff:id,name,email,phone'])
             ->where('status', PosCashShift::STATUS_OPEN)
-            ->where('opened_by', $request->user()?->id)
             ->latest('opened_at');
     }
 
@@ -160,25 +162,35 @@ class PosCashShiftController extends Controller
 
         $cashFromPayments = (float) DB::table('order_payments')
             ->join('orders', 'orders.id', '=', 'order_payments.order_id')
-            ->where('order_payments.payment_method', 'cash')
-            ->whereBetween('orders.created_at', [$start, $end])
+            ->whereRaw('LOWER(order_payments.payment_method) = ?', ['cash'])
+            ->where(function ($query) use ($start, $end) {
+                $query->whereBetween('orders.paid_at', [$start, $end])
+                    ->orWhere(function ($nested) use ($start, $end) {
+                        $nested->whereNull('orders.paid_at')
+                            ->whereBetween('orders.created_at', [$start, $end]);
+                    });
+            })
             ->whereNotIn('orders.status', self::EXCLUDED_ORDER_STATUSES)
             ->where(function ($query) {
                 $query->whereIn('orders.pickup_or_shipping', ['pos', 'in_store'])
                     ->orWhereNotNull('orders.created_by_user_id');
             })
-            ->when($shift->opened_by, fn ($query) => $query->where('orders.created_by_user_id', $shift->opened_by))
             ->sum('order_payments.amount');
 
         $fallbackCash = (float) DB::table('orders')
-            ->where('payment_method', 'cash')
-            ->whereBetween('created_at', [$start, $end])
+            ->whereRaw('LOWER(payment_method) = ?', ['cash'])
+            ->where(function ($query) use ($start, $end) {
+                $query->whereBetween('paid_at', [$start, $end])
+                    ->orWhere(function ($nested) use ($start, $end) {
+                        $nested->whereNull('paid_at')
+                            ->whereBetween('created_at', [$start, $end]);
+                    });
+            })
             ->whereNotIn('status', self::EXCLUDED_ORDER_STATUSES)
             ->where(function ($query) {
                 $query->whereIn('pickup_or_shipping', ['pos', 'in_store'])
                     ->orWhereNotNull('created_by_user_id');
             })
-            ->when($shift->opened_by, fn ($query) => $query->where('created_by_user_id', $shift->opened_by))
             ->whereNotExists(function ($query) {
                 $query->selectRaw('1')
                     ->from('order_payments')

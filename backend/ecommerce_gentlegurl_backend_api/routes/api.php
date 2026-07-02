@@ -828,6 +828,11 @@ $protectedRoutes = function () {
         Route::post('/orders/{order}/offline-actions/payment-method', [OfflineOrderManagementController::class, 'updatePaymentMethod'])
             ->middleware('permission:ecommerce.orders.update');
 
+        Route::put('/orders/{order}/offline-actions/bill-date', [OfflineOrderManagementController::class, 'updateBillDate'])
+            ->middleware('permission:ecommerce.orders.update|ecommerce.daily-sales-reports.view');
+        Route::post('/orders/{order}/offline-actions/bill-date', [OfflineOrderManagementController::class, 'updateBillDate'])
+            ->middleware('permission:ecommerce.orders.update|ecommerce.daily-sales-reports.view');
+
         Route::put('/orders/{order}/offline-actions/void', [OfflineOrderManagementController::class, 'voidOrder'])
             ->middleware('permission:ecommerce.orders.update');
         Route::post('/orders/{order}/offline-actions/void', [OfflineOrderManagementController::class, 'voidOrder'])

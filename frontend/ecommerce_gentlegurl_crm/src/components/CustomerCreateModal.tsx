@@ -11,6 +11,7 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 interface CustomerCreateModalProps {
   onClose: () => void
   onSuccess: (customer: CustomerRowData) => void
+  zIndexClass?: string
 }
 
 interface FormState {
@@ -42,6 +43,7 @@ const GENDER_OPTIONS = [
 export default function CustomerCreateModal({
   onClose,
   onSuccess,
+  zIndexClass = 'z-50',
 }: CustomerCreateModalProps) {
   const { t } = useI18n()
   const [form, setForm] = useState<FormState>({ ...initialFormState })
@@ -174,7 +176,7 @@ export default function CustomerCreateModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+    <div className={`fixed inset-0 ${zIndexClass} flex items-center justify-center overflow-y-auto p-4`}>
       <div
         className="absolute inset-0 bg-black/50"
         onClick={() => {

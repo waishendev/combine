@@ -54,11 +54,18 @@ export type BillplzPaymentGatewayOption = {
 
 class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  code?: string;
+  data?: Record<string, unknown>;
+
+  constructor(message: string, status: number, payload?: Record<string, unknown>) {
     super(message);
     this.status = status;
+    this.code = typeof payload?.code === "string" ? payload.code : undefined;
+    this.data = payload;
   }
 }
+
+export { ApiError };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers || {});
@@ -89,6 +96,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new ApiError(
       payload?.message || payload?.error || "Something went wrong. Please try again.",
       response.status,
+      typeof payload === "object" && payload !== null ? payload : undefined,
     );
   }
 
@@ -122,6 +130,25 @@ export async function verifyCustomerEmail(payload: {
   const queryString = query.toString();
   const url = `/public/shop/auth/email/verify/${payload.id}/${payload.hash}${queryString ? `?${queryString}` : ""}`;
   return request<{ success?: boolean; message?: string }>(url);
+}
+
+export async function forgotCustomerPassword(payload: { email: string }) {
+  return request<{ success?: boolean; message?: string }>("/public/shop/auth/password/forgot", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resetCustomerPassword(payload: {
+  email: string;
+  token: string;
+  password: string;
+  password_confirmation: string;
+}) {
+  return request<{ success?: boolean; message?: string }>("/public/shop/auth/password/reset", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
 }
 
 export async function getBookingLandingPage() {
@@ -595,9 +622,6 @@ export async function removeMyBookingItemPhoto(bookingId: number, photoId: numbe
   );
   return unwrapData<{ uploaded_item_photos?: unknown[] }>(response);
 }
-
-export { ApiError };
-
 
 export async function getServicePackages() {
   const response = await request<

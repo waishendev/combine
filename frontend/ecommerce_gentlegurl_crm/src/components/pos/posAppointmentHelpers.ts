@@ -156,6 +156,32 @@ function makePosLocalDateTimeValue(date: string, minutesFromMidnight: number) {
   return `${date}T${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:00`
 }
 
+/** Today's YYYY-MM-DD in the POS business timezone. */
+export function getPosScheduleTodayYmd(timeZone = POS_SCHEDULE_TZ): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const read = (type: string) => parts.find((part) => part.type === type)?.value ?? ''
+  return `${read('year')}-${read('month')}-${read('day')}`
+}
+
+/** Minutes from midnight right now in the POS business timezone. */
+export function getCurrentMinutesInPosSchedule(timeZone = POS_SCHEDULE_TZ): number {
+  const parts = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: 'numeric',
+    minute: 'numeric',
+    hourCycle: 'h23',
+  }).formatToParts(new Date())
+  const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? NaN)
+  const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? NaN)
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return 0
+  return hour * 60 + minute
+}
+
 /** Bookable slots for POS dropdowns (9 am – midnight, 15-minute steps by default). */
 export function buildPosAppointmentSlots(
   date: string,
@@ -164,9 +190,16 @@ export function buildPosAppointmentSlots(
 ): Array<{ start_at: string; end_at: string }> {
   const safeDurationMin = Math.max(1, durationMin)
   const lastStartMinute = Math.max(POS_APPOINTMENT_DAY_START_MIN, POS_APPOINTMENT_DAY_END_MIN - safeDurationMin)
+  let dayStartMinute = POS_APPOINTMENT_DAY_START_MIN
+
+  if (date === getPosScheduleTodayYmd()) {
+    const nowMin = getCurrentMinutesInPosSchedule()
+    dayStartMinute = Math.max(POS_APPOINTMENT_DAY_START_MIN, Math.ceil(nowMin / stepMin) * stepMin)
+  }
+
   const slots: Array<{ start_at: string; end_at: string }> = []
 
-  for (let minute = POS_APPOINTMENT_DAY_START_MIN; minute <= lastStartMinute; minute += stepMin) {
+  for (let minute = dayStartMinute; minute <= lastStartMinute; minute += stepMin) {
     slots.push({
       start_at: makePosLocalDateTimeValue(date, minute),
       end_at: makePosLocalDateTimeValue(date, minute + safeDurationMin),
@@ -517,16 +550,64 @@ export type AppointmentRemarkLine = {
 }
 
 /** Create-time notes and latest reschedule reason for settlement / cart display. */
-export function getAppointmentRemarkLines(source: {
+export function bookingCustomerRemarksForDisplay(notes?: string | null): string | null {
+  let raw = String(notes ?? '').trim()
+  if (!raw) return null
+
+  raw = raw.replace(/\s*\[VOID REMARK\][\s\S]*$/i, '').trim()
+  if (!raw) return null
+
+  const customerRemarksMatch = raw.match(/(?:^|\|\s*)customer_remarks:\s*([\s\S]+?)(?:\s*\|\s*deposit_waived_for_member\s*)?$/i)
+  if (customerRemarksMatch?.[1]?.trim()) {
+    return customerRemarksMatch[1].trim()
+  }
+
+  let stripped = raw
+    .replace(/(?:^|\|\s*)guest_token:[^\s|]+/gi, '')
+    .replace(/(?:^|\|\s*)deposit_waived_for_member/gi, '')
+    .replace(/\s*\|\s*/g, ' ')
+    .trim()
+
+  if (!stripped || /^(guest_token:|Booking cart checkout|\[VOID REMARK\])/i.test(stripped)) {
+    return null
+  }
+
+  return stripped
+}
+
+export function voidRemarksForDisplay(notes?: string | null, voidRemarks?: string | null): string | null {
+  const explicit = String(voidRemarks ?? '').trim()
+  if (explicit) return explicit
+
+  const raw = String(notes ?? '')
+  const match = raw.match(/\[VOID REMARK\]\s*([\s\S]+)/i)
+  if (match?.[1]?.trim()) return match[1].trim()
+
+  return null
+}
+
+export function getAppointmentDisplayRemarkLines(source: {
   notes?: string | null
+  void_remarks?: string | null
+  settlement_notes?: string | null
   reschedule_reason?: string | null
 } | null | undefined): AppointmentRemarkLine[] {
   if (!source) return []
 
   const lines: AppointmentRemarkLine[] = []
-  const notes = source.notes?.trim()
-  if (notes) {
-    lines.push({ key: 'notes', label: 'Remarks', value: notes })
+  const remarks = bookingCustomerRemarksForDisplay(source.notes)
+  if (remarks) {
+    lines.push({ key: 'notes', label: 'Remarks', value: remarks })
+  }
+
+  const voidRemarks = voidRemarksForDisplay(source.notes, source.void_remarks)
+  if (voidRemarks) {
+    lines.push({ key: 'void_remarks', label: 'Void Remarks', value: voidRemarks })
+  }
+
+  const settlementRemarks = settlementRemarksDisplayText(source.settlement_notes)
+  if (settlementRemarks) {
+    lines.push({ key: 'settlement_notes', label: 'Settlement Remarks', value: settlementRemarks })
   }
 
   const rescheduleReason = source.reschedule_reason?.trim()
@@ -535,4 +616,38 @@ export function getAppointmentRemarkLines(source: {
   }
 
   return lines
+}
+
+/** @deprecated Use getAppointmentDisplayRemarkLines */
+export function getAppointmentRemarkLines(source: {
+  notes?: string | null
+  reschedule_reason?: string | null
+} | null | undefined): AppointmentRemarkLine[] {
+  return getAppointmentDisplayRemarkLines(source)
+}
+
+const SETTLEMENT_NOTE_APPEND_TIMESTAMP_RE = /^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}$/
+
+/** Plain settlement remark text for display (strips legacy append timestamp/staff headers). */
+export function settlementRemarksDisplayText(notes?: string | null): string | null {
+  const raw = String(notes ?? '').trim()
+  if (!raw) return null
+
+  const blocks = raw.split(/\n{2,}/).map((entry) => entry.trim()).filter(Boolean)
+  const bodies = blocks.map((entry) => {
+    const lines = entry.split('\n')
+    if (lines.length === 1) return entry
+
+    const first = lines[0]?.trim() ?? ''
+    const second = lines[1]?.trim() ?? ''
+    if (SETTLEMENT_NOTE_APPEND_TIMESTAMP_RE.test(first) && second.endsWith(':')) {
+      const body = lines.slice(2).join('\n').trim()
+      return body || entry
+    }
+
+    return entry
+  }).filter(Boolean)
+
+  if (bodies.length === 0) return null
+  return bodies.join('\n')
 }

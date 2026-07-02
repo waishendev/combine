@@ -27,6 +27,7 @@ type ItemSplitDraft = {
 type OfflineOrderActionsProps = {
   orderId: number
   channel: string
+  billDate?: string | null
   currentPaymentMethod?: string | null
   orderAmount?: number
   paymentBreakdown?: PaymentBreakdownRow[] | null
@@ -53,6 +54,14 @@ const normalizePaymentEditorMethod = (value?: string | null): PaymentMethodKey |
 
 const money = (amount: number) => amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
+function toDatetimeLocalValue(value?: string | null): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const pad = (part: number) => String(part).padStart(2, '0')
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
+}
+
 const createSplitRow = (seed?: Partial<SplitRow>): SplitRow => ({
   id: `${Date.now()}-${Math.random()}`,
   staff_id: seed?.staff_id ?? null,
@@ -67,9 +76,9 @@ const isFinalSettlementType = (value?: string | null) => {
   return t === 'final_settlement' || t === 'booking_settlement' || t === 'settlement_services' || t === 'settlement_service'
 }
 
-export default function OfflineOrderActions({ orderId, channel, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, onDone }: OfflineOrderActionsProps) {
+export default function OfflineOrderActions({ orderId, channel, billDate, currentPaymentMethod, orderAmount, paymentBreakdown, staffActionLabel = 'sales_person', hideStaffAction = false, onDone }: OfflineOrderActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false)
-  const [modal, setModal] = useState<'sales_person' | 'payment_method' | 'void' | null>(null)
+  const [modal, setModal] = useState<'sales_person' | 'payment_method' | 'bill_date' | 'void' | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
@@ -78,6 +87,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
   const [draftItems, setDraftItems] = useState<ItemSplitDraft[]>([])
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
   const [paymentAmounts, setPaymentAmounts] = useState<Record<PaymentMethodKey, string>>(emptyPaymentAmounts)
+  const [billDateInput, setBillDateInput] = useState('')
   const [remark, setRemark] = useState('')
   const [autoBalanceByItem, setAutoBalanceByItem] = useState<Record<number, boolean>>({})
 
@@ -119,6 +129,14 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
     setRemark('')
     setError(null)
     setModal('payment_method')
+    setMenuOpen(false)
+  }
+
+  const openBillDateModal = () => {
+    setBillDateInput(toDatetimeLocalValue(billDate))
+    setRemark('')
+    setError(null)
+    setModal('bill_date')
     setMenuOpen(false)
   }
 
@@ -265,6 +283,20 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
         }
         endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/payment-method`
         payload = { payments: paymentRows, remark: remark.trim() || null, remarks: remark.trim() || null }
+      } else if (modal === 'bill_date') {
+        if (!billDateInput.trim()) {
+          setError('Bill date is required.')
+          setSubmitting(false)
+          return
+        }
+        const parsed = new Date(billDateInput)
+        if (Number.isNaN(parsed.getTime())) {
+          setError('Invalid bill date.')
+          setSubmitting(false)
+          return
+        }
+        endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/bill-date`
+        payload = { bill_date: parsed.toISOString(), remark: remark.trim() || null }
       } else {
         if (!remark.trim()) {
           setError('Remarks are required to void this order.')
@@ -351,6 +383,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
               <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={() => { setModal('sales_person'); setMenuOpen(false) }}>{staffActionButtonLabel}</button>
             ) : null}
             <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
+            <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openBillDateModal}>Edit Bill Date</button>
             <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={() => { setModal('void'); setMenuOpen(false) }}>Void Order</button>
           </div>
         ) : null}
@@ -361,7 +394,15 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
           <div className="absolute inset-0 bg-black/50" onClick={closeModal} />
           <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-lg bg-white shadow-lg" onClick={(e) => e.stopPropagation()}>
             <div className="border-b px-5 py-3">
-              <h3 className="text-base font-semibold">{modal === 'sales_person' ? staffActionModalTitle : modal === 'payment_method' ? 'Edit Payment Method' : 'Void Offline Order'}</h3>
+              <h3 className="text-base font-semibold">
+                {modal === 'sales_person'
+                  ? staffActionModalTitle
+                  : modal === 'payment_method'
+                    ? 'Edit Payment Method'
+                    : modal === 'bill_date'
+                      ? 'Edit Bill Date'
+                      : 'Void Offline Order'}
+              </h3>
             </div>
 
             <div className="space-y-3 px-5 py-4 text-sm">
@@ -438,6 +479,23 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
                 </div>
               ) : null}
 
+              {modal === 'bill_date' ? (
+                <div className="space-y-3">
+                  <p className="text-xs text-slate-600">
+                    Updates the bill date used in daily sales reports. The order may move to another day after saving.
+                  </p>
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Bill date &amp; time
+                    <input
+                      type="datetime-local"
+                      value={billDateInput}
+                      onChange={(e) => setBillDateInput(e.target.value)}
+                      className="mt-1 w-full rounded border border-slate-300 px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+              ) : null}
+
               {modal === 'void' ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">Warning: This will void the offline order and invalidate related payments.</p> : null}
 
               <textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={3} className="w-full rounded border border-slate-300 px-3 py-2" placeholder={modal === 'void' ? 'Remarks (required)' : 'Remarks (optional)'} />
@@ -447,7 +505,7 @@ export default function OfflineOrderActions({ orderId, channel, currentPaymentMe
 
             <div className="flex items-center justify-end gap-2 border-t px-5 py-3">
               <button type="button" onClick={closeModal} className="rounded border border-slate-300 px-3 py-2 text-xs">Cancel</button>
-              <button type="button" onClick={() => void submit()} disabled={submitting || (modal === 'payment_method' && !paymentTotalMatches)} className={`rounded px-3 py-2 text-xs text-white ${modal === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60`}>
+              <button type="button" onClick={() => void submit()} disabled={submitting || (modal === 'payment_method' && !paymentTotalMatches) || (modal === 'bill_date' && !billDateInput.trim())} className={`rounded px-3 py-2 text-xs text-white ${modal === 'void' ? 'bg-red-600 hover:bg-red-700' : 'bg-blue-600 hover:bg-blue-700'} disabled:opacity-60`}>
                 {submitting ? 'Saving...' : modal === 'void' ? 'Confirm Void' : 'Save'}
               </button>
             </div>

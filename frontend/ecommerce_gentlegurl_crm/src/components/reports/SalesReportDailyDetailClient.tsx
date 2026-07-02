@@ -187,34 +187,19 @@ export default function SalesReportDailyDetailClient({ canExport }: { canExport:
         <span className="font-medium text-gray-700">{displayDate}</span>
       </nav>
 
-      <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <h2 className="text-3xl font-semibold text-slate-900">Daily Sales Detail</h2>
-          <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-3">
+      <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="space-y-3">
           <button
             type="button"
             onClick={backToMonth}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+            className="inline-flex rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
           >
             ← Back to Month
           </button>
-          <button
-            type="button"
-            onClick={() => shiftDay(-1)}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            Previous day
-          </button>
-          <button
-            type="button"
-            onClick={() => shiftDay(1)}
-            className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
-          >
-            Next day
-          </button>
+          <div>
+            <h2 className="text-3xl font-semibold text-slate-900">Daily Sales Report</h2>
+            <p className="mt-1 text-sm text-slate-600">{subtitle}</p>
+          </div>
         </div>
       </div>
 
@@ -230,7 +215,7 @@ export default function SalesReportDailyDetailClient({ canExport }: { canExport:
         </button>
       </div>
 
-      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} />
+      <SalesVisualDailyDashboard mode={mode} refreshKey={visualRefreshKey} onShiftDay={shiftDay} />
 
       <h3 className="mb-4 text-lg font-semibold text-slate-800">Transactions</h3>
       {mode === 'all' ? (

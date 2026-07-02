@@ -119,7 +119,7 @@ export function Hero({ hero, sliders }: HeroProps) {
 
           <Link
             href={hero.cta_link || "/booking"}
-            className={`${heroFont} mt-2 inline-flex max-w-[calc(100%-0.5rem)] items-center justify-center self-center rounded-full bg-[var(--hero-cta-bg)] px-5 py-2 text-sm font-semibold leading-snug tracking-tight text-[var(--hero-cta-text)] shadow-sm transition-colors hover:bg-[var(--hero-cta-bg-hover)] sm:mt-3 sm:max-w-none sm:px-8 sm:py-2.5 sm:text-base sm:tracking-wide md:px-10 md:py-3 md:text-lg`}
+            className={`${heroFont} mt-3 inline-flex min-h-[44px] items-center justify-center self-center rounded-full bg-[var(--hero-cta-bg)] px-7 py-2.5 text-xl font-semibold leading-tight tracking-tight text-[var(--hero-cta-text)] shadow-sm transition-colors hover:bg-[var(--hero-cta-bg-hover)] active:scale-[0.98] sm:mt-3 sm:min-h-0 sm:px-8 sm:py-2.5 sm:text-base sm:tracking-wide md:px-10 md:py-3 md:text-lg`}
           >
             {hero.cta_label}
           </Link>

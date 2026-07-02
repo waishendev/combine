@@ -112,8 +112,51 @@ export default function PosAppointmentsSchedule({
     return { lines, more }
   }
 
+  const totalAppointments = useMemo(() => {
+    if (viewMode === 'month') {
+      const year = calendarMonth.getFullYear()
+      const month = calendarMonth.getMonth() + 1
+      return appointments.filter((row) => {
+        const ymd = parsePosAppointmentScheduleYmd(row.appointment_start_at ?? null)
+        if (!ymd) return false
+        const [y, m] = ymd.split('-').map(Number)
+        return y === year && m === month
+      }).length
+    }
+
+    return appointments.filter(
+      (row) => parsePosAppointmentScheduleYmd(row.appointment_start_at ?? null) === dayDate,
+    ).length
+  }, [appointments, calendarMonth, dayDate, viewMode])
+
+  const totalAppointmentsLabel = useMemo(() => {
+    if (viewMode === 'month') {
+      return 'Total Appointment for this month'
+    }
+    const isToday = dayDate === formatYmd(new Date())
+    return isToday ? 'Total Appointment for today' : `Total Appointment for ${dayDate}`
+  }, [dayDate, viewMode])
+
   return (
     <div className="pos-appt-schedule flex min-h-0 flex-col gap-3 overflow-visible">
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none shrink-0 select-none border-l-4 border-blue-600 bg-slate-100 px-4 py-2.5"
+      >
+        <p className="text-base leading-snug text-slate-700 sm:text-lg">
+          <span className="font-semibold text-slate-900">{totalAppointmentsLabel}</span>
+          <span className="mx-2 text-slate-400" aria-hidden>
+            —
+          </span>
+          {appointmentsLoading ? (
+            <span className="font-medium text-slate-500">…</span>
+          ) : (
+            <span className="text-xl font-extrabold tabular-nums text-blue-800 sm:text-2xl">{totalAppointments}</span>
+          )}
+        </p>
+      </div>
+
       <div className="shrink-0">{filterSlot}</div>
 
       <div className="pos-appt-schedule-toolbar flex shrink-0 flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 p-1">

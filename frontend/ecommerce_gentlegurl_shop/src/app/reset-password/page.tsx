@@ -34,7 +34,6 @@ export default function ResetPasswordPage() {
         token,
         password,
         password_confirmation: confirmation,
-        type: "customer",
       });
       router.replace("/login?reset=1");
     } catch (err: unknown) {

@@ -16,6 +16,11 @@ class SalesVisualDailyReportService
 {
     private const BOOKING_LINE_TYPES = ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product', 'service_package'];
 
+    private function orderBillAtSql(string $alias = 'o'): string
+    {
+        return "COALESCE({$alias}.placed_at, {$alias}.created_at)";
+    }
+
     /**
      * Apply the same order-inclusion logic used by POS Summary so that online booking orders
      * (which may have status=pending + payment_status=paid) are counted.
@@ -63,7 +68,7 @@ class SalesVisualDailyReportService
             ];
         }
 
-        $bucketExpression = 'EXTRACT(MONTH FROM o.created_at)::int';
+        $bucketExpression = 'EXTRACT(MONTH FROM ' . $this->orderBillAtSql() . ')::int';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (int) $row->bucket;
@@ -106,7 +111,7 @@ class SalesVisualDailyReportService
             ];
         }
 
-        $bucketExpression = 'DATE(o.created_at)';
+        $bucketExpression = 'DATE(' . $this->orderBillAtSql() . ')';
 
         foreach ($this->ecommerceSummaryRows($start, $end, $bucketExpression) as $row) {
             $key = (string) $row->bucket;
@@ -136,7 +141,7 @@ class SalesVisualDailyReportService
         return $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
             ->selectRaw("{$bucketExpression} as bucket")
@@ -153,7 +158,7 @@ class SalesVisualDailyReportService
         return $this->applyOrderScope(
             DB::table('orders as o')
                 ->join('order_items as oi', 'oi.order_id', '=', 'o.id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw("{$bucketExpression} as bucket")
@@ -206,7 +211,7 @@ class SalesVisualDailyReportService
         $itemAgg = $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
@@ -276,7 +281,7 @@ class SalesVisualDailyReportService
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
                 ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
@@ -300,7 +305,7 @@ class SalesVisualDailyReportService
         $serviceConsumedQuery = $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_settlement')
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as v");
@@ -354,7 +359,7 @@ class SalesVisualDailyReportService
         $itemEcommerce = $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', ['product', 'service', 'service_package'])
             ->selectRaw("COALESCE(SUM(CASE WHEN oi.line_type = 'product' THEN $lineTotal ELSE 0 END), 0) as product")
@@ -368,7 +373,7 @@ class SalesVisualDailyReportService
                 ->leftJoin('customers as c', 'c.id', '=', 'o.customer_id')
                 ->leftJoin('bookings as b', 'b.id', '=', 'oi.booking_id')
                 ->leftJoin('service_packages as sp', 'sp.id', '=', 'oi.service_package_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->whereIn('oi.line_type', self::BOOKING_LINE_TYPES)
             ->selectRaw('o.payment_method')
@@ -392,7 +397,7 @@ class SalesVisualDailyReportService
         $serviceConsumedAmount = round((float) $this->applyOrderScope(
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_settlement')
             ->selectRaw("COALESCE(SUM($lineTotal), 0) as v")
@@ -517,7 +522,7 @@ class SalesVisualDailyReportService
                 ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->join('staffs as st', 'st.id', '=', 'sps.staff_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'product')
             ->groupBy('st.id', 'st.name')
@@ -536,34 +541,235 @@ class SalesVisualDailyReportService
     }
 
 
+    /**
+     * Calculate staff commission sales for bookings.
+     *
+     * IMPORTANT: Booking sales (deposit, settlement, addon) are only counted AFTER settlement.
+     * When a booking is settled within the date range, ALL amounts for that booking (including
+     * the deposit paid earlier) are counted together on the settlement date.
+     *
+     * This ensures:
+     * 1. Creating an appointment / paying deposit does NOT immediately count towards staff sales
+     * 2. Only after settlement, the full amount (deposit + settlement + addons) is attributed
+     * 3. Service count is per unique booking, not per order_item
+     *
+     * Booking products are handled separately - they count when the order is paid.
+     */
     private function bookingStaffCommissionSales(Carbon $start, Carbon $end): array
     {
-        $rows = $this->baseBookingOrderItemSplitQuery($start, $end)
-            ->join('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
+        // Step 1: Find all bookings that were SETTLED within the date range
+        // A booking is considered "settled" when it has a booking_settlement order_item in a valid paid order
+        $settledBookingIds = $this->applyOrderScope(
+            DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.line_type', 'booking_settlement')
+                ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end])
+                ->whereNotNull('order_items.booking_id'),
+            'orders'
+        )
+            ->pluck('order_items.booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn ($id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $byStaff = [];
+        $countedBookingsByStaff = [];
+
+        if (! empty($settledBookingIds)) {
+            // Step 2a: Get amounts from order_item_staff_splits (POS deposits and all settlements)
+            $splitRows = $this->applyOrderScope(
+                DB::table('order_item_staff_splits')
+                    ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->join('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
+                    ->whereIn('order_items.booking_id', $settledBookingIds)
+                    ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon']),
+                'orders'
+            )
+                ->selectRaw('staffs.id as staff_id')
+                ->selectRaw('staffs.name as staff_name')
+                ->selectRaw('order_items.booking_id as booking_id')
+                ->selectRaw('order_items.id as order_item_id')
+                ->selectRaw("({$this->effectiveBookingLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100) as split_amount")
+                ->get();
+
+            $orderItemsWithSplits = [];
+            foreach ($splitRows as $row) {
+                $staffId = (int) $row->staff_id;
+                $bookingId = (int) $row->booking_id;
+                $orderItemId = (int) $row->order_item_id;
+
+                $orderItemsWithSplits[$orderItemId] = true;
+
+                if (! isset($byStaff[$staffId])) {
+                    $byStaff[$staffId] = [
+                        'staff_id' => $staffId,
+                        'name' => (string) $row->staff_name,
+                        'service_count' => 0,
+                        'service_amount' => 0.0,
+                    ];
+                    $countedBookingsByStaff[$staffId] = [];
+                }
+
+                $byStaff[$staffId]['service_amount'] += (float) $row->split_amount;
+
+                if (! isset($countedBookingsByStaff[$staffId][$bookingId])) {
+                    $countedBookingsByStaff[$staffId][$bookingId] = true;
+                    $byStaff[$staffId]['service_count']++;
+                }
+            }
+
+            // Step 2b: Fallback for order_items WITHOUT order_item_staff_splits (e.g., online deposits)
+            // These should use booking_service_staff_splits instead
+            $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+
+            $fallbackItems = $this->applyOrderScope(
+                DB::table('order_items')
+                    ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                    ->whereIn('order_items.booking_id', $settledBookingIds)
+                    ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                    ->whereNotExists(function ($sub) {
+                        $sub->selectRaw('1')
+                            ->from('order_item_staff_splits')
+                            ->whereColumn('order_item_staff_splits.order_item_id', 'order_items.id');
+                    }),
+                'orders'
+            )
+                ->selectRaw('order_items.id as order_item_id')
+                ->selectRaw('order_items.booking_id as booking_id')
+                ->selectRaw("$lineTotal as line_amount")
+                ->get();
+
+            if ($fallbackItems->isNotEmpty()) {
+                $fallbackBookingIds = $fallbackItems->pluck('booking_id')->unique()->values()->all();
+
+                // Get booking_service_staff_splits for these bookings
+                $bookingSplits = DB::table('booking_service_staff_splits')
+                    ->join('staffs', 'staffs.id', '=', 'booking_service_staff_splits.staff_id')
+                    ->whereIn('booking_service_staff_splits.booking_id', $fallbackBookingIds)
+                    ->get(['booking_service_staff_splits.booking_id', 'booking_service_staff_splits.staff_id', 'booking_service_staff_splits.split_percent', 'staffs.name as staff_name'])
+                    ->groupBy('booking_id');
+
+                // Fallback to bookings.staff_id if no booking_service_staff_splits exist
+                $bookingStaffFallback = DB::table('bookings')
+                    ->join('staffs', 'staffs.id', '=', 'bookings.staff_id')
+                    ->whereIn('bookings.id', $fallbackBookingIds)
+                    ->whereNotNull('bookings.staff_id')
+                    ->get(['bookings.id as booking_id', 'bookings.staff_id', 'staffs.name as staff_name'])
+                    ->keyBy('booking_id');
+
+                foreach ($fallbackItems as $item) {
+                    $bookingId = (int) $item->booking_id;
+                    $lineAmount = (float) $item->line_amount;
+
+                    $splits = $bookingSplits->get($bookingId);
+                    if ($splits && $splits->isNotEmpty()) {
+                        foreach ($splits as $split) {
+                            $staffId = (int) $split->staff_id;
+                            $sharePercent = (float) $split->split_percent;
+                            $splitAmount = $lineAmount * ($sharePercent / 100);
+
+                            if (! isset($byStaff[$staffId])) {
+                                $byStaff[$staffId] = [
+                                    'staff_id' => $staffId,
+                                    'name' => (string) $split->staff_name,
+                                    'service_count' => 0,
+                                    'service_amount' => 0.0,
+                                ];
+                                $countedBookingsByStaff[$staffId] = [];
+                            }
+
+                            $byStaff[$staffId]['service_amount'] += $splitAmount;
+
+                            if (! isset($countedBookingsByStaff[$staffId][$bookingId])) {
+                                $countedBookingsByStaff[$staffId][$bookingId] = true;
+                                $byStaff[$staffId]['service_count']++;
+                            }
+                        }
+                    } elseif (isset($bookingStaffFallback[$bookingId])) {
+                        // Use booking's primary staff as fallback
+                        $fallbackStaff = $bookingStaffFallback[$bookingId];
+                        $staffId = (int) $fallbackStaff->staff_id;
+
+                        if (! isset($byStaff[$staffId])) {
+                            $byStaff[$staffId] = [
+                                'staff_id' => $staffId,
+                                'name' => (string) $fallbackStaff->staff_name,
+                                'service_count' => 0,
+                                'service_amount' => 0.0,
+                            ];
+                            $countedBookingsByStaff[$staffId] = [];
+                        }
+
+                        $byStaff[$staffId]['service_amount'] += $lineAmount;
+
+                        if (! isset($countedBookingsByStaff[$staffId][$bookingId])) {
+                            $countedBookingsByStaff[$staffId][$bookingId] = true;
+                            $byStaff[$staffId]['service_count']++;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Step 3: Add booking_product counts (these count when their order is paid, not tied to settlement)
+        $productRows = $this->applyOrderScope(
+            DB::table('order_item_staff_splits')
+                ->join('order_items', 'order_items.id', '=', 'order_item_staff_splits.order_item_id')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->join('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
+                ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end])
+                ->where('order_items.line_type', 'booking_product'),
+            'orders'
+        )
             ->groupBy('staffs.id', 'staffs.name')
-            ->orderByDesc(DB::raw('service_amount'))
             ->selectRaw('staffs.id as staff_id')
             ->selectRaw('staffs.name as staff_name')
-            ->selectRaw('COUNT(order_item_staff_splits.id) as service_count')
-            ->selectRaw("COALESCE(SUM(({$this->effectiveBookingLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as service_amount")
+            ->selectRaw('COUNT(DISTINCT order_items.id) as product_count')
+            ->selectRaw("COALESCE(SUM(({$this->effectiveBookingLineTotalExpr()}) * (order_item_staff_splits.share_percent::numeric / 100)), 0) as product_amount")
             ->get();
 
-        return $rows->map(fn ($row) => [
-            'staff_id' => (int) $row->staff_id,
-            'name' => (string) $row->staff_name,
-            'service_count' => (int) $row->service_count,
-            'service_amount' => round((float) $row->service_amount, 2),
-            'total' => round((float) $row->service_amount, 2),
-        ])->values()->all();
+        foreach ($productRows as $row) {
+            $staffId = (int) $row->staff_id;
+            if (! isset($byStaff[$staffId])) {
+                $byStaff[$staffId] = [
+                    'staff_id' => $staffId,
+                    'name' => (string) $row->staff_name,
+                    'service_count' => 0,
+                    'service_amount' => 0.0,
+                ];
+            }
+            $byStaff[$staffId]['service_count'] += (int) $row->product_count;
+            $byStaff[$staffId]['service_amount'] += (float) $row->product_amount;
+        }
+
+        // Return sorted by service_amount descending
+        return collect($byStaff)
+            ->map(fn (array $row) => [
+                'staff_id' => (int) $row['staff_id'],
+                'name' => (string) $row['name'],
+                'service_count' => (int) $row['service_count'],
+                'service_amount' => round((float) $row['service_amount'], 2),
+                'total' => round((float) $row['service_amount'], 2),
+            ])
+            ->sortByDesc('service_amount')
+            ->values()
+            ->all();
     }
 
+    /**
+     * Base query for booking order item splits.
+     * Used by other methods that need all booking line types within a date range.
+     */
     private function baseBookingOrderItemSplitQuery(Carbon $start, Carbon $end): Builder
     {
         return $this->applyOrderScope(
             DB::table('orders')
                 ->join('order_items', 'order_items.order_id', '=', 'orders.id')
                 ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
-                ->whereBetween('orders.created_at', [$start, $end]),
+                ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end]),
             'orders'
         )
             ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product']);
@@ -582,9 +788,51 @@ class SalesVisualDailyReportService
         return "(CASE WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_base' THEN GREATEST(0, ($lineTotalExpr) - ($optionTotalExpr)) WHEN order_items.line_type = 'booking_product' AND order_item_staff_splits.line_type = 'booking_product_option' THEN COALESCE($matchingOptionExpr, order_item_staff_splits.amount_basis, $lineTotalExpr) ELSE COALESCE(order_item_staff_splits.amount_basis, $lineTotalExpr) END)::numeric";
     }
 
+    private function lineNetAmountSql(string $alias = 'oi'): string
+    {
+        return "COALESCE({$alias}.line_total_after_discount, {$alias}.line_total - COALESCE({$alias}.discount_amount, 0))";
+    }
+
+    private function orderNetAmountSubquery(string $workspaceLineFilterSql): string
+    {
+        $lineNet = $this->lineNetAmountSql('oi_sn');
+
+        return "(SELECT COALESCE(SUM($lineNet), 0) FROM order_items oi_sn WHERE oi_sn.order_id = o.id AND ({$workspaceLineFilterSql}))";
+    }
+
+    /**
+     * Allocate order net revenue to a payment row; split payments use op.amount / grand_total ratio.
+     */
+    private function allocatedPaymentNetSql(string $orderNetSql): string
+    {
+        return "CASE
+            WHEN op.id IS NOT NULL AND COALESCE(o.grand_total, 0) > 0
+            THEN (COALESCE(op.amount, 0) / o.grand_total) * ({$orderNetSql})
+            ELSE ({$orderNetSql})
+        END";
+    }
+
+    private function ecommerceWorkspaceLineFilterSql(string $alias = 'oi_sn'): string
+    {
+        return "{$alias}.line_type = 'product'";
+    }
+
+    private function bookingWorkspaceLineFilterSql(string $alias = 'oi_sn'): string
+    {
+        $types = implode("','", self::BOOKING_LINE_TYPES);
+
+        return "{$alias}.line_type IN ('{$types}')";
+    }
+
+    private function allWorkspaceLineFilterSql(string $alias = 'oi_sn'): string
+    {
+        return "({$this->ecommerceWorkspaceLineFilterSql($alias)} OR {$this->bookingWorkspaceLineFilterSql($alias)})";
+    }
+
     /**
      * One row per configured payment gateway (type=ecommerce|booking), with online/offline split.
      * Order must belong to the workspace (product line for ecommerce; booking line for booking).
+     * Amounts use line-item net totals (after discount), not order grand_total.
      */
     private function paymentMethodsForWorkspace(
         string $workspaceType,
@@ -607,8 +855,8 @@ class SalesVisualDailyReportService
                 continue;
             }
 
-            $online = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, $key, true);
-            $offline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, $key, false);
+            $online = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, $key, true);
+            $offline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, $key, false);
 
             $sumOnline += $online;
             $sumOffline += $offline;
@@ -626,8 +874,8 @@ class SalesVisualDailyReportService
 
         $hasCashGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
         if (! $hasCashGateway) {
-            $cashOnline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'cash', true);
-            $cashOffline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'cash', false);
+            $cashOnline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'cash', true);
+            $cashOffline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'cash', false);
             $sumOnline += $cashOnline;
             $sumOffline += $cashOffline;
             $syntheticHead[] = [
@@ -641,8 +889,8 @@ class SalesVisualDailyReportService
 
         $hasQrpayGateway = $gateways->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
         if (! $hasQrpayGateway) {
-            $qrOnline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'qrpay', true);
-            $qrOffline = $this->sumOrderGrandTotalForGatewayKey($workspaceType, $start, $end, 'qrpay', false);
+            $qrOnline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'qrpay', true);
+            $qrOffline = $this->sumOrderNetAmountForGatewayKey($workspaceType, $start, $end, 'qrpay', false);
             $sumOnline += $qrOnline;
             $sumOffline += $qrOffline;
             $syntheticHead[] = [
@@ -665,7 +913,7 @@ class SalesVisualDailyReportService
         ];
     }
 
-    private function sumOrderGrandTotalForGatewayKey(
+    private function sumOrderNetAmountForGatewayKey(
         string $workspaceType,
         Carbon $start,
         Carbon $end,
@@ -673,11 +921,16 @@ class SalesVisualDailyReportService
         bool $online
     ): float {
         $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
+        $workspaceLineFilter = $workspaceType === WorkspaceType::ECOMMERCE
+            ? $this->ecommerceWorkspaceLineFilterSql()
+            : $this->bookingWorkspaceLineFilterSql();
+        $orderNetSql = $this->orderNetAmountSubquery($workspaceLineFilter);
+        $allocatedNetSql = $this->allocatedPaymentNetSql($orderNetSql);
 
         $q = $this->applyOrderScope(
             DB::table('orders as o')
                 ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where(function ($q) use ($methodVariants) {
                 $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
@@ -709,11 +962,11 @@ class SalesVisualDailyReportService
             });
         }
 
-        return (float) $q->sum(DB::raw('COALESCE(op.amount, o.grand_total)'));
+        return (float) $q->sum(DB::raw($allocatedNetSql));
     }
 
     /**
-     * Union of ecommerce + booking gateway keys; sums order grand_total when the order has
+     * Union of ecommerce + booking gateway keys; sums line-item net amounts when the order has
      * product line(s) and/or booking line(s).
      */
     private function paymentMethodsForAllWorkspace(
@@ -759,8 +1012,8 @@ class SalesVisualDailyReportService
                 continue;
             }
 
-            $online = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, $key, true);
-            $offline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, $key, false);
+            $online = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, $key, true);
+            $offline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, $key, false);
 
             $sumOnline += $online;
             $sumOffline += $offline;
@@ -778,8 +1031,8 @@ class SalesVisualDailyReportService
 
         $hasCashGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'cash');
         if (! $hasCashGateway) {
-            $cashOnline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'cash', true);
-            $cashOffline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'cash', false);
+            $cashOnline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'cash', true);
+            $cashOffline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'cash', false);
             $sumOnline += $cashOnline;
             $sumOffline += $cashOffline;
             $syntheticHead[] = [
@@ -793,8 +1046,8 @@ class SalesVisualDailyReportService
 
         $hasQrpayGateway = collect($merged)->contains(fn ($gw) => strtolower(trim((string) $gw->key)) === 'qrpay');
         if (! $hasQrpayGateway) {
-            $qrOnline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'qrpay', true);
-            $qrOffline = $this->sumOrderGrandTotalForGatewayKeyAll($start, $end, 'qrpay', false);
+            $qrOnline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'qrpay', true);
+            $qrOffline = $this->sumOrderNetAmountForGatewayKeyAll($start, $end, 'qrpay', false);
             $sumOnline += $qrOnline;
             $sumOffline += $qrOffline;
             $syntheticHead[] = [
@@ -817,18 +1070,20 @@ class SalesVisualDailyReportService
         ];
     }
 
-    private function sumOrderGrandTotalForGatewayKeyAll(
+    private function sumOrderNetAmountForGatewayKeyAll(
         Carbon $start,
         Carbon $end,
         string $paymentKey,
         bool $online
     ): float {
         $methodVariants = SalesReportService::paymentMethodVariantsForMatch($paymentKey);
+        $orderNetSql = $this->orderNetAmountSubquery($this->allWorkspaceLineFilterSql());
+        $allocatedNetSql = $this->allocatedPaymentNetSql($orderNetSql);
 
         $q = $this->applyOrderScope(
             DB::table('orders as o')
                 ->leftJoin('order_payments as op', 'op.order_id', '=', 'o.id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where(function ($q) use ($methodVariants) {
                 $q->whereIn(DB::raw('LOWER(TRIM(COALESCE(op.payment_method, \'\')))'), $methodVariants)
@@ -858,7 +1113,7 @@ class SalesVisualDailyReportService
             });
         });
 
-        return (float) $q->sum(DB::raw('COALESCE(op.amount, o.grand_total)'));
+        return (float) $q->sum(DB::raw($allocatedNetSql));
     }
 
     private function completedBookingServiceActivityByStaff(Carbon $start, Carbon $end, string $lineTotal): array
@@ -931,7 +1186,7 @@ class SalesVisualDailyReportService
             DB::table('order_item_staff_splits as sps')
                 ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_product')
             ->whereNotNull('sps.staff_id')
@@ -954,7 +1209,7 @@ class SalesVisualDailyReportService
             DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->leftJoin('users as creator', 'creator.id', '=', 'o.created_by_user_id')
-                ->whereBetween('o.created_at', [$start, $end])
+                ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end])
         )
             ->where('oi.line_type', 'booking_product')
             ->whereNotExists(function (Builder $q) {

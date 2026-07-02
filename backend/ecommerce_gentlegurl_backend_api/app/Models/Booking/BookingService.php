@@ -12,7 +12,7 @@ class BookingService extends Model
     use LogsActivity;
 
     protected $fillable = [
-        'name', 'cn_name', 'service_type', 'description', 'image_path', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
+        'name', 'cn_name', 'service_type', 'description', 'image_path', 'linked_booking_product_id', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
     ];
 
     protected $appends = [
@@ -57,6 +57,11 @@ class BookingService extends Model
         return $this->belongsToMany(Staff::class, 'booking_service_staff', 'service_id', 'staff_id')
             ->withTimestamps()
             ->wherePivot('is_active', true);
+    }
+
+    public function linkedBookingProduct()
+    {
+        return $this->belongsTo(BookingProduct::class, 'linked_booking_product_id');
     }
 
     public function isStaffAllowed(int $staffId): bool

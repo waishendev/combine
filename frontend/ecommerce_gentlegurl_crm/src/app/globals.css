@@ -2,11 +2,27 @@
 
 @import "react-international-phone/style.css";
 
-/* POS body-level modals — above mobile settlement sheet (z-index 130). */
+/* POS body-level modals — above mobile cart/settlement sheets (z-index 130) and sidebar (161). */
 .pos-appt-body-modals {
-  position: relative;
+  position: fixed;
+  inset: 0;
   z-index: 200;
   pointer-events: none;
+}
+
+.pos-appt-body-modals:not(:empty) ~ .pos-floating-settlement-bar,
+.pos-appt-body-modals:not(:empty) ~ .pos-floating-settlement-bar--placeholder,
+body:has(.pos-appt-body-modals:not(:empty)) .pos-floating-settlement-bar,
+body:has(.pos-appt-body-modals:not(:empty)) .pos-floating-settlement-bar--placeholder,
+body:has(.pos-appt-body-modals:not(:empty)) .pos-floating-cart-bar {
+  opacity: 0 !important;
+  pointer-events: none !important;
+  transform: translateY(120%) !important;
+}
+
+body:has(.pos-appt-body-modals:not(:empty)) .pos-split-cart.fixed,
+body:has(.pos-appt-body-modals:not(:empty)) body > .pos-appt-right {
+  z-index: 110 !important;
 }
 
 .pos-appt-body-modals > * {
@@ -16,6 +32,19 @@
 .pos-body-stack-modal {
   position: fixed;
   inset: 0;
+  z-index: 200;
+}
+
+.pos-body-stack-modal-detail {
+  position: fixed;
+  inset: 0;
+  z-index: 210;
+}
+
+.pos-body-stack-modal-top {
+  position: fixed;
+  inset: 0;
+  z-index: 220;
 }
 
 .gg-international-phone {

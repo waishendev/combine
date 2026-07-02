@@ -57,7 +57,7 @@ export default function LoginPage() {
           {/* Header */}
           <div className="mb-6 text-center">
             <h1 className="mt-2 text-3xl font-semibold text-[var(--foreground)]">
-              Welcome back
+              Welcome back to Gentlegurls
             </h1>
             <p className="mt-2 text-sm text-[var(--foreground)]/70">
               Sign in to track orders, manage your account, and checkout faster.
