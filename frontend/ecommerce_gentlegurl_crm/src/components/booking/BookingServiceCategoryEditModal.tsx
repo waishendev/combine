@@ -210,6 +210,7 @@ export default function BookingServiceCategoryEditModal({
   return (
     <CrmFormModalShell
       title="Edit Category"
+      size="lg"
       onClose={onClose}
       closeDisabled={submitting}
       closeLabel={t('common.close')}

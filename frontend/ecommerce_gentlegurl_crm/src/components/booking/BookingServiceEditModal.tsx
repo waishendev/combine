@@ -9,9 +9,16 @@ import BookingServiceAllowedStaffPicker, {
 import BookingServiceQuestionsBuilder, { emptyQuestionOption, type QuestionForm } from './BookingServiceQuestionsBuilder'
 import {
   BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE,
+  extractBookingServiceApiErrorMessage,
   mapBookingServiceApiItemToRow,
   type BookingServiceApiItem,
 } from './bookingServiceUtils'
+import BookingServiceProductLinkPanel, {
+  appendProductLinkFormData,
+  buildInitialProductLinkValue,
+  type BookingServiceProductLinkValue,
+  type LinkedBookingProductSummary,
+} from './BookingServiceProductLinkPanel'
 import { useI18n } from '@/lib/i18n'
 import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
@@ -90,6 +97,8 @@ export default function BookingServiceEditModal({
   const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
   const [bookingServiceOptions, setBookingServiceOptions] = useState<BookingServiceOption[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
+  const [linkedBookingProduct, setLinkedBookingProduct] = useState<LinkedBookingProductSummary | null>(null)
+  const [productLink, setProductLink] = useState<BookingServiceProductLinkValue>(buildInitialProductLinkValue())
   const imageInputRef = useRef<HTMLInputElement>(null)
 
   useLayoutEffect(() => {
@@ -98,6 +107,8 @@ export default function BookingServiceEditModal({
     setImagePreview(null)
     setLoadedService(null)
     setError(null)
+    setLinkedBookingProduct(null)
+    setProductLink(buildInitialProductLinkValue())
   }, [serviceId])
 
   useEffect(() => {
@@ -149,6 +160,21 @@ export default function BookingServiceEditModal({
         const mappedService = mapBookingServiceApiItemToRow(service)
         setLoadedService(mappedService)
         setImagePreview(mappedService.imageUrl || null)
+
+        const linkedProductRaw = (service as { linked_booking_product?: LinkedBookingProductSummary | null }).linked_booking_product
+        const linkedProduct =
+          linkedProductRaw && typeof linkedProductRaw === 'object' && Number(linkedProductRaw.id) > 0
+            ? {
+                id: Number(linkedProductRaw.id),
+                name: String(linkedProductRaw.name ?? ''),
+                cn_name: linkedProductRaw.cn_name ?? null,
+                price: linkedProductRaw.price != null ? Number(linkedProductRaw.price) : undefined,
+                price_mode: linkedProductRaw.price_mode ?? null,
+                is_active: linkedProductRaw.is_active !== false,
+              }
+            : null
+        setLinkedBookingProduct(linkedProduct)
+        setProductLink(buildInitialProductLinkValue(linkedProduct))
 
         setForm({
           name: typeof service.name === 'string' ? service.name : '',
@@ -503,6 +529,7 @@ export default function BookingServiceEditModal({
         const compressed = await compressImage(form.imageFile)
         fd.append('image', compressed)
       }
+      appendProductLinkFormData(fd, productLink, true)
 
       const res = await fetch(`/api/proxy/admin/booking/services/${serviceId}`, {
         method: 'POST',
@@ -521,28 +548,7 @@ export default function BookingServiceEditModal({
       }
 
       if (!res.ok) {
-        if (data && typeof data === 'object') {
-          if ('message' in data && typeof data.message === 'string') {
-            setError(data.message)
-            return
-          }
-          if ('errors' in data && typeof data.errors === 'object') {
-            const errors = data.errors as Record<string, unknown>
-            const firstKey = Object.keys(errors)[0]
-            if (firstKey) {
-              const firstValue = errors[firstKey]
-              if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
-                setError(firstValue[0])
-                return
-              }
-              if (typeof firstValue === 'string') {
-                setError(firstValue)
-                return
-              }
-            }
-          }
-        }
-        setError('Failed to update booking service')
+        setError(extractBookingServiceApiErrorMessage(data, 'Failed to update booking service'))
         return
       }
 
@@ -655,6 +661,16 @@ export default function BookingServiceEditModal({
         >
           {showEditFields ? (
             <>
+            <div className="mb-6">
+              <BookingServiceProductLinkPanel
+                mode="edit"
+                value={productLink}
+                onChange={setProductLink}
+                linkedProduct={linkedBookingProduct}
+                disabled={disableForm}
+              />
+            </div>
+
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
               {/* Left Side - Image Upload */}
               <div className="space-y-4 w-full lg:w-1/2">

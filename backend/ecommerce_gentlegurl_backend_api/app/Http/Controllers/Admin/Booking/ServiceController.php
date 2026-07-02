@@ -11,6 +11,7 @@ use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
 use App\Models\Booking\BookingServiceStaff;
 use App\Models\Staff;
+use App\Services\Booking\BookingServiceProductLinkService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -21,13 +22,18 @@ use Illuminate\Validation\ValidationException;
 
 class ServiceController extends Controller
 {
+    public function __construct(
+        private readonly BookingServiceProductLinkService $productLinkService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $perPage = $request->integer('per_page', 20);
         $perPage = max(1, min(200, $perPage));
 
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name'])
+            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->when($request->filled('name'), function ($query) use ($request) {
                 $term = '%' . trim((string) $request->get('name')) . '%';
                 $query->where(function ($inner) use ($term) {
@@ -67,7 +73,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -121,6 +127,8 @@ class ServiceController extends Controller
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
+            'create_linked_product' => ['nullable', 'boolean'],
+            'linked_booking_product_id' => ['nullable', 'integer', 'exists:booking_products,id'],
         ]);
         $data['service_price'] = $data['service_price'] ?? 0;
         $data['price'] = $data['price'] ?? $data['service_price'];
@@ -145,15 +153,64 @@ class ServiceController extends Controller
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
-        unset($data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json']);
+        $createLinkedProduct = $request->boolean('create_linked_product');
+        $linkedProductId = isset($data['linked_booking_product_id']) ? (int) $data['linked_booking_product_id'] : null;
+        unset($data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id']);
 
-        $service = BookingService::create($data);
-        $this->syncAllowedStaffs($service, $allowedStaffIds);
-        $this->syncPrimarySlots($service, $primarySlots);
-        $this->syncQuestions($service, $questions);
+        $uploadedServiceImagePath = $data['image_path'] ?? null;
 
-        BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])), 'Created', true, 201);
+        try {
+            $service = DB::transaction(function () use (
+                $request,
+                $data,
+                $allowedStaffIds,
+                $primarySlots,
+                $questions,
+                $createLinkedProduct,
+                $linkedProductId,
+            ) {
+                $service = BookingService::create($data);
+                $this->syncAllowedStaffs($service, $allowedStaffIds);
+                $this->syncPrimarySlots($service, $primarySlots);
+                $this->syncQuestions($service, $questions);
+                $this->productLinkService->handleCreateLink($service, $createLinkedProduct, $linkedProductId ?: null);
+
+                BookingLog::create([
+                    'actor_type' => 'ADMIN',
+                    'actor_id' => optional($request->user())->id,
+                    'action' => 'UPDATE_SERVICE',
+                    'meta' => ['service_id' => $service->id],
+                    'created_at' => now(),
+                ]);
+
+                return $service;
+            });
+
+            $this->productLinkService->commitFileCleanup();
+
+            return $this->respond(
+                $this->formatService($service->fresh([
+                    'allowedStaffs:id,name,position,avatar_path',
+                    'primarySlots',
+                    'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                    'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
+                ])),
+                'Created',
+                true,
+                201
+            );
+        } catch (ValidationException $e) {
+            $this->rollbackFailedServiceSave($uploadedServiceImagePath);
+
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->rollbackFailedServiceSave($uploadedServiceImagePath);
+
+            return $this->respondError(
+                $this->formatServiceSaveFailureMessage($e, 'create'),
+                422,
+            );
+        }
     }
 
     public function update(Request $request, int $id)
@@ -206,6 +263,10 @@ class ServiceController extends Controller
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
+            'create_linked_product' => ['nullable', 'boolean'],
+            'unlink_booking_product' => ['nullable', 'boolean'],
+            'overwrite_linked_product' => ['nullable', 'boolean'],
+            'linked_booking_product_id' => ['nullable', 'integer', 'exists:booking_products,id'],
         ]);
 
         $oldImagePath = $service->image_path;
@@ -230,24 +291,102 @@ class ServiceController extends Controller
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
-        unset($data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json']);
+        $createLinkedProduct = $request->boolean('create_linked_product');
+        $unlinkBookingProduct = $request->boolean('unlink_booking_product');
+        $overwriteLinkedProduct = $request->boolean('overwrite_linked_product');
+        $hasLinkedProductIdInput = $request->has('linked_booking_product_id');
+        $linkedProductId = $hasLinkedProductIdInput
+            ? (($data['linked_booking_product_id'] ?? null) !== null ? (int) $data['linked_booking_product_id'] : null)
+            : null;
+        unset(
+            $data['allowed_staff_ids'],
+            $data['primary_slots'],
+            $data['questions'],
+            $data['questions_json'],
+            $data['create_linked_product'],
+            $data['unlink_booking_product'],
+            $data['overwrite_linked_product'],
+            $data['linked_booking_product_id'],
+        );
 
-        $service->update($data);
-        $this->syncAllowedStaffs($service, $allowedStaffIds);
-        $this->syncPrimarySlots($service, $primarySlots);
-        $this->syncQuestions($service, $questions);
+        $newServiceImagePath = $data['image_path'] ?? null;
 
-        if (isset($data['image_path']) && $oldImagePath && $oldImagePath !== $data['image_path'] && Storage::disk('public')->exists($oldImagePath)) {
-            Storage::disk('public')->delete($oldImagePath);
+        try {
+            DB::transaction(function () use (
+                $request,
+                $service,
+                $data,
+                $allowedStaffIds,
+                $primarySlots,
+                $questions,
+                $createLinkedProduct,
+                $unlinkBookingProduct,
+                $overwriteLinkedProduct,
+                $hasLinkedProductIdInput,
+                $linkedProductId,
+            ) {
+                $service->update($data);
+                $this->syncAllowedStaffs($service, $allowedStaffIds);
+                $this->syncPrimarySlots($service, $primarySlots);
+                $this->syncQuestions($service, $questions);
+
+                if ($unlinkBookingProduct || $createLinkedProduct || $hasLinkedProductIdInput) {
+                    $this->productLinkService->handleUpdateLink(
+                        $service,
+                        $unlinkBookingProduct,
+                        $createLinkedProduct,
+                        $linkedProductId,
+                        $hasLinkedProductIdInput,
+                    );
+                }
+
+                if ($overwriteLinkedProduct) {
+                    $service = $service->fresh(['linkedBookingProduct', 'questions.options.linkedBookingService']);
+                    if ($service->linkedBookingProduct) {
+                        $this->productLinkService->syncProductFromService($service, $service->linkedBookingProduct);
+                    }
+                }
+
+                BookingLog::create([
+                    'actor_type' => 'ADMIN',
+                    'actor_id' => optional($request->user())->id,
+                    'action' => 'UPDATE_SERVICE',
+                    'meta' => ['service_id' => $service->id],
+                    'created_at' => now(),
+                ]);
+            });
+
+            $this->productLinkService->commitFileCleanup();
+
+            if ($newServiceImagePath && $oldImagePath && $oldImagePath !== $newServiceImagePath && Storage::disk('public')->exists($oldImagePath)) {
+                Storage::disk('public')->delete($oldImagePath);
+            }
+
+            $service = $service->fresh();
+
+            return $this->respond($this->formatService($service->fresh([
+                'allowedStaffs:id,name,position,avatar_path',
+                'primarySlots',
+                'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
+            ])));
+        } catch (ValidationException $e) {
+            $this->rollbackFailedServiceSave($newServiceImagePath);
+
+            throw $e;
+        } catch (\Throwable $e) {
+            $this->rollbackFailedServiceSave($newServiceImagePath);
+
+            return $this->respondError(
+                $this->formatServiceSaveFailureMessage($e, 'update'),
+                422,
+            );
         }
-
-        BookingLog::create(['actor_type' => 'ADMIN', 'actor_id' => optional($request->user())->id, 'action' => 'UPDATE_SERVICE', 'meta' => ['service_id' => $service->id], 'created_at' => now()]);
-        return $this->respond($this->formatService($service->fresh(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price'])));
     }
 
-    public function destroy(int $id)
+    public function destroy(Request $request, int $id)
     {
-        $service = BookingService::findOrFail($id);
+        $service = BookingService::query()->with('linkedBookingProduct')->findOrFail($id);
     
         if (Booking::query()->where('service_id', $id)->exists()) {
             return $this->respondError(
@@ -255,6 +394,9 @@ class ServiceController extends Controller
                 422
             );
         }
+
+        $deleteLinkedProduct = $request->boolean('delete_linked_product');
+        $this->productLinkService->deleteLinkedProductIfRequested($service, $deleteLinkedProduct);
     
         $service->delete();
     
@@ -927,6 +1069,8 @@ class ServiceController extends Controller
             'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
             'allowed_staff_count' => count($allowedStaffs),
             'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+            'linked_booking_product' => $this->productLinkService->formatLinkedProduct($service->linkedBookingProduct),
+            'linked_booking_product_id' => $service->linked_booking_product_id ? (int) $service->linked_booking_product_id : null,
             'questions' => $service->questions
                 ->sortBy('sort_order')
                 ->values()
@@ -965,5 +1109,29 @@ class ServiceController extends Controller
             'sort_order' => (int) $option->sort_order,
             'is_active' => (bool) $option->is_active,
         ];
+    }
+
+    private function rollbackFailedServiceSave(?string $uploadedServiceImagePath): void
+    {
+        $this->productLinkService->cleanupCopiedImagePaths();
+
+        if ($uploadedServiceImagePath && Storage::disk('public')->exists($uploadedServiceImagePath)) {
+            Storage::disk('public')->delete($uploadedServiceImagePath);
+        }
+    }
+
+    private function formatServiceSaveFailureMessage(\Throwable $exception, string $action): string
+    {
+        $prefix = $action === 'create'
+            ? 'Failed to create booking service. No changes were saved.'
+            : 'Failed to update booking service. No changes were saved.';
+
+        if ($exception instanceof QueryException) {
+            return $prefix;
+        }
+
+        $detail = trim($exception->getMessage());
+
+        return $detail !== '' ? $prefix . ' ' . $detail : $prefix;
     }
 }

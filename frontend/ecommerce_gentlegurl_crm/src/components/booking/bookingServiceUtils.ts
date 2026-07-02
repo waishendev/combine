@@ -21,11 +21,50 @@ export type BookingServiceApiItem = {
   allow_photo_upload?: boolean | number | string | null
   image_path?: string | null
   image_url?: string | null
+  linked_booking_product_id?: number | null
+  linked_booking_product?: {
+    id: number
+    name?: string | null
+    cn_name?: string | null
+    price?: number | string | null
+    price_mode?: string | null
+    is_active?: boolean | null
+  } | null
   created_at?: string | null
   updated_at?: string | null
   allowed_staff_count?: number | string | null
   allowed_staff_names?: string[] | null
   primary_slots?: Array<{ start_time?: string | null }> | null
+}
+
+export const extractBookingServiceApiErrorMessage = (
+  data: unknown,
+  fallback: string,
+): string => {
+  if (!data || typeof data !== 'object') {
+    return fallback
+  }
+
+  const payload = data as { message?: unknown; errors?: unknown }
+  if (typeof payload.message === 'string' && payload.message.trim() !== '') {
+    return payload.message
+  }
+
+  if (payload.errors && typeof payload.errors === 'object') {
+    const errors = payload.errors as Record<string, unknown>
+    const firstKey = Object.keys(errors)[0]
+    if (firstKey) {
+      const firstValue = errors[firstKey]
+      if (Array.isArray(firstValue) && typeof firstValue[0] === 'string') {
+        return firstValue[0]
+      }
+      if (typeof firstValue === 'string') {
+        return firstValue
+      }
+    }
+  }
+
+  return fallback
 }
 
 

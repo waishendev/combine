@@ -146,6 +146,7 @@ export default function BookingServiceCategoryCreateModal({
   return (
     <CrmFormModalShell
       title="Create Category"
+      size="lg"
       onClose={onClose}
       closeDisabled={submitting}
       closeLabel={t('common.close')}

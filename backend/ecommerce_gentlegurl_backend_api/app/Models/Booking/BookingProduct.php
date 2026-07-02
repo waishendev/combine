@@ -50,6 +50,11 @@ class BookingProduct extends Model
             ->withTimestamps();
     }
 
+    public function linkedBookingService()
+    {
+        return $this->hasOne(BookingService::class, 'linked_booking_product_id');
+    }
+
     public function getImageUrlAttribute(): ?string
     {
         if (! $this->image_path) {
