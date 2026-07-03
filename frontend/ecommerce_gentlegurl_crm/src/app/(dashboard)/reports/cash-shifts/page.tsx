@@ -29,9 +29,6 @@ export default async function CashShiftsReportRoute() {
         </Link>
       </div>
       <h2 className="mb-2 text-3xl font-semibold">Cash Shift Report</h2>
-      <p className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700">
-        Tracks manually opened and closed POS cash shifts. Cash Sales include CASH order payment rows during the shift, with legacy cash orders as fallback.
-      </p>
       <CashShiftReportPage />
     </div>
   )

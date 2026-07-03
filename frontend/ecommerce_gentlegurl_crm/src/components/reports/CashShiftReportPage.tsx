@@ -2,28 +2,44 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
+import { ReportDetailDrawer, ReportViewDetailsButton } from '@/components/reports/ReportActions'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 type CashShiftRow = {
   id: number
+  event_type: 'OPEN' | 'CLOSE'
+  linked_open_shift_id?: number | null
+  event_at?: string | null
   opening_amount: number
+  opening_refill_packet?: number | null
+  opening_atm?: number | null
   opened_by_name?: string | null
   opened_staff_name?: string | null
   opened_at?: string | null
   closing_amount?: number | null
+  closing_withdraw?: number | null
+  closing_refill_cash?: number | null
   closed_by_name?: string | null
   closed_staff_name?: string | null
   closed_at?: string | null
-  status: 'OPEN' | 'CLOSED'
+  status: 'OPEN' | 'CLOSE'
   remark?: string | null
+  total_initial_cash: number
+  total_withdraw: number
   cash_sales: number
   expected_cash: number
   difference?: number | null
 }
 
+type PoolBalances = {
+  total_initial_cash: number
+  total_withdraw: number
+}
+
 const currency = (value: number | null | undefined) => `RM ${Number(value ?? 0).toFixed(2)}`
 const formatDateTime = (value?: string | null) => formatDateTime12Hour(value) || '—'
 const formatDate = (value?: string | null) => (value ? value.slice(0, 10) : '—')
+const displayAmount = (value?: number | null) => (value == null || value === 0 ? '—' : currency(value))
 
 function defaultDateRange() {
   const now = new Date()
@@ -31,15 +47,101 @@ function defaultDateRange() {
   return { from: local, to: local }
 }
 
+function DetailField({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
+    </div>
+  )
+}
+
+function SummaryStatCard({
+  label,
+  value,
+  accent,
+}: {
+  label: string
+  value: string
+  accent: 'blue' | 'violet'
+}) {
+  const accentClass = accent === 'blue'
+    ? 'border-blue-200 bg-blue-50 text-blue-900'
+    : 'border-violet-200 bg-violet-50 text-violet-900'
+
+  return (
+    <div className={`rounded-2xl border p-5 shadow-sm ${accentClass}`}>
+      <p className="text-xs font-bold uppercase tracking-wide opacity-80">Current Pool</p>
+      <p className="mt-1 text-sm font-semibold opacity-90">{label}</p>
+      <p className="mt-3 text-3xl font-black">{value}</p>
+    </div>
+  )
+}
+
+function eventBadgeClass(eventType: CashShiftRow['event_type']) {
+  return eventType === 'OPEN'
+    ? 'bg-emerald-100 text-emerald-700'
+    : 'bg-rose-100 text-rose-700'
+}
+
+function DateTimeCell({ value }: { value?: string | null }) {
+  if (!value) return <span>—</span>
+  return (
+    <div className="leading-tight">
+      <p className="font-medium text-gray-900">{formatDate(value)}</p>
+      <p className="mt-0.5 text-xs text-gray-500">{formatDateTime(value)}</p>
+    </div>
+  )
+}
+
+const tableHeadings = [
+  'Event',
+  'Date',
+  'Staff',
+  'Opening',
+  'Closing',
+  'Expected',
+  'Difference',
+  'Refill Packet',
+  'ATM',
+  'Withdraw',
+  'Refill Cash',
+  'Total Pool Initial',
+  'Total Pool Withdraw',
+  'Details',
+]
+
 export default function CashShiftReportPage() {
   const defaults = useMemo(() => defaultDateRange(), [])
   const [filters, setFilters] = useState({ date_from: defaults.from, date_to: defaults.to, status: '', staff_id: '', user_id: '' })
   const [rows, setRows] = useState<CashShiftRow[]>([])
+  const [poolBalances, setPoolBalances] = useState<PoolBalances | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(true)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
   const [lastPage, setLastPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [selectedRow, setSelectedRow] = useState<CashShiftRow | null>(null)
+
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true)
+    try {
+      const res = await fetch('/api/proxy/ecommerce/reports/cash-shifts/summary', { cache: 'no-store' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.message ?? 'Unable to load cash shift summary.')
+      const payload = json?.data ?? {}
+      setPoolBalances({
+        total_initial_cash: Number(payload.pool_balances?.total_initial_cash ?? 0),
+        total_withdraw: Number(payload.pool_balances?.total_withdraw ?? 0),
+      })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to load cash shift summary.')
+      setPoolBalances(null)
+    } finally {
+      setSummaryLoading(false)
+    }
+  }, [])
 
   const loadData = useCallback(async (targetPage = 1) => {
     setLoading(true)
@@ -52,9 +154,12 @@ export default function CashShiftReportPage() {
       if (filters.staff_id) qs.set('staff_id', filters.staff_id)
       if (filters.user_id) qs.set('user_id', filters.user_id)
 
-      const res = await fetch(`/api/proxy/ecommerce/reports/cash-shifts?${qs.toString()}`, { cache: 'no-store' })
-      const json = await res.json().catch(() => null)
-      if (!res.ok) throw new Error(json?.message ?? 'Unable to load cash shift report.')
+      const [reportRes] = await Promise.all([
+        fetch(`/api/proxy/ecommerce/reports/cash-shifts?${qs.toString()}`, { cache: 'no-store' }),
+        loadSummary(),
+      ])
+      const json = await reportRes.json().catch(() => null)
+      if (!reportRes.ok) throw new Error(json?.message ?? 'Unable to load cash shift report.')
 
       const payload = json?.data ?? {}
       setRows(Array.isArray(payload.data) ? payload.data : [])
@@ -67,7 +172,7 @@ export default function CashShiftReportPage() {
     } finally {
       setLoading(false)
     }
-  }, [filters])
+  }, [filters, loadSummary])
 
   useEffect(() => {
     void loadData(1)
@@ -75,6 +180,19 @@ export default function CashShiftReportPage() {
 
   return (
     <div className="space-y-5">
+      <div className="grid gap-4 md:grid-cols-2">
+        <SummaryStatCard
+          label="Total Initial Cash"
+          value={summaryLoading ? '…' : currency(poolBalances?.total_initial_cash)}
+          accent="blue"
+        />
+        <SummaryStatCard
+          label="Total Withdraw"
+          value={summaryLoading ? '…' : currency(poolBalances?.total_withdraw)}
+          accent="violet"
+        />
+      </div>
+
       <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
         <div className="grid gap-3 md:grid-cols-6">
           <label className="text-sm font-semibold text-gray-700">
@@ -86,11 +204,11 @@ export default function CashShiftReportPage() {
             <input type="date" value={filters.date_to} onChange={(e) => setFilters((p) => ({ ...p, date_to: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3" />
           </label>
           <label className="text-sm font-semibold text-gray-700">
-            Status
+            Event
             <select value={filters.status} onChange={(e) => setFilters((p) => ({ ...p, status: e.target.value }))} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3">
               <option value="">All</option>
               <option value="OPEN">OPEN</option>
-              <option value="CLOSED">CLOSED</option>
+              <option value="CLOSE">CLOSE</option>
             </select>
           </label>
           <label className="text-sm font-semibold text-gray-700">
@@ -116,32 +234,49 @@ export default function CashShiftReportPage() {
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
               <tr>
-                {['Date', 'Opened Staff', 'Closed Staff', 'Opened By Account', 'Closed By Account', 'Opening Amount', 'Cash Sales', 'Expected Cash', 'Closing Amount', 'Difference', 'Status', 'Opened At', 'Closed At', 'Remark'].map((heading) => (
+                {tableHeadings.map((heading) => (
                   <th key={heading} className="whitespace-nowrap px-4 py-3">{heading}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {rows.map((row) => (
-                <tr key={row.id} className="hover:bg-gray-50">
-                  <td className="whitespace-nowrap px-4 py-3">{formatDate(row.opened_at)}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{row.opened_staff_name ?? '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{row.closed_staff_name ?? '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{row.opened_by_name ?? '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{row.closed_by_name ?? '—'}</td>
-                  <td className="whitespace-nowrap px-4 py-3 font-semibold">{currency(row.opening_amount)}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{currency(row.cash_sales)}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{currency(row.expected_cash)}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{row.closing_amount == null ? '—' : currency(row.closing_amount)}</td>
-                  <td className={`whitespace-nowrap px-4 py-3 font-semibold ${Number(row.difference ?? 0) < 0 ? 'text-red-600' : Number(row.difference ?? 0) > 0 ? 'text-amber-600' : 'text-gray-900'}`}>{row.difference == null ? '—' : currency(row.difference)}</td>
-                  <td className="whitespace-nowrap px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-bold ${row.status === 'OPEN' ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-700'}`}>{row.status}</span></td>
-                  <td className="whitespace-nowrap px-4 py-3">{formatDateTime(row.opened_at)}</td>
-                  <td className="whitespace-nowrap px-4 py-3">{formatDateTime(row.closed_at)}</td>
-                  <td className="min-w-48 px-4 py-3">{row.remark || '—'}</td>
-                </tr>
-              ))}
+              {rows.map((row) => {
+                const isOpen = row.event_type === 'OPEN'
+                const eventDate = isOpen ? row.opened_at : row.closed_at
+                const staffName = isOpen ? row.opened_staff_name : row.closed_staff_name
+
+                return (
+                  <tr key={row.id} className="hover:bg-gray-50">
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${eventBadgeClass(row.event_type)}`}>{row.event_type}</span>
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <DateTimeCell value={eventDate} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">{staffName ?? '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold">{row.opening_amount ? currency(row.opening_amount) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3">{!isOpen && row.closing_amount != null ? currency(row.closing_amount) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3">{!isOpen ? currency(row.expected_cash) : '—'}</td>
+                    <td className={`whitespace-nowrap px-4 py-3 font-semibold ${Number(row.difference ?? 0) < 0 ? 'text-red-600' : Number(row.difference ?? 0) > 0 ? 'text-amber-600' : 'text-gray-900'}`}>
+                      {!isOpen && row.difference != null ? currency(row.difference) : '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-3">{isOpen ? displayAmount(row.opening_refill_packet) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3">{isOpen ? displayAmount(row.opening_atm) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3">{!isOpen ? displayAmount(row.closing_withdraw) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3">{!isOpen ? displayAmount(row.closing_refill_cash) : '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-blue-700">{currency(row.total_initial_cash)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-violet-700">{currency(row.total_withdraw)}</td>
+                    <td className="whitespace-nowrap px-4 py-3 text-center">
+                      <ReportViewDetailsButton
+                        onClick={() => setSelectedRow(row)}
+                        title={`View ${row.event_type} record #${row.id}`}
+                      />
+                    </td>
+                  </tr>
+                )
+              })}
               {!loading && rows.length === 0 ? (
-                <tr><td colSpan={14} className="px-4 py-10 text-center text-gray-500">No cash shifts found.</td></tr>
+                <tr><td colSpan={tableHeadings.length} className="px-4 py-10 text-center text-gray-500">No cash shift records found.</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -155,6 +290,57 @@ export default function CashShiftReportPage() {
           </div>
         </div>
       </div>
+
+      <ReportDetailDrawer
+        open={Boolean(selectedRow)}
+        title={selectedRow ? `${selectedRow.event_type} #${selectedRow.id}` : 'Cash Shift'}
+        subtitle={selectedRow ? formatDateTime(selectedRow.event_at ?? selectedRow.opened_at ?? selectedRow.closed_at) : undefined}
+        onClose={() => setSelectedRow(null)}
+        maxWidthClassName="max-w-3xl"
+      >
+        {selectedRow ? (
+          <div className="space-y-6">
+            <section>
+              <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Pool Snapshot</h4>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <DetailField label="Total Initial Cash" value={currency(selectedRow.total_initial_cash)} />
+                <DetailField label="Total Withdraw" value={currency(selectedRow.total_withdraw)} />
+              </div>
+            </section>
+
+            {selectedRow.event_type === 'OPEN' ? (
+              <section>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Open Details</h4>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DetailField label="Opened Staff" value={selectedRow.opened_staff_name ?? '—'} />
+                  <DetailField label="Opened By Account" value={selectedRow.opened_by_name ?? '—'} />
+                  <DetailField label="Opening Amount" value={currency(selectedRow.opening_amount)} />
+                  <DetailField label="Refill Cash (Packet)" value={displayAmount(selectedRow.opening_refill_packet)} />
+                  <DetailField label="ATM" value={displayAmount(selectedRow.opening_atm)} />
+                  <DetailField label="Opened At" value={formatDateTime(selectedRow.opened_at)} />
+                </div>
+              </section>
+            ) : (
+              <section>
+                <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-600">Close Details</h4>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DetailField label="Closed At" value={formatDateTime(selectedRow.closed_at)} />
+                  <DetailField label="Closed Staff" value={selectedRow.closed_staff_name ?? '—'} />
+                  <DetailField label="Opening Amount (session)" value={currency(selectedRow.opening_amount)} />
+                  <DetailField label="Closing Amount" value={selectedRow.closing_amount == null ? '—' : currency(selectedRow.closing_amount)} />
+                  <DetailField label="Cash Sales" value={currency(selectedRow.cash_sales)} />
+                  <DetailField label="Expected Cash" value={currency(selectedRow.expected_cash)} />
+                  <DetailField label="Difference" value={selectedRow.difference == null ? '—' : currency(selectedRow.difference)} />
+                  <DetailField label="Withdraw" value={displayAmount(selectedRow.closing_withdraw)} />
+                  <DetailField label="Refill Cash" value={displayAmount(selectedRow.closing_refill_cash)} />
+                  <DetailField label="Remarks" value={selectedRow.remark || '—'} />
+                  <DetailField label="Closed By Account" value={selectedRow.closed_by_name ?? '—'} />
+                </div>
+              </section>
+            )}
+          </div>
+        ) : null}
+      </ReportDetailDrawer>
     </div>
   )
 }

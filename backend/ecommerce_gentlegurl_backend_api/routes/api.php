@@ -1142,6 +1142,9 @@ $protectedRoutes = function () {
             Route::get('/pos-summary', [PosSummaryReportController::class, 'index'])
                 ->middleware('permission:reports.pos-summary.view');
 
+            Route::get('/cash-shifts/summary', [PosCashShiftController::class, 'summary'])
+                ->middleware('permission:ecommerce.reports.sales.view|reports.pos-summary.view|reports.my-pos-summary.view');
+
             Route::get('/cash-shifts', [PosCashShiftController::class, 'report'])
                 ->middleware('permission:ecommerce.reports.sales.view|reports.pos-summary.view|reports.my-pos-summary.view');
 
