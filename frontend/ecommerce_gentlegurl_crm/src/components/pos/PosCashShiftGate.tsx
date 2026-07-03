@@ -8,17 +8,23 @@ import { formatDateTime12Hour } from '@/lib/formatDateTime'
 type PosCashShift = {
   id: number
   opening_amount: number
+  refill_cash_packet_amount: number
+  atm_amount: number
   opened_by_name?: string | null
   opened_staff_id?: number | null
   opened_staff_name?: string | null
   opened_at?: string | null
   closing_amount?: number | null
+  withdraw_amount: number
+  refill_cash_amount: number
   closed_by_name?: string | null
   closed_staff_id?: number | null
   closed_staff_name?: string | null
   closed_at?: string | null
   status: 'OPEN' | 'CLOSED'
   cash_sales: number
+  total_initial_cash: number
+  total_withdraw: number
   expected_cash: number
   difference?: number | null
 }
@@ -86,7 +92,11 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   const [openedStaffId, setOpenedStaffId] = useState(defaultStaffId ? String(defaultStaffId) : '')
   const [closedStaffId, setClosedStaffId] = useState(defaultStaffId ? String(defaultStaffId) : '')
   const [openingAmount, setOpeningAmount] = useState('')
+  const [refillCashPacketAmount, setRefillCashPacketAmount] = useState('')
+  const [atmAmount, setAtmAmount] = useState('')
   const [closingAmountInput, setClosingAmountInput] = useState('')
+  const [withdrawAmount, setWithdrawAmount] = useState('')
+  const [refillCashAmount, setRefillCashAmount] = useState('')
   const [remark, setRemark] = useState('')
   const [opening, setOpening] = useState(false)
   const [closing, setClosing] = useState(false)
@@ -152,7 +162,17 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
     }
   }, [loadCurrentShift, shift])
 
-  const expectedCash = Number((closeModalShift ?? shift)?.expected_cash ?? 0)
+  const openTotalInitialCash = useMemo(() => Number(openingAmount || 0) + Number(refillCashPacketAmount || 0), [openingAmount, refillCashPacketAmount])
+  const openTotalWithdraw = useMemo(() => -Number(atmAmount || 0), [atmAmount])
+  const closeTotalInitialCash = useMemo(() => {
+    const modalShift = closeModalShift ?? shift
+    return Number(modalShift?.opening_amount ?? 0) + Number(modalShift?.refill_cash_packet_amount ?? 0) - Number(refillCashAmount || 0)
+  }, [closeModalShift, refillCashAmount, shift])
+  const closeTotalWithdraw = useMemo(() => Number(withdrawAmount || 0) - Number((closeModalShift ?? shift)?.atm_amount ?? 0), [closeModalShift, shift, withdrawAmount])
+  const expectedCash = useMemo(() => {
+    const modalShift = closeModalShift ?? shift
+    return closeTotalInitialCash + Number(modalShift?.cash_sales ?? 0) - closeTotalWithdraw
+  }, [closeModalShift, closeTotalInitialCash, closeTotalWithdraw, shift])
   const closeDifference = useMemo(() => Number(closingAmountInput || 0) - expectedCash, [closingAmountInput, expectedCash])
   const openStaffMissing = !openedStaffId
   const closeStaffMissing = !closedStaffId
@@ -180,6 +200,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
 
   const openShift = async () => {
     const amount = Number(openingAmount)
+    const refillPacket = Number(refillCashPacketAmount || 0)
+    const atm = Number(atmAmount || 0)
     const staffId = Number(openedStaffId)
     if (!Number.isFinite(staffId) || staffId <= 0) {
       setError('Please select staff opening this cash shift.')
@@ -189,6 +211,10 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       setError('Opening amount must be 0 or greater.')
       return
     }
+    if (!Number.isFinite(refillPacket) || refillPacket < 0 || !Number.isFinite(atm) || atm < 0) {
+      setError('Cash movement amounts must be 0 or greater.')
+      return
+    }
 
     setOpening(true)
     setError(null)
@@ -196,7 +222,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       const res = await fetch('/api/proxy/pos/cash-shifts/open', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ opened_staff_id: staffId, opening_amount: amount }),
+        body: JSON.stringify({ opened_staff_id: staffId, opening_amount: amount, refill_cash_packet_amount: refillPacket, atm_amount: atm }),
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to open cash shift.')
@@ -204,6 +230,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       setShift(openedShift)
       if (openedShift?.opened_staff_id) setClosedStaffId(String(openedShift.opened_staff_id))
       setOpeningAmount('')
+      setRefillCashPacketAmount('')
+      setAtmAmount('')
       setOpenShiftModalOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to open cash shift.')
@@ -215,12 +243,18 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   const closeShift = async () => {
     const amount = Number(closingAmountInput)
     const staffId = Number(closedStaffId)
+    const withdraw = Number(withdrawAmount || 0)
+    const refillCash = Number(refillCashAmount || 0)
     if (!Number.isFinite(staffId) || staffId <= 0) {
       setError('Please select staff closing this cash shift.')
       return
     }
     if (closingAmountInput.trim() === '' || !Number.isFinite(amount) || amount < 0) {
       setError('Closing amount must be 0 or greater.')
+      return
+    }
+    if (!Number.isFinite(withdraw) || withdraw < 0 || !Number.isFinite(refillCash) || refillCash < 0) {
+      setError('Cash movement amounts must be 0 or greater.')
       return
     }
 
@@ -230,13 +264,15 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       const res = await fetch('/api/proxy/pos/cash-shifts/close', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ closed_staff_id: staffId, closing_amount: amount, remark: remark.trim() || null }),
+        body: JSON.stringify({ closed_staff_id: staffId, closing_amount: amount, withdraw_amount: withdraw, refill_cash_amount: refillCash, remark: remark.trim() || null }),
       })
       const json = await res.json().catch(() => null)
       if (!res.ok) throw new Error(json?.message ?? 'Unable to close cash shift.')
       setShift(null)
       setCloseModalShift(null)
       setClosingAmountInput('')
+      setWithdrawAmount('')
+      setRefillCashAmount('')
       setRemark('')
       setCloseModalOpen(false)
     } catch (err) {
@@ -279,6 +315,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
             <span className="rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-bold text-white">Current Shift: OPEN</span>
             <span><b>Staff:</b> {shift.opened_staff_name ?? '—'}</span>
             <span><b>Opening:</b> {currency(shift.opening_amount)}</span>
+            <span><b>Total Initial:</b> {currency(shift.total_initial_cash)}</span>
+            <span><b>Total Withdraw:</b> {currency(shift.total_withdraw)}</span>
             <span><b>Cash Sales:</b> {currency(shift.cash_sales)}</span>
             <span><b>Expected:</b> {currency(shift.expected_cash)}</span>
             <span><b>Opened At:</b> {formatDateTime(shift.opened_at)}</span>
@@ -290,6 +328,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
                   const shiftForClose = currentShift ?? shift
                   if (!shiftForClose) return
                   setCloseModalShift(shiftForClose)
+                  setWithdrawAmount(Number(shiftForClose.withdraw_amount ?? 0).toFixed(2))
+                  setRefillCashAmount(Number(shiftForClose.refill_cash_amount ?? 0).toFixed(2))
                   setClosingAmountInput(Number(shiftForClose.expected_cash ?? 0).toFixed(2))
                   setClosedStaffId(shiftForClose.opened_staff_id ? String(shiftForClose.opened_staff_id) : (defaultStaffId ? String(defaultStaffId) : ''))
                   setCloseModalOpen(true)
@@ -349,6 +389,42 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
                 autoFocus
               />
             </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-semibold text-gray-700">
+                Refill Cash (Packet)
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={refillCashPacketAmount}
+                  onChange={(event) => setRefillCashPacketAmount(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="0.00"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                ATM
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={atmAmount}
+                  onChange={(event) => setAtmAmount(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="0.00"
+                />
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-xl bg-emerald-50 p-3">
+                <p className="text-gray-500">Total Initial Cash</p>
+                <p className="font-bold">{currency(openTotalInitialCash)}</p>
+              </div>
+              <div className="rounded-xl bg-amber-50 p-3">
+                <p className="text-gray-500">Total Withdraw</p>
+                <p className="font-bold">{currency(openTotalWithdraw)}</p>
+              </div>
+            </div>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -399,7 +475,9 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
               <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opened Staff</p><p className="font-bold">{modalShift.opened_staff_name ?? '—'}</p></div>
               <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Opening Amount</p><p className="font-bold">{currency(modalShift.opening_amount)}</p></div>
               <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Cash Sales</p><p className="font-bold">{currency(modalShift.cash_sales)}</p></div>
-              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Expected Cash</p><p className="font-bold">{currency(modalShift.expected_cash)}</p></div>
+              <div className="rounded-xl bg-gray-50 p-3"><p className="text-gray-500">Expected Cash</p><p className="font-bold">{currency(expectedCash)}</p></div>
+              <div className="rounded-xl bg-emerald-50 p-3"><p className="text-gray-500">Total Initial Cash</p><p className="font-bold">{currency(closeTotalInitialCash)}</p></div>
+              <div className="rounded-xl bg-amber-50 p-3"><p className="text-gray-500">Total Withdraw</p><p className="font-bold">{currency(closeTotalWithdraw)}</p></div>
               <div className={`rounded-xl p-3 ${closeDifference < 0 ? 'bg-red-50' : closeDifference > 0 ? 'bg-amber-50' : 'bg-emerald-50'}`}><p className="text-gray-500">Difference Preview</p><p className="font-bold">{currency(closeDifference)}</p></div>
             </div>
               )
@@ -418,6 +496,32 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
                 className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
               />
             </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="block text-sm font-semibold text-gray-700">
+                Withdraw
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={withdrawAmount}
+                  onChange={(event) => setWithdrawAmount(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="0.00"
+                />
+              </label>
+              <label className="block text-sm font-semibold text-gray-700">
+                Refill Cash
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={refillCashAmount}
+                  onChange={(event) => setRefillCashAmount(event.target.value)}
+                  className="mt-1 h-11 w-full rounded-xl border border-gray-300 px-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                  placeholder="0.00"
+                />
+              </label>
+            </div>
             <label className="block text-sm font-semibold text-gray-700">
               Remark (optional)
               <textarea

@@ -29,6 +29,10 @@ class PosCashShiftController extends Controller
         $validated = $request->validate([
             'opened_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'opening_amount' => ['required', 'numeric', 'min:0'],
+            'refill_cash_packet_amount' => ['nullable', 'numeric', 'min:0'],
+            'atm_amount' => ['nullable', 'numeric', 'min:0'],
+            'refill_cash_packet_note' => ['nullable', 'string'],
+            'atm_note' => ['nullable', 'string'],
         ]);
 
         $shift = DB::transaction(function () use ($request, $validated) {
@@ -41,6 +45,10 @@ class PosCashShiftController extends Controller
 
             return PosCashShift::query()->create([
                 'opening_amount' => round((float) $validated['opening_amount'], 2),
+                'refill_cash_packet_amount' => $this->money($validated['refill_cash_packet_amount'] ?? 0),
+                'atm_amount' => $this->money($validated['atm_amount'] ?? 0),
+                'refill_cash_packet_note' => $validated['refill_cash_packet_note'] ?? null,
+                'atm_note' => $validated['atm_note'] ?? null,
                 'opened_by' => $request->user()?->id,
                 'opened_staff_id' => (int) $validated['opened_staff_id'],
                 'opened_at' => now(),
@@ -58,12 +66,20 @@ class PosCashShiftController extends Controller
         $validated = $request->validate([
             'closed_staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'closing_amount' => ['required', 'numeric', 'min:0'],
+            'withdraw_amount' => ['nullable', 'numeric', 'min:0'],
+            'refill_cash_amount' => ['nullable', 'numeric', 'min:0'],
+            'withdraw_note' => ['nullable', 'string'],
+            'refill_cash_note' => ['nullable', 'string'],
             'remark' => ['nullable', 'string'],
         ]);
 
         $shift = DB::transaction(function () use ($request, $validated) {
             $shift = $this->globalOpenShiftQuery()->lockForUpdate()->firstOrFail();
-            $shift->closing_amount = round((float) $validated['closing_amount'], 2);
+            $shift->closing_amount = $this->money($validated['closing_amount']);
+            $shift->withdraw_amount = $this->money($validated['withdraw_amount'] ?? 0);
+            $shift->refill_cash_amount = $this->money($validated['refill_cash_amount'] ?? 0);
+            $shift->withdraw_note = $validated['withdraw_note'] ?? null;
+            $shift->refill_cash_note = $validated['refill_cash_note'] ?? null;
             $shift->closed_by = $request->user()?->id;
             $shift->closed_staff_id = (int) $validated['closed_staff_id'];
             $shift->closed_at = now();
@@ -128,18 +144,32 @@ class PosCashShiftController extends Controller
     {
         $cashSales = $this->cashSalesForShift($shift);
         $openingAmount = (float) $shift->opening_amount;
-        $expectedCash = round($openingAmount + $cashSales, 2);
+        $refillCashPacketAmount = (float) ($shift->refill_cash_packet_amount ?? 0);
+        $atmAmount = (float) ($shift->atm_amount ?? 0);
+        $withdrawAmount = (float) ($shift->withdraw_amount ?? 0);
+        $refillCashAmount = (float) ($shift->refill_cash_amount ?? 0);
+        $totalInitialCash = round($openingAmount + $refillCashPacketAmount - $refillCashAmount, 2);
+        $totalWithdraw = round($withdrawAmount - $atmAmount, 2);
+        $expectedCash = round($totalInitialCash + $cashSales - $totalWithdraw, 2);
         $closingAmount = $shift->closing_amount !== null ? (float) $shift->closing_amount : null;
 
         return [
             'id' => (int) $shift->id,
             'opening_amount' => round($openingAmount, 2),
+            'refill_cash_packet_amount' => round($refillCashPacketAmount, 2),
+            'refill_cash_packet_note' => $shift->refill_cash_packet_note,
+            'atm_amount' => round($atmAmount, 2),
+            'atm_note' => $shift->atm_note,
             'opened_by' => $shift->opened_by ? (int) $shift->opened_by : null,
             'opened_by_name' => $shift->opener?->name,
             'opened_staff_id' => $shift->opened_staff_id ? (int) $shift->opened_staff_id : null,
             'opened_staff_name' => $shift->openedStaff?->name,
             'opened_at' => optional($shift->opened_at)?->toDateTimeString(),
             'closing_amount' => $closingAmount !== null ? round($closingAmount, 2) : null,
+            'withdraw_amount' => round($withdrawAmount, 2),
+            'withdraw_note' => $shift->withdraw_note,
+            'refill_cash_amount' => round($refillCashAmount, 2),
+            'refill_cash_note' => $shift->refill_cash_note,
             'closed_by' => $shift->closed_by ? (int) $shift->closed_by : null,
             'closed_by_name' => $shift->closer?->name,
             'closed_staff_id' => $shift->closed_staff_id ? (int) $shift->closed_staff_id : null,
@@ -148,11 +178,18 @@ class PosCashShiftController extends Controller
             'status' => (string) $shift->status,
             'remark' => $shift->remark,
             'cash_sales' => round($cashSales, 2),
+            'total_initial_cash' => $totalInitialCash,
+            'total_withdraw' => $totalWithdraw,
             'expected_cash' => $expectedCash,
             'difference' => $closingAmount !== null ? round($closingAmount - $expectedCash, 2) : null,
             'created_at' => optional($shift->created_at)?->toDateTimeString(),
             'updated_at' => optional($shift->updated_at)?->toDateTimeString(),
         ];
+    }
+
+    private function money(mixed $value): float
+    {
+        return round((float) $value, 2);
     }
 
     private function cashSalesForShift(PosCashShift $shift): float

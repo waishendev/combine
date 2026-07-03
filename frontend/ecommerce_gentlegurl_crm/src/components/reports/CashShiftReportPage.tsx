@@ -7,16 +7,22 @@ import { formatDateTime12Hour } from '@/lib/formatDateTime'
 type CashShiftRow = {
   id: number
   opening_amount: number
+  refill_cash_packet_amount: number
+  atm_amount: number
   opened_by_name?: string | null
   opened_staff_name?: string | null
   opened_at?: string | null
   closing_amount?: number | null
+  withdraw_amount: number
+  refill_cash_amount: number
   closed_by_name?: string | null
   closed_staff_name?: string | null
   closed_at?: string | null
   status: 'OPEN' | 'CLOSED'
   remark?: string | null
   cash_sales: number
+  total_initial_cash: number
+  total_withdraw: number
   expected_cash: number
   difference?: number | null
 }
@@ -116,7 +122,7 @@ export default function CashShiftReportPage() {
           <table className="min-w-full divide-y divide-gray-200 text-sm">
             <thead className="bg-gray-50 text-left text-xs font-bold uppercase tracking-wide text-gray-500">
               <tr>
-                {['Date', 'Opened Staff', 'Closed Staff', 'Opened By Account', 'Closed By Account', 'Opening Amount', 'Cash Sales', 'Expected Cash', 'Closing Amount', 'Difference', 'Status', 'Opened At', 'Closed At', 'Remark'].map((heading) => (
+                {['Date', 'Opened Staff', 'Closed Staff', 'Opened By Account', 'Closed By Account', 'Opening Amount', 'Refill Cash (Packet)', 'ATM', 'Withdraw', 'Refill Cash', 'Total Initial Cash', 'Total Withdraw', 'Cash Sales', 'Expected Cash', 'Closing Amount', 'Difference', 'Status', 'Opened At', 'Closed At', 'Remark'].map((heading) => (
                   <th key={heading} className="whitespace-nowrap px-4 py-3">{heading}</th>
                 ))}
               </tr>
@@ -130,6 +136,12 @@ export default function CashShiftReportPage() {
                   <td className="whitespace-nowrap px-4 py-3">{row.opened_by_name ?? '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3">{row.closed_by_name ?? '—'}</td>
                   <td className="whitespace-nowrap px-4 py-3 font-semibold">{currency(row.opening_amount)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{currency(row.refill_cash_packet_amount)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{currency(row.atm_amount)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{currency(row.withdraw_amount)}</td>
+                  <td className="whitespace-nowrap px-4 py-3">{currency(row.refill_cash_amount)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold">{currency(row.total_initial_cash)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 font-semibold">{currency(row.total_withdraw)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{currency(row.cash_sales)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{currency(row.expected_cash)}</td>
                   <td className="whitespace-nowrap px-4 py-3">{row.closing_amount == null ? '—' : currency(row.closing_amount)}</td>
@@ -141,7 +153,7 @@ export default function CashShiftReportPage() {
                 </tr>
               ))}
               {!loading && rows.length === 0 ? (
-                <tr><td colSpan={14} className="px-4 py-10 text-center text-gray-500">No cash shifts found.</td></tr>
+                <tr><td colSpan={20} className="px-4 py-10 text-center text-gray-500">No cash shifts found.</td></tr>
               ) : null}
             </tbody>
           </table>

@@ -16,10 +16,18 @@ class PosCashShift extends Model
 
     protected $fillable = [
         'opening_amount',
+        'refill_cash_packet_amount',
+        'refill_cash_packet_note',
+        'atm_amount',
+        'atm_note',
         'opened_by',
         'opened_staff_id',
         'opened_at',
         'closing_amount',
+        'withdraw_amount',
+        'withdraw_note',
+        'refill_cash_amount',
+        'refill_cash_note',
         'closed_by',
         'closed_staff_id',
         'closed_at',
@@ -31,8 +39,12 @@ class PosCashShift extends Model
     {
         return [
             'opening_amount' => 'decimal:2',
+            'refill_cash_packet_amount' => 'decimal:2',
+            'atm_amount' => 'decimal:2',
             'opened_at' => 'datetime',
             'closing_amount' => 'decimal:2',
+            'withdraw_amount' => 'decimal:2',
+            'refill_cash_amount' => 'decimal:2',
             'closed_at' => 'datetime',
         ];
     }
