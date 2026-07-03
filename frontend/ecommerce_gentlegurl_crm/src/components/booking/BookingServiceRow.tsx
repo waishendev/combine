@@ -10,6 +10,10 @@ export interface BookingServiceRowData {
   name: string
   cnName?: string
   serviceType?: string
+  categoryId?: number | null
+  categoryIds?: number[]
+  categoryName?: string
+  categoryNames?: string[]
   description: string
   duration_min: number
   service_price: string | number
@@ -119,6 +123,11 @@ export default function BookingServiceRow({
       <td className="px-4 py-2 border border-gray-200">{service.imageUrl ? <img src={service.imageUrl} alt={service.name} className="h-10 w-10 rounded object-cover" /> : <div className="h-10 w-10 rounded bg-gray-200" />}</td>
       <td className="px-4 py-2 border border-gray-200"><div className="font-semibold text-gray-900">{service.name}</div>{service.cnName ? <div className="mt-0.5 text-xs text-gray-500">{service.cnName}</div> : null}</td>
       <td className="px-4 py-2 border border-gray-200">{service.serviceType || '-'}</td>
+      <td className="px-4 py-2 border border-gray-200">
+        {service.categoryNames && service.categoryNames.length > 0
+          ? service.categoryNames.join(', ')
+          : service.categoryName || '-'}
+      </td>
       <td className="px-4 py-2 border border-gray-200">{service.description || '-'}</td>
       <td className="px-4 py-2 border border-gray-200">{service.duration_min}</td>
       <td className="px-4 py-2 border border-gray-200">

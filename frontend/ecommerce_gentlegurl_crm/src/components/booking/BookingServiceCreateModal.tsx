@@ -7,6 +7,9 @@
 import { ChangeEvent, FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
+import BookingServiceCategoriesPicker, {
+  type BookingServiceCategoryOption,
+} from './BookingServiceCategoriesPicker'
 import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
@@ -24,7 +27,6 @@ import BookingServiceProductLinkPanel, {
   appendProductLinkFormData,
   buildInitialProductLinkValue,
   type BookingServiceProductLinkValue,
-  type LinkedBookingProductSummary,
 } from './BookingServiceProductLinkPanel'
 import { useI18n } from '@/lib/i18n'
 import { compressImage } from '@/lib/compressImage'
@@ -49,6 +51,7 @@ interface FormState {
   cn_name: string
   description: string
   service_type: ServiceType
+  categoryIds: number[]
   duration_min: string
   price_mode: PriceMode
   service_price: string
@@ -65,11 +68,28 @@ interface FormState {
 }
 type BookingServiceOption = { id: number; name: string; cn_name?: string | null; duration_min: number; service_price: number }
 
+const extractCategoryIdsFromService = (service: BookingServiceApiItem): number[] => {
+  if (Array.isArray(service.category_ids)) {
+    return service.category_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+  }
+  if (service.category_id != null) {
+    const id = Number(service.category_id)
+    return Number.isFinite(id) && id > 0 ? [id] : []
+  }
+  if (Array.isArray(service.categories)) {
+    return service.categories
+      .map((category) => Number(category?.id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  }
+  return []
+}
+
 const initialFormState: FormState = {
   name: '',
   cn_name: '',
   description: '',
   service_type: 'standard',
+  categoryIds: [],
   duration_min: '30',
   price_mode: 'fixed',
   service_price: '0',
@@ -153,6 +173,7 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
       service.service_type === 'premium' || service.service_type === 'standard'
         ? service.service_type
         : 'standard',
+    categoryIds: extractCategoryIdsFromService(service),
     duration_min: String(service.duration_min ?? 30),
     price_mode: service.price_mode === 'range' ? 'range' : 'fixed',
     service_price: String(service.service_price ?? 0),
@@ -190,11 +211,43 @@ export default function BookingServiceCreateModal({
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
   const [bookingServiceOptions, setBookingServiceOptions] = useState<BookingServiceOption[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<BookingServiceCategoryOption[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
   /** False while copying from server: must track readiness separately from props (first paint can miss copy id). */
   const [copySourceReady, setCopySourceReady] = useState(() => copySourceId == null)
   const [productLink, setProductLink] = useState<BookingServiceProductLinkValue>(buildInitialProductLinkValue())
   const imageInputRef = useRef<HTMLInputElement>(null)
+
+
+  useEffect(() => {
+    let ignore = false
+    const loadCategories = async () => {
+      try {
+        const res = await fetch('/api/proxy/admin/booking/categories?all=1', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!ignore) setCategoryOptions([])
+          return
+        }
+        const json = await res.json().catch(() => null)
+        const payload = json?.data ?? json
+        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
+        const mapped = rows
+          .map((row: { id?: unknown; name?: unknown; cn_name?: unknown; is_active?: unknown; sort_order?: unknown }) => ({
+            id: Number(row?.id),
+            name: String(row?.name ?? '').trim(),
+            cn_name: typeof row?.cn_name === 'string' ? row.cn_name : null,
+            is_active: row?.is_active !== false && row?.is_active !== 0 && row?.is_active !== '0',
+            sort_order: row?.sort_order != null ? Number(row.sort_order) : undefined,
+          }))
+          .filter((row: BookingServiceCategoryOption) => row.id > 0 && row.name)
+        if (!ignore) setCategoryOptions(mapped)
+      } catch {
+        if (!ignore) setCategoryOptions([])
+      }
+    }
+    void loadCategories()
+    return () => { ignore = true }
+  }, [])
 
   useEffect(() => {
     let ignore = false
@@ -490,6 +543,7 @@ export default function BookingServiceCreateModal({
       fd.append('cn_name', form.cn_name.trim())
       fd.append('description', form.description.trim())
       fd.append('service_type', form.service_type)
+      form.categoryIds.forEach((categoryId) => fd.append('category_ids[]', String(categoryId)))
       fd.append('duration_min', String(duration))
       fd.append('price_mode', form.price_mode)
       if (form.price_mode === 'fixed') {
@@ -768,6 +822,16 @@ export default function BookingServiceCreateModal({
                 <option value="standard">Standard</option>
                 <option value="premium">Premium</option>
               </select>
+            </div>
+
+            <div className="md:col-span-2">
+              <BookingServiceCategoriesPicker
+                categories={categoryOptions}
+                value={form.categoryIds}
+                onChange={(categoryIds) => setForm((prev) => ({ ...prev, categoryIds }))}
+                disabled={disableForm}
+                label="Categories"
+              />
             </div>
 
             <div>

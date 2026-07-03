@@ -62,6 +62,9 @@ export default function BookingServiceCategoryDeleteModal({
         </div>
 
         <p className="text-sm text-gray-700">Are you sure you want to delete this category?</p>
+        <p className="mt-2 text-xs text-amber-800 rounded border border-amber-200 bg-amber-50 px-3 py-2">
+          The linked Product Category under Booking → Product Categories will be deleted as well.
+        </p>
         <div className="mt-3 rounded border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
           <div className="font-medium">{category.name}</div>
           <div className="text-xs text-gray-500">/{category.slug}</div>

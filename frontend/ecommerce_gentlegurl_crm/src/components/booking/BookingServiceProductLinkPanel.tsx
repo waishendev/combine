@@ -190,6 +190,13 @@ export default function BookingServiceProductLinkPanel({
           {mode === 'create' ? 'Auto-create linked booking product' : 'Overwrite linked booking product'}
         </span>
       </label>
+      {value.overwriteLinkedProduct ? (
+        <p className="text-xs text-gray-600">
+          {mode === 'create'
+            ? 'The new linked product will also get Product Categories that match this service’s categories by English and Chinese name (Booking → Product Categories).'
+            : 'Also assigns Product Categories on the linked product by matching this service’s categories to Booking → Product Categories (English + Chinese name).'}
+        </p>
+      ) : null}
     </div>
   )
 }

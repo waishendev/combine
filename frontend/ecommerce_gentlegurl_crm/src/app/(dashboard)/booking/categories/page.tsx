@@ -30,6 +30,10 @@ export default async function Page() {
         <Link href="/booking/categories" className="text-blue-600 hover:underline">
           Categories
         </Link>
+        <span className="mx-1 text-gray-500">·</span>
+        <Link href="/booking/product-categories" className="text-blue-600 hover:underline">
+          Product Categories
+        </Link>
       </div>
       <h2 className="text-3xl font-semibold mb-6">{t('booking.categoriesTitle')}</h2>
       <BookingServiceCategoriesTable permissions={user.permissions} />

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
-use App\Models\Booking\BookingService;
 use App\Models\Booking\BookingServiceCategory;
+use App\Services\Booking\BookingServiceCategoryProductLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -12,10 +12,14 @@ use Illuminate\Support\Str;
 
 class CategoryController extends Controller
 {
+    public function __construct(
+        private readonly BookingServiceCategoryProductLinkService $productCategoryLinkService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $query = BookingServiceCategory::query()
-            ->with('services:id,name,cn_name')
             ->when($request->filled('name'), fn ($inner) => $inner->where('name', 'like', '%' . $request->string('name') . '%'))
             ->orderBy('sort_order')
             ->orderBy('name');
@@ -35,7 +39,7 @@ class CategoryController extends Controller
 
     public function show(int $id)
     {
-        $category = BookingServiceCategory::query()->with('services:id,name,cn_name')->findOrFail($id);
+        $category = BookingServiceCategory::query()->findOrFail($id);
 
         return $this->respond($this->formatCategory($category));
     }
@@ -49,8 +53,6 @@ class CategoryController extends Controller
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
-            'service_ids' => ['nullable', 'array'],
-            'service_ids.*' => ['integer', 'exists:booking_services,id'],
         ]);
 
         if (array_key_exists('cn_name', $data)) {
@@ -60,9 +62,6 @@ class CategoryController extends Controller
 
         $data['slug'] = $data['slug'] ?? Str::slug($data['name']);
         $data['sort_order'] = ((int) BookingServiceCategory::query()->max('sort_order')) + 1;
-        $serviceIds = array_values(array_unique(array_map('intval', $data['service_ids'] ?? [])));
-        unset($data['service_ids']);
-
         if ($request->hasFile('image')) {
             $data['image_path'] = $request->file('image')->storeAs(
                 'booking/category-images',
@@ -72,9 +71,12 @@ class CategoryController extends Controller
         }
 
         $category = BookingServiceCategory::query()->create($data);
-        $category->services()->sync(BookingService::query()->whereIn('id', $serviceIds)->pluck('id')->all());
 
-        return $this->respond($this->formatCategory($category->fresh('services:id,name,cn_name')), 'Created', true, 201);
+        if ($request->boolean('create_linked_product_category')) {
+            $this->productCategoryLinkService->linkAfterCreate($category);
+        }
+
+        return $this->respond($this->formatCategory($category->fresh()), 'Created', true, 201);
     }
 
     public function update(Request $request, int $id)
@@ -87,8 +89,6 @@ class CategoryController extends Controller
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
             'image' => ['nullable', 'image', 'max:5120'],
-            'service_ids' => ['nullable', 'array'],
-            'service_ids.*' => ['integer', 'exists:booking_services,id'],
         ]);
 
         if (array_key_exists('cn_name', $data)) {
@@ -109,23 +109,32 @@ class CategoryController extends Controller
             );
         }
 
-        $serviceIds = null;
-        if (array_key_exists('service_ids', $data)) {
-            $serviceIds = array_values(array_unique(array_map('intval', $data['service_ids'] ?? [])));
-            unset($data['service_ids']);
-        }
-
         $category->update($data);
 
-        if ($serviceIds !== null) {
-            $category->services()->sync(BookingService::query()->whereIn('id', $serviceIds)->pluck('id')->all());
+        $unlinkProductCategory = $request->boolean('unlink_product_category');
+        $overwriteLinkedProductCategory = $request->boolean('overwrite_linked_product_category');
+        $hasLinkedProductCategoryInput = $request->has('linked_booking_product_category_id');
+        $linkedProductCategoryId = $hasLinkedProductCategoryInput
+            ? (($request->input('linked_booking_product_category_id') ?? null) !== null
+                ? (int) $request->input('linked_booking_product_category_id')
+                : null)
+            : null;
+
+        if ($unlinkProductCategory || $overwriteLinkedProductCategory || $hasLinkedProductCategoryInput) {
+            $this->productCategoryLinkService->handleUpdateLink(
+                $category,
+                $unlinkProductCategory,
+                $overwriteLinkedProductCategory,
+                $linkedProductCategoryId,
+                $hasLinkedProductCategoryInput,
+            );
         }
 
         if (isset($data['image_path']) && $oldImagePath && $oldImagePath !== $data['image_path'] && Storage::disk('public')->exists($oldImagePath)) {
             Storage::disk('public')->delete($oldImagePath);
         }
 
-        return $this->respond($this->formatCategory($category->fresh('services:id,name,cn_name')));
+        return $this->respond($this->formatCategory($category->fresh()));
     }
 
     public function bulkUpdate(Request $request)
@@ -137,18 +146,10 @@ class CategoryController extends Controller
             'cn_name' => ['nullable', 'string', 'max:150'],
             'description' => ['nullable', 'string'],
             'is_active' => ['nullable', 'boolean'],
-            'service_ids' => ['nullable', 'array'],
-            'service_ids.*' => ['integer', 'exists:booking_services,id'],
         ]);
 
         $categories = BookingServiceCategory::query()->whereIn('id', $validated['ids'])->get();
         $payload = collect($validated)->except('ids')->toArray();
-        $serviceIds = null;
-        if (array_key_exists('service_ids', $payload)) {
-            $serviceIds = array_values(array_unique(array_map('intval', $payload['service_ids'] ?? [])));
-            unset($payload['service_ids']);
-        }
-
         if (array_key_exists('cn_name', $payload)) {
             $cnName = trim((string) ($payload['cn_name'] ?? ''));
             $payload['cn_name'] = $cnName !== '' ? $cnName : null;
@@ -157,16 +158,11 @@ class CategoryController extends Controller
         foreach ($categories as $category) {
             if (! empty($payload)) {
                 $category->update($payload);
-            }
-            if ($serviceIds !== null) {
-                $category->services()->sync(
-                    BookingService::query()->whereIn('id', $serviceIds)->pluck('id')->all()
-                );
+                $this->productCategoryLinkService->syncLinkedProductCategory($category->fresh());
             }
         }
 
         $fresh = BookingServiceCategory::query()
-            ->with('services:id,name,cn_name')
             ->whereIn('id', $validated['ids'])
             ->get()
             ->map(fn (BookingServiceCategory $category) => $this->formatCategory($category));
@@ -177,6 +173,7 @@ class CategoryController extends Controller
     public function destroy(int $id)
     {
         $category = BookingServiceCategory::query()->findOrFail($id);
+        $this->productCategoryLinkService->deleteLinkedProductCategory($category);
         $category->delete();
 
         return $this->respond(null);
@@ -196,7 +193,7 @@ class CategoryController extends Controller
             $swap->update(['sort_order' => $original]);
         }
 
-        return $this->respond($this->formatCategory($category->fresh('services:id,name,cn_name')));
+        return $this->respond($this->formatCategory($category->fresh()));
     }
 
     public function moveDown(int $id)
@@ -213,13 +210,12 @@ class CategoryController extends Controller
             $swap->update(['sort_order' => $original]);
         }
 
-        return $this->respond($this->formatCategory($category->fresh('services:id,name,cn_name')));
+        return $this->respond($this->formatCategory($category->fresh()));
     }
 
     public function exportCsv(Request $request)
     {
         $categories = BookingServiceCategory::query()
-            ->with('services:id,name,cn_name')
             ->orderBy('sort_order')
             ->orderBy('id')
             ->get();
@@ -229,7 +225,7 @@ class CategoryController extends Controller
             return response()->json(['message' => 'Unable to build booking categories CSV export.'], 500);
         }
 
-        $headers = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'sort_order', 'service_ids'];
+        $headers = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'sort_order'];
         fputcsv($stream, $headers);
 
         foreach ($categories as $category) {
@@ -241,7 +237,6 @@ class CategoryController extends Controller
                 $category->description,
                 $category->is_active ? 'true' : 'false',
                 $category->sort_order,
-                $category->services->pluck('id')->join('|'),
             ]);
         }
 
@@ -274,7 +269,7 @@ class CategoryController extends Controller
         }
 
         $headers = array_map(fn ($header) => trim((string) preg_replace('/^\xEF\xBB\xBF/', '', (string) $header)), $headers);
-        $allowedHeaders = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'sort_order', 'service_ids'];
+        $allowedHeaders = ['id', 'name', 'cn_name', 'slug', 'description', 'is_active', 'sort_order'];
         $unknownHeaders = array_values(array_diff(array_filter($headers), $allowedHeaders));
 
         if (! empty($unknownHeaders)) {
@@ -306,15 +301,6 @@ class CategoryController extends Controller
 
             $summary['totalRows']++;
 
-            $serviceIds = [];
-            if (isset($payload['service_ids']) && $payload['service_ids'] !== '') {
-                $serviceIds = collect(explode('|', $payload['service_ids']))
-                    ->map(fn ($id) => (int) trim($id))
-                    ->filter(fn ($id) => $id > 0)
-                    ->unique()
-                    ->values()
-                    ->all();
-            }
 
             $raw = [
                 'name' => $payload['name'] ?? null,
@@ -323,7 +309,6 @@ class CategoryController extends Controller
                 'description' => $payload['description'] ?? null,
                 'sort_order' => $payload['sort_order'] ?? null,
                 'is_active' => $payload['is_active'] ?? null,
-                'service_ids' => $serviceIds,
             ];
 
             if ($raw['is_active'] !== null && $raw['is_active'] !== '') {
@@ -343,8 +328,6 @@ class CategoryController extends Controller
                 'description' => ['nullable', 'string'],
                 'is_active' => ['required', 'boolean'],
                 'sort_order' => ['nullable', 'integer', 'min:0'],
-                'service_ids' => ['nullable', 'array'],
-                'service_ids.*' => ['integer', 'exists:booking_services,id'],
             ]);
 
             if ($validator->fails()) {
@@ -369,20 +352,18 @@ class CategoryController extends Controller
                 if ($validated['sort_order'] === null) {
                     $validated['sort_order'] = ((int) BookingServiceCategory::query()->max('sort_order')) + 1;
                 }
-                $category = BookingServiceCategory::query()->create(collect($validated)->except('service_ids')->all());
+                $category = BookingServiceCategory::query()->create($validated);
+                $this->productCategoryLinkService->linkAfterCreate($category);
                 $summary['created']++;
             } else {
-                $incoming = collect($validated)->except('service_ids')->all();
-                $currentServices = $category->services()->pluck('booking_services.id')->map(fn ($id) => (int) $id)->sort()->values()->all();
-                $nextServices = collect($validated['service_ids'] ?? [])->map(fn ($id) => (int) $id)->sort()->values()->all();
+                $incoming = $validated;
                 $isUnchanged =
                     ($category->name === ($incoming['name'] ?? $category->name)) &&
                     ((string) ($category->cn_name ?? '') === (string) ($incoming['cn_name'] ?? $category->cn_name ?? '')) &&
                     ($category->slug === ($incoming['slug'] ?? $category->slug)) &&
                     (($category->description ?? null) === ($incoming['description'] ?? null)) &&
                     ((bool) $category->is_active === (bool) ($incoming['is_active'] ?? $category->is_active)) &&
-                    ((int) $category->sort_order === (int) ($incoming['sort_order'] ?? $category->sort_order)) &&
-                    ($currentServices === $nextServices);
+                    ((int) $category->sort_order === (int) ($incoming['sort_order'] ?? $category->sort_order));
                 if ($isUnchanged) {
                     $summary['skipped']++;
                     continue;
@@ -390,11 +371,11 @@ class CategoryController extends Controller
                 if ($validated['sort_order'] === null) {
                     unset($validated['sort_order']);
                 }
-                $category->update(collect($validated)->except('service_ids')->all());
+                $category->update($validated);
+                $this->productCategoryLinkService->syncLinkedProductCategory($category->fresh());
                 $summary['updated']++;
             }
 
-            $category->services()->sync($validated['service_ids'] ?? []);
         }
 
         fclose($handle);
@@ -404,14 +385,18 @@ class CategoryController extends Controller
 
     private function formatCategory(BookingServiceCategory $category): array
     {
-        $services = $category->services
-            ->sortBy('name')
-            ->values()
-            ->map(fn (BookingService $service) => [
-                'id' => (int) $service->id,
-                'name' => $service->name,
-                'cn_name' => $service->cn_name,
-            ])->all();
+        $linkedProductCategory = null;
+        if ($category->linked_booking_product_category_id) {
+            $linked = $this->productCategoryLinkService->resolveLinkedProductCategory($category);
+            if ($linked) {
+                $linkedProductCategory = [
+                    'id' => (int) $linked->id,
+                    'name' => $linked->name,
+                    'cn_name' => $linked->cn_name,
+                    'is_active' => (bool) $linked->is_active,
+                ];
+            }
+        }
 
         return [
             'id' => (int) $category->id,
@@ -423,8 +408,10 @@ class CategoryController extends Controller
             'image_url' => $category->image_url,
             'is_active' => (bool) $category->is_active,
             'sort_order' => (int) $category->sort_order,
-            'services' => $services,
-            'service_ids' => array_map(fn (array $item) => (int) $item['id'], $services),
+            'linked_booking_product_category_id' => $category->linked_booking_product_category_id
+                ? (int) $category->linked_booking_product_category_id
+                : null,
+            'linked_booking_product_category' => $linkedProductCategory,
             'created_at' => $category->created_at,
             'updated_at' => $category->updated_at,
         ];

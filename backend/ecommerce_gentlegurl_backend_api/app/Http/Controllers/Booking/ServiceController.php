@@ -35,13 +35,15 @@ class ServiceController extends Controller
     public function index(Request $request)
     {
         $services = BookingService::query()
-            ->with(['categories' => fn ($query) => $query->where('is_active', true)->orderBy('sort_order')->orderBy('name')])
+            ->with(['categories' => fn ($query) => $query->where('is_active', true)])
             ->where('is_active', true)
             ->when($request->filled('category_id'), function ($query) use ($request) {
-                $query->whereHas('categories', function ($categoryQuery) use ($request) {
-                    $categoryQuery->where('booking_service_category_id', (int) $request->integer('category_id'))
-                        ->where('is_active', true);
-                });
+                $categoryId = (int) $request->integer('category_id');
+                if ($categoryId > 0) {
+                    $query->whereHas('categories', fn ($categoryQuery) => $categoryQuery
+                        ->where('booking_service_categories.id', $categoryId)
+                        ->where('is_active', true));
+                }
             })
             ->orderBy('name')
             ->get([
@@ -73,7 +75,7 @@ class ServiceController extends Controller
     {
         $service = BookingService::query()->with([
             'primarySlots',
-            'categories' => fn ($query) => $query->where('is_active', true)->orderBy('sort_order')->orderBy('name'),
+            'categories' => fn ($query) => $query->where('is_active', true),
             'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price,price,price_mode,price_range_min,price_range_max,image_path,description,service_type,deposit_amount',
         ])->findOrFail($id);
 
@@ -143,12 +145,7 @@ class ServiceController extends Controller
             'allowed_staffs' => $staffs,
             'allowed_staff_count' => count($staffs),
             'allowed_staff_names' => collect($staffs)->pluck('name')->filter()->values()->all(),
-            'category_ids' => $service->categories->pluck('id')->map(fn ($id) => (int) $id)->values()->all(),
-            'categories' => $service->categories->map(fn (BookingServiceCategory $category) => [
-                'id' => (int) $category->id,
-                'name' => $category->name,
-                'cn_name' => $category->cn_name,
-            ])->values()->all(),
+            ...$this->mapCategoryFields($service),
             'questions' => $service->questions()
                 ->where('is_active', true)
                 ->with(['options' => fn ($q) => $q
@@ -198,5 +195,27 @@ class ServiceController extends Controller
         }
 
         return $payload;
+    }
+
+    private function mapCategoryFields(BookingService $service): array
+    {
+        $categories = $service->relationLoaded('categories')
+            ? $service->categories->sortBy('name')->values()
+            : collect();
+
+        $categoryPayload = $categories->map(fn (BookingServiceCategory $category) => [
+            'id' => (int) $category->id,
+            'name' => $category->name,
+            'cn_name' => $category->cn_name,
+        ])->all();
+
+        $firstCategory = $categoryPayload[0] ?? null;
+
+        return [
+            'category_id' => $firstCategory ? (int) $firstCategory['id'] : null,
+            'category_ids' => array_map(fn (array $category) => (int) $category['id'], $categoryPayload),
+            'category' => $firstCategory,
+            'categories' => $categoryPayload,
+        ];
     }
 }

@@ -43,8 +43,12 @@ class BookingService extends Model
 
     public function categories()
     {
-        return $this->belongsToMany(BookingServiceCategory::class, 'booking_service_category_service', 'booking_service_id', 'booking_service_category_id')
-            ->withTimestamps();
+        return $this->belongsToMany(
+            BookingServiceCategory::class,
+            'booking_service_category_service',
+            'booking_service_id',
+            'booking_service_category_id',
+        )->withTimestamps();
     }
 
     public function primarySlots()

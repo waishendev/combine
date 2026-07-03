@@ -1,7 +1,13 @@
 'use client'
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
+import { ChangeEvent, FormEvent, useRef, useState } from 'react'
 
+import BookingServiceCategoryProductLinkPanel, {
+  appendCategoryProductLinkFormData,
+  buildInitialCategoryProductLinkValue,
+  type BookingServiceCategoryProductLinkValue,
+  type LinkedBookingProductCategorySummary,
+} from './BookingServiceCategoryProductLinkPanel'
 import type { BookingServiceCategoryRowData } from './BookingServiceCategoryRow'
 import {
   mapBookingServiceCategoryApiItemToRow,
@@ -12,9 +18,6 @@ import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '@/components/mediaAccept'
 import { BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE } from './bookingServiceUtils'
-import BookingCategoryServicesSection, {
-  type BookingCategoryServiceOption,
-} from './BookingCategoryServicesSection'
 
 interface BookingServiceCategoryCreateModalProps {
   onClose: () => void
@@ -31,48 +34,16 @@ export default function BookingServiceCategoryCreateModal({
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
-  const [serviceIds, setServiceIds] = useState<number[]>([])
-  const [services, setServices] = useState<BookingCategoryServiceOption[]>([])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [productCategoryLink, setProductCategoryLink] = useState<BookingServiceCategoryProductLinkValue>(
+    buildInitialCategoryProductLinkValue(),
+  )
   const imageInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    let ignore = false
-    const load = async () => {
-      try {
-        const res = await fetch('/api/proxy/admin/booking/services?per_page=200', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json().catch(() => null)
-        const payload = json?.data?.data
-        const rows = Array.isArray(payload) ? payload : []
-        if (!ignore) {
-          setServices(
-            rows
-              .map((r: { id?: unknown; name?: unknown }) => ({
-                id: Number(r?.id),
-                name: String(r?.name ?? ''),
-              }))
-              .filter((r: BookingCategoryServiceOption) => r.id > 0 && r.name),
-          )
-        }
-      } catch {
-        if (!ignore) setServices([])
-      }
-    }
-    void load()
-    return () => {
-      ignore = true
-    }
-  }, [])
 
-  const toggleService = (id: number) => {
-    setServiceIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
-  }
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -112,7 +83,7 @@ export default function BookingServiceCategoryCreateModal({
       fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
       if (imageFile) fd.append('image', imageFile)
-      serviceIds.forEach((id) => fd.append('service_ids[]', String(id)))
+      appendCategoryProductLinkFormData(fd, productCategoryLink, false)
 
       const res = await fetch('/api/proxy/admin/booking/categories', {
         method: 'POST',
@@ -172,6 +143,15 @@ export default function BookingServiceCategoryCreateModal({
       }
     >
       <form id="booking-service-category-create-form" onSubmit={handleSubmit} className="px-5 py-4">
+        <div className="mb-6">
+          <BookingServiceCategoryProductLinkPanel
+            mode="create"
+            value={productCategoryLink}
+            onChange={setProductCategoryLink}
+            disabled={submitting}
+          />
+        </div>
+
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="w-full shrink-0 space-y-2 lg:w-[300px]">
             <h3 className="text-sm font-medium text-gray-700">Image</h3>
@@ -238,7 +218,7 @@ export default function BookingServiceCategoryCreateModal({
             </div>
           </div>
 
-          <div className="min-w-0 flex-1 space-y-4">
+            <div className="min-w-0 flex-1 space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
                 English Name <span className="text-red-500">*</span>
@@ -294,11 +274,6 @@ export default function BookingServiceCategoryCreateModal({
                 <option value="inactive">{t('common.inactive')}</option>
               </select>
             </div>
-            <BookingCategoryServicesSection
-              services={services}
-              serviceIds={serviceIds}
-              onToggle={toggleService}
-            />
           </div>
         </div>
 
