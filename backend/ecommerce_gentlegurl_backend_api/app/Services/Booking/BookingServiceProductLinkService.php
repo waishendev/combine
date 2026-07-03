@@ -12,6 +12,11 @@ use Illuminate\Validation\ValidationException;
 
 class BookingServiceProductLinkService
 {
+    public function __construct(
+        private readonly BookingServiceCategoryProductLinkService $categoryProductLinkService,
+    ) {
+    }
+
     /** @var list<string> */
     private array $copiedImagePaths = [];
 
@@ -57,8 +62,9 @@ class BookingServiceProductLinkService
 
         $product = BookingProduct::query()->create($payload);
         $this->syncQuestionsFromService($service, $product);
+        $this->syncProductCategoriesFromService($service, $product);
 
-        return $product->fresh(['questions.options']);
+        return $product->fresh(['questions.options', 'categories']);
     }
 
     public function syncProductFromService(BookingService $service, BookingProduct $product): BookingProduct
@@ -75,12 +81,13 @@ class BookingServiceProductLinkService
 
         $product->update($payload);
         $this->syncQuestionsFromService($service, $product);
+        $this->syncProductCategoriesFromService($service, $product);
 
         if ($newImagePath !== null && $oldImagePath && $oldImagePath !== $newImagePath) {
             $this->pendingDeletedImagePaths[] = $oldImagePath;
         }
 
-        return $product->fresh(['questions.options']);
+        return $product->fresh(['questions.options', 'categories']);
     }
 
     public function assignProductLink(BookingService $service, ?int $productId): void
@@ -114,7 +121,10 @@ class BookingServiceProductLinkService
         }
 
         if ($createLinkedProduct) {
-            $product = $this->createProductFromService($service->fresh());
+            $product = $this->createProductFromService($service->fresh([
+                'categories:id,name,cn_name',
+                'questions.options.linkedBookingService',
+            ]));
             $this->assignProductLink($service, (int) $product->id);
 
             return;
@@ -145,7 +155,10 @@ class BookingServiceProductLinkService
                 ]);
             }
 
-            $product = $this->createProductFromService($service->fresh());
+            $product = $this->createProductFromService($service->fresh([
+                'categories:id,name,cn_name',
+                'questions.options.linkedBookingService',
+            ]));
             $this->assignProductLink($service, (int) $product->id);
 
             return;
@@ -245,6 +258,34 @@ class BookingServiceProductLinkService
         $this->copiedImagePaths[] = $targetPath;
 
         return $targetPath;
+    }
+
+    private function syncProductCategoriesFromService(BookingService $service, BookingProduct $product): void
+    {
+        $product->categories()->sync($this->resolveProductCategoryIdsFromService($service));
+    }
+
+    /**
+     * Map booking service categories to booking product categories by English + Chinese name.
+     *
+     * @return list<int>
+     */
+    private function resolveProductCategoryIdsFromService(BookingService $service): array
+    {
+        $service->loadMissing('categories');
+
+        if ($service->categories->isEmpty()) {
+            return [];
+        }
+
+        foreach ($service->categories as $serviceCategory) {
+            $productCategoryId = $this->categoryProductLinkService->resolveProductCategoryId($serviceCategory);
+            if ($productCategoryId) {
+                $resolvedIds[] = $productCategoryId;
+            }
+        }
+
+        return collect($resolvedIds)->unique()->values()->all();
     }
 
     private function syncQuestionsFromService(BookingService $service, BookingProduct $product): void

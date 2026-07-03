@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Storage;
 class BookingServiceCategory extends Model
 {
     protected $fillable = [
-        'name', 'cn_name', 'slug', 'description', 'image_path', 'is_active', 'sort_order',
+        'linked_booking_product_category_id', 'name', 'cn_name', 'slug', 'description', 'image_path', 'is_active', 'sort_order',
     ];
 
     protected $casts = [
@@ -19,6 +19,11 @@ class BookingServiceCategory extends Model
     protected $appends = [
         'image_url',
     ];
+
+    public function linkedBookingProductCategory()
+    {
+        return $this->belongsTo(BookingProductCategory::class, 'linked_booking_product_category_id');
+    }
 
     public function services()
     {

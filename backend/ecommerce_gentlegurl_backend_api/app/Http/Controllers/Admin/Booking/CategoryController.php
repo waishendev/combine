@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingServiceCategory;
+use App\Services\Booking\BookingServiceCategoryProductLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
@@ -11,6 +12,11 @@ use Illuminate\Support\Str;
 
 class CategoryController extends Controller
 {
+    public function __construct(
+        private readonly BookingServiceCategoryProductLinkService $productCategoryLinkService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $query = BookingServiceCategory::query()
@@ -66,6 +72,10 @@ class CategoryController extends Controller
 
         $category = BookingServiceCategory::query()->create($data);
 
+        if ($request->boolean('create_linked_product_category')) {
+            $this->productCategoryLinkService->linkAfterCreate($category);
+        }
+
         return $this->respond($this->formatCategory($category->fresh()), 'Created', true, 201);
     }
 
@@ -101,6 +111,24 @@ class CategoryController extends Controller
 
         $category->update($data);
 
+        $unlinkProductCategory = $request->boolean('unlink_product_category');
+        $overwriteLinkedProductCategory = $request->boolean('overwrite_linked_product_category');
+        $hasLinkedProductCategoryInput = $request->has('linked_booking_product_category_id');
+        $linkedProductCategoryId = $hasLinkedProductCategoryInput
+            ? (($request->input('linked_booking_product_category_id') ?? null) !== null
+                ? (int) $request->input('linked_booking_product_category_id')
+                : null)
+            : null;
+
+        if ($unlinkProductCategory || $overwriteLinkedProductCategory || $hasLinkedProductCategoryInput) {
+            $this->productCategoryLinkService->handleUpdateLink(
+                $category,
+                $unlinkProductCategory,
+                $overwriteLinkedProductCategory,
+                $linkedProductCategoryId,
+                $hasLinkedProductCategoryInput,
+            );
+        }
 
         if (isset($data['image_path']) && $oldImagePath && $oldImagePath !== $data['image_path'] && Storage::disk('public')->exists($oldImagePath)) {
             Storage::disk('public')->delete($oldImagePath);
@@ -130,6 +158,7 @@ class CategoryController extends Controller
         foreach ($categories as $category) {
             if (! empty($payload)) {
                 $category->update($payload);
+                $this->productCategoryLinkService->syncLinkedProductCategory($category->fresh());
             }
         }
 
@@ -144,6 +173,7 @@ class CategoryController extends Controller
     public function destroy(int $id)
     {
         $category = BookingServiceCategory::query()->findOrFail($id);
+        $this->productCategoryLinkService->deleteLinkedProductCategory($category);
         $category->delete();
 
         return $this->respond(null);
@@ -323,6 +353,7 @@ class CategoryController extends Controller
                     $validated['sort_order'] = ((int) BookingServiceCategory::query()->max('sort_order')) + 1;
                 }
                 $category = BookingServiceCategory::query()->create($validated);
+                $this->productCategoryLinkService->linkAfterCreate($category);
                 $summary['created']++;
             } else {
                 $incoming = $validated;
@@ -341,6 +372,7 @@ class CategoryController extends Controller
                     unset($validated['sort_order']);
                 }
                 $category->update($validated);
+                $this->productCategoryLinkService->syncLinkedProductCategory($category->fresh());
                 $summary['updated']++;
             }
 
@@ -353,6 +385,19 @@ class CategoryController extends Controller
 
     private function formatCategory(BookingServiceCategory $category): array
     {
+        $linkedProductCategory = null;
+        if ($category->linked_booking_product_category_id) {
+            $linked = $this->productCategoryLinkService->resolveLinkedProductCategory($category);
+            if ($linked) {
+                $linkedProductCategory = [
+                    'id' => (int) $linked->id,
+                    'name' => $linked->name,
+                    'cn_name' => $linked->cn_name,
+                    'is_active' => (bool) $linked->is_active,
+                ];
+            }
+        }
+
         return [
             'id' => (int) $category->id,
             'name' => $category->name,
@@ -363,6 +408,10 @@ class CategoryController extends Controller
             'image_url' => $category->image_url,
             'is_active' => (bool) $category->is_active,
             'sort_order' => (int) $category->sort_order,
+            'linked_booking_product_category_id' => $category->linked_booking_product_category_id
+                ? (int) $category->linked_booking_product_category_id
+                : null,
+            'linked_booking_product_category' => $linkedProductCategory,
             'created_at' => $category->created_at,
             'updated_at' => $category->updated_at,
         ];

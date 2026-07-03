@@ -2,6 +2,12 @@
 
 import { ChangeEvent, FormEvent, useRef, useState } from 'react'
 
+import BookingServiceCategoryProductLinkPanel, {
+  appendCategoryProductLinkFormData,
+  buildInitialCategoryProductLinkValue,
+  type BookingServiceCategoryProductLinkValue,
+  type LinkedBookingProductCategorySummary,
+} from './BookingServiceCategoryProductLinkPanel'
 import type { BookingServiceCategoryRowData } from './BookingServiceCategoryRow'
 import {
   mapBookingServiceCategoryApiItemToRow,
@@ -32,6 +38,9 @@ export default function BookingServiceCategoryCreateModal({
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [productCategoryLink, setProductCategoryLink] = useState<BookingServiceCategoryProductLinkValue>(
+    buildInitialCategoryProductLinkValue(),
+  )
   const imageInputRef = useRef<HTMLInputElement>(null)
 
 
@@ -74,6 +83,7 @@ export default function BookingServiceCategoryCreateModal({
       fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
       if (imageFile) fd.append('image', imageFile)
+      appendCategoryProductLinkFormData(fd, productCategoryLink, false)
 
       const res = await fetch('/api/proxy/admin/booking/categories', {
         method: 'POST',
@@ -133,6 +143,15 @@ export default function BookingServiceCategoryCreateModal({
       }
     >
       <form id="booking-service-category-create-form" onSubmit={handleSubmit} className="px-5 py-4">
+        <div className="mb-6">
+          <BookingServiceCategoryProductLinkPanel
+            mode="create"
+            value={productCategoryLink}
+            onChange={setProductCategoryLink}
+            disabled={submitting}
+          />
+        </div>
+
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="w-full shrink-0 space-y-2 lg:w-[300px]">
             <h3 className="text-sm font-medium text-gray-700">Image</h3>
@@ -199,7 +218,7 @@ export default function BookingServiceCategoryCreateModal({
             </div>
           </div>
 
-          <div className="min-w-0 flex-1 space-y-4">
+            <div className="min-w-0 flex-1 space-y-4">
             <div>
               <label className="mb-1 block text-sm font-medium text-gray-700">
                 English Name <span className="text-red-500">*</span>

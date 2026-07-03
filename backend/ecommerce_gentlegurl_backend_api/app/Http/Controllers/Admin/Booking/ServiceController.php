@@ -359,7 +359,11 @@ class ServiceController extends Controller
                 }
 
                 if ($overwriteLinkedProduct) {
-                    $service = $service->fresh(['linkedBookingProduct', 'questions.options.linkedBookingService']);
+                    $service = $service->fresh([
+                        'linkedBookingProduct',
+                        'questions.options.linkedBookingService',
+                        'categories:id,name,cn_name',
+                    ]);
                     if ($service->linkedBookingProduct) {
                         $this->productLinkService->syncProductFromService($service, $service->linkedBookingProduct);
                     }

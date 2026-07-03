@@ -2,6 +2,12 @@
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState } from 'react'
 
+import BookingServiceCategoryProductLinkPanel, {
+  appendCategoryProductLinkFormData,
+  buildInitialCategoryProductLinkValue,
+  type BookingServiceCategoryProductLinkValue,
+  type LinkedBookingProductCategorySummary,
+} from './BookingServiceCategoryProductLinkPanel'
 import type { BookingServiceCategoryRowData } from './BookingServiceCategoryRow'
 import {
   mapBookingServiceCategoryApiItemToRow,
@@ -36,6 +42,9 @@ export default function BookingServiceCategoryEditModal({
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
+  const [productCategoryLink, setProductCategoryLink] = useState<BookingServiceCategoryProductLinkValue>(
+    buildInitialCategoryProductLinkValue(),
+  )
   const imageInputRef = useRef<HTMLInputElement>(null)
 
 
@@ -67,6 +76,8 @@ export default function BookingServiceCategoryEditModal({
               description?: string | null
               is_active?: boolean
               image_url?: string | null
+              linked_booking_product_category_id?: number | null
+              linked_booking_product_category?: LinkedBookingProductCategorySummary | null
             }
           | undefined
         if (!raw) {
@@ -82,6 +93,18 @@ export default function BookingServiceCategoryEditModal({
         setInitialImageUrl(existingUrl)
         setImagePreview(existingUrl)
         setImageFile(null)
+
+        const linkedRaw = raw.linked_booking_product_category
+        const linked =
+          linkedRaw && typeof linkedRaw === 'object' && Number(linkedRaw.id) > 0
+            ? {
+                id: Number(linkedRaw.id),
+                name: String(linkedRaw.name ?? ''),
+                cn_name: linkedRaw.cn_name ?? null,
+                is_active: linkedRaw.is_active !== false,
+              }
+            : null
+        setProductCategoryLink(buildInitialCategoryProductLinkValue(linked))
       } catch (err) {
         if (!(err instanceof DOMException && err.name === 'AbortError')) {
           setError('Failed to load category')
@@ -134,6 +157,7 @@ export default function BookingServiceCategoryEditModal({
       fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
       if (imageFile) fd.append('image', imageFile)
+      appendCategoryProductLinkFormData(fd, productCategoryLink, true)
 
       const res = await fetch(`/api/proxy/admin/booking/categories/${categoryId}`, {
         method: 'POST',
@@ -209,6 +233,15 @@ export default function BookingServiceCategoryEditModal({
           </div>
         ) : (
           <>
+            <div className="mb-6">
+              <BookingServiceCategoryProductLinkPanel
+                mode="edit"
+                value={productCategoryLink}
+                onChange={setProductCategoryLink}
+                disabled={disableForm}
+              />
+            </div>
+
             <div className="flex flex-col gap-6 lg:flex-row lg:items-start">
               <div className="w-full shrink-0 space-y-2 lg:w-[300px]">
                 <h3 className="text-sm font-medium text-gray-700">Image</h3>
