@@ -10,6 +10,7 @@ export type BookingServiceApiItem = {
   cn_name?: string | null
   description?: string | null
   service_type?: 'premium' | 'standard' | string | null
+  category_ids?: number[] | null
   category_id?: number | string | null
   category?: { id?: number | string; name?: string | null; cn_name?: string | null } | null
   categories?: Array<{ id?: number | string; name?: string | null; cn_name?: string | null }> | null
@@ -101,6 +102,24 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
   const priceRangeMax = item.price_range_max != null ? Number(item.price_range_max) : null
   const depositAmount = item.deposit_amount ?? 0
 
+  const categoryIds = Array.isArray(item.category_ids)
+    ? item.category_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+    : item.category_id != null
+      ? [Number(item.category_id)].filter((id) => Number.isFinite(id) && id > 0)
+      : item.category?.id != null
+        ? [Number(item.category.id)].filter((id) => Number.isFinite(id) && id > 0)
+        : Array.isArray(item.categories)
+          ? item.categories
+              .map((category) => Number(category?.id))
+              .filter((id) => Number.isFinite(id) && id > 0)
+          : []
+
+  const categoryNames = Array.isArray(item.categories)
+    ? item.categories.map((category) => String(category?.name ?? '').trim()).filter(Boolean)
+    : item.category?.name
+      ? [String(item.category.name)]
+      : []
+
   return {
     id: normalizedId,
     name: item.name ?? '-',
@@ -109,8 +128,10 @@ export const mapBookingServiceApiItemToRow = (item: BookingServiceApiItem): Book
       item.service_type === 'premium' || item.service_type === 'standard'
         ? item.service_type
         : (item.service_type ? String(item.service_type) : ''),
-    categoryId: item.category_id != null ? Number(item.category_id) : item.category?.id != null ? Number(item.category.id) : Array.isArray(item.categories) && item.categories[0]?.id != null ? Number(item.categories[0].id) : null,
-    categoryName: item.category?.name ?? (Array.isArray(item.categories) ? item.categories[0]?.name ?? '' : ''),
+    categoryId: categoryIds[0] ?? null,
+    categoryIds,
+    categoryName: categoryNames[0] ?? '',
+    categoryNames,
     description: item.description ?? '',
     duration_min: durationMin,
     service_price: servicePrice,

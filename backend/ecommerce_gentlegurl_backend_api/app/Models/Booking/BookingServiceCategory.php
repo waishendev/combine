@@ -22,7 +22,12 @@ class BookingServiceCategory extends Model
 
     public function services()
     {
-        return $this->hasMany(BookingService::class, 'category_id');
+        return $this->belongsToMany(
+            BookingService::class,
+            'booking_service_category_service',
+            'booking_service_category_id',
+            'booking_service_id',
+        )->withTimestamps();
     }
 
     public function getImageUrlAttribute(): ?string

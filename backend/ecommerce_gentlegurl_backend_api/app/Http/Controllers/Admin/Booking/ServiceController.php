@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingLog;
 use App\Models\Booking\BookingService;
+use App\Models\Booking\BookingServiceCategory;
 use App\Models\Booking\BookingServicePrimarySlot;
 use App\Models\Booking\BookingServiceQuestion;
 use App\Models\Booking\BookingServiceQuestionOption;
@@ -33,7 +34,7 @@ class ServiceController extends Controller
         $perPage = max(1, min(200, $perPage));
 
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'category:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->when($request->filled('name'), function ($query) use ($request) {
                 $term = '%' . trim((string) $request->get('name')) . '%';
                 $query->where(function ($inner) use ($term) {
@@ -50,14 +51,14 @@ class ServiceController extends Controller
             ->when($request->filled('category_id'), function ($query) use ($request) {
                 $rawCategoryId = strtolower(trim((string) $request->get('category_id')));
                 if ($rawCategoryId === 'none') {
-                    $query->whereNull('category_id');
+                    $query->whereDoesntHave('categories');
 
                     return;
                 }
 
                 $categoryId = (int) $request->integer('category_id');
                 if ($categoryId > 0) {
-                    $query->where('category_id', $categoryId);
+                    $query->whereHas('categories', fn ($categoryQuery) => $categoryQuery->where('booking_service_categories.id', $categoryId));
                 }
             })
             ->latest()
@@ -71,7 +72,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'category:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -87,7 +88,9 @@ class ServiceController extends Controller
         }
 
         $data = $request->validate([
-            'category_id' => ['required', 'integer', 'exists:booking_service_categories,id'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:booking_service_categories,id'],
+            'category_id' => ['nullable', 'integer', 'exists:booking_service_categories,id'],
             'name' => ['required', 'string'],
             'cn_name' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
@@ -152,9 +155,10 @@ class ServiceController extends Controller
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
+        $categoryIds = $this->resolveCategoryIds($request, $data);
         $createLinkedProduct = $request->boolean('create_linked_product');
         $linkedProductId = isset($data['linked_booking_product_id']) ? (int) $data['linked_booking_product_id'] : null;
-        unset($data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id']);
+        unset($data['allowed_staff_ids'], $data['primary_slots'], $data['questions'], $data['questions_json'], $data['create_linked_product'], $data['linked_booking_product_id'], $data['category_ids'], $data['category_id']);
 
         $uploadedServiceImagePath = $data['image_path'] ?? null;
 
@@ -165,10 +169,12 @@ class ServiceController extends Controller
                 $allowedStaffIds,
                 $primarySlots,
                 $questions,
+                $categoryIds,
                 $createLinkedProduct,
                 $linkedProductId,
             ) {
                 $service = BookingService::create($data);
+                $this->syncCategories($service, $categoryIds);
                 $this->syncAllowedStaffs($service, $allowedStaffIds);
                 $this->syncPrimarySlots($service, $primarySlots);
                 $this->syncQuestions($service, $questions);
@@ -192,7 +198,7 @@ class ServiceController extends Controller
                     'allowedStaffs:id,name,position,avatar_path',
                     'primarySlots',
                     'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
-                    'category:id,name,cn_name',
+                    'categories:id,name,cn_name',
                     'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
                 ])),
                 'Created',
@@ -224,7 +230,9 @@ class ServiceController extends Controller
 
         $service = BookingService::findOrFail($id);
         $data = $request->validate([
-            'category_id' => ['required', 'integer', 'exists:booking_service_categories,id'],
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:booking_service_categories,id'],
+            'category_id' => ['nullable', 'integer', 'exists:booking_service_categories,id'],
             'name' => ['sometimes', 'string'],
             'cn_name' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
@@ -292,6 +300,8 @@ class ServiceController extends Controller
         $allowedStaffIds = $this->resolveAllowedStaffIds($data['allowed_staff_ids'] ?? []);
         $primarySlots = $data['primary_slots'] ?? [];
         $questions = $data['questions'] ?? [];
+        $hasCategoryIdsInput = $request->has('category_ids') || $request->has('category_id');
+        $categoryIds = $hasCategoryIdsInput ? $this->resolveCategoryIds($request, $data) : null;
         $createLinkedProduct = $request->boolean('create_linked_product');
         $unlinkBookingProduct = $request->boolean('unlink_booking_product');
         $overwriteLinkedProduct = $request->boolean('overwrite_linked_product');
@@ -308,6 +318,8 @@ class ServiceController extends Controller
             $data['unlink_booking_product'],
             $data['overwrite_linked_product'],
             $data['linked_booking_product_id'],
+            $data['category_ids'],
+            $data['category_id'],
         );
 
         $newServiceImagePath = $data['image_path'] ?? null;
@@ -320,6 +332,8 @@ class ServiceController extends Controller
                 $allowedStaffIds,
                 $primarySlots,
                 $questions,
+                $hasCategoryIdsInput,
+                $categoryIds,
                 $createLinkedProduct,
                 $unlinkBookingProduct,
                 $overwriteLinkedProduct,
@@ -327,6 +341,9 @@ class ServiceController extends Controller
                 $linkedProductId,
             ) {
                 $service->update($data);
+                if ($hasCategoryIdsInput && $categoryIds !== null) {
+                    $this->syncCategories($service, $categoryIds);
+                }
                 $this->syncAllowedStaffs($service, $allowedStaffIds);
                 $this->syncPrimarySlots($service, $primarySlots);
                 $this->syncQuestions($service, $questions);
@@ -369,6 +386,7 @@ class ServiceController extends Controller
                 'allowedStaffs:id,name,position,avatar_path',
                 'primarySlots',
                 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                'categories:id,name,cn_name',
                 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
             ])));
         } catch (ValidationException $e) {
@@ -450,6 +468,8 @@ class ServiceController extends Controller
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer', 'exists:booking_services,id'],
 
+            'category_ids' => ['nullable', 'array'],
+            'category_ids.*' => ['integer', 'exists:booking_service_categories,id'],
             'category_id' => ['nullable', 'integer', 'exists:booking_service_categories,id'],
             'service_type' => ['nullable', 'in:premium,standard'],
             'duration_min' => ['nullable', 'integer', 'min:1'],
@@ -496,10 +516,12 @@ class ServiceController extends Controller
         $hasAllowedStaff = array_key_exists('allowed_staff_ids', $payload);
         $hasPrimarySlots = array_key_exists('primary_slots', $payload);
         $hasQuestions = array_key_exists('questions', $payload);
+        $hasCategoryIds = array_key_exists('category_ids', $payload) || array_key_exists('category_id', $payload);
+        $categoryIds = $hasCategoryIds ? $this->resolveCategoryIds($request, $payload) : null;
         $allowedStaffIds = $hasAllowedStaff ? $this->resolveAllowedStaffIds($payload['allowed_staff_ids'] ?? []) : null;
         $primarySlots = $hasPrimarySlots ? ($payload['primary_slots'] ?? []) : null;
         $questions = $hasQuestions ? ($payload['questions'] ?? []) : null;
-        unset($payload['allowed_staff_ids'], $payload['primary_slots'], $payload['questions']);
+        unset($payload['allowed_staff_ids'], $payload['primary_slots'], $payload['questions'], $payload['category_ids'], $payload['category_id']);
 
         foreach ($services as $service) {
             // Validate range mode constraints if present
@@ -545,6 +567,9 @@ class ServiceController extends Controller
             if ($hasAllowedStaff && $allowedStaffIds !== null) {
                 $this->syncAllowedStaffs($service, $allowedStaffIds);
             }
+            if ($hasCategoryIds && $categoryIds !== null) {
+                $this->syncCategories($service, $categoryIds);
+            }
             if ($hasPrimarySlots && $primarySlots !== null) {
                 $this->syncPrimarySlots($service, $primarySlots);
             }
@@ -554,7 +579,7 @@ class ServiceController extends Controller
         }
 
         return $this->respond(
-            $services->load(['allowedStaffs:id,name', 'primarySlots']),
+            $services->load(['allowedStaffs:id,name', 'primarySlots', 'categories:id,name,cn_name']),
             __('Services updated successfully.')
         );
     }
@@ -1040,6 +1065,38 @@ class ServiceController extends Controller
         }
     }
 
+    private function resolveCategoryIds(Request $request, array $data): array
+    {
+        if ($request->has('category_ids') || array_key_exists('category_ids', $data)) {
+            return collect($data['category_ids'] ?? [])
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        if ($request->has('category_id') || array_key_exists('category_id', $data)) {
+            $categoryId = isset($data['category_id']) ? (int) $data['category_id'] : 0;
+
+            return $categoryId > 0 ? [$categoryId] : [];
+        }
+
+        return [];
+    }
+
+    private function syncCategories(BookingService $service, array $categoryIds): void
+    {
+        $service->categories()->sync(
+            collect($categoryIds)
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn ($id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all()
+        );
+    }
+
     private function formatService(BookingService $service): array
     {
         $allowedStaffs = $service->allowedStaffs
@@ -1066,23 +1123,27 @@ class ServiceController extends Controller
             ])
             ->all();
 
+        $categories = $service->relationLoaded('categories')
+            ? $service->categories->sortBy('name')->values()
+            : collect();
+
+        $categoryPayload = $categories->map(fn (BookingServiceCategory $category) => [
+            'id' => (int) $category->id,
+            'name' => $category->name,
+            'cn_name' => $category->cn_name,
+        ])->all();
+
+        $firstCategory = $categoryPayload[0] ?? null;
+
         return array_merge($service->toArray(), [
             'allowed_staffs' => $allowedStaffs,
             'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
             'allowed_staff_count' => count($allowedStaffs),
             'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
-            'category_id' => $service->category_id ? (int) $service->category_id : null,
-            'category' => $service->category ? [
-                'id' => (int) $service->category->id,
-                'name' => $service->category->name,
-                'cn_name' => $service->category->cn_name,
-            ] : null,
-            'categories' => $service->category ? [[
-                'id' => (int) $service->category->id,
-                'name' => $service->category->name,
-                'cn_name' => $service->category->cn_name,
-            ]] : [],
-            'category_ids' => $service->category_id ? [(int) $service->category_id] : [],
+            'category_id' => $firstCategory ? (int) $firstCategory['id'] : null,
+            'category' => $firstCategory,
+            'categories' => $categoryPayload,
+            'category_ids' => array_map(fn (array $category) => (int) $category['id'], $categoryPayload),
             'linked_booking_product' => $this->productLinkService->formatLinkedProduct($service->linkedBookingProduct),
             'linked_booking_product_id' => $service->linked_booking_product_id ? (int) $service->linked_booking_product_id : null,
             'questions' => $service->questions

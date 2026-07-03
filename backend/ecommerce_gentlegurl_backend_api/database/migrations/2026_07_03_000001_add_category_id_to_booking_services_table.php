@@ -5,6 +5,11 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
+/**
+ * @deprecated Superseded by pivot table + 2026_07_03_000002 migration.
+ * This migration already ran on existing databases (added category_id).
+ * Fresh installs: category_id was never added; use booking_service_category_service instead.
+ */
 return new class extends Migration
 {
     public function up(): void
@@ -28,15 +33,6 @@ return new class extends Migration
                 $categoryIds = $serviceRows->pluck('booking_service_category_id')->filter()->unique()->values();
                 if ($categoryIds->isEmpty()) {
                     continue;
-                }
-
-                if ($categoryIds->count() > 1) {
-                    echo sprintf(
-                        "Warning: booking service %s has multiple categories (%s); using first category %s.\n",
-                        $serviceId,
-                        $categoryIds->implode(', '),
-                        $categoryIds->first()
-                    );
                 }
 
                 DB::table('booking_services')

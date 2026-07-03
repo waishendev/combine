@@ -7,6 +7,9 @@
 import { ChangeEvent, FormEvent, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
+import BookingServiceCategoriesPicker, {
+  type BookingServiceCategoryOption,
+} from './BookingServiceCategoriesPicker'
 import BookingServiceAllowedStaffPicker, {
   type BookingStaffOption,
 } from './BookingServiceAllowedStaffPicker'
@@ -48,7 +51,7 @@ interface FormState {
   cn_name: string
   description: string
   service_type: ServiceType
-  category_id: string
+  categoryIds: number[]
   duration_min: string
   price_mode: PriceMode
   service_price: string
@@ -64,14 +67,29 @@ interface FormState {
   questions: QuestionForm[]
 }
 type BookingServiceOption = { id: number; name: string; cn_name?: string | null; duration_min: number; service_price: number }
-type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
+
+const extractCategoryIdsFromService = (service: BookingServiceApiItem): number[] => {
+  if (Array.isArray(service.category_ids)) {
+    return service.category_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+  }
+  if (service.category_id != null) {
+    const id = Number(service.category_id)
+    return Number.isFinite(id) && id > 0 ? [id] : []
+  }
+  if (Array.isArray(service.categories)) {
+    return service.categories
+      .map((category) => Number(category?.id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  }
+  return []
+}
 
 const initialFormState: FormState = {
   name: '',
   cn_name: '',
   description: '',
   service_type: 'standard',
-  category_id: '',
+  categoryIds: [],
   duration_min: '30',
   price_mode: 'fixed',
   service_price: '0',
@@ -155,7 +173,7 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
       service.service_type === 'premium' || service.service_type === 'standard'
         ? service.service_type
         : 'standard',
-    category_id: String(service.category_id ?? service.category?.id ?? (Array.isArray(service.categories) ? service.categories[0]?.id ?? '' : '')),
+    categoryIds: extractCategoryIdsFromService(service),
     duration_min: String(service.duration_min ?? 30),
     price_mode: service.price_mode === 'range' ? 'range' : 'fixed',
     service_price: String(service.service_price ?? 0),
@@ -214,10 +232,12 @@ export default function BookingServiceCreateModal({
         const payload = json?.data ?? json
         const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
         const mapped = rows
-          .map((row: { id?: unknown; name?: unknown; cn_name?: unknown }) => ({
+          .map((row: { id?: unknown; name?: unknown; cn_name?: unknown; is_active?: unknown; sort_order?: unknown }) => ({
             id: Number(row?.id),
             name: String(row?.name ?? '').trim(),
             cn_name: typeof row?.cn_name === 'string' ? row.cn_name : null,
+            is_active: row?.is_active !== false && row?.is_active !== 0 && row?.is_active !== '0',
+            sort_order: row?.sort_order != null ? Number(row.sort_order) : undefined,
           }))
           .filter((row: BookingServiceCategoryOption) => row.id > 0 && row.name)
         if (!ignore) setCategoryOptions(mapped)
@@ -502,11 +522,6 @@ export default function BookingServiceCreateModal({
       return
     }
 
-    if (!form.category_id) {
-      setError('Please select a category')
-      return
-    }
-
     if (form.allowed_staff_ids.length === 0) {
       setError('Please assign at least 1 allowed staff')
       return
@@ -528,7 +543,7 @@ export default function BookingServiceCreateModal({
       fd.append('cn_name', form.cn_name.trim())
       fd.append('description', form.description.trim())
       fd.append('service_type', form.service_type)
-      fd.append('category_id', form.category_id)
+      form.categoryIds.forEach((categoryId) => fd.append('category_ids[]', String(categoryId)))
       fd.append('duration_min', String(duration))
       fd.append('price_mode', form.price_mode)
       if (form.price_mode === 'fixed') {
@@ -809,25 +824,14 @@ export default function BookingServiceCreateModal({
               </select>
             </div>
 
-            <div>
-              <label htmlFor="category_id" className="block text-sm font-medium text-gray-700 mb-1">
-                Category <span className="text-red-500">*</span>
-              </label>
-              <select
-                id="category_id"
-                name="category_id"
-                value={form.category_id}
-                onChange={handleChange}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+            <div className="md:col-span-2">
+              <BookingServiceCategoriesPicker
+                categories={categoryOptions}
+                value={form.categoryIds}
+                onChange={(categoryIds) => setForm((prev) => ({ ...prev, categoryIds }))}
                 disabled={disableForm}
-              >
-                <option value="">Select category</option>
-                {categoryOptions.map((category) => (
-                  <option key={category.id} value={category.id}>
-                    {category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}
-                  </option>
-                ))}
-              </select>
+                label="Categories"
+              />
             </div>
 
             <div>
