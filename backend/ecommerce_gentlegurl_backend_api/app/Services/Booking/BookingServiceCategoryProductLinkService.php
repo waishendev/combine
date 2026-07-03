@@ -44,7 +44,7 @@ class BookingServiceCategoryProductLinkService
 
         if ($overwriteLinkedProductCategory) {
             $serviceCategory = $serviceCategory->fresh();
-            $this->syncLinkedProductCategory($serviceCategory);
+            $this->syncLinkedProductCategory($serviceCategory, true);
         }
     }
 
@@ -61,12 +61,24 @@ class BookingServiceCategoryProductLinkService
         return $productCategory;
     }
 
-    public function syncLinkedProductCategory(BookingServiceCategory $serviceCategory): ?BookingProductCategory
-    {
-        $productCategory = $this->resolveLinkedProductCategory($serviceCategory);
+    /**
+     * Update the linked product category from the service category.
+     *
+     * Only creates a new product category when $createIfMissing is true (explicit opt-in),
+     * otherwise it just updates an already-linked product category and never fabricates one.
+     */
+    public function syncLinkedProductCategory(
+        BookingServiceCategory $serviceCategory,
+        bool $createIfMissing = false,
+    ): ?BookingProductCategory {
+        // Only trust the explicit FK link here; never guess by name during an update,
+        // otherwise unrelated same-named product categories get overwritten or duplicated.
+        $productCategory = $serviceCategory->linked_booking_product_category_id
+            ? BookingProductCategory::query()->find($serviceCategory->linked_booking_product_category_id)
+            : null;
 
         if (! $productCategory) {
-            return $this->linkAfterCreate($serviceCategory);
+            return $createIfMissing ? $this->linkAfterCreate($serviceCategory) : null;
         }
 
         $productCategory->update($this->buildProductCategoryPayload($serviceCategory));
@@ -82,13 +94,15 @@ class BookingServiceCategoryProductLinkService
 
     public function deleteLinkedProductCategory(BookingServiceCategory $serviceCategory): void
     {
-        $productCategory = $this->resolveLinkedProductCategory($serviceCategory);
-
-        if (! $productCategory) {
+        // Only delete the explicitly linked product category, never a name-matched guess.
+        if (! $serviceCategory->linked_booking_product_category_id) {
             return;
         }
 
-        $productCategory->delete();
+        $productCategory = BookingProductCategory::query()
+            ->find($serviceCategory->linked_booking_product_category_id);
+
+        $productCategory?->delete();
     }
 
     public function resolveProductCategoryId(BookingServiceCategory $serviceCategory): ?int
@@ -115,7 +129,15 @@ class BookingServiceCategoryProductLinkService
         return $english.'||'.$chinese;
     }
 
-    private function findProductCategoryByMatchKey(?string $englishName, ?string $chineseName): ?BookingProductCategory
+    public function findProductCategoryByNameMatch(?string $englishName, ?string $chineseName): ?BookingProductCategory
+    {
+        return $this->findProductCategoryByMatchKey($englishName, $chineseName);
+    }
+
+    /**
+     * @return \Illuminate\Support\Collection<int, BookingProductCategory>
+     */
+    public function findProductCategoryNameMatches(?string $englishName, ?string $chineseName): \Illuminate\Support\Collection
     {
         $key = $this->buildCategoryMatchKey($englishName, $chineseName);
         $productCategories = BookingProductCategory::query()
@@ -123,24 +145,29 @@ class BookingServiceCategoryProductLinkService
             ->orderBy('id')
             ->get(['id', 'name', 'cn_name']);
 
-        $matches = $productCategories
+        $fullMatches = $productCategories
             ->filter(fn (BookingProductCategory $category) => $this->buildCategoryMatchKey($category->name, $category->cn_name) === $key)
             ->values();
 
-        if ($matches->count() === 1) {
-            return $matches->first();
-        }
-
-        if ($matches->count() > 1) {
-            return $matches->first();
+        if ($fullMatches->isNotEmpty()) {
+            return $fullMatches;
         }
 
         $english = mb_strtolower(trim((string) $englishName));
-        $nameOnlyMatches = $productCategories
+        if ($english === '') {
+            return collect();
+        }
+
+        return $productCategories
             ->filter(fn (BookingProductCategory $category) => mb_strtolower(trim((string) $category->name)) === $english)
             ->values();
+    }
 
-        return $nameOnlyMatches->count() === 1 ? $nameOnlyMatches->first() : null;
+    private function findProductCategoryByMatchKey(?string $englishName, ?string $chineseName): ?BookingProductCategory
+    {
+        $matches = $this->findProductCategoryNameMatches($englishName, $chineseName);
+
+        return $matches->count() === 1 ? $matches->first() : null;
     }
 
     /**

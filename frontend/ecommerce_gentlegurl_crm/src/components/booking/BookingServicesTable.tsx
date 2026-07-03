@@ -584,6 +584,7 @@ export default function BookingServicesTable({
         <BookingServiceBulkUpdateModal
           show={isBulkUpdateOpen}
           selectedServices={selectedServices}
+          categories={categories}
           onClose={() => setIsBulkUpdateOpen(false)}
           onSuccess={async () => {
             await fetchServices()

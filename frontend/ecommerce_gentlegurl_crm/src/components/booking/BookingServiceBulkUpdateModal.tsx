@@ -4,6 +4,9 @@ import { useEffect, useMemo, useState } from 'react'
 
 import type { BookingServiceRowData } from './BookingServiceRow'
 import BookingServiceAllowedStaffPicker, { type BookingStaffOption } from './BookingServiceAllowedStaffPicker'
+import BookingServiceCategoriesPicker, {
+  type BookingServiceCategoryOption,
+} from './BookingServiceCategoriesPicker'
 import BookingServiceQuestionsBuilder, { emptyQuestion, type QuestionForm } from './BookingServiceQuestionsBuilder'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 
@@ -17,10 +20,12 @@ type FieldKey =
   | 'buffer_min'
   | 'pricing'
   | 'questions'
+  | 'category_ids'
 
 const FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
   { key: 'is_active', label: 'Status' },
   { key: 'service_type', label: 'Service Type' },
+  { key: 'category_ids', label: 'Categories' },
   { key: 'pricing', label: 'Price Mode / Price' },
   { key: 'duration_min', label: 'Duration (min)' },
   { key: 'buffer_min', label: 'Buffer Time (min)' },
@@ -33,6 +38,7 @@ const FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
 interface Props {
   show: boolean
   selectedServices: BookingServiceRowData[]
+  categories: BookingServiceCategoryOption[]
   onClose: () => void
   onSuccess: () => Promise<void> | void
 }
@@ -40,10 +46,12 @@ interface Props {
 export default function BookingServiceBulkUpdateModal({
   show,
   selectedServices,
+  categories,
   onClose,
   onSuccess,
 }: Props) {
   const [selectedFields, setSelectedFields] = useState<FieldKey[]>([])
+  const [categoryIds, setCategoryIds] = useState<number[]>([])
   const [serviceType, setServiceType] = useState<'standard' | 'premium'>('standard')
   const [durationMin, setDurationMin] = useState('30')
   const [bufferMin, setBufferMin] = useState('15')
@@ -296,6 +304,9 @@ export default function BookingServiceBulkUpdateModal({
       if (selectedFields.includes('questions')) {
         payload.questions = questions
       }
+      if (selectedFields.includes('category_ids')) {
+        payload.category_ids = categoryIds
+      }
 
       const res = await fetch('/api/proxy/admin/booking/services/bulk', {
         method: 'PUT',
@@ -450,6 +461,22 @@ export default function BookingServiceBulkUpdateModal({
                 <option value="standard">Standard</option>
                 <option value="premium">Premium</option>
               </select>
+            </div>
+          )}
+
+          {selectedFields.includes('category_ids') && (
+            <div className="space-y-2">
+              <BookingServiceCategoriesPicker
+                categories={categories}
+                value={categoryIds}
+                onChange={setCategoryIds}
+                disabled={isSubmitting}
+                label="Categories"
+              />
+              <p className="text-xs text-amber-700">
+                Bulk update will replace all categories on the selected services with your selection above.
+                Leave empty to clear categories.
+              </p>
             </div>
           )}
 
