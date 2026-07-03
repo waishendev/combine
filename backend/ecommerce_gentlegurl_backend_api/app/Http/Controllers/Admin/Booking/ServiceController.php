@@ -33,7 +33,7 @@ class ServiceController extends Controller
         $perPage = max(1, min(200, $perPage));
 
         $services = BookingService::query()
-            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'categories:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with(['allowedStaffs:id,name', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'category:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->when($request->filled('name'), function ($query) use ($request) {
                 $term = '%' . trim((string) $request->get('name')) . '%';
                 $query->where(function ($inner) use ($term) {
@@ -50,16 +50,14 @@ class ServiceController extends Controller
             ->when($request->filled('category_id'), function ($query) use ($request) {
                 $rawCategoryId = strtolower(trim((string) $request->get('category_id')));
                 if ($rawCategoryId === 'none') {
-                    $query->whereDoesntHave('categories');
+                    $query->whereNull('category_id');
 
                     return;
                 }
 
                 $categoryId = (int) $request->integer('category_id');
                 if ($categoryId > 0) {
-                    $query->whereHas('categories', function ($categoryQuery) use ($categoryId) {
-                        $categoryQuery->where('booking_service_categories.id', $categoryId);
-                    });
+                    $query->where('category_id', $categoryId);
                 }
             })
             ->latest()
@@ -73,7 +71,7 @@ class ServiceController extends Controller
     public function show(int $id)
     {
         $service = BookingService::query()
-            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
+            ->with(['allowedStaffs:id,name,position,avatar_path', 'primarySlots', 'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price', 'category:id,name,cn_name', 'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path'])
             ->findOrFail($id);
 
         return $this->respond($this->formatService($service));
@@ -89,6 +87,7 @@ class ServiceController extends Controller
         }
 
         $data = $request->validate([
+            'category_id' => ['required', 'integer', 'exists:booking_service_categories,id'],
             'name' => ['required', 'string'],
             'cn_name' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
@@ -193,6 +192,7 @@ class ServiceController extends Controller
                     'allowedStaffs:id,name,position,avatar_path',
                     'primarySlots',
                     'questions.options.linkedBookingService:id,name,cn_name,duration_min,service_price',
+                    'category:id,name,cn_name',
                     'linkedBookingProduct:id,name,cn_name,price,price_mode,price_range_min,price_range_max,is_active,image_path',
                 ])),
                 'Created',
@@ -224,6 +224,7 @@ class ServiceController extends Controller
 
         $service = BookingService::findOrFail($id);
         $data = $request->validate([
+            'category_id' => ['required', 'integer', 'exists:booking_service_categories,id'],
             'name' => ['sometimes', 'string'],
             'cn_name' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
@@ -449,6 +450,7 @@ class ServiceController extends Controller
             'ids' => ['required', 'array', 'min:1'],
             'ids.*' => ['integer', 'exists:booking_services,id'],
 
+            'category_id' => ['nullable', 'integer', 'exists:booking_service_categories,id'],
             'service_type' => ['nullable', 'in:premium,standard'],
             'duration_min' => ['nullable', 'integer', 'min:1'],
             'buffer_min' => ['nullable', 'integer', 'min:0'],
@@ -1069,6 +1071,18 @@ class ServiceController extends Controller
             'allowed_staff_ids' => array_map(fn (array $staff) => (int) $staff['id'], $allowedStaffs),
             'allowed_staff_count' => count($allowedStaffs),
             'allowed_staff_names' => collect($allowedStaffs)->pluck('name')->filter()->values()->all(),
+            'category_id' => $service->category_id ? (int) $service->category_id : null,
+            'category' => $service->category ? [
+                'id' => (int) $service->category->id,
+                'name' => $service->category->name,
+                'cn_name' => $service->category->cn_name,
+            ] : null,
+            'categories' => $service->category ? [[
+                'id' => (int) $service->category->id,
+                'name' => $service->category->name,
+                'cn_name' => $service->category->cn_name,
+            ]] : [],
+            'category_ids' => $service->category_id ? [(int) $service->category_id] : [],
             'linked_booking_product' => $this->productLinkService->formatLinkedProduct($service->linkedBookingProduct),
             'linked_booking_product_id' => $service->linked_booking_product_id ? (int) $service->linked_booking_product_id : null,
             'questions' => $service->questions

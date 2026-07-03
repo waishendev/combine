@@ -12,7 +12,7 @@ class BookingService extends Model
     use LogsActivity;
 
     protected $fillable = [
-        'name', 'cn_name', 'service_type', 'description', 'image_path', 'linked_booking_product_id', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
+        'category_id', 'name', 'cn_name', 'service_type', 'description', 'image_path', 'linked_booking_product_id', 'service_price', 'price', 'price_mode', 'price_range_min', 'price_range_max', 'is_package_eligible', 'allow_photo_upload', 'duration_min', 'deposit_amount', 'buffer_min', 'is_active', 'rules_json',
     ];
 
     protected $appends = [
@@ -41,10 +41,9 @@ class BookingService extends Model
             ->orderBy('id');
     }
 
-    public function categories()
+    public function category()
     {
-        return $this->belongsToMany(BookingServiceCategory::class, 'booking_service_category_service', 'booking_service_id', 'booking_service_category_id')
-            ->withTimestamps();
+        return $this->belongsTo(BookingServiceCategory::class, 'category_id');
     }
 
     public function primarySlots()

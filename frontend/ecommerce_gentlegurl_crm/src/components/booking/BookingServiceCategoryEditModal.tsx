@@ -12,9 +12,6 @@ import CrmFormModalShell from '@/components/CrmFormModalShell'
 import { useI18n } from '@/lib/i18n'
 import { IMAGE_ACCEPT } from '@/components/mediaAccept'
 import { BOOKING_SERVICE_COVER_IMAGE_SUGGESTED_SIZE_LINE } from './bookingServiceUtils'
-import BookingCategoryServicesSection, {
-  type BookingCategoryServiceOption,
-} from './BookingCategoryServicesSection'
 
 interface BookingServiceCategoryEditModalProps {
   categoryId: number
@@ -36,41 +33,11 @@ export default function BookingServiceCategoryEditModal({
   const [slug, setSlug] = useState('')
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState(true)
-  const [serviceIds, setServiceIds] = useState<number[]>([])
-  const [services, setServices] = useState<BookingCategoryServiceOption[]>([])
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [initialImageUrl, setInitialImageUrl] = useState<string | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    let ignore = false
-    const loadServices = async () => {
-      try {
-        const res = await fetch('/api/proxy/admin/booking/services?per_page=200', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json().catch(() => null)
-        const payload = json?.data?.data
-        const rows = Array.isArray(payload) ? payload : []
-        if (!ignore) {
-          setServices(
-            rows
-              .map((r: { id?: unknown; name?: unknown }) => ({
-                id: Number(r?.id),
-                name: String(r?.name ?? ''),
-              }))
-              .filter((r: BookingCategoryServiceOption) => r.id > 0 && r.name),
-          )
-        }
-      } catch {
-        if (!ignore) setServices([])
-      }
-    }
-    void loadServices()
-    return () => {
-      ignore = true
-    }
-  }, [])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -100,7 +67,6 @@ export default function BookingServiceCategoryEditModal({
               description?: string | null
               is_active?: boolean
               image_url?: string | null
-              service_ids?: number[]
             }
           | undefined
         if (!raw) {
@@ -112,7 +78,6 @@ export default function BookingServiceCategoryEditModal({
         setSlug(String(raw.slug ?? ''))
         setDescription(String(raw.description ?? ''))
         setIsActive(Boolean(raw.is_active))
-        setServiceIds(Array.isArray(raw.service_ids) ? raw.service_ids.map((id) => Number(id)) : [])
         const existingUrl = typeof raw.image_url === 'string' ? raw.image_url : null
         setInitialImageUrl(existingUrl)
         setImagePreview(existingUrl)
@@ -129,11 +94,6 @@ export default function BookingServiceCategoryEditModal({
     return () => controller.abort()
   }, [categoryId])
 
-  const toggleService = (id: number) => {
-    setServiceIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
-    )
-  }
 
   const handleImageChange = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -174,7 +134,6 @@ export default function BookingServiceCategoryEditModal({
       fd.append('description', description.trim())
       fd.append('is_active', isActive ? '1' : '0')
       if (imageFile) fd.append('image', imageFile)
-      serviceIds.forEach((id) => fd.append('service_ids[]', String(id)))
 
       const res = await fetch(`/api/proxy/admin/booking/categories/${categoryId}`, {
         method: 'POST',
@@ -377,12 +336,6 @@ export default function BookingServiceCategoryEditModal({
                     <option value="inactive">{t('common.inactive')}</option>
                   </select>
                 </div>
-                <BookingCategoryServicesSection
-                  services={services}
-                  serviceIds={serviceIds}
-                  onToggle={toggleService}
-                  disabled={disableForm}
-                />
               </div>
             </div>
 

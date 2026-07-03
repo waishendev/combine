@@ -24,7 +24,6 @@ import BookingServiceProductLinkPanel, {
   appendProductLinkFormData,
   buildInitialProductLinkValue,
   type BookingServiceProductLinkValue,
-  type LinkedBookingProductSummary,
 } from './BookingServiceProductLinkPanel'
 import { useI18n } from '@/lib/i18n'
 import { compressImage } from '@/lib/compressImage'
@@ -49,6 +48,7 @@ interface FormState {
   cn_name: string
   description: string
   service_type: ServiceType
+  category_id: string
   duration_min: string
   price_mode: PriceMode
   service_price: string
@@ -64,12 +64,14 @@ interface FormState {
   questions: QuestionForm[]
 }
 type BookingServiceOption = { id: number; name: string; cn_name?: string | null; duration_min: number; service_price: number }
+type BookingServiceCategoryOption = { id: number; name: string; cn_name?: string | null }
 
 const initialFormState: FormState = {
   name: '',
   cn_name: '',
   description: '',
   service_type: 'standard',
+  category_id: '',
   duration_min: '30',
   price_mode: 'fixed',
   service_price: '0',
@@ -153,6 +155,7 @@ function mapBookingServiceApiToCreateFormState(service: BookingServiceApiItemWit
       service.service_type === 'premium' || service.service_type === 'standard'
         ? service.service_type
         : 'standard',
+    category_id: String(service.category_id ?? service.category?.id ?? (Array.isArray(service.categories) ? service.categories[0]?.id ?? '' : '')),
     duration_min: String(service.duration_min ?? 30),
     price_mode: service.price_mode === 'range' ? 'range' : 'fixed',
     service_price: String(service.service_price ?? 0),
@@ -190,11 +193,41 @@ export default function BookingServiceCreateModal({
   const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [staffOptions, setStaffOptions] = useState<BookingStaffOption[]>([])
   const [bookingServiceOptions, setBookingServiceOptions] = useState<BookingServiceOption[]>([])
+  const [categoryOptions, setCategoryOptions] = useState<BookingServiceCategoryOption[]>([])
   const [staffLoading, setStaffLoading] = useState(true)
   /** False while copying from server: must track readiness separately from props (first paint can miss copy id). */
   const [copySourceReady, setCopySourceReady] = useState(() => copySourceId == null)
   const [productLink, setProductLink] = useState<BookingServiceProductLinkValue>(buildInitialProductLinkValue())
   const imageInputRef = useRef<HTMLInputElement>(null)
+
+
+  useEffect(() => {
+    let ignore = false
+    const loadCategories = async () => {
+      try {
+        const res = await fetch('/api/proxy/admin/booking/categories?all=1', { cache: 'no-store' })
+        if (!res.ok) {
+          if (!ignore) setCategoryOptions([])
+          return
+        }
+        const json = await res.json().catch(() => null)
+        const payload = json?.data ?? json
+        const rows = Array.isArray(payload) ? payload : Array.isArray(payload?.data) ? payload.data : []
+        const mapped = rows
+          .map((row: { id?: unknown; name?: unknown; cn_name?: unknown }) => ({
+            id: Number(row?.id),
+            name: String(row?.name ?? '').trim(),
+            cn_name: typeof row?.cn_name === 'string' ? row.cn_name : null,
+          }))
+          .filter((row: BookingServiceCategoryOption) => row.id > 0 && row.name)
+        if (!ignore) setCategoryOptions(mapped)
+      } catch {
+        if (!ignore) setCategoryOptions([])
+      }
+    }
+    void loadCategories()
+    return () => { ignore = true }
+  }, [])
 
   useEffect(() => {
     let ignore = false
@@ -469,6 +502,11 @@ export default function BookingServiceCreateModal({
       return
     }
 
+    if (!form.category_id) {
+      setError('Please select a category')
+      return
+    }
+
     if (form.allowed_staff_ids.length === 0) {
       setError('Please assign at least 1 allowed staff')
       return
@@ -490,6 +528,7 @@ export default function BookingServiceCreateModal({
       fd.append('cn_name', form.cn_name.trim())
       fd.append('description', form.description.trim())
       fd.append('service_type', form.service_type)
+      fd.append('category_id', form.category_id)
       fd.append('duration_min', String(duration))
       fd.append('price_mode', form.price_mode)
       if (form.price_mode === 'fixed') {
@@ -767,6 +806,27 @@ export default function BookingServiceCreateModal({
               >
                 <option value="standard">Standard</option>
                 <option value="premium">Premium</option>
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="category_id" className="block text-sm font-medium text-gray-700 mb-1">
+                Category <span className="text-red-500">*</span>
+              </label>
+              <select
+                id="category_id"
+                name="category_id"
+                value={form.category_id}
+                onChange={handleChange}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-blue-500 focus:border-blue-500"
+                disabled={disableForm}
+              >
+                <option value="">Select category</option>
+                {categoryOptions.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.cn_name ? `${category.name} / ${category.cn_name}` : category.name}
+                  </option>
+                ))}
               </select>
             </div>
 

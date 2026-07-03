@@ -1,19 +1,15 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 
-import BookingCategoryServicesSection, {
-  type BookingCategoryServiceOption,
-} from './BookingCategoryServicesSection'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
 import type { BookingServiceCategoryRowData } from './bookingServiceCategoryUtils'
 
-type FieldKey = 'description' | 'is_active' | 'service_ids'
+type FieldKey = 'description' | 'is_active'
 
 const FIELD_OPTIONS: Array<{ key: FieldKey; label: string }> = [
   { key: 'description', label: 'Description' },
   { key: 'is_active', label: 'Status' },
-  { key: 'service_ids', label: 'Linked services' },
 ]
 
 type Props = {
@@ -32,40 +28,9 @@ export default function BookingServiceCategoryBulkUpdateModal({
   const [selectedFields, setSelectedFields] = useState<FieldKey[]>([])
   const [description, setDescription] = useState('')
   const [isActive, setIsActive] = useState<'true' | 'false'>('true')
-  const [serviceIds, setServiceIds] = useState<number[]>([])
-  const [services, setServices] = useState<BookingCategoryServiceOption[]>([])
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!show) return
-    let ignore = false
-    const loadServices = async () => {
-      try {
-        const res = await fetch('/api/proxy/admin/booking/services?per_page=200', { cache: 'no-store' })
-        if (!res.ok) return
-        const json = await res.json().catch(() => null)
-        const payload = json?.data?.data
-        const rows = Array.isArray(payload) ? payload : []
-        if (!ignore) {
-          setServices(
-            rows
-              .map((r: { id?: unknown; name?: unknown }) => ({
-                id: Number(r?.id),
-                name: String(r?.name ?? ''),
-              }))
-              .filter((r: BookingCategoryServiceOption) => r.id > 0 && r.name),
-          )
-        }
-      } catch {
-        if (!ignore) setServices([])
-      }
-    }
-    void loadServices()
-    return () => {
-      ignore = true
-    }
-  }, [show])
 
   const countText = useMemo(
     () =>
@@ -77,9 +42,6 @@ export default function BookingServiceCategoryBulkUpdateModal({
     setSelectedFields((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]))
   }
 
-  const toggleService = (id: number) => {
-    setServiceIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
-  }
 
   const handleSubmit = async () => {
     if (selectedFields.length === 0) {
@@ -96,7 +58,6 @@ export default function BookingServiceCategoryBulkUpdateModal({
 
       if (selectedFields.includes('description')) payload.description = description.trim()
       if (selectedFields.includes('is_active')) payload.is_active = isActive === 'true'
-      if (selectedFields.includes('service_ids')) payload.service_ids = serviceIds
 
       const res = await fetch('/api/proxy/admin/booking/categories/bulk', {
         method: 'PUT',
@@ -237,21 +198,8 @@ export default function BookingServiceCategoryBulkUpdateModal({
               </div>
             )}
 
-            {selectedFields.includes('service_ids') && (
-              <BookingCategoryServicesSection
-                services={services}
-                serviceIds={serviceIds}
-                onToggle={toggleService}
-                disabled={submitting}
-              />
-            )}
           </div>
 
-          {selectedFields.includes('service_ids') ? (
-            <p className="text-xs text-amber-700">
-              Linked services will be replaced for all selected categories with the selection above.
-            </p>
-          ) : null}
       </div>
     </CrmFormModalShell>
   )
