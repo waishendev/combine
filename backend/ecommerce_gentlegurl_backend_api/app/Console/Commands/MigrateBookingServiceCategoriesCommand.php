@@ -48,17 +48,17 @@ class MigrateBookingServiceCategoriesCommand extends Command
         $run = function () use ($services, $pivotRows, $dryRun, &$wouldSync, &$unchanged, &$rows) {
             foreach ($services as $service) {
                 $serviceId = (int) $service->id;
-                $currentPivotIds = collect($pivotRows->get($serviceId, collect()))
+                $rawPivotIds = collect($pivotRows->get($serviceId, collect()))
                     ->pluck('booking_service_category_id')
                     ->map(fn ($id) => (int) $id)
-                    ->filter(fn ($id) => $id > 0)
-                    ->unique()
-                    ->sort()
-                    ->values();
+                    ->filter(fn ($id) => $id > 0);
+
+                $currentPivotIds = $rawPivotIds->unique()->sort()->values();
+                $hasDuplicatePivot = $rawPivotIds->count() !== $currentPivotIds->count();
 
                 $columnCategoryId = $service->category_id ? (int) $service->category_id : null;
                 $targetIds = $currentPivotIds
-                    ->when($columnCategoryId, fn ($ids) => $ids->push($columnCategoryId))
+                    ->merge($columnCategoryId ? [$columnCategoryId] : [])
                     ->unique()
                     ->sort()
                     ->values();
@@ -69,7 +69,7 @@ class MigrateBookingServiceCategoriesCommand extends Command
                     continue;
                 }
 
-                if ($targetIds->values()->all() === $currentPivotIds->values()->all()) {
+                if (! $hasDuplicatePivot && $targetIds->values()->all() === $currentPivotIds->values()->all()) {
                     $unchanged++;
 
                     continue;
@@ -79,10 +79,12 @@ class MigrateBookingServiceCategoriesCommand extends Command
                 $rows[] = [
                     'service_id' => $serviceId,
                     'service_name' => (string) $service->name,
-                    'current_pivot' => $currentPivotIds->isEmpty() ? '-' : $currentPivotIds->implode(', '),
+                    'current_pivot' => $rawPivotIds->isEmpty() ? '-' : $rawPivotIds->implode(', '),
                     'category_id_column' => $columnCategoryId ? (string) $columnCategoryId : '-',
                     'target_pivot' => $targetIds->implode(', '),
-                    'added' => $addedIds->isEmpty() ? '-' : $addedIds->implode(', '),
+                    'added' => $hasDuplicatePivot && $addedIds->isEmpty()
+                        ? 'dedupe pivot'
+                        : ($addedIds->isEmpty() ? '-' : $addedIds->implode(', ')),
                 ];
 
                 if (! $dryRun) {

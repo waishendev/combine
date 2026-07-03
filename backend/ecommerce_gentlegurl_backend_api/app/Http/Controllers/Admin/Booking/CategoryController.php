@@ -170,10 +170,14 @@ class CategoryController extends Controller
         return $this->respond($fresh, __('Booking categories updated successfully.'));
     }
 
-    public function destroy(int $id)
+    public function destroy(Request $request, int $id)
     {
         $category = BookingServiceCategory::query()->findOrFail($id);
-        $this->productCategoryLinkService->deleteLinkedProductCategory($category);
+
+        if ($request->boolean('delete_linked_product_category')) {
+            $this->productCategoryLinkService->deleteLinkedProductCategory($category);
+        }
+
         $category->delete();
 
         return $this->respond(null);

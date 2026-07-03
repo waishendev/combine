@@ -26,6 +26,7 @@ import { useI18n } from '@/lib/i18n'
 import { compressImage } from '@/lib/compressImage'
 import { IMAGE_ACCEPT } from '../mediaAccept'
 import CrmFormModalShell from '@/components/CrmFormModalShell'
+import FormErrorAnchor from '@/components/FormErrorAnchor'
 
 const bookingServiceEditFormId = 'booking-service-edit-form'
 
@@ -745,6 +746,8 @@ export default function BookingServiceEditModal({
           className="relative z-[1] p-5"
           aria-busy={showRetrieveOverlay}
         >
+          <FormErrorAnchor error={error} />
+
           {showEditFields ? (
             <>
             <div className="mb-6">
@@ -1128,11 +1131,6 @@ export default function BookingServiceEditModal({
               />
             </div>
 
-            {error && (
-              <div className="mt-4 text-sm text-red-600" role="alert">
-                {error}
-              </div>
-            )}
             </>
           ) : null}
         </form>
