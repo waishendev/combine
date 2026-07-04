@@ -1129,6 +1129,9 @@ $protectedRoutes = function () {
             Route::get('/sales/visual-daily/all', [SalesChannelReportController::class, 'visualDailyAll'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 
+            Route::get('/sales/visual-period/all', [SalesChannelReportController::class, 'visualPeriodAll'])
+                ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
+
             Route::get('/sales/customers-ecommerce', [CustomerSalesDomainReportController::class, 'ecommerce'])
                 ->middleware('permission:ecommerce.reports.sales.view|ecommerce.daily-sales-reports.view');
 

@@ -344,15 +344,19 @@ class SalesVisualDailyReportService
         ];
     }
 
-    /**
-     * Mixed workspace: ecommerce catalog + booking lines, payment by gateway where the order has
-     * at least one product or booking line (order grand_total counted once per gateway).
-     */
     public function allDay(Carbon $day): array
     {
-        $start = $day->copy()->startOfDay();
-        $end = $day->copy()->endOfDay();
+        $payload = $this->allPeriod($day->copy()->startOfDay(), $day->copy()->endOfDay());
+        $payload['date'] = $day->toDateString();
 
+        return $payload;
+    }
+
+    /**
+     * Mixed workspace aggregates for a date range (month, year, or custom).
+     */
+    public function allPeriod(Carbon $start, Carbon $end): array
+    {
         $paymentBlock = $this->paymentMethodsForAllWorkspace($start, $end);
         $lineTotal = 'COALESCE(oi.line_total_after_discount, oi.line_total - COALESCE(oi.discount_amount, 0))';
 
@@ -404,7 +408,6 @@ class SalesVisualDailyReportService
             ->value('v'), 2);
 
         return [
-            'date' => $day->toDateString(),
             'online_offline' => [
                 'online' => $paymentBlock['totals']['online'],
                 'offline' => $paymentBlock['totals']['offline'],
@@ -425,7 +428,7 @@ class SalesVisualDailyReportService
             ],
             'service_consumed' => [
                 'amount' => $serviceConsumedAmount,
-                'message' => 'Final settlement lines for booking orders on this day.',
+                'message' => 'Final settlement lines for booking orders in this period.',
             ],
             'staff' => [
                 'sales_activity' => $staffSales,

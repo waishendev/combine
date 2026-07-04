@@ -56,6 +56,38 @@ class SalesChannelReportController extends Controller
         return response()->json($this->visualDaily->allDay($day));
     }
 
+    public function visualPeriodAll(Request $request)
+    {
+        $year = max(2000, min(2100, (int) $request->query('year', Carbon::today()->year)));
+
+        $month = null;
+        if ($request->filled('month')) {
+            $month = max(1, min(12, (int) $request->query('month')));
+        }
+
+        if ($month !== null) {
+            $start = Carbon::create($year, $month, 1)->startOfDay();
+            $end = $start->copy()->endOfMonth()->endOfDay();
+            $label = $start->format('F Y');
+            $mode = 'monthly';
+        } else {
+            $start = Carbon::create($year, 1, 1)->startOfDay();
+            $end = $start->copy()->endOfYear()->endOfDay();
+            $label = (string) $year;
+            $mode = 'yearly';
+        }
+
+        $payload = $this->visualDaily->allPeriod($start, $end);
+        $payload['period'] = [
+            'year' => $year,
+            'month' => $month,
+            'mode' => $mode,
+            'label' => $label,
+        ];
+
+        return response()->json($payload);
+    }
+
     public function details(int $orderId)
     {
         return response()->json($this->service->orderDetails($orderId));

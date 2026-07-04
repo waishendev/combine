@@ -27,11 +27,16 @@ class PublicServicesController extends Controller
     {
         $page = ServicesPage::query()
             ->with(['menuItem:id,name,slug,is_active', 'slides'])
-            ->where('slug', $slug)
             ->where('is_active', true)
-            ->firstOrFail();
+            ->where(function ($query) use ($slug) {
+                $query->where('slug', $slug)
+                    ->orWhereHas('menuItem', function ($menuQuery) use ($slug) {
+                        $menuQuery->where('slug', $slug)->where('is_active', true);
+                    });
+            })
+            ->first();
 
-        if (! $page->menuItem?->is_active) {
+        if (! $page || ! $page->menuItem?->is_active) {
             abort(404);
         }
 

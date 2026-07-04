@@ -64,9 +64,37 @@ class ServicesMenuItemController extends Controller
 
         $servicesMenuItem->fill($validated);
         $servicesMenuItem->save();
+        $this->syncLinkedServicesPage($servicesMenuItem, $validated);
         $servicesMenuItem->load('page');
 
         return $this->respond($servicesMenuItem, __('Services menu item updated successfully.'));
+    }
+
+    private function syncLinkedServicesPage(ServicesMenuItem $servicesMenuItem, array $validated): void
+    {
+        $page = $servicesMenuItem->page;
+        if (! $page) {
+            return;
+        }
+
+        $pageUpdates = [];
+
+        if (array_key_exists('slug', $validated)) {
+            $pageUpdates['slug'] = $validated['slug'];
+        }
+
+        if (array_key_exists('name', $validated)) {
+            $pageUpdates['title'] = $validated['name'];
+        }
+
+        if (array_key_exists('is_active', $validated)) {
+            $pageUpdates['is_active'] = $validated['is_active'];
+        }
+
+        if ($pageUpdates !== []) {
+            $page->fill($pageUpdates);
+            $page->save();
+        }
     }
 
     public function destroy(ServicesMenuItem $servicesMenuItem)

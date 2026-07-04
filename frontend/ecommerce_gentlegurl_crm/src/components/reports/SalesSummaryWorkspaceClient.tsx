@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 
+import SalesVisualPeriodDashboard from '@/components/reports/SalesVisualPeriodDashboard'
+
 type SummaryTotals = {
   ecommerce_sales: number
   booking_sales: number
@@ -64,15 +66,6 @@ function dateParts(ymd: string) {
 const fmtRm = (n: number) => `RM ${Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
 const fmtInt = (n: number) => Number(n || 0).toLocaleString()
 
-function SummaryCard({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-      <p className={`mt-2 text-2xl font-bold ${accent}`}>{value}</p>
-    </div>
-  )
-}
-
 function isDailyRow(row: MonthlyRow | DailyRow): row is DailyRow {
   return 'date' in row
 }
@@ -128,9 +121,28 @@ export default function SalesSummaryWorkspaceClient() {
   const setYear = (year: string) => {
     const q = new URLSearchParams(searchParams.toString())
     q.set('year', year)
-    q.delete('month')
+    if (!selectedMonth) {
+      q.delete('month')
+    }
     router.push(`${pathname}?${q.toString()}`)
   }
+
+  const setMonth = (month: string) => {
+    const q = new URLSearchParams(searchParams.toString())
+    q.set('year', String(selectedYear))
+    q.set('month', month)
+    router.push(`${pathname}?${q.toString()}`)
+  }
+
+  const monthOptions = useMemo(
+    () =>
+      Array.from({ length: 12 }, (_, index) => {
+        const value = index + 1
+        const label = new Intl.DateTimeFormat('en-GB', { month: 'long' }).format(new Date(2024, index, 1))
+        return { value, label }
+      }),
+    [],
+  )
 
   const openYearSummary = () => {
     const q = new URLSearchParams(searchParams.toString())
@@ -161,8 +173,42 @@ export default function SalesSummaryWorkspaceClient() {
     router.push(`/reports/sales/daily?${q.toString()}`)
   }
 
-  const totals = data?.summary ?? { ecommerce_sales: 0, booking_sales: 0, total_sales: 0, total_orders: 0 }
+  const shiftPeriod = (delta: number) => {
+    const q = new URLSearchParams(searchParams.toString())
+    if (selectedMonth) {
+      let nextMonth = selectedMonth + delta
+      let nextYear = selectedYear
+      if (nextMonth < 1) {
+        nextMonth = 12
+        nextYear -= 1
+      } else if (nextMonth > 12) {
+        nextMonth = 1
+        nextYear += 1
+      }
+      q.set('year', String(nextYear))
+      q.set('month', String(nextMonth))
+    } else {
+      q.set('year', String(selectedYear + delta))
+      q.delete('month')
+    }
+    router.push(`${pathname}?${q.toString()}`)
+  }
+
   const rows = data?.rows ?? []
+
+  const tableTotals = useMemo(() => {
+    if (rows.length === 0) return null
+    return rows.reduce(
+      (acc, row) => ({
+        ecommerce_orders: acc.ecommerce_orders + row.ecommerce_orders,
+        booking_count: acc.booking_count + row.booking_count,
+        ecommerce_sales: acc.ecommerce_sales + row.ecommerce_sales,
+        booking_sales: acc.booking_sales + row.booking_sales,
+        total_sales: acc.total_sales + row.total_sales,
+      }),
+      { ecommerce_orders: 0, booking_count: 0, ecommerce_sales: 0, booking_sales: 0, total_sales: 0 },
+    )
+  }, [rows])
 
   return (
     <div className="overflow-y-auto px-6 py-6 lg:px-10">
@@ -210,6 +256,22 @@ export default function SalesSummaryWorkspaceClient() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          {selectedMonth ? (
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
+              Month
+              <select
+                value={selectedMonth}
+                onChange={(event) => setMonth(event.target.value)}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              >
+                {monthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
           <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
             Year
             <select
@@ -229,12 +291,7 @@ export default function SalesSummaryWorkspaceClient() {
 
       {error ? <div className="mb-4 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</div> : null}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard label="Ecommerce Sales" value={fmtRm(totals.ecommerce_sales)} accent="text-blue-700" />
-        <SummaryCard label="Booking Sales" value={fmtRm(totals.booking_sales)} accent="text-violet-700" />
-        <SummaryCard label="Total Sales" value={fmtRm(totals.total_sales)} accent="text-emerald-700" />
-        <SummaryCard label="Total Orders" value={fmtInt(totals.total_orders)} accent="text-slate-900" />
-      </div>
+      <SalesVisualPeriodDashboard year={selectedYear} month={selectedMonth} onShiftPeriod={shiftPeriod} />
 
       <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 px-5 py-4">
@@ -295,6 +352,18 @@ export default function SalesSummaryWorkspaceClient() {
                 })
               )}
             </tbody>
+            {!loading && tableTotals ? (
+              <tfoot>
+                <tr className="border-t-2 border-blue-300 bg-blue-50 text-sm font-bold text-blue-950">
+                  <td className="px-5 py-3 text-xs uppercase tracking-wide">Total</td>
+                  <td className="px-5 py-3 text-right">{fmtInt(tableTotals.ecommerce_orders)}</td>
+                  <td className="px-5 py-3 text-right">{fmtInt(tableTotals.booking_count)}</td>
+                  <td className="px-5 py-3 text-right">{fmtRm(tableTotals.ecommerce_sales)}</td>
+                  <td className="px-5 py-3 text-right">{fmtRm(tableTotals.booking_sales)}</td>
+                  <td className="px-5 py-3 text-right">{fmtRm(tableTotals.total_sales)}</td>
+                </tr>
+              </tfoot>
+            ) : null}
           </table>
         </div>
       </section>

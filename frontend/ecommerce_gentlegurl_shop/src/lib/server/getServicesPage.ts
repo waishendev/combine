@@ -96,7 +96,7 @@ export async function getServicesPage(slug: string): Promise<ServicesPageData | 
     }
 
     const qs = searchParams.toString();
-    const url = `${siteUrl}/api/proxy/public/services/pages/${slug}${qs ? `?${qs}` : ""}`;
+    const url = `${siteUrl}/api/proxy/public/services/pages/${encodeURIComponent(slug)}${qs ? `?${qs}` : ""}`;
     const res = await fetch(url, {
       method: "GET",
       headers: cookieHeader
