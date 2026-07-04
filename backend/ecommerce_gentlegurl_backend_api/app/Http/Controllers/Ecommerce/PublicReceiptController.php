@@ -124,7 +124,7 @@ class PublicReceiptController extends Controller
             && $mixedItems->count() === $mixedItems->where('line_type', 'booking_deposit')->count();
         $hasOnlySettlementLines = $hasSettlementLine
             && $mixedItems->count() > 0
-            && $mixedItems->count() === $mixedItems->where('line_type', 'booking_settlement')->count();
+            && $mixedItems->every(fn ($item) => in_array((string) ($item->line_type ?? ''), ['booking_settlement', 'booking_addon'], true));
 
         $receiptStage = $isPackageCoveredReceipt
             ? 'package_covered_booking'
@@ -136,7 +136,7 @@ class PublicReceiptController extends Controller
         if ($hasOnlyDepositLines) {
             $displayItems = $mixedItems->where('line_type', 'booking_deposit')->values();
         } elseif ($hasOnlySettlementLines) {
-            $displayItems = $mixedItems->where('line_type', 'booking_settlement')->values();
+            $displayItems = $mixedItems->whereIn('line_type', ['booking_settlement', 'booking_addon'])->values();
         }
 
 
@@ -151,10 +151,19 @@ class PublicReceiptController extends Controller
                 ?? $item->line_total
                 ?? max(0, $lineTotalSnapshot - $discountAmount));
 
+            $lineType = (string) ($item->line_type ?: 'product');
+            $rawProductName = (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Add-on');
+            $formattedAddon = $lineType === 'booking_addon'
+                ? $this->invoiceService->formatBookingAddonDisplayName($rawProductName)
+                : null;
+
             return [
-                'type' => (string) ($item->line_type ?: 'product'),
-                'name' => $row['product_name'],
+                'type' => $lineType,
+                'name' => $lineType === 'booking_addon'
+                    ? (string) ($formattedAddon['name'] ?? $rawProductName)
+                    : $row['product_name'],
                 'cn_name' => $item->displayCnName(),
+                'addon_service_context' => $formattedAddon['service_context'] ?? null,
                 'selected_booking_product_options' => is_array($item->selected_booking_product_options) ? $item->selected_booking_product_options : [],
                 'variant_name' => $row['variant_name'],
                 'variant_cn_name' => $row['variant_cn_name'] ?? $item->displayVariantCnName(),

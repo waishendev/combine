@@ -15,10 +15,12 @@ class BookingServiceQuestionOption extends Model
         'extra_price',
         'sort_order',
         'is_active',
+        'allow_quantity',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'allow_quantity' => 'boolean',
         'extra_price' => 'decimal:2',
     ];
 

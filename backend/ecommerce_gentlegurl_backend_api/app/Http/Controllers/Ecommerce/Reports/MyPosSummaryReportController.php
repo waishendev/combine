@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Ecommerce\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Models\Ecommerce\OrderItem;
+use App\Services\Ecommerce\InvoiceService;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -337,6 +338,13 @@ class MyPosSummaryReportController extends Controller
                     : null;
                 $variantName = trim((string) ($row->variant_name ?? ''));
                 $variantName = $variantName !== '' ? $variantName : ($itemDisplay['variant_name'] ?? null);
+                $productName = (string) ($row->product_name ?? '');
+                $addonServiceContext = null;
+                if (($row->item_type ?? '') === 'booking_addon') {
+                    $formattedAddon = app(InvoiceService::class)->formatBookingAddonDisplayName($productName);
+                    $productName = (string) ($formattedAddon['name'] ?? $productName);
+                    $addonServiceContext = $formattedAddon['service_context'] ?? null;
+                }
                 $baseRow = [
                     'report_line_key' => sprintf('%s:%d', (string) ($row->item_type ?? 'product'), (int) $row->order_item_id),
                     'order_no' => $row->order_no,
@@ -348,7 +356,8 @@ class MyPosSummaryReportController extends Controller
                     'created_by_email' => $row->created_by_email,
                     'order_item_id' => (int) $row->order_item_id,
                     'item_type' => $row->item_type,
-                    'product_name' => $row->product_name,
+                    'product_name' => $productName,
+                    'addon_service_context' => $addonServiceContext,
                     'product_cn_name' => $itemDisplay['product_cn_name'] ?? null,
                     'variant_name' => $variantName,
                     'variant_cn_name' => $itemDisplay['variant_cn_name'] ?? null,

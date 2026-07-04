@@ -15,12 +15,18 @@ use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderServiceItem;
 use App\Models\Booking\BookingSetting;
+use App\Services\Booking\BookingAddonQuantityService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class MyBookingController extends Controller
 {
+    public function __construct(
+        protected BookingAddonQuantityService $addonQuantityService,
+    ) {
+    }
+
     public function index(Request $request)
     {
         $customer = $request->user('customer');
@@ -255,6 +261,8 @@ class MyBookingController extends Controller
                 'add_ons' => collect($item['addon_items'] ?? [])->map(fn ($addon) => [
                     'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
                     'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
+                    'quantity' => $this->addonQuantityService->resolveStoredQuantity(is_array($addon) ? $addon : []),
+                    'line_gross_amount' => $this->addonQuantityService->lineGrossAmount(is_array($addon) ? $addon : []),
                 ])->values()->all(),
             ])
             ->values();
@@ -268,9 +276,11 @@ class MyBookingController extends Controller
         $addonItems = $originalAddonSource->map(fn ($item) => [
             'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
             'extra_price' => round(max(0, (float) ($item['extra_price'] ?? 0)), 2),
+            'quantity' => $this->addonQuantityService->resolveStoredQuantity(is_array($item) ? $item : []),
+            'line_gross_amount' => $this->addonQuantityService->lineGrossAmount(is_array($item) ? $item : []),
         ])->concat($extraMainServices->flatMap(fn (array $service) => $service['add_ons'] ?? []))->values();
-        $addonTotalDurationMin = (int) $addonItems->sum('extra_duration_min');
-        $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum('extra_price')), 2);
+        $addonTotalDurationMin = (int) $addonItems->sum(fn (array $addon) => $this->addonQuantityService->lineDurationMinutes($addon));
+        $addonTotalPrice = round((float) ($booking->addon_price ?? $addonItems->sum(fn (array $addon) => (float) ($addon['line_gross_amount'] ?? 0))), 2);
 
         $actualAppointmentDepositCollected = (float) OrderItem::query()
             ->where('booking_id', (int) $booking->id)
@@ -478,11 +488,14 @@ class MyBookingController extends Controller
 
     private function mapAddonItems($rawItems): array
     {
-        return collect(is_array($rawItems) ? $rawItems : [])
+        return $this->flattenAddonRows($rawItems)
             ->map(function ($item) {
-                if (!is_array($item)) {
+                if (! is_array($item)) {
                     return null;
                 }
+
+                $quantity = $this->addonQuantityService->resolveStoredQuantity($item);
+                $lineGrossAmount = $this->addonQuantityService->lineGrossAmount($item);
 
                 return [
                     'id' => isset($item['id']) ? (int) $item['id'] : null,
@@ -490,11 +503,38 @@ class MyBookingController extends Controller
                     'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
                     'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
                     'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+                    'quantity' => $quantity,
+                    'line_gross_amount' => $lineGrossAmount,
                 ];
             })
             ->filter()
             ->values()
             ->all();
+    }
+
+    private function flattenAddonRows($rawItems): \Illuminate\Support\Collection
+    {
+        $items = collect(is_array($rawItems) ? $rawItems : []);
+        $mainServiceRows = $items->filter(
+            fn ($item) => is_array($item) && strtolower((string) ($item['item_kind'] ?? '')) === 'main_service'
+        );
+
+        if ($mainServiceRows->isEmpty()) {
+            return $items->filter(fn ($item) => is_array($item));
+        }
+
+        $originalMainServiceItem = $mainServiceRows->first(fn ($item) => (bool) ($item['is_original'] ?? false));
+        $originalAddonSource = is_array($originalMainServiceItem)
+            ? collect((array) ($originalMainServiceItem['addon_items'] ?? []))
+            : $items->filter(
+                fn ($item) => is_array($item) && strtolower((string) ($item['item_kind'] ?? 'addon')) !== 'main_service'
+            );
+
+        $extraAddons = $mainServiceRows
+            ->filter(fn ($item) => ! (bool) ($item['is_original'] ?? false))
+            ->flatMap(fn ($service) => collect((array) ($service['addon_items'] ?? []))->filter(fn ($addon) => is_array($addon)));
+
+        return $originalAddonSource->filter(fn ($item) => is_array($item))->concat($extraAddons);
     }
 
     private function resolveBookingReceipts(int $bookingId): array

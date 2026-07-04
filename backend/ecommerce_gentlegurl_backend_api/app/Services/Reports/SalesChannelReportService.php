@@ -9,6 +9,7 @@ use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Ecommerce\OrderReceiptToken;
 use App\Models\User;
 use App\Support\BookingNotes;
+use App\Services\Ecommerce\InvoiceService;
 use App\Services\SettingService;
 use Carbon\Carbon;
 use Illuminate\Database\Query\Builder;
@@ -18,6 +19,11 @@ use Illuminate\Support\Str;
 
 class SalesChannelReportService
 {
+    public function __construct(
+        private InvoiceService $invoiceService,
+    ) {
+    }
+
     public const CHANNEL_ALL = 'all';
     public const CHANNEL_ONLINE = 'online';
     public const CHANNEL_OFFLINE = 'offline';
@@ -312,6 +318,10 @@ class SalesChannelReportService
             default => $item->displayCnName(),
         };
         $bookingNo = $item->booking?->booking_code ?: ($item->booking_id ? 'BOOKING-' . $item->booking_id : null);
+        $rawName = (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: $item->product?->name ?: $item->bookingService?->name ?: 'Line item');
+        $formattedAddon = $lineType === 'booking_addon'
+            ? $this->invoiceService->formatBookingAddonDisplayName($rawName)
+            : null;
 
         $staffSplits = $item->staffSplits
             ->filter(fn ($split) => ! in_array((string) ($split->line_type ?? ''), ['booking_product_option'], true))
@@ -332,8 +342,9 @@ class SalesChannelReportService
             'line_type' => (string) ($item->line_type ?? 'product'),
             'type_label' => $this->displayLineType((string) ($item->line_type ?? 'product')),
             'booking_no' => $bookingNo,
-            'name' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: $item->product?->name ?: $item->bookingService?->name ?: 'Line item'),
+            'name' => is_array($formattedAddon) ? (string) ($formattedAddon['name'] ?? $rawName) : $rawName,
             'cn_name' => $productCnName,
+            'addon_service_context' => is_array($formattedAddon) ? ($formattedAddon['service_context'] ?? null) : null,
             'variant_name' => $variantName !== '' ? $variantName : null,
             'variant_cn_name' => $item->displayVariantCnName(),
             'sku' => $item->variant_sku_snapshot ?: $item->sku_snapshot ?: $item->productVariant?->sku,

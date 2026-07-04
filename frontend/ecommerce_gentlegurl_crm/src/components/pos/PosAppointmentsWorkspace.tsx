@@ -12,6 +12,7 @@ import {
   appointmentNeedsZeroBalanceCheckout,
   appointmentVisitCheckoutFinalized,
   bookingServiceSettlementSource,
+  buildAddonSettlementSaveOverrides,
   formatPosAccumulatedPriceDisplay,
   formatPosCurrentOrRangeDisplay,
   formatPosPriceDisplay,
@@ -20,7 +21,11 @@ import {
   parseSettlementAmountInput,
   posPriceDisplayHasFinalPrice,
   posPriceDisplayHasRange,
+  posPriceDisplayForAddonLine,
   posPriceDisplayWithOverride,
+  resolveEditSettlementAddonLineAmount,
+  resolveEditSettlementAddonUnitDisplay,
+  seedAddonLineTotalOverrides,
   seedFinalizedAddonPriceOverrides,
   settlementNeedsSettledAmount,
   UNSETTLED_RANGE_CHECKOUT_MESSAGE,
@@ -28,6 +33,21 @@ import {
 } from '@/components/pos/settlementAmountUtils'
 import BookingServicePhotosModal from '@/components/booking/BookingServicePhotosModal'
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
+import BookingAddonOptionRow, { PosAddonLineName, PosAddonSelectionDurationLabel, PosAddonSelectionPriceLabel, PosAddonSettlementPriceLabel } from '@/components/pos/BookingAddonOptionRow'
+import {
+  buildAddonQuantitiesPayload,
+  getAddonQuantity,
+  getSelectedAddonIds,
+  isAddonSelected,
+  selectionFromAddonRows,
+  setAddonQuantity,
+  storedAddonLineDuration,
+  storedAddonLinePrice,
+  storedAddonQuantity,
+  sumSelectedAddonDuration,
+  toggleAddonSelection,
+  type AddonSelectionMap,
+} from '@/components/pos/bookingAddonQuantity'
 import CustomerUploadedPhotosModal from '@/components/booking/CustomerUploadedPhotosModal'
 import CustomerCreateModal from '@/components/CustomerCreateModal'
 import type { CustomerRowData } from '@/components/CustomerRow'
@@ -39,6 +59,7 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
+import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
 import {
@@ -192,14 +213,18 @@ type CreateExtraServiceBlock = {
   id: string
   service: BookingServiceOption | null
   questions: ServiceAddonQuestion[]
-  selectedOptionIds: number[]
+  addonQuantities: AddonSelectionMap
+  addon_price_overrides: Record<number, number>
+  addon_line_total_overrides: Record<number, number>
 }
 
 type AppointmentPriceEditTarget =
   | { kind: 'originalService'; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
-  | { kind: 'originalAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
+  | { kind: 'originalAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'addedService'; tmpId: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
-  | { kind: 'addedAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null }
+  | { kind: 'addedAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'createMainAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'createBlockAddon'; blockId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
 
 
 /** POS member search row (`/api/proxy/pos/members/search`) */
@@ -368,7 +393,9 @@ export default function PosAppointmentsWorkspace({
   const [createAppointmentNotes, setCreateAppointmentNotes] = useState('')
   const [createAppointmentDepositPayments, setCreateAppointmentDepositPayments] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
   const [createAppointmentQuestions, setCreateAppointmentQuestions] = useState<ServiceAddonQuestion[]>([])
-  const [createAppointmentSelectedOptionIds, setCreateAppointmentSelectedOptionIds] = useState<number[]>([])
+  const [createAppointmentAddonQuantities, setCreateAppointmentAddonQuantities] = useState<AddonSelectionMap>({})
+  const [createAppointmentAddonPriceOverrides, setCreateAppointmentAddonPriceOverrides] = useState<Record<number, number>>({})
+  const [createAppointmentAddonLineTotalOverrides, setCreateAppointmentAddonLineTotalOverrides] = useState<Record<number, number>>({})
   const [createAppointmentExtraServiceBlocks, setCreateAppointmentExtraServiceBlocks] = useState<CreateExtraServiceBlock[]>([])
   const [appointmentLineStaffSplits, setAppointmentLineStaffSplits] = useState<Record<string, AppointmentLineStaffSplit[]>>({})
   const [appointmentLineSplitTarget, setAppointmentLineSplitTarget] = useState<AppointmentLineSplitTarget | null>(null)
@@ -455,7 +482,7 @@ export default function PosAppointmentsWorkspace({
   const [editMainServicePickerOpen, setEditMainServicePickerOpen] = useState(false)
   const [editMainServicePickerTargetId, setEditMainServicePickerTargetId] = useState<string | null>(null)
   const [editAddonQuestions, setEditAddonQuestions] = useState<ServiceAddonQuestion[]>([])
-  const [editSelectedAddonIds, setEditSelectedAddonIds] = useState<Set<number>>(new Set())
+  const [editAddonQuantities, setEditAddonQuantities] = useState<AddonSelectionMap>({})
   const [editMainServiceCatalog, setEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [editMainServiceCatalogLoading, setEditMainServiceCatalogLoading] = useState(false)
   const [editMainServiceQuery, setEditMainServiceQuery] = useState('')
@@ -472,14 +499,16 @@ export default function PosAppointmentsWorkspace({
     price_finalized?: boolean | null
     duration_min: number
     addon_questions: ServiceAddonQuestion[]
-    selected_addon_ids: Set<number>
+    selected_addon_ids: AddonSelectionMap
     addon_price_overrides: Record<number, number>
+    addon_line_total_overrides: Record<number, number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
   }>>([])
   const [editOriginalService, setEditOriginalService] = useState<BookingServiceOption | null>(null)
   const [editOriginalServicePriceOverride, setEditOriginalServicePriceOverride] = useState<number | null>(null)
   const [editAddonPriceOverrides, setEditAddonPriceOverrides] = useState<Record<number, number>>({})
+  const [editAddonLineTotalOverrides, setEditAddonLineTotalOverrides] = useState<Record<number, number>>({})
   const [appointmentPriceEditTarget, setAppointmentPriceEditTarget] = useState<AppointmentPriceEditTarget | null>(null)
   const [appointmentPriceEditMode, setAppointmentPriceEditMode] = useState<'unit' | 'line'>('unit')
   const [appointmentPriceEditValueDraft, setAppointmentPriceEditValueDraft] = useState('')
@@ -1140,7 +1169,9 @@ export default function PosAppointmentsWorkspace({
     reportCreateAppointmentError(null)
     setCreateAppointmentSubmitting(false)
     setCreateAppointmentServiceDraft(null)
-    setCreateAppointmentSelectedOptionIds([])
+    setCreateAppointmentAddonQuantities({})
+    setCreateAppointmentAddonPriceOverrides({})
+    setCreateAppointmentAddonLineTotalOverrides({})
     setCreateAppointmentExtraServiceBlocks([])
     setAppointmentLineStaffSplits({})
     setAppointmentLineSplitTarget(null)
@@ -1260,38 +1291,58 @@ export default function PosAppointmentsWorkspace({
   }, [createAppointmentMemberPickerOpen, createAppointmentMemberQuery])
 
   const createAppointmentSelectedOptions = useMemo(() => {
-    const selected = new Set(createAppointmentSelectedOptionIds)
+    const selected = new Set(getSelectedAddonIds(createAppointmentAddonQuantities))
     return createAppointmentQuestions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
-  }, [createAppointmentQuestions, createAppointmentSelectedOptionIds])
+  }, [createAppointmentQuestions, createAppointmentAddonQuantities])
 
   const createAppointmentAddonDurationTotal = useMemo(
-    () => createAppointmentSelectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0),
-    [createAppointmentSelectedOptions],
+    () => sumSelectedAddonDuration(createAppointmentSelectedOptions, createAppointmentAddonQuantities),
+    [createAppointmentAddonQuantities, createAppointmentSelectedOptions],
   )
 
   const createAppointmentGrandTotalBounds = useMemo(() => {
-    const items: Array<{ source?: PosPriceDisplaySource | null }> = []
+    const items: Array<{
+      source?: PosPriceDisplaySource | null
+      overrideAmount?: number
+      hasOverrideKey?: boolean
+      lineTotalOverride?: number
+      hasLineTotalOverrideKey?: boolean
+    }> = []
     if (createAppointmentServiceDraft) items.push({ source: createAppointmentServiceDraft })
-    createAppointmentSelectedOptions.forEach((option) => items.push({ source: option }))
+    createAppointmentSelectedOptions.forEach((option) => {
+      items.push({
+        source: { ...option, quantity: getAddonQuantity(createAppointmentAddonQuantities, option.id) },
+        overrideAmount: createAppointmentAddonPriceOverrides[option.id],
+        hasOverrideKey: Object.prototype.hasOwnProperty.call(createAppointmentAddonPriceOverrides, option.id),
+        lineTotalOverride: createAppointmentAddonLineTotalOverrides[option.id],
+        hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(createAppointmentAddonLineTotalOverrides, option.id),
+      })
+    })
     for (const block of createAppointmentExtraServiceBlocks) {
       if (!block.service) continue
       items.push({ source: block.service })
-      const selected = new Set(block.selectedOptionIds)
       block.questions
-        .flatMap((question) => question.options.filter((option) => selected.has(option.id)))
-        .forEach((option) => items.push({ source: option }))
+        .flatMap((question) => question.options.filter((option) => isAddonSelected(block.addonQuantities, option.id)))
+        .forEach((option) => {
+          items.push({
+            source: { ...option, quantity: getAddonQuantity(block.addonQuantities, option.id) },
+            overrideAmount: block.addon_price_overrides[option.id],
+            hasOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_price_overrides, option.id),
+            lineTotalOverride: block.addon_line_total_overrides[option.id],
+            hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, option.id),
+          })
+        })
     }
     return accumulatePosPriceBounds(items)
-  }, [createAppointmentExtraServiceBlocks, createAppointmentSelectedOptions, createAppointmentServiceDraft])
+  }, [createAppointmentAddonLineTotalOverrides, createAppointmentAddonPriceOverrides, createAppointmentAddonQuantities, createAppointmentExtraServiceBlocks, createAppointmentSelectedOptions, createAppointmentServiceDraft])
   const createAppointmentExtraTotals = useMemo(() => {
     return createAppointmentExtraServiceBlocks.reduce((acc, block) => {
       if (!block.service) return acc
       acc.baseDuration += Number(block.service.duration_min ?? 0)
       acc.basePrice += Number(block.service.price ?? block.service.service_price ?? 0)
-      const selected = new Set(block.selectedOptionIds)
-      const selectedOptions = block.questions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
-      acc.addonDuration += selectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0)
-      acc.addonPrice += selectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0)
+      const selectedOptions = block.questions.flatMap((question) => question.options.filter((option) => isAddonSelected(block.addonQuantities, option.id)))
+      acc.addonDuration += sumSelectedAddonDuration(selectedOptions, block.addonQuantities)
+      acc.addonPrice += selectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0) * (block.addonQuantities[option.id] ?? 1), 0)
       return acc
     }, { baseDuration: 0, addonDuration: 0, basePrice: 0, addonPrice: 0 })
   }, [createAppointmentExtraServiceBlocks])
@@ -1456,7 +1507,7 @@ export default function PosAppointmentsWorkspace({
     }
     for (const question of createAppointmentQuestions) {
       if (!question.is_required) continue
-      const hasSelection = question.options.some((option) => createAppointmentSelectedOptionIds.includes(option.id))
+      const hasSelection = question.options.some((option) => isAddonSelected(createAppointmentAddonQuantities, option.id))
       if (!hasSelection) {
         reportCreateAppointmentError(`Please answer required question: ${question.title}`)
         return
@@ -1469,7 +1520,7 @@ export default function PosAppointmentsWorkspace({
       }
       for (const question of block.questions) {
         if (!question.is_required) continue
-        const hasSelection = question.options.some((option) => block.selectedOptionIds.includes(option.id))
+        const hasSelection = question.options.some((option) => isAddonSelected(block.addonQuantities, option.id))
         if (!hasSelection) {
           reportCreateAppointmentError(`Please answer required question: ${question.title}`)
           return
@@ -1516,37 +1567,58 @@ export default function PosAppointmentsWorkspace({
           booking_service_id: createAppointmentServiceDraft.id,
           staff_splits: appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }],
         },
-        selected_addon_ids: createAppointmentSelectedOptionIds,
-        addon_staff_splits: Object.fromEntries(createAppointmentSelectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? []])),
+        selected_addon_ids: getSelectedAddonIds(createAppointmentAddonQuantities),
+        addon_staff_splits: Object.fromEntries(getSelectedAddonIds(createAppointmentAddonQuantities).map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? []])),
         service_blocks: createAppointmentExtraServiceBlocks.map((block) => ({
           id: block.id,
           booking_service_id: block.service?.id ?? null,
-          selected_addon_ids: block.selectedOptionIds,
+          selected_addon_ids: getSelectedAddonIds(block.addonQuantities),
           staff_splits: appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? [],
-          addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? []])),
+          addon_staff_splits: Object.fromEntries(getSelectedAddonIds(block.addonQuantities).map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? []])),
         })),
       })
       const createMainStaffSplits = appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }]
+      const createMainAddonIds = getSelectedAddonIds(createAppointmentAddonQuantities)
+      const createMainAddonOverrides = buildAddonSettlementSaveOverrides(
+        createMainAddonIds,
+        createAppointmentAddonQuantities,
+        createAppointmentAddonPriceOverrides,
+        createAppointmentAddonLineTotalOverrides,
+      )
       const payload: Record<string, unknown> = {
         booking_service_id: createAppointmentServiceDraft.id,
         assigned_staff_id: createAppointmentAssignedStaffId,
-        selected_option_ids: createAppointmentSelectedOptionIds,
+        selected_option_ids: createMainAddonIds,
+        selected_option_quantities: buildAddonQuantitiesPayload(createAppointmentAddonQuantities),
         main_service_items: [
           {
             booking_service_id: createAppointmentServiceDraft.id,
-            selected_option_ids: createAppointmentSelectedOptionIds,
+            selected_option_ids: createMainAddonIds,
+            selected_option_quantities: buildAddonQuantitiesPayload(createAppointmentAddonQuantities),
+            addon_price_overrides: createMainAddonOverrides.addon_price_overrides,
+            addon_line_total_overrides: createMainAddonOverrides.addon_line_total_overrides,
             staff_splits: createMainStaffSplits,
-            addon_staff_splits: Object.fromEntries(createAppointmentSelectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? createMainStaffSplits])),
+            addon_staff_splits: Object.fromEntries(createMainAddonIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:addon:${id}`] ?? createMainStaffSplits])),
           },
           ...createAppointmentExtraServiceBlocks
             .filter((block) => block.service?.id)
             .map((block) => {
+              const blockAddonIds = getSelectedAddonIds(block.addonQuantities)
+              const blockAddonOverrides = buildAddonSettlementSaveOverrides(
+                blockAddonIds,
+                block.addonQuantities,
+                block.addon_price_overrides,
+                block.addon_line_total_overrides,
+              )
               const blockMainStaffSplits = appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? [{ staff_id: createAppointmentAssignedStaffId, share_percent: 100 }]
               return {
                 booking_service_id: Number(block.service?.id),
-                selected_option_ids: block.selectedOptionIds,
+                selected_option_ids: blockAddonIds,
+                selected_option_quantities: buildAddonQuantitiesPayload(block.addonQuantities),
+                addon_price_overrides: blockAddonOverrides.addon_price_overrides,
+                addon_line_total_overrides: blockAddonOverrides.addon_line_total_overrides,
                 staff_splits: blockMainStaffSplits,
-                addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? blockMainStaffSplits])),
+                addon_staff_splits: Object.fromEntries(blockAddonIds.map((id) => [id, appointmentLineStaffSplits[`appointment-create:block:${block.id}:addon:${id}`] ?? blockMainStaffSplits])),
               }
             }),
         ],
@@ -1681,7 +1753,9 @@ export default function PosAppointmentsWorkspace({
     createAppointmentIdentityMode,
     createAppointmentNotes,
     createAppointmentQuestions,
-    createAppointmentSelectedOptionIds,
+    createAppointmentAddonQuantities,
+    createAppointmentAddonPriceOverrides,
+    createAppointmentAddonLineTotalOverrides,
     createAppointmentSelectedServiceIds,
     createAppointmentSelectedSlot,
     createAppointmentServiceDraft,
@@ -2051,13 +2125,9 @@ export default function PosAppointmentsWorkspace({
       duration_min: Number(originalMainService?.extra_duration_min ?? appointmentDetail.service.duration_min ?? 0),
     })
 
-    const currentAddonIds = new Set(
-      (appointmentDetail.add_ons ?? [])
-        .map((a) => a.id)
-        .filter((id): id is number => id != null),
-    )
-    setEditSelectedAddonIds(currentAddonIds)
+    setEditAddonQuantities(selectionFromAddonRows((appointmentDetail.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))))
     setEditAddonPriceOverrides(seedFinalizedAddonPriceOverrides(appointmentDetail.add_ons ?? []))
+    setEditAddonLineTotalOverrides(seedAddonLineTotalOverrides(appointmentDetail.add_ons ?? []))
     const originalSettlementSourceForSeed = bookingServiceSettlementSource(
       {
         price_mode: appointmentDetail.service.price_mode ?? null,
@@ -2102,8 +2172,9 @@ export default function PosAppointmentsWorkspace({
         price_range_max: service.price_range_max ?? null,
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as ServiceAddonQuestion[],
-        selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
+        selected_addon_ids: selectionFromAddonRows((service.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))),
         addon_price_overrides: seedFinalizedAddonPriceOverrides(service.add_ons ?? []),
+        addon_line_total_overrides: seedAddonLineTotalOverrides(service.add_ons ?? []),
         staff_splits: (service.staff_splits ?? []).map((split) => ({
           staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
           share_percent: String(split.share_percent ?? ''),
@@ -2126,7 +2197,7 @@ export default function PosAppointmentsWorkspace({
         }
       })
       addedMainBlocksSeed.forEach((block) => {
-        block.selected_addon_ids.forEach((addonId) => {
+        getSelectedAddonIds(block.selected_addon_ids).forEach((addonId) => {
           const addon = appointmentDisplayMainServices
             .find((service) => Number(service.linked_booking_service_id ?? service.id ?? 0) === block.service_id)
             ?.add_ons?.find((row) => Number(row.id ?? 0) === addonId)
@@ -2238,16 +2309,12 @@ export default function PosAppointmentsWorkspace({
     }
   }, [appointmentDetail, appointmentDisplayMainServices, rebalanceEditSettlementPrimaryShare])
 
-  const toggleEditAddon = useCallback((optionId: number) => {
-    setEditSelectedAddonIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(optionId)) {
-        next.delete(optionId)
-      } else {
-        next.add(optionId)
-      }
-      return next
-    })
+  const toggleEditAddon = useCallback((option: ServiceAddonOption, questionType: string, questionOptionIds: number[]) => {
+    setEditAddonQuantities((prev) => toggleAddonSelection(prev, option, questionType, questionOptionIds))
+  }, [])
+
+  const setEditAddonQuantity = useCallback((option: ServiceAddonOption, qty: number) => {
+    setEditAddonQuantities((prev) => setAddonQuantity(prev, option, qty))
   }, [])
 
   const selectEditOriginalService = useCallback(async (service: BookingServiceOption) => {
@@ -2256,7 +2323,8 @@ export default function PosAppointmentsWorkspace({
     setEditOriginalService(service)
     setEditOriginalServicePriceOverride(Number(service.service_price ?? service.price ?? 0))
     setEditAddonPriceOverrides({})
-    setEditSelectedAddonIds(new Set())
+    setEditAddonLineTotalOverrides({})
+    setEditAddonQuantities({})
     setEditAddedMainBlocks((prev) => prev.filter((block) => block.service_id !== service.id))
     if (!settlementNeedsSettledAmount(bookingServiceSettlementSource(service))) {
       setEditSettledAmount('')
@@ -2307,8 +2375,9 @@ export default function PosAppointmentsWorkspace({
       price_range_max: service.price_range_max ?? null,
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
-      selected_addon_ids: new Set<number>(),
+      selected_addon_ids: {},
       addon_price_overrides: {},
+      addon_line_total_overrides: {},
       staff_splits: [{ staff_id: null, share_percent: '100' }],
       auto_balance: true,
     }])
@@ -2401,26 +2470,45 @@ export default function PosAppointmentsWorkspace({
     setEditSettlementLoading(true)
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(editOriginalSettlementSource)
+      const originalAddonIds = getSelectedAddonIds(editAddonQuantities)
+      const originalAddonOverrides = buildAddonSettlementSaveOverrides(
+        originalAddonIds,
+        editAddonQuantities,
+        editAddonPriceOverrides,
+        editAddonLineTotalOverrides,
+      )
       const payload: Record<string, unknown> = {
-        addon_option_ids: Array.from(editSelectedAddonIds),
-        addon_price_overrides: editAddonPriceOverrides,
+        addon_option_ids: originalAddonIds,
+        addon_quantities: buildAddonQuantitiesPayload(editAddonQuantities),
+        addon_price_overrides: originalAddonOverrides.addon_price_overrides,
+        addon_line_total_overrides: originalAddonOverrides.addon_line_total_overrides,
         availability_override: true,
         availability_override_type: 'outside_staff_schedule',
         availability_override_reason: null,
-        addon_staff_splits: Object.fromEntries(Array.from(editSelectedAddonIds).map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:addon:${id}`] ?? []])),
+        addon_staff_splits: Object.fromEntries(getSelectedAddonIds(editAddonQuantities).map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:addon:${id}`] ?? []])),
         main_service_ids: editAddedMainBlocks.map((block) => block.service_id),
-        main_service_items: editAddedMainBlocks.map((block) => ({
+        main_service_items: editAddedMainBlocks.map((block) => {
+          const blockAddonIds = getSelectedAddonIds(block.selected_addon_ids)
+          const blockAddonOverrides = buildAddonSettlementSaveOverrides(
+            blockAddonIds,
+            block.selected_addon_ids,
+            block.addon_price_overrides,
+            block.addon_line_total_overrides,
+          )
+          return {
           booking_service_id: block.service_id,
           price: block.price,
           price_finalized: Boolean(block.price_finalized),
-          addon_option_ids: Array.from(block.selected_addon_ids),
-          addon_price_overrides: block.addon_price_overrides,
-          addon_staff_splits: Object.fromEntries(Array.from(block.selected_addon_ids).map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
+          addon_option_ids: blockAddonIds,
+          addon_quantities: buildAddonQuantitiesPayload(block.selected_addon_ids),
+          addon_price_overrides: blockAddonOverrides.addon_price_overrides,
+          addon_line_total_overrides: blockAddonOverrides.addon_line_total_overrides,
+          addon_staff_splits: Object.fromEntries(blockAddonIds.map((id) => [id, appointmentLineStaffSplits[`appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
           staff_splits: block.staff_splits.map((row) => ({
             staff_id: Number(row.staff_id ?? 0),
             share_percent: Number.parseInt(row.share_percent || '0', 10),
           })),
-        })),
+        }}),
       }
       const originalServiceId = Number(editOriginalService?.id ?? appointmentDetail.service?.id ?? 0)
       if (originalServiceId > 0 && originalServiceId !== Number(appointmentDetail.service?.id ?? 0)) {
@@ -2530,35 +2618,69 @@ export default function PosAppointmentsWorkspace({
     } finally {
       setEditSettlementLoading(false)
     }
-  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editSelectedAddonIds, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
+  }, [appointmentDetail, appointmentLineStaffSplits, editAddedMainBlocks, editOriginalService, editOriginalSettlementSource, editAddonQuantities, editSettledAmount, editStaffSplits, editAddonPriceOverrides, editAddonLineTotalOverrides, editOriginalServicePriceOverride, editSettlementAvailability, editSettlementCustomerId, editSettlementGuestEmail, editSettlementGuestName, editSettlementGuestPhone, editSettlementIdentityMode, editSettlementNoteDraft, fetchAppointments, refreshOpenedAppointmentDetail, showMsg])
 
 
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
-    const qty = Math.max(1, Number(target.quantity ?? 1))
+    const qty = resolvePriceEditQuantity(target.quantity)
     const unit = Math.max(0, Number(target.currentUnitPrice ?? 0))
+    const isAddonKind = target.kind === 'originalAddon'
+      || target.kind === 'addedAddon'
+      || target.kind === 'createMainAddon'
+      || target.kind === 'createBlockAddon'
+    const hasLineTotalOverrideKey = Boolean(isAddonKind && target.hasLineTotalOverrideKey)
+    const lineTotalOverride = hasLineTotalOverrideKey ? Number(target.lineTotalOverride ?? 0) : null
     setAppointmentPriceEditTarget({ ...target, quantity: qty })
     setAppointmentPriceEditMode('unit')
     const hasFinalPrice = !target.priceSource || posPriceDisplayHasFinalPrice(target.priceSource)
     setAppointmentPriceEditValueDraft(hasFinalPrice ? unit.toFixed(2) : '')
-    setAppointmentPriceEditLineTotalDraft(hasFinalPrice ? (unit * qty).toFixed(2) : '')
+    setAppointmentPriceEditLineTotalDraft(
+      hasFinalPrice
+        ? (hasLineTotalOverrideKey && lineTotalOverride != null
+          ? lineTotalOverride.toFixed(2)
+          : (unit * qty).toFixed(2))
+        : '',
+    )
     setAppointmentPriceEditReasonDraft('')
   }, [])
 
   const submitAppointmentPriceEditModal = useCallback(() => {
     if (!appointmentPriceEditTarget) return
-    const qty = Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))
+    const reportPriceEditError = (message: string | null) => {
+      if (appointmentPriceEditTarget.kind === 'createMainAddon' || appointmentPriceEditTarget.kind === 'createBlockAddon') {
+        reportCreateAppointmentError(message)
+      } else {
+        reportEditSettlementError(message)
+      }
+    }
     const rawValue = appointmentPriceEditMode === 'line' ? appointmentPriceEditLineTotalDraft : appointmentPriceEditValueDraft
-    const amount = Number(rawValue)
-    if (!Number.isFinite(amount) || amount < 0) {
-      reportEditSettlementError('Price cannot be negative.')
+    const amount = parseSettlementAmountInput(rawValue)
+    if (amount == null) {
+      reportPriceEditError(appointmentPriceEditMode === 'line' ? 'Please enter a valid line total.' : 'Please enter a valid unit price.')
       return
     }
+    const qty = appointmentPriceEditTarget.kind === 'originalAddon'
+      ? resolvePriceEditQuantity(getAddonQuantity(editAddonQuantities, appointmentPriceEditTarget.optionId))
+      : appointmentPriceEditTarget.kind === 'addedAddon'
+        ? resolvePriceEditQuantity(getAddonQuantity(
+          editAddedMainBlocks.find((block) => block.tmp_id === appointmentPriceEditTarget.tmpId)?.selected_addon_ids ?? {},
+          appointmentPriceEditTarget.optionId,
+        ))
+        : appointmentPriceEditTarget.kind === 'createMainAddon'
+          ? resolvePriceEditQuantity(getAddonQuantity(createAppointmentAddonQuantities, appointmentPriceEditTarget.optionId))
+          : appointmentPriceEditTarget.kind === 'createBlockAddon'
+            ? resolvePriceEditQuantity(getAddonQuantity(
+              createAppointmentExtraServiceBlocks.find((block) => block.id === appointmentPriceEditTarget.blockId)?.addonQuantities ?? {},
+              appointmentPriceEditTarget.optionId,
+            ))
+            : resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)
     const unitPrice = appointmentPriceEditMode === 'line' ? amount / qty : amount
     if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      reportEditSettlementError('Price cannot be negative.')
+      reportPriceEditError('Price cannot be negative.')
       return
     }
     const rounded = Number(unitPrice.toFixed(2))
+    const roundedLineTotal = appointmentPriceEditMode === 'line' ? Number(amount.toFixed(2)) : null
     if (appointmentPriceEditTarget.kind === 'originalService') {
       setEditOriginalServicePriceOverride(rounded)
       if (settlementNeedsSettledAmount(editOriginalSettlementSource)) {
@@ -2566,14 +2688,48 @@ export default function PosAppointmentsWorkspace({
       }
     } else if (appointmentPriceEditTarget.kind === 'originalAddon') {
       setEditAddonPriceOverrides((prev) => ({ ...prev, [appointmentPriceEditTarget.optionId]: rounded }))
+      setEditAddonLineTotalOverrides((prev) => {
+        const next = { ...prev }
+        if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+        else delete next[appointmentPriceEditTarget.optionId]
+        return next
+      })
     } else if (appointmentPriceEditTarget.kind === 'addedService') {
       setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, price: rounded, price_finalized: true } : block))
     } else if (appointmentPriceEditTarget.kind === 'addedAddon') {
-      setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? { ...block, addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded } } : block))
+      setEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === appointmentPriceEditTarget.tmpId ? {
+        ...block,
+        addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded },
+        addon_line_total_overrides: (() => {
+          const next = { ...block.addon_line_total_overrides }
+          if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+          else delete next[appointmentPriceEditTarget.optionId]
+          return next
+        })(),
+      } : block))
+    } else if (appointmentPriceEditTarget.kind === 'createMainAddon') {
+      setCreateAppointmentAddonPriceOverrides((prev) => ({ ...prev, [appointmentPriceEditTarget.optionId]: rounded }))
+      setCreateAppointmentAddonLineTotalOverrides((prev) => {
+        const next = { ...prev }
+        if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+        else delete next[appointmentPriceEditTarget.optionId]
+        return next
+      })
+    } else if (appointmentPriceEditTarget.kind === 'createBlockAddon') {
+      setCreateAppointmentExtraServiceBlocks((prev) => prev.map((block) => block.id === appointmentPriceEditTarget.blockId ? {
+        ...block,
+        addon_price_overrides: { ...block.addon_price_overrides, [appointmentPriceEditTarget.optionId]: rounded },
+        addon_line_total_overrides: (() => {
+          const next = { ...block.addon_line_total_overrides }
+          if (roundedLineTotal != null) next[appointmentPriceEditTarget.optionId] = roundedLineTotal
+          else delete next[appointmentPriceEditTarget.optionId]
+          return next
+        })(),
+      } : block))
     }
-    reportEditSettlementError(null)
+    reportPriceEditError(null)
     setAppointmentPriceEditTarget(null)
-  }, [appointmentPriceEditLineTotalDraft, appointmentPriceEditMode, appointmentPriceEditTarget, appointmentPriceEditValueDraft, editOriginalSettlementSource])
+  }, [appointmentPriceEditLineTotalDraft, appointmentPriceEditMode, appointmentPriceEditTarget, appointmentPriceEditValueDraft, createAppointmentAddonQuantities, createAppointmentExtraServiceBlocks, editAddedMainBlocks, editAddonQuantities, editOriginalSettlementSource, reportCreateAppointmentError, reportEditSettlementError])
 
   const applyAppointmentPackage = useCallback(async () => {
     if (!appointmentDetail?.id) return
@@ -3128,13 +3284,67 @@ export default function PosAppointmentsWorkspace({
     return appointmentIsFullyPackageCovered && wasCollected ? amount : 0
   }, [appointmentDetail?.deposit_previously_collected, appointmentDetail?.deposit_previously_collected_amount, appointmentIsFullyPackageCovered])
 
+  const appointmentAddonBoundsForBreakdown = useMemo(
+    () => accumulatePosPriceBounds((appointmentDetail?.add_ons ?? []).map((addon) => ({ source: addon }))),
+    [appointmentDetail?.add_ons],
+  )
+
+  const editSettlementLiveAddonBounds = useMemo(() => {
+    const hasPendingLineOverrides = Object.keys(editAddonLineTotalOverrides).length > 0
+    if (!editSettlementOpen && !hasPendingLineOverrides) return null
+    const originalOptions = editAddonQuestions.flatMap((question) => question.options)
+    const selectedOriginal = originalOptions.filter((option) => isAddonSelected(editAddonQuantities, option.id))
+    const originalBounds = accumulatePosPriceBounds(
+      selectedOriginal.map((option) => ({
+        source: { ...option, quantity: getAddonQuantity(editAddonQuantities, option.id) },
+        overrideAmount: editAddonPriceOverrides[option.id],
+        hasOverrideKey: Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, option.id),
+        lineTotalOverride: editAddonLineTotalOverrides[option.id],
+        hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(editAddonLineTotalOverrides, option.id),
+      })),
+    )
+    const addedBounds = editAddedMainBlocks.reduce(
+      (acc, block) => {
+        const blockOptions = block.addon_questions.flatMap((question) => question.options)
+        const selectedBlockAddons = blockOptions.filter((option) => isAddonSelected(block.selected_addon_ids, option.id))
+        const blockBounds = accumulatePosPriceBounds(
+          selectedBlockAddons.map((option) => ({
+            source: { ...option, quantity: getAddonQuantity(block.selected_addon_ids, option.id) },
+            overrideAmount: block.addon_price_overrides[option.id],
+            hasOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_price_overrides, option.id),
+            lineTotalOverride: block.addon_line_total_overrides[option.id],
+            hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, option.id),
+          })),
+        )
+        return {
+          min: acc.min + blockBounds.min,
+          max: acc.max + blockBounds.max,
+          hasRange: acc.hasRange || blockBounds.hasRange,
+        }
+      },
+      { min: 0, max: 0, hasRange: false },
+    )
+    return {
+      min: originalBounds.min + addedBounds.min,
+      max: originalBounds.max + addedBounds.max,
+      hasRange: originalBounds.hasRange || addedBounds.hasRange,
+    }
+  }, [editAddedMainBlocks, editAddonLineTotalOverrides, editAddonPriceOverrides, editAddonQuantities, editAddonQuestions, editSettlementOpen])
+
+  const displayAppointmentAddonBounds = editSettlementLiveAddonBounds ?? appointmentAddonBoundsForBreakdown
+
   const appointmentAddonTotal = useMemo(() => {
+    if (editSettlementLiveAddonBounds) {
+      return editSettlementLiveAddonBounds.hasRange
+        ? editSettlementLiveAddonBounds.max
+        : editSettlementLiveAddonBounds.min
+    }
     if (!appointmentDetail) return 0
     if (appointmentDetail.addon_total_price != null && appointmentDetail.addon_total_price !== undefined) {
       return Number(appointmentDetail.addon_total_price)
     }
-    return (appointmentDetail.add_ons ?? []).reduce((sum, a) => sum + Number(a.extra_price ?? 0), 0)
-  }, [appointmentDetail])
+    return (appointmentDetail.add_ons ?? []).reduce((sum, a) => sum + storedAddonLinePrice(a), 0)
+  }, [appointmentDetail, editSettlementLiveAddonBounds])
 
   const appointmentServiceAmount = useMemo(
     () => Number(appointmentDetail?.service_total ?? 0),
@@ -3157,19 +3367,19 @@ export default function PosAppointmentsWorkspace({
       ? Number(appointmentDetail.estimated_duration_min ?? 0) - Number(appointmentDetail.addon_total_duration_min ?? 0)
       : appointmentSettlementDurationMin
     const baseDuration = originalDuration > 0 ? originalDuration : Math.max(0, fallbackOriginalDuration)
-    const originalAddonDuration = editAddonQuestions
-      .flatMap((question) => question.options)
-      .filter((option) => editSelectedAddonIds.has(option.id))
-      .reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0)
+    const originalAddonDuration = sumSelectedAddonDuration(
+      editAddonQuestions.flatMap((question) => question.options),
+      editAddonQuantities,
+    )
     const addedBlockDuration = editAddedMainBlocks.reduce((sum, block) => {
-      const blockAddonDuration = block.addon_questions
-        .flatMap((question) => question.options)
-        .filter((option) => block.selected_addon_ids.has(option.id))
-        .reduce((addonSum, option) => addonSum + Number(option.extra_duration_min ?? 0), 0)
+      const blockAddonDuration = sumSelectedAddonDuration(
+        block.addon_questions.flatMap((question) => question.options),
+        block.selected_addon_ids,
+      )
       return sum + Number(block.duration_min ?? 0) + blockAddonDuration
     }, 0)
     return Math.max(0, baseDuration + originalAddonDuration + addedBlockDuration)
-  }, [appointmentDetail, appointmentDisplayMainServices, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editOriginalService?.duration_min, editSelectedAddonIds])
+  }, [appointmentDetail, appointmentDisplayMainServices, appointmentSettlementDurationMin, editAddedMainBlocks, editAddonQuestions, editOriginalService?.duration_min, editAddonQuantities])
 
   const editSettlementEstimatedEndAt = useMemo(() => {
     const startAt = appointmentDetail?.appointment_start_at
@@ -3206,34 +3416,52 @@ export default function PosAppointmentsWorkspace({
     void checkEditSettlementAvailability()
   }, [appointmentDetail?.appointment_start_at, appointmentDetail?.id, appointmentDetail?.staff?.id, appointmentDetail?.status, editSettlementEstimatedEndAt, editSettlementOpen])
 
-  const appointmentAddonBoundsForBreakdown = useMemo(
-    () => accumulatePosPriceBounds((appointmentDetail?.add_ons ?? []).map((addon) => ({ source: addon }))),
-    [appointmentDetail?.add_ons],
-  )
-
   /** Add-on amount still due at settlement (list total minus add-on deposits already paid on orders). */
   const appointmentAddonDueForBreakdown = useMemo(() => {
     if (!appointmentDetail) return 0
+    const hasPendingLineOverrides = Object.keys(editAddonLineTotalOverrides).length > 0
+    if ((editSettlementOpen || hasPendingLineOverrides) && editSettlementLiveAddonBounds) {
+      const liveTotal = editSettlementLiveAddonBounds.hasRange
+        ? editSettlementLiveAddonBounds.max
+        : editSettlementLiveAddonBounds.min
+      const paid = Number(appointmentDetail.addon_paid_online ?? 0)
+      return Math.max(0, liveTotal - paid)
+    }
     const bal = appointmentDetail.addon_balance_due
     if (bal != null && Number.isFinite(Number(bal))) return Number(bal)
     return appointmentAddonTotal
-  }, [appointmentDetail, appointmentAddonTotal])
+  }, [appointmentAddonTotal, appointmentDetail, editAddonLineTotalOverrides, editSettlementLiveAddonBounds, editSettlementOpen])
 
   const appointmentAddonBreakdownDisplay = useMemo(() => {
+    const hasPendingLineOverrides = Object.keys(editAddonLineTotalOverrides).length > 0
+    if ((editSettlementOpen || hasPendingLineOverrides) && editSettlementLiveAddonBounds) {
+      if (editSettlementLiveAddonBounds.hasRange) {
+        const paid = Number(appointmentDetail?.addon_paid_online ?? 0)
+        if (paid > 0.005) {
+          return formatPosAccumulatedPriceDisplay({
+            min: Math.max(0, editSettlementLiveAddonBounds.min - paid),
+            max: Math.max(0, editSettlementLiveAddonBounds.max - paid),
+            hasRange: editSettlementLiveAddonBounds.hasRange,
+          })
+        }
+        return formatPosAccumulatedPriceDisplay(editSettlementLiveAddonBounds)
+      }
+      return `RM ${appointmentAddonDueForBreakdown.toFixed(2)}`
+    }
     if (!(appointmentDetail?.add_ons?.length ?? 0)) return null
-    if (appointmentAddonBoundsForBreakdown.hasRange) {
+    if (displayAppointmentAddonBounds.hasRange) {
       const paid = Number(appointmentDetail?.addon_paid_online ?? 0)
       if (paid > 0.005) {
         return formatPosAccumulatedPriceDisplay({
-          min: Math.max(0, appointmentAddonBoundsForBreakdown.min - paid),
-          max: Math.max(0, appointmentAddonBoundsForBreakdown.max - paid),
-          hasRange: appointmentAddonBoundsForBreakdown.hasRange,
+          min: Math.max(0, displayAppointmentAddonBounds.min - paid),
+          max: Math.max(0, displayAppointmentAddonBounds.max - paid),
+          hasRange: displayAppointmentAddonBounds.hasRange,
         })
       }
-      return formatPosAccumulatedPriceDisplay(appointmentAddonBoundsForBreakdown)
+      return formatPosAccumulatedPriceDisplay(displayAppointmentAddonBounds)
     }
     return `RM ${appointmentAddonDueForBreakdown.toFixed(2)}`
-  }, [appointmentAddonBoundsForBreakdown, appointmentAddonDueForBreakdown, appointmentDetail?.add_ons?.length, appointmentDetail?.addon_paid_online])
+  }, [appointmentAddonDueForBreakdown, appointmentDetail?.add_ons?.length, appointmentDetail?.addon_paid_online, displayAppointmentAddonBounds, editAddonLineTotalOverrides, editSettlementLiveAddonBounds, editSettlementOpen])
 
   const appointmentSubtotalBeforeCredits = useMemo(
     () => appointmentServiceAmount + appointmentAddonTotal,
@@ -3983,6 +4211,7 @@ export default function PosAppointmentsWorkspace({
                             let addonCoverageUsed = 0
 
                             return appointmentDisplayMainServices.map((service, serviceIdx) => {
+                              const isOriginalService = Boolean(service.is_original ?? serviceIdx === 0)
                               const servicePrice = Number(service.extra_price ?? 0)
                               const packageCoversMainService =
                                 appointmentPackageApplied &&
@@ -4014,45 +4243,110 @@ export default function PosAppointmentsWorkspace({
                                       ) : (
                                         <>
                                           <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: servicePrice })}</span>
-                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-slate-500">Ref range: {formatPosPriceDisplay(service)}</span> : null}
                                           {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </>
                                       )}
                                     </span>
                                   </div>
                                   {(service.add_ons ?? []).length > 0 ? (
-                                    <ul className="mt-1.5 space-y-0.5 text-xs text-slate-700">
+                                    <ul className="mt-1.5 space-y-1.5 text-xs text-slate-700">
                                       {(service.add_ons ?? []).map((addon, addonIdx) => {
-                                        const addonPrice = Number(addon.extra_price ?? 0)
+                                        const addonOptionId = Number(addon.id ?? 0)
+                                        const hasPendingEditLineOverride = Object.prototype.hasOwnProperty.call(editAddonLineTotalOverrides, addonOptionId)
+                                        const useEditAddonPreview = editSettlementOpen || hasPendingEditLineOverride
+                                        const editAddonContext = useEditAddonPreview && addonOptionId > 0
+                                          ? isOriginalService
+                                            ? {
+                                                selection: editAddonQuantities,
+                                                unitOverrides: editAddonPriceOverrides,
+                                                lineTotalOverrides: editAddonLineTotalOverrides,
+                                                quantity: getAddonQuantity(editAddonQuantities, addonOptionId),
+                                              }
+                                            : (() => {
+                                                const block = editAddedMainBlocks.find((item) => item.service_id === Number(service.linked_booking_service_id ?? service.id ?? 0))
+                                                if (!block) return null
+                                                return {
+                                                  selection: block.selected_addon_ids,
+                                                  unitOverrides: block.addon_price_overrides,
+                                                  lineTotalOverrides: block.addon_line_total_overrides,
+                                                  quantity: getAddonQuantity(block.selected_addon_ids, addonOptionId),
+                                                }
+                                              })()
+                                          : null
+                                        const hasEditLineOverride = Boolean(
+                                          editAddonContext
+                                          && Object.prototype.hasOwnProperty.call(editAddonContext.lineTotalOverrides, addonOptionId),
+                                        )
+                                        const addonLinePrice = editAddonContext
+                                          ? (
+                                            resolveEditSettlementAddonLineAmount(
+                                              addonOptionId,
+                                              Number(addon.extra_price ?? 0),
+                                              editAddonContext.selection,
+                                              editAddonContext.unitOverrides,
+                                              editAddonContext.lineTotalOverrides,
+                                            ) ?? storedAddonLinePrice(addon)
+                                          )
+                                          : storedAddonLinePrice(addon)
+                                        const addonPriceSource = editAddonContext
+                                          ? posPriceDisplayForAddonLine({
+                                            ...addon,
+                                            quantity: editAddonContext.quantity,
+                                            line_total_override: hasEditLineOverride
+                                              ? editAddonContext.lineTotalOverrides[addonOptionId]
+                                              : null,
+                                            line_gross_amount: hasEditLineOverride
+                                              ? editAddonContext.lineTotalOverrides[addonOptionId]
+                                              : addon.line_gross_amount,
+                                            gross_amount: hasEditLineOverride ? null : addon.gross_amount,
+                                          })
+                                          : posPriceDisplayForAddonLine(addon)
+                                        const hasExplicitAddonLinePrice = hasEditLineOverride
+                                          || hasPendingEditLineOverride
+                                          || (addon.line_gross_amount != null && Number.isFinite(Number(addon.line_gross_amount)))
+                                          || (addon.gross_amount != null && Number.isFinite(Number(addon.gross_amount)))
+                                        const showAddonUnsettledRange = posPriceDisplayHasRange(addon)
+                                          && !posPriceDisplayHasFinalPrice(addon)
+                                          && !hasExplicitAddonLinePrice
                                         const packageCoversAddon =
                                           appointmentPackageApplied &&
                                           packageRemainingForAddons > addonCoverageUsed + 0.0001 &&
-                                          addonPrice > 0.0001 &&
-                                          packageRemainingForAddons + 0.0001 >= addonCoverageUsed + addonPrice
-                                        if (packageCoversAddon) addonCoverageUsed += addonPrice
+                                          addonLinePrice > 0.0001 &&
+                                          packageRemainingForAddons + 0.0001 >= addonCoverageUsed + addonLinePrice
+                                        if (packageCoversAddon) addonCoverageUsed += addonLinePrice
 
                                         return (
-                                          <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex justify-between gap-2">
-                                            <span>
-                                              + {addon.name}
-                                              {addon.cn_name ? <span className="block pl-2 text-[11px] text-slate-500">{addon.cn_name}</span> : null}
-                                              {packageCoversAddon ? (
-                                                <span className="mt-0.5 block pl-2 text-[11px] font-medium leading-snug text-emerald-700">
+                                          <li key={`appt-main-addon-${service.id ?? service.name}-${addon.id ?? addon.name}-${addonIdx}`} className="flex items-start justify-between gap-3">
+                                            <PosAddonLineName
+                                              layout="stacked"
+                                              prefix=""
+                                              name={addon.name}
+                                              cnName={addon.cn_name}
+                                              quantity={editAddonContext?.quantity ?? addon.quantity}
+                                              cnClassName="block text-[11px] text-slate-500"
+                                              quantityClassName="mt-0.5 text-[11px] font-semibold tabular-nums text-slate-500"
+                                              trailing={packageCoversAddon ? (
+                                                <span className="mt-1 block text-[11px] font-medium leading-snug text-emerald-700">
                                                   Included in your package (add-on)
                                                 </span>
                                               ) : null}
-                                            </span>
+                                            />
                                             <span className="text-right tabular-nums">
                                               {packageCoversAddon ? (
                                                 <>
-                                                  <span className="block text-slate-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: addonPrice })}</span>
+                                                  <span className="block text-slate-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: addonLinePrice })}</span>
                                                   <span className="block font-semibold text-emerald-800">RM 0.00</span>
                                                 </>
                                               ) : (
                                                 <>
-                                                  <span className="block">{formatPosCurrentOrRangeDisplay({ ...addon, extra_price: addonPrice })}</span>
-                                                  {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-slate-500">Ref range: {formatPosPriceDisplay(addon)}</span> : null}
-                                                  {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
+                                                  <span className="block">
+                                                    {showAddonUnsettledRange
+                                                      ? formatPosCurrentOrRangeDisplay(addonPriceSource)
+                                                      : `RM ${addonLinePrice.toFixed(2)}`}
+                                                  </span>
+                                                  {showAddonUnsettledRange ? (
+                                                    <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span>
+                                                  ) : null}
                                                 </>
                                               )}
                                             </span>
@@ -4182,7 +4476,7 @@ export default function PosAppointmentsWorkspace({
                         <span className="text-base font-bold text-slate-900">Total Amount to Pay</span>
                         <span className="text-xl font-bold tabular-nums text-emerald-800">
                           {appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
-                            || appointmentAddonBoundsForBreakdown.hasRange
+                            || displayAppointmentAddonBounds.hasRange
                             ? (() => {
                                 const rangeMin = appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
                                   ? Number(appointmentDetail.service?.price_range_min ?? 0)
@@ -4190,11 +4484,11 @@ export default function PosAppointmentsWorkspace({
                                 const rangeMax = appointmentDetail.is_range_priced && appointmentDetail.settled_service_amount == null
                                   ? Number(appointmentDetail.service?.price_range_max ?? 0)
                                   : appointmentServiceAmount
-                                const addonMin = appointmentAddonBoundsForBreakdown.hasRange
-                                  ? appointmentAddonBoundsForBreakdown.min
+                                const addonMin = displayAppointmentAddonBounds.hasRange
+                                  ? displayAppointmentAddonBounds.min
                                   : appointmentAddonDueForBreakdown
-                                const addonMax = appointmentAddonBoundsForBreakdown.hasRange
-                                  ? appointmentAddonBoundsForBreakdown.max
+                                const addonMax = displayAppointmentAddonBounds.hasRange
+                                  ? displayAppointmentAddonBounds.max
                                   : appointmentAddonDueForBreakdown
                                 const totalMin = Math.max(0, rangeMin + addonMin - appointmentDepositTotalForBreakdown - appointmentPackageOffsetAmount)
                                 const totalMax = Math.max(0, rangeMax + addonMax - appointmentDepositTotalForBreakdown - appointmentPackageOffsetAmount)
@@ -4597,10 +4891,10 @@ export default function PosAppointmentsWorkspace({
                           onClick={() => {
                             const lineKeys = [
                               `appointment-create:main:${createAppointmentServiceDraft.id}`,
-                              ...createAppointmentSelectedOptionIds.map((id) => `appointment-create:addon:${id}`),
+                              ...getSelectedAddonIds(createAppointmentAddonQuantities).map((id) => `appointment-create:addon:${id}`),
                               ...createAppointmentExtraServiceBlocks.flatMap((block) => [
                                 ...(block.service ? [`appointment-create:block:${block.id}:main`] : []),
-                                ...block.selectedOptionIds.map((id) => `appointment-create:block:${block.id}:addon:${id}`),
+                                ...getSelectedAddonIds(block.addonQuantities).map((id) => `appointment-create:block:${block.id}:addon:${id}`),
                               ]),
                             ]
                             void openAppointmentBulkLineSplitEditor('Create Appointment Lines', lineKeys, assignedStaffDefaultSplit(createAppointmentAssignedStaffId))
@@ -4615,7 +4909,7 @@ export default function PosAppointmentsWorkspace({
                         onClick={() => {
                           setCreateAppointmentExtraServiceBlocks((prev) => [
                             ...prev,
-                            { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
+                            { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], addonQuantities: {}, addon_price_overrides: {}, addon_line_total_overrides: {} },
                           ])
                         }}
                         className="rounded-md border border-blue-300 bg-white px-2 py-1 text-xs font-semibold text-blue-700"
@@ -4633,7 +4927,9 @@ export default function PosAppointmentsWorkspace({
                       if (next && createAppointmentServiceDraft && !bookingServiceMatchesPickerCategory(createAppointmentServiceDraft, next)) {
                         setCreateAppointmentServiceDraft(null)
                         setCreateAppointmentQuestions([])
-                        setCreateAppointmentSelectedOptionIds([])
+                        setCreateAppointmentAddonQuantities({})
+                        setCreateAppointmentAddonPriceOverrides({})
+                        setCreateAppointmentAddonLineTotalOverrides({})
                       }
                     }}
                     searchQuery={createAppointmentServiceQuery}
@@ -4642,7 +4938,9 @@ export default function PosAppointmentsWorkspace({
                     onSelectService={(service) => {
                       const selected = service as BookingServiceOption
                       setCreateAppointmentServiceDraft(selected)
-                      setCreateAppointmentSelectedOptionIds([])
+                      setCreateAppointmentAddonQuantities({})
+                      setCreateAppointmentAddonPriceOverrides({})
+                      setCreateAppointmentAddonLineTotalOverrides({})
                       setCreateAppointmentAssignedStaffId(null)
                       setCreateAppointmentSlotValue('')
                       setCreateAppointmentSlots([])
@@ -4676,50 +4974,49 @@ export default function PosAppointmentsWorkspace({
                   ) : null}
 
                   {createAppointmentQuestions.map((question) => (
-                    <div key={question.id} className="rounded-lg border border-gray-200 bg-white p-3">
-                      <div><p className="text-sm font-semibold text-gray-900">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-xs text-gray-500">{question.cn_title}</p> : null}</div>
-                      <div className="mt-2 space-y-1.5">
-                        {question.options.map((option) => {
-                          const checked = createAppointmentSelectedOptionIds.includes(option.id)
-                          return (
-                            <label key={option.id} className="flex cursor-pointer items-start justify-between gap-2 rounded-md px-1 py-1 hover:bg-gray-50">
-                              <div className="flex items-start gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => {
-                                    setCreateAppointmentSelectedOptionIds((prev) => {
-                                      if (question.question_type === 'single_choice') {
-                                        const withoutQuestion = prev.filter((id) => !question.options.some((opt) => opt.id === id))
-                                        return checked ? withoutQuestion : [...withoutQuestion, option.id]
-                                      }
-                                      return checked ? prev.filter((id) => id !== option.id) : [...prev, option.id]
-                                    })
-                                  }}
-                                />
-                                <PosServiceNameStack
-                                  name={option.label}
-                                  cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
-                                  primaryClassName="text-sm text-gray-800"
-                                  secondaryClassName="mt-0.5 text-xs text-gray-500"
-                                />
-                              </div>
-                              <span className="flex shrink-0 flex-col items-end gap-1 text-xs font-semibold text-gray-700">
-                                <span>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
-                                {checked && createAppointmentServiceDraft ? (() => {
-                                  const lineKey = `appointment-create:addon:${option.id}`
-                                  const inherited = appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
-                                  return (
-                                    <>
-                                      {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
-                                      <button type="button" onClick={(event) => { event.preventDefault(); void openAppointmentLineSplitEditor(lineKey, option.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                    </>
-                                  )
-                                })() : null}
-                              </span>
-                            </label>
-                          )
-                        })}
+                    <div key={question.id} className="rounded-xl border border-gray-200 bg-gray-50/40 p-3">
+                      <div className="mb-2.5">
+                        <p className="text-xs font-bold uppercase tracking-wide text-gray-700">{question.title}</p>
+                        {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
+                      </div>
+                      <div className="space-y-2">
+                        {question.options.map((option) => (
+                          <BookingAddonOptionRow
+                            key={option.id}
+                            variant="settlement"
+                            option={option}
+                            selection={createAppointmentAddonQuantities}
+                            onToggle={() => setCreateAppointmentAddonQuantities((prev) => toggleAddonSelection(prev, option, question.question_type, question.options.map((row) => row.id)))}
+                            onQuantityChange={(qty) => setCreateAppointmentAddonQuantities((prev) => setAddonQuantity(prev, option, qty))}
+                            durationLabel={<PosAddonSelectionDurationLabel option={option} selection={createAppointmentAddonQuantities} />}
+                            priceLabel={
+                              <PosAddonSettlementPriceLabel
+                                option={option}
+                                selection={createAppointmentAddonQuantities}
+                                useRangeDisplay
+                                emphasis
+                                overrideAmount={createAppointmentAddonPriceOverrides[option.id]}
+                                hasOverrideKey={Object.prototype.hasOwnProperty.call(createAppointmentAddonPriceOverrides, option.id)}
+                                lineTotalOverride={createAppointmentAddonLineTotalOverrides[option.id]}
+                                hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(createAppointmentAddonLineTotalOverrides, option.id)}
+                              />
+                            }
+                            trailing={createAppointmentServiceDraft ? (() => {
+                              const lineKey = `appointment-create:addon:${option.id}`
+                              const inherited = appointmentLineStaffSplits[`appointment-create:main:${createAppointmentServiceDraft.id}`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
+                              const qty = getAddonQuantity(createAppointmentAddonQuantities, option.id)
+                              return (
+                                <div className="space-y-2.5">
+                                  {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'createMainAddon', optionId: option.id, name: option.label ?? 'Add-on', currentUnitPrice: resolveEditSettlementAddonUnitDisplay(option.id, qty, Number(option.extra_price ?? 0), createAppointmentAddonPriceOverrides, createAppointmentAddonLineTotalOverrides), originalUnitPrice: Number(option.extra_price ?? 0), quantity: qty, priceSource: posPriceDisplayWithOverride(option, createAppointmentAddonPriceOverrides[option.id], Object.prototype.hasOwnProperty.call(createAppointmentAddonPriceOverrides, option.id)) ?? option, lineTotalOverride: createAppointmentAddonLineTotalOverrides[option.id], hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(createAppointmentAddonLineTotalOverrides, option.id) }) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                    <button type="button" onClick={(event) => { event.preventDefault(); void openAppointmentLineSplitEditor(lineKey, option.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                  </div>
+                                </div>
+                              )
+                            })() : null}
+                          />
+                        ))}
                       </div>
                     </div>
                   ))}
@@ -4792,7 +5089,7 @@ export default function PosAppointmentsWorkspace({
                                 onCategoryChange={(next) => {
                                   setCreateAppointmentExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
                                   if (next && block.service && !bookingServiceMatchesPickerCategory(block.service, next)) {
-                                    setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
+                                    setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], addonQuantities: {}, addon_price_overrides: {}, addon_line_total_overrides: {} } : row))
                                   }
                                 }}
                                 searchQuery={createAppointmentExtraServiceQueries[block.id] ?? ''}
@@ -4805,7 +5102,7 @@ export default function PosAppointmentsWorkspace({
                                   setCreateAppointmentExtraServiceBlocks((prev) =>
                                     prev.map((row) =>
                                       row.id === block.id
-                                        ? { ...row, service: selected, questions, selectedOptionIds: [] }
+                                        ? { ...row, service: selected, questions, addonQuantities: {}, addon_price_overrides: {}, addon_line_total_overrides: {} }
                                         : row,
                                     ),
                                   )
@@ -4818,55 +5115,56 @@ export default function PosAppointmentsWorkspace({
                           })()}
                       </div>
                       {block.questions.map((question) => (
-                        <div key={`${block.id}-${question.id}`} className="rounded border border-gray-200 p-2">
-                          <p className="text-xs font-semibold text-gray-800">
-                            {question.title}
-                            {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
-                          </p>
-                          {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
-                          <div className="mt-1 space-y-1">
-                            {question.options.map((option) => {
-                              const checked = block.selectedOptionIds.includes(option.id)
-                              return (
-                                <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs">
-                                  <div className="flex items-center gap-2">
-                                    <input
-                                      type="checkbox"
-                                      checked={checked}
-                                      onChange={() => {
-                                        setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => {
-                                          if (row.id !== block.id) return row
-                                          if (question.question_type === 'single_choice') {
-                                            const withoutQuestion = row.selectedOptionIds.filter((id) => !question.options.some((opt) => opt.id === id))
-                                            return { ...row, selectedOptionIds: checked ? withoutQuestion : [...withoutQuestion, option.id] }
-                                          }
-                                          return { ...row, selectedOptionIds: checked ? row.selectedOptionIds.filter((id) => id !== option.id) : [...row.selectedOptionIds, option.id] }
-                                        }))
-                                      }}
-                                    />
-                                    <PosServiceNameStack
-                                      name={option.label}
-                                      cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
-                                      primaryClassName="text-xs text-gray-700"
-                                      secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                                    />
-                                  </div>
-                                  <span className="flex flex-col items-end gap-1 font-semibold text-gray-700">
-                                    <span>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
-                                    {checked ? (() => {
-                                      const lineKey = `appointment-create:block:${block.id}:addon:${option.id}`
-                                      const inherited = appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
-                                      return (
-                                        <>
-                                          {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
-                                          <button type="button" onClick={(event) => { event.preventDefault(); void openAppointmentLineSplitEditor(lineKey, option.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                        </>
-                                      )
-                                    })() : null}
-                                  </span>
-                                </label>
-                              )
-                            })}
+                        <div key={`${block.id}-${question.id}`} className="rounded-xl border border-gray-200 bg-gray-50/40 p-3">
+                          <div className="mb-2.5">
+                            <p className="text-xs font-bold uppercase tracking-wide text-gray-700">
+                              {question.title}
+                              {question.is_required ? <span className="ml-1 text-red-600">*</span> : null}
+                            </p>
+                            {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
+                          </div>
+                          <div className="space-y-2">
+                            {question.options.map((option) => (
+                              <BookingAddonOptionRow
+                                key={`${block.id}-option-${option.id}`}
+                                variant="settlement"
+                                option={option}
+                                selection={block.addonQuantities}
+                                onToggle={() => setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id
+                                  ? { ...row, addonQuantities: toggleAddonSelection(row.addonQuantities, option, question.question_type, question.options.map((item) => item.id)) }
+                                  : row))}
+                                onQuantityChange={(qty) => setCreateAppointmentExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id
+                                  ? { ...row, addonQuantities: setAddonQuantity(row.addonQuantities, option, qty) }
+                                  : row))}
+                                durationLabel={<PosAddonSelectionDurationLabel option={option} selection={block.addonQuantities} />}
+                                priceLabel={
+                                  <PosAddonSettlementPriceLabel
+                                    option={option}
+                                    selection={block.addonQuantities}
+                                    useRangeDisplay
+                                    emphasis
+                                    overrideAmount={block.addon_price_overrides[option.id]}
+                                    hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, option.id)}
+                                    lineTotalOverride={block.addon_line_total_overrides[option.id]}
+                                    hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, option.id)}
+                                  />
+                                }
+                                trailing={(() => {
+                                  const lineKey = `appointment-create:block:${block.id}:addon:${option.id}`
+                                  const inherited = appointmentLineStaffSplits[`appointment-create:block:${block.id}:main`] ?? assignedStaffDefaultSplit(createAppointmentAssignedStaffId)
+                                  const qty = getAddonQuantity(block.addonQuantities, option.id)
+                                  return (
+                                    <div className="space-y-2.5">
+                                      {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'createBlockAddon', blockId: block.id, optionId: option.id, name: option.label ?? 'Add-on', currentUnitPrice: resolveEditSettlementAddonUnitDisplay(option.id, qty, Number(option.extra_price ?? 0), block.addon_price_overrides, block.addon_line_total_overrides), originalUnitPrice: Number(option.extra_price ?? 0), quantity: qty, priceSource: posPriceDisplayWithOverride(option, block.addon_price_overrides[option.id], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, option.id)) ?? option, lineTotalOverride: block.addon_line_total_overrides[option.id], hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, option.id) }) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                        <button type="button" onClick={(event) => { event.preventDefault(); void openAppointmentLineSplitEditor(lineKey, option.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                      </div>
+                                    </div>
+                                  )
+                                })()}
+                              />
+                            ))}
                           </div>
                         </div>
                       ))}
@@ -5837,8 +6135,8 @@ export default function PosAppointmentsWorkspace({
                       onClick={() => {
                         if (!appointmentDetail?.id) return
                         const lineKeys = [
-                          ...Array.from(editSelectedAddonIds).map((id) => `appointment-settlement:${appointmentDetail.id}:addon:${id}`),
-                          ...editAddedMainBlocks.flatMap((block) => Array.from(block.selected_addon_ids).map((id) => `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`)),
+                          ...getSelectedAddonIds(editAddonQuantities).map((id) => `appointment-settlement:${appointmentDetail.id}:addon:${id}`),
+                          ...editAddedMainBlocks.flatMap((block) => getSelectedAddonIds(block.selected_addon_ids).map((id) => `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${id}`)),
                         ]
                         void openAppointmentBulkLineSplitEditor('Edit Settlement Lines', lineKeys, editStaffSplitsToLineSplits(editStaffSplits), { applyEditSettlementMainServices: true })
                       }}
@@ -6005,56 +6303,51 @@ export default function PosAppointmentsWorkspace({
                 ) : editAddonQuestions.length === 0 ? (
                   <p className="text-xs text-gray-500">No add-on options available for this service.</p>
                 ) : (
-                  <div className="space-y-3">
+                  <div className="space-y-4">
                     {editAddonQuestions.map((question) => (
-                      <div key={question.id}>
-                        <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
-                        <div className="space-y-1.5">
-                          {question.options.map((opt) => {
-                            const checked = editSelectedAddonIds.has(opt.id)
-                            return (
-                              <label
-                                key={opt.id}
-                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
-                                  checked
-                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleEditAddon(opt.id)}
-                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                  />
-                                  <PosServiceNameStack
-                                    name={opt.label}
-                                    cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name}
-                                    primaryClassName="text-sm font-medium text-gray-900"
-                                    secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                                  />
-                                </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <span className="text-xs font-semibold tabular-nums text-gray-600">
-                                    +{formatPosCurrentOrRangeDisplay(posPriceDisplayWithOverride(opt, editAddonPriceOverrides[opt.id], Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, opt.id)) ?? opt, { prefix: 'RM' })}
-                                    {opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}
-                                  </span>
-                                  {checked && appointmentDetail?.id ? (() => {
-                                    const lineKey = `appointment-settlement:${appointmentDetail.id}:addon:${opt.id}`
-                                    const inherited = editStaffSplitsToLineSplits(editStaffSplits)
-                                    return (
-                                      <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(editAddonPriceOverrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: posPriceDisplayWithOverride(opt, editAddonPriceOverrides[opt.id], Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, opt.id)) ?? opt }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
-                                        {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                      </>
-                                    )
-                                  })() : null}
-                                </div>
-                              </label>
-                            )
-                          })}
+                      <div key={question.id} className="rounded-xl border border-gray-200 bg-gray-50/40 p-3">
+                        <div className="mb-2.5">
+                          <p className="text-xs font-bold uppercase tracking-wide text-gray-700">{question.title}</p>
+                          {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
+                        </div>
+                        <div className="space-y-2">
+                          {question.options.map((opt) => (
+                            <BookingAddonOptionRow
+                              key={opt.id}
+                              variant="settlement"
+                              option={opt}
+                              selection={editAddonQuantities}
+                              onToggle={() => toggleEditAddon(opt, question.question_type, question.options.map((row) => row.id))}
+                              onQuantityChange={(qty) => setEditAddonQuantity(opt, qty)}
+                              durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={editAddonQuantities} />}
+                              priceLabel={
+                                <PosAddonSettlementPriceLabel
+                                  option={opt}
+                                  selection={editAddonQuantities}
+                                  useRangeDisplay
+                                  emphasis
+                                  overrideAmount={editAddonPriceOverrides[opt.id]}
+                                  hasOverrideKey={Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, opt.id)}
+                                  lineTotalOverride={editAddonLineTotalOverrides[opt.id]}
+                                  hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(editAddonLineTotalOverrides, opt.id)}
+                                />
+                              }
+                              trailing={appointmentDetail?.id ? (() => {
+                                const lineKey = `appointment-settlement:${appointmentDetail.id}:addon:${opt.id}`
+                                const inherited = editStaffSplitsToLineSplits(editStaffSplits)
+                                const qty = getAddonQuantity(editAddonQuantities, opt.id)
+                                return (
+                                  <div className="space-y-2.5">
+                                    {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: resolveEditSettlementAddonUnitDisplay(opt.id, qty, Number(opt.extra_price ?? 0), editAddonPriceOverrides, editAddonLineTotalOverrides), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: qty, priceSource: posPriceDisplayWithOverride(opt, editAddonPriceOverrides[opt.id], Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, opt.id)) ?? opt, lineTotalOverride: editAddonLineTotalOverrides[opt.id], hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(editAddonLineTotalOverrides, opt.id) }) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </div>
+                                  </div>
+                                )
+                              })() : null}
+                            />
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -6257,8 +6550,16 @@ export default function PosAppointmentsWorkspace({
 
               {editAddedMainBlocks.map((block) => {
                 const addonOptions = block.addon_questions.flatMap((q) => q.options)
-                const selectedAddons = addonOptions.filter((opt) => block.selected_addon_ids.has(opt.id))
-                const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), 0)
+                const selectedAddons = addonOptions.filter((opt) => isAddonSelected(block.selected_addon_ids, opt.id))
+                const addonTotal = selectedAddons.reduce((sum, opt) => {
+                  const qty = getAddonQuantity(block.selected_addon_ids, opt.id)
+                  const unit = Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0)
+                  const hasLineOverride = Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id)
+                  const line = hasLineOverride
+                    ? Number(block.addon_line_total_overrides[opt.id] ?? 0)
+                    : unit * qty
+                  return sum + line
+                }, 0)
                 const blockSubtotal = Number(block.price ?? 0) + addonTotal
                 return (
                   <div key={`added-main-block-${block.tmp_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
@@ -6292,46 +6593,59 @@ export default function PosAppointmentsWorkspace({
 
                     {block.service_id > 0 ? (
                       <>
-                      <div className="space-y-1.5">
+                      <div className="space-y-2">
                       {block.addon_questions.map((question) => (
-                        <div key={`added-q-${block.service_id}-${question.id}`}>
-                          <div><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
-                          {question.options.map((opt) => {
-                            const checked = block.selected_addon_ids.has(opt.id)
-                            return (
-                              <label key={`added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => setEditAddedMainBlocks((prev) => prev.map((item) => {
-                                      if (item.service_id !== block.service_id) return item
-                                      const next = new Set(item.selected_addon_ids)
-                                      if (next.has(opt.id)) next.delete(opt.id)
-                                      else next.add(opt.id)
-                                      return { ...item, selected_addon_ids: next }
-                                    }))}
-                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600"
-                                  />
-                                  <PosServiceNameStack name={opt.label} cnName={opt.cn_name ?? opt.cn_label ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                                </div>
-                                <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <span className="text-xs font-semibold text-gray-500">+{formatPosCurrentOrRangeDisplay(posPriceDisplayWithOverride(opt, block.addon_price_overrides[opt.id], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)) ?? opt, { prefix: 'RM' })}</span>
-                                  {checked && appointmentDetail?.id ? (() => {
-                                    const lineKey = `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${opt.id}`
-                                    const inherited = editStaffSplitsToLineSplits(block.staff_splits)
-                                    return (
-                                      <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: Number(block.addon_price_overrides[opt.id] ?? opt.extra_price ?? 0), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: 1, priceSource: posPriceDisplayWithOverride(opt, block.addon_price_overrides[opt.id], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)) ?? opt }) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
-                                        {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                      </>
-                                    )
-                                  })() : null}
-                                </div>
-                              </label>
-                            )
-                          })}
+                        <div key={`added-q-${block.service_id}-${question.id}`} className="rounded-xl border border-gray-200 bg-gray-50/40 p-3">
+                          <div className="mb-2.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700">{question.title}</p>
+                            {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
+                          </div>
+                          <div className="space-y-2">
+                          {question.options.map((opt) => (
+                            <BookingAddonOptionRow
+                              key={`added-opt-${block.service_id}-${opt.id}`}
+                              variant="settlement"
+                              option={opt}
+                              selection={block.selected_addon_ids}
+                              onToggle={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                                ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
+                                : item))}
+                              onQuantityChange={(qty) => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                                ? {
+                                  ...item,
+                                  selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty),
+                                }
+                                : item))}
+                              durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
+                              priceLabel={
+                                <PosAddonSettlementPriceLabel
+                                  option={opt}
+                                  selection={block.selected_addon_ids}
+                                  useRangeDisplay
+                                  emphasis
+                                  overrideAmount={block.addon_price_overrides[opt.id]}
+                                  hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)}
+                                  lineTotalOverride={block.addon_line_total_overrides[opt.id]}
+                                  hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id)}
+                                />
+                              }
+                              trailing={appointmentDetail?.id ? (() => {
+                                const lineKey = `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${opt.id}`
+                                const inherited = editStaffSplitsToLineSplits(block.staff_splits)
+                                const qty = getAddonQuantity(block.selected_addon_ids, opt.id)
+                                return (
+                                  <div className="space-y-2.5">
+                                    {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: resolveEditSettlementAddonUnitDisplay(opt.id, qty, Number(opt.extra_price ?? 0), block.addon_price_overrides, block.addon_line_total_overrides), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: qty, priceSource: posPriceDisplayWithOverride(opt, block.addon_price_overrides[opt.id], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)) ?? opt, lineTotalOverride: block.addon_line_total_overrides[opt.id], hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id) }) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </div>
+                                  </div>
+                                )
+                              })() : null}
+                            />
+                          ))}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -6416,12 +6730,14 @@ export default function PosAppointmentsWorkspace({
               <div className="mt-6 border-t border-gray-200 pt-5">
                 {(() => {
                   const allOptions = editAddonQuestions.flatMap((q) => q.options)
-                  const selectedAddons = allOptions.filter((o) => editSelectedAddonIds.has(o.id))
+                  const selectedAddons = allOptions.filter((o) => isAddonSelected(editAddonQuantities, o.id))
                   const addonBounds = accumulatePosPriceBounds(
                     selectedAddons.map((option) => ({
-                      source: option,
+                      source: { ...option, quantity: getAddonQuantity(editAddonQuantities, option.id) },
                       overrideAmount: editAddonPriceOverrides[option.id],
                       hasOverrideKey: Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, option.id),
+                      lineTotalOverride: editAddonLineTotalOverrides[option.id],
+                      hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(editAddonLineTotalOverrides, option.id),
                     })),
                   )
                   const selectedMainServices = editAddedMainBlocks
@@ -6429,11 +6745,13 @@ export default function PosAppointmentsWorkspace({
                     const addonOptions = service.addon_questions.flatMap((q) => q.options)
                     const blockAddonBounds = accumulatePosPriceBounds(
                       addonOptions
-                        .filter((opt) => service.selected_addon_ids.has(opt.id))
+                        .filter((opt) => isAddonSelected(service.selected_addon_ids, opt.id))
                         .map((opt) => ({
-                          source: opt,
+                          source: { ...opt, quantity: getAddonQuantity(service.selected_addon_ids, opt.id) },
                           overrideAmount: service.addon_price_overrides[opt.id],
                           hasOverrideKey: Object.prototype.hasOwnProperty.call(service.addon_price_overrides, opt.id),
+                          lineTotalOverride: service.addon_line_total_overrides[opt.id],
+                          hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(service.addon_line_total_overrides, opt.id),
                         })),
                     )
                     return sum + Number(service.price ?? 0) + blockAddonBounds.min
@@ -6649,11 +6967,23 @@ export default function PosAppointmentsWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{appointmentPriceEditTarget.name}</p>
-            <div className="mt-4 grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-3 text-sm">
-              <div><p className="text-xs text-gray-500">Original Price / Reference Range</p><p className="font-semibold">{appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) ? formatPosPriceDisplay(appointmentPriceEditTarget.priceSource) : `RM ${Number(appointmentPriceEditTarget.originalUnitPrice ?? 0).toFixed(2)}`}</p></div>
-              <div><p className="text-xs text-gray-500">Current Price</p><p className="font-semibold">{appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Not set' : `RM ${Number(appointmentPriceEditTarget.currentUnitPrice ?? 0).toFixed(2)}`}</p></div>
-              <div><p className="text-xs text-gray-500">Quantity</p><p className="font-semibold">{Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))}</p></div>
-            </div>
+            <PosPriceEditSummaryGrid
+              kind={appointmentPriceEditTarget.kind}
+              originalUnitPrice={Number(appointmentPriceEditTarget.originalUnitPrice ?? 0)}
+              currentUnitPrice={Number(appointmentPriceEditTarget.currentUnitPrice ?? 0)}
+              quantity={appointmentPriceEditTarget.quantity}
+              priceSource={appointmentPriceEditTarget.priceSource}
+              lineTotalOverride={
+                (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon'].includes(appointmentPriceEditTarget.kind))
+                  && appointmentPriceEditTarget.hasLineTotalOverrideKey
+                  ? appointmentPriceEditTarget.lineTotalOverride
+                  : null
+              }
+              hasLineTotalOverrideKey={
+                (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon'].includes(appointmentPriceEditTarget.kind))
+                  && appointmentPriceEditTarget.hasLineTotalOverrideKey
+              }
+            />
             <div className="mt-4">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Method</p>
               <div className="flex flex-wrap gap-4 text-sm font-semibold text-gray-700">
@@ -6662,9 +6992,9 @@ export default function PosAppointmentsWorkspace({
               </div>
             </div>
             {appointmentPriceEditMode === 'unit' ? (
-              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Unit Price</label><input type="number" min={0} step="0.01" value={appointmentPriceEditValueDraft} onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)} placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(appointmentPriceEditValueDraft || 0)) * Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))).toFixed(2)}</p></div>
+              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Unit Price</label><input type="number" min={0} step="0.01" value={appointmentPriceEditValueDraft} onChange={(event) => setAppointmentPriceEditValueDraft(event.target.value)} placeholder={appointmentPriceEditTarget.priceSource && posPriceDisplayHasRange(appointmentPriceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(appointmentPriceEditTarget.priceSource) ? 'Enter final price' : '0.00'} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Line Total: RM {(Math.max(0, Number(appointmentPriceEditValueDraft || 0)) * resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
             ) : (
-              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / Math.max(1, Number(appointmentPriceEditTarget.quantity ?? 1))).toFixed(2)}</p></div>
+              <div className="mt-4"><label className="text-xs font-semibold text-gray-600">New Line Total</label><input type="number" min={0} step="0.01" value={appointmentPriceEditLineTotalDraft} onChange={(event) => setAppointmentPriceEditLineTotalDraft(event.target.value)} className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm" /><p className="mt-1 text-xs text-gray-500">Calculated Unit Price: RM {(Math.max(0, Number(appointmentPriceEditLineTotalDraft || 0)) / resolvePriceEditQuantity(appointmentPriceEditTarget.quantity)).toFixed(2)}</p></div>
             )}
             <div className="mt-4"><label className="text-xs font-semibold text-gray-600">Reason / remark</label><textarea value={appointmentPriceEditReasonDraft} onChange={(event) => setAppointmentPriceEditReasonDraft(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm" placeholder="Optional reason" /></div>
             </div>

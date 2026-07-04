@@ -12,6 +12,49 @@ use App\Services\SettingService;
 class InvoiceService
 {
     /**
+     * @return array{name: string, service_context: string|null}
+     */
+    public function formatBookingAddonDisplayName(string $rawName): array
+    {
+        $name = trim($rawName);
+        if ($name === '') {
+            return ['name' => 'Add-on', 'service_context' => null];
+        }
+
+        if (str_contains($name, '::')) {
+            [$serviceRef, $addonName] = explode('::', $name, 2);
+            $addonName = trim($addonName) ?: $name;
+            $serviceRef = trim($serviceRef);
+
+            return [
+                'name' => $addonName,
+                'service_context' => ($serviceRef !== '' && strcasecmp($serviceRef, 'original') !== 0) ? $serviceRef : null,
+            ];
+        }
+
+        foreach (['Final Settlement - ', 'Booking Deposit - ', 'Add-on - '] as $prefix) {
+            if (stripos($name, $prefix) === 0) {
+                return ['name' => trim(substr($name, strlen($prefix))) ?: $name, 'service_context' => null];
+            }
+        }
+
+        return ['name' => $name, 'service_context' => null];
+    }
+
+    public function formatBookingReceiptLineName(string $lineType, string $rawName): string
+    {
+        if ($lineType === 'booking_addon') {
+            $formatted = $this->formatBookingAddonDisplayName($rawName);
+            $label = (string) ($formatted['name'] ?? $rawName);
+            $context = trim((string) ($formatted['service_context'] ?? ''));
+
+            return $context !== '' ? "{$label} ({$context})" : $label;
+        }
+
+        return $rawName;
+    }
+
+    /**
      * Same product/variant naming as PDF receipt (booking deposit, addon prefixes, etc.).
      *
      * @return array{
@@ -50,6 +93,8 @@ class InvoiceService
             $variantName = 'Final Settlement';
         } elseif ($lineType === 'booking_addon') {
             $variantName = $item->variant_name_snapshot ?: 'Booking Add-on Deposit';
+            $formattedAddon = $this->formatBookingAddonDisplayName((string) $productName);
+            $productName = (string) ($formattedAddon['name'] ?? $productName);
             $resolvedAddon = trim((string) $variantName);
             if (strcasecmp($resolvedAddon, 'Booking Add-on Deposit') === 0) {
                 $prefix = 'Booking Deposit - ';
@@ -170,6 +215,15 @@ class InvoiceService
         }
 
         return "{$variantName} — {$productName}";
+    }
+
+    public function canCustomerDownloadInvoice(Order $order): bool
+    {
+        if (in_array($order->status, ['cancelled', 'draft', 'voided'], true)) {
+            return false;
+        }
+
+        return $order->payment_status === 'paid' || $order->status === 'completed';
     }
 
     public function buildPdf(Order $order)
@@ -336,7 +390,7 @@ class InvoiceService
 
         if ($hasDepositLine && $mixedItems->count() === $mixedItems->where('line_type', 'booking_deposit')->count()) {
             $receiptLabel = 'Booking Deposit Receipt';
-        } elseif ($hasSettlementLine && $mixedItems->count() === $mixedItems->where('line_type', 'booking_settlement')->count()) {
+        } elseif ($hasSettlementLine && $mixedItems->every(fn (array $item) => in_array((string) ($item['line_type'] ?? ''), ['booking_settlement', 'booking_addon'], true))) {
             $receiptLabel = 'Final Settlement Receipt';
         } elseif ($isPackageCoveredReceipt) {
             $receiptLabel = 'Package-Covered Booking Receipt';

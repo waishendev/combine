@@ -14,6 +14,7 @@ import { ReportDetailDrawer, ReportViewDetailsButton } from './reports/ReportAct
 import BookingServicePhotosPanel from './booking/BookingServicePhotosPanel'
 import PaymentProofPreview, { type PaymentProof } from './payment/PaymentProofPreview'
 import { getAppointmentDisplayRemarkLines } from '@/components/pos/posAppointmentHelpers'
+import { formatBookingAddonReceiptLabel } from '@/lib/bookingReceiptDisplay'
 
 type Mode = 'ecommerce' | 'booking'
 
@@ -132,6 +133,7 @@ type OrderDetailLine = {
   booking_no?: string | null
   name: string
   cn_name?: string | null
+  addon_service_context?: string | null
   variant_name?: string | null
   variant_cn_name?: string | null
   sku?: string | null
@@ -362,6 +364,22 @@ const staffSplitDisplay = (line: OrderDetailLine) => {
 }
 
 type DisplayOrderDetailLine = OrderDetailLine & { isChildLine?: boolean; parentName?: string }
+
+const formatDetailLineName = (line: Pick<OrderDetailLine, 'line_type' | 'name' | 'addon_service_context' | 'isChildLine'>) => {
+  if (String(line.line_type ?? '').toLowerCase() === 'booking_addon') {
+    const formatted = formatBookingAddonReceiptLabel(line.name)
+    const context = line.addon_service_context?.trim() || formatted.serviceContext
+    return {
+      name: line.isChildLine ? `↳ ${formatted.name}` : `+ ${formatted.name}`,
+      context,
+    }
+  }
+
+  return {
+    name: line.isChildLine ? `↳ ${line.name}` : line.name,
+    context: null as string | null,
+  }
+}
 
 const flattenOrderDetailLines = (lines: OrderDetailLine[]): DisplayOrderDetailLine[] =>
   lines.flatMap((line) => [
@@ -1115,12 +1133,15 @@ export default function SalesChannelReportPage({
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {detailLines.map((line) => (
+                        {detailLines.map((line) => {
+                          const lineName = formatDetailLineName(line)
+                          return (
                           <tr key={line.id} className={`align-top ${line.isChildLine ? 'bg-indigo-50/40' : ''}`}>
                             <td className="px-3 py-3">
                               <p className="text-xs font-semibold uppercase text-slate-400">{line.type_label}</p>
                               {line.isChildLine && line.parentName ? <p className="mt-1 text-xs text-indigo-700">Add-on for {line.parentName}</p> : null}
-                              <p className="mt-1 font-semibold text-slate-900">{line.isChildLine ? `↳ ${line.name}` : line.name}</p>
+                              <p className="mt-1 font-semibold text-slate-900">{lineName.name}</p>
+                              {lineName.context ? <p className="mt-0.5 text-xs text-slate-500">Service: {lineName.context}</p> : null}
                               {line.cn_name ? <p className="mt-0.5 text-xs text-slate-500">{line.cn_name}</p> : null}
                               {line.variant_name ? (
                                 <div className="mt-1 text-xs text-slate-500">
@@ -1152,7 +1173,8 @@ export default function SalesChannelReportPage({
                               />
                             </td>
                           </tr>
-                        ))}
+                          )
+                        })}
                       </tbody>
                     </table>
                     </div>
@@ -1191,7 +1213,7 @@ export default function SalesChannelReportPage({
       {selectedDetailLine ? (
         <ReportDetailDrawer
           open
-          title={selectedDetailLine.name}
+          title={formatDetailLineName(selectedDetailLine).name}
           subtitle={selectedDetailLine.type_label}
           onClose={() => setSelectedDetailLine(null)}
           maxWidthClassName="max-w-3xl"
@@ -1202,7 +1224,10 @@ export default function SalesChannelReportPage({
               <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Basic</h4>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <DetailMeta label="Line type" value={selectedDetailLine.type_label} />
-                <DetailMeta label="Name" value={selectedDetailLine.name} />
+                <DetailMeta label="Name" value={formatDetailLineName(selectedDetailLine).name} />
+                {formatDetailLineName(selectedDetailLine).context ? (
+                  <DetailMeta label="Service" value={formatDetailLineName(selectedDetailLine).context ?? '—'} />
+                ) : null}
                 <DetailMeta label="Chinese name" value={selectedDetailLine.cn_name || '—'} />
                 <DetailMeta label="Quantity" value={String(selectedDetailLine.qty)} />
                 <DetailMeta label="Original unit price" value={`RM ${formatAmount(Number(selectedDetailLine.price_override?.original_unit_price ?? selectedDetailLine.price_override?.original_unit_price_snapshot ?? selectedDetailLine.unit_price ?? 0))}`} />

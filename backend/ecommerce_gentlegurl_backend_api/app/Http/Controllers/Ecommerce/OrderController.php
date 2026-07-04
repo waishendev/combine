@@ -583,7 +583,7 @@ class OrderController extends Controller
 
     public function invoice(Order $order)
     {
-        if ($order->status !== 'completed') {
+        if (! $this->invoiceService->canCustomerDownloadInvoice($order)) {
             return $this->respondError(__('Invoice is available after the order is completed.'), 403);
         }
 

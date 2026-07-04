@@ -383,19 +383,26 @@ class AppointmentController extends Controller
                 'is_original' => $isOriginal,
                 'add_ons' => collect($service['add_ons'] ?? [])->map(function (array $addon) use ($staffSplits) {
                     $addonStaffSplits = $this->mapHistoryRawStaffSplits($addon['staff_splits'] ?? [], $staffSplits);
+                    $addonQty = max(1, (int) ($addon['quantity'] ?? 1));
+                    $addonUnitPrice = round(max(0, (float) ($addon['extra_price'] ?? 0)), 2);
+                    $addonLineGross = round(max(0, (float) ($addon['line_gross_amount'] ?? ($addonUnitPrice * $addonQty))), 2);
 
                     return [
                         'id' => isset($addon['id']) ? (int) $addon['id'] : null,
                         'name' => (string) ($addon['name'] ?? 'Add-on'),
                         'cn_name' => $addon['cn_name'] ?? null,
                         'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
-                        'extra_price' => round(max(0, (float) ($addon['extra_price'] ?? 0)), 2),
+                        'extra_price' => $addonUnitPrice,
+                        'quantity' => $addonQty,
+                        'line_gross_amount' => $addonLineGross,
                         'price_mode' => $addon['price_mode'] ?? null,
                         'price_range_min' => $addon['price_range_min'] ?? null,
                         'price_range_max' => $addon['price_range_max'] ?? null,
                         'price_finalized' => (bool) ($addon['price_finalized'] ?? true),
                         'staff_splits' => $addonStaffSplits,
                         'staff_split_source' => ! empty($addon['staff_splits'] ?? []) ? 'explicit' : 'inherited',
+                        'service_ref' => $addon['service_ref'] ?? null,
+                        'item_kind' => $addon['item_kind'] ?? 'addon',
                     ];
                 })->values()->all(),
             ];
@@ -434,7 +441,8 @@ class AppointmentController extends Controller
                 $max += max($rangeMin, $rangeMax);
                 $hasRange = true;
             } else {
-                $amount = max(0, (float) ($addon['extra_price'] ?? 0));
+                $addonQty = max(1, (int) ($addon['quantity'] ?? 1));
+                $amount = max(0, (float) ($addon['line_gross_amount'] ?? ((float) ($addon['extra_price'] ?? 0) * $addonQty)));
                 $min += $amount;
                 $max += $amount;
             }

@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import { resolveBookingReceiptItemLabel, shouldShowBookingReceiptItem } from "@/lib/bookingReceiptDisplay";
 export const dynamic = "force-dynamic";
 
 const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
@@ -9,17 +10,12 @@ const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
   'Booking Add-on Deposit',
 ]);
 
-const COMBINED_BOOKING_SETTLEMENT_LINE_TYPES = new Set(['booking_settlement', 'booking_addon']);
-
 function shouldShowReceiptVariant(variantName?: string | null) {
   return Boolean(variantName && !HIDDEN_RECEIPT_VARIANT_LABELS.has(variantName));
 }
 
 function shouldShowReceiptItem(item: Pick<ReceiptItem, 'type' | 'name'>) {
-  return !(
-    item.name.includes('::') &&
-    COMBINED_BOOKING_SETTLEMENT_LINE_TYPES.has(String(item.type ?? ''))
-  );
+  return shouldShowBookingReceiptItem(item);
 }
 
 function formatPaymentMethod(method?: string) {
@@ -44,6 +40,7 @@ type ReceiptItem = {
   sku?: string;
   name: string;
   cn_name?: string | null;
+  addon_service_context?: string | null;
   variant_name?: string;
   variant_cn_name?: string | null;
   qty: number;
@@ -130,8 +127,9 @@ function formatDate(value?: string) {
 
 function resolveItemLabel(item: ReceiptItem) {
   const lineType = String(item.type ?? "").toLowerCase();
-  if (lineType === "booking_addon") return `Add-on - ${item.name}`;
-  return item.name;
+  const formatted = resolveBookingReceiptItemLabel(item);
+  if (lineType === "booking_addon") return `Add-on - ${formatted.name}`;
+  return formatted.name;
 }
 
 function ItemNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
@@ -214,6 +212,8 @@ export default async function PublicReceiptPage({ params }: Props) {
           </thead>
           <tbody>
             {receipt.items.filter(shouldShowReceiptItem).map((item, index) => {
+              const itemLabel = resolveBookingReceiptItemLabel(item);
+              const isBookingAddonLine = String(item.type ?? "").toLowerCase() === "booking_addon";
               const isCoveredByPackage = Boolean(item.covered_by_package);
               const gross = Number(item.line_total_snapshot ?? item.line_total ?? item.qty * item.unit_price);
               const net = isCoveredByPackage ? 0 : Number(item.line_total_after_discount ?? item.line_total ?? gross - Number(item.discount_amount ?? 0));
@@ -230,7 +230,8 @@ export default async function PublicReceiptPage({ params }: Props) {
                 <tr className="border-t border-[var(--card-border)] text-sm">
                   <td className="px-4 py-3">
                     <ItemNameStack name={resolveItemLabel(item)} cnName={item.cn_name} />
-                    {!isBookingProductLine && shouldShowReceiptVariant(item.variant_name) ? (
+                    {itemLabel.serviceContext ? <p className="mt-0.5 text-xs text-[var(--foreground)]/60">Service: {itemLabel.serviceContext}</p> : null}
+                    {!isBookingAddonLine && !isBookingProductLine && shouldShowReceiptVariant(item.variant_name) ? (
                       <div className="mt-0.5">
                         <VariantNameStack name={item.variant_name ?? ""} cnName={item.variant_cn_name} />
                       </div>

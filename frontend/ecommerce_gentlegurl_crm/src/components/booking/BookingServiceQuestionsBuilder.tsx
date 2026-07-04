@@ -12,6 +12,7 @@ export type QuestionOptionForm = {
   linked_booking_service_id: string
   sort_order: string
   is_active: boolean
+  allow_quantity: boolean
 }
 
 export type QuestionForm = {
@@ -33,6 +34,7 @@ export const emptyQuestionOption = (): QuestionOptionForm => ({
   linked_booking_service_id: '',
   sort_order: '0',
   is_active: true,
+  allow_quantity: true,
 })
 
 export const emptyQuestion = (): QuestionForm => ({
@@ -397,6 +399,17 @@ export default function BookingServiceQuestionsBuilder({ value, onChange, bookin
                           checked={option.is_active}
                           disabled={disabled}
                           onCheckedChange={(checked) => setOption(qIndex, oIndex, { is_active: checked })}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between rounded-md border border-gray-200 bg-white px-3 py-2">
+                        <div>
+                          <span className="text-sm font-medium text-gray-700">Allow quantity in POS</span>
+                          <p className="text-xs text-gray-500">When enabled, CRM staff can set add-on quantity. Customer booking shop always uses quantity 1.</p>
+                        </div>
+                        <Switch
+                          checked={option.allow_quantity}
+                          disabled={disabled}
+                          onCheckedChange={(checked) => setOption(qIndex, oIndex, { allow_quantity: checked })}
                         />
                       </div>
                     </div>

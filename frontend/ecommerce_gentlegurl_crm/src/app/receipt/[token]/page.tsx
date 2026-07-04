@@ -1,4 +1,5 @@
 import { Fragment } from 'react'
+import { resolveBookingReceiptItemLabel, shouldShowBookingReceiptItem } from '@/lib/bookingReceiptDisplay'
 export const dynamic = 'force-dynamic'
 
 const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
@@ -9,17 +10,12 @@ const HIDDEN_RECEIPT_VARIANT_LABELS = new Set([
   'Booking Add-on Deposit',
 ])
 
-const COMBINED_BOOKING_SETTLEMENT_LINE_TYPES = new Set(['booking_settlement', 'booking_addon'])
-
 function shouldShowReceiptVariant(variantName?: string | null) {
   return Boolean(variantName && !HIDDEN_RECEIPT_VARIANT_LABELS.has(variantName))
 }
 
 function shouldShowReceiptItem(item: Pick<ReceiptItem, 'type' | 'name'>) {
-  return !(
-    item.name.includes('::') &&
-    COMBINED_BOOKING_SETTLEMENT_LINE_TYPES.has(String(item.type ?? ''))
-  )
+  return shouldShowBookingReceiptItem(item)
 }
 
 function formatPaymentMethod(method?: string) {
@@ -44,6 +40,7 @@ type ReceiptItem = {
   sku?: string
   name: string
   cn_name?: string | null
+  addon_service_context?: string | null
   variant_name?: string
   qty: number
   unit_price: number
@@ -62,6 +59,7 @@ type ReceiptItem = {
 function lineTypeLabel(type?: string) {
   if (type === 'booking_deposit') return 'Booking Deposit'
   if (type === 'booking_settlement') return 'Final Settlement'
+  if (type === 'booking_addon') return 'Booking Add-on'
   if (type === 'service_package') return 'Service Package'
   return 'Product'
 }
@@ -217,6 +215,8 @@ export default async function PublicReceiptPage({ params }: Props) {
           </thead>
           <tbody>
             {receiptItems.map((item, idx) => {
+              const itemLabel = resolveBookingReceiptItemLabel(item)
+              const isBookingAddonLine = String(item.type ?? '') === 'booking_addon'
               const gross = Number(
                 ('line_total_snapshot' in item ? (item as { line_total_snapshot?: number | string | null }).line_total_snapshot : undefined) ??
                   item.line_total ??
@@ -244,7 +244,8 @@ export default async function PublicReceiptPage({ params }: Props) {
               <Fragment key={`${item.sku}-${idx}`}>
               <tr className="border-t border-gray-200 text-sm">
                 <td className="px-4 py-3">
-                  <ReceiptItemNameStack name={item.name} cnName={item.cn_name} />
+                  <ReceiptItemNameStack name={isBookingAddonLine ? `+ ${itemLabel.name}` : itemLabel.name} cnName={item.cn_name} />
+                  {itemLabel.serviceContext ? <p className="mt-0.5 text-xs text-gray-500">Service: {itemLabel.serviceContext}</p> : null}
                   <p className="text-xs text-gray-500">
                     Type: {isCoveredByPackage ? 'Package-Covered Service' : lineTypeLabel(item.type)}
                   </p>

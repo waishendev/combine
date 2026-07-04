@@ -128,6 +128,7 @@ class ServiceController extends Controller
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
+            'questions.*.options.*.allow_quantity' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
             'create_linked_product' => ['nullable', 'boolean'],
             'linked_booking_product_id' => ['nullable', 'integer', 'exists:booking_products,id'],
@@ -271,6 +272,7 @@ class ServiceController extends Controller
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
+            'questions.*.options.*.allow_quantity' => ['nullable', 'boolean'],
             'questions_json' => ['nullable', 'string'],
             'create_linked_product' => ['nullable', 'boolean'],
             'unlink_booking_product' => ['nullable', 'boolean'],
@@ -508,6 +510,7 @@ class ServiceController extends Controller
             'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
             'questions.*.options.*.sort_order' => ['nullable', 'integer', 'min:0'],
             'questions.*.options.*.is_active' => ['nullable', 'boolean'],
+            'questions.*.options.*.allow_quantity' => ['nullable', 'boolean'],
         ]);
 
         $services = BookingService::query()
@@ -799,6 +802,7 @@ class ServiceController extends Controller
                 'questions.*.options.*.extra_duration_min' => ['nullable', 'integer', 'min:0'],
                 'questions.*.options.*.extra_price' => ['nullable', 'numeric', 'min:0'],
                 'questions.*.options.*.is_active' => ['nullable', 'boolean'],
+                'questions.*.options.*.allow_quantity' => ['nullable', 'boolean'],
             ]);
 
             if ($validator->fails()) {
@@ -1064,6 +1068,7 @@ class ServiceController extends Controller
                     'extra_price' => $linkedService ? max(0, (float) $linkedService->service_price) : max(0, (float) ($optionPayload['extra_price'] ?? 0)),
                     'sort_order' => $optionIndex,
                     'is_active' => (bool) ($optionPayload['is_active'] ?? true),
+                    'allow_quantity' => (bool) ($optionPayload['allow_quantity'] ?? true),
                 ]);
             }
         }
@@ -1187,6 +1192,7 @@ class ServiceController extends Controller
             'linked_price_range_max' => $linkedService && $linkedService->price_range_max !== null ? (float) $linkedService->price_range_max : null,
             'sort_order' => (int) $option->sort_order,
             'is_active' => (bool) $option->is_active,
+            'allow_quantity' => (bool) ($option->allow_quantity ?? true),
         ];
     }
 

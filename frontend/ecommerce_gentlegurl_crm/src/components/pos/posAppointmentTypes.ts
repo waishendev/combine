@@ -118,19 +118,19 @@ export type PosAppointmentDetail = {
   staff?: { id: number; name: string }
   staff_splits?: Array<{ staff_id: number; staff_name: string; share_percent: number }>
   service_total: number
-  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  main_services?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; is_original?: boolean; add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; quantity?: number; line_gross_amount?: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   main_service_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; linked_booking_service_id?: number | null; is_original?: boolean; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   settled_service_amount?: number | null
   is_range_priced?: boolean
   requires_settled_amount?: boolean
-  add_ons?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; price_finalized?: boolean | null; linked_booking_service_id?: number | null; service_ref?: string | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  add_ons?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min: number; extra_price: number; quantity?: number; line_gross_amount?: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; price_finalized?: boolean | null; linked_booking_service_id?: number | null; service_ref?: string | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   addon_total_duration_min?: number
   estimated_duration_min?: number
   addon_total_price?: number
   addon_paid_online?: number
   addon_paid_settlement?: number
   addon_balance_due?: number
-  addon_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; balance_due?: number; paid_amount?: number; service_ref?: string | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+  addon_settlement_items?: Array<{ id?: number | null; line_key?: string | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; quantity?: number; gross_amount?: number; balance_due?: number; paid_amount?: number; service_ref?: string | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
   deposit_contribution?: number
   deposit_paid: number
   linked_booking_deposit?: number
@@ -189,6 +189,7 @@ export type ServiceAddonOption = {
   linked_price_mode?: string | null
   linked_price_range_min?: number | null
   linked_price_range_max?: number | null
+  allow_quantity?: boolean
 }
 
 export type ServiceAddonQuestion = {

@@ -299,6 +299,7 @@ export default function BookingServiceEditModal({
                     linked_booking_service_id: option?.linked_booking_service_id ? String(option?.linked_booking_service_id) : '',
                     sort_order: String(option?.sort_order ?? optionIndex),
                     is_active: option?.is_active !== false,
+                    allow_quantity: option?.allow_quantity !== false,
                   }))
                   : [emptyQuestionOption()],
               }))
@@ -610,6 +611,7 @@ export default function BookingServiceEditModal({
           fd.append(`questions[${questionIndex}][options][${optionIndex}][linked_booking_service_id]`, option.linked_booking_service_id.trim())
           fd.append(`questions[${questionIndex}][options][${optionIndex}][sort_order]`, String(optionIndex))
           fd.append(`questions[${questionIndex}][options][${optionIndex}][is_active]`, option.is_active ? '1' : '0')
+          fd.append(`questions[${questionIndex}][options][${optionIndex}][allow_quantity]`, option.allow_quantity ? '1' : '0')
         })
       })
       if (form.imageFile) {

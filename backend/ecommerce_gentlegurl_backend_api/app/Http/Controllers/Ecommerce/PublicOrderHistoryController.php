@@ -372,7 +372,7 @@ class PublicOrderHistoryController extends Controller
             return $this->respondError(__('Order not found.'), 404);
         }
 
-        if ($order->status !== 'completed') {
+        if (! $this->invoiceService->canCustomerDownloadInvoice($order)) {
             return $this->respondError(__('Invoice is available after the order is completed.'), 403);
         }
 

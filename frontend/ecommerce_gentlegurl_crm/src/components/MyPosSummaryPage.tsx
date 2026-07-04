@@ -10,6 +10,7 @@ import OfflineOrderActions from './reports/OfflineOrderActions'
 import { ReportViewDetailsButton } from './reports/ReportActions'
 import { VariantNameStack } from './NameStack'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
+import { formatBookingAddonReceiptLabel } from '@/lib/bookingReceiptDisplay'
 
 type Summary = {
   orders_count: number
@@ -53,6 +54,7 @@ type DetailRow = {
   item_type?: ReportItemType
   product_name: string | null
   product_cn_name?: string | null
+  addon_service_context?: string | null
   variant_name?: string | null
   variant_cn_name?: string | null
   qty: number
@@ -74,6 +76,19 @@ function ReportNameStack({ name, cnName, primaryClassName = 'font-medium text-sl
       {displayCnName ? <p className={secondaryClassName}>{displayCnName}</p> : null}
     </div>
   )
+}
+
+const formatReportItemName = (row: Pick<DetailRow, 'item_type' | 'product_name' | 'addon_service_context'>) => {
+  if (row.item_type === 'booking_addon') {
+    const formatted = formatBookingAddonReceiptLabel(String(row.product_name ?? ''))
+    const context = row.addon_service_context?.trim() || formatted.serviceContext
+    return {
+      name: formatted.name,
+      context,
+    }
+  }
+
+  return { name: row.product_name ?? '—', context: null as string | null }
 }
 
 const getItemTypeLabel = (itemType?: ReportItemType) => {
@@ -593,7 +608,15 @@ export default function MyPosSummaryPage({
                       })()}
                     </td>
                     <td className="px-4 py-2 border border-gray-200">
-                      <ReportNameStack name={row.product_name} cnName={row.product_cn_name} />
+                      {(() => {
+                        const itemName = formatReportItemName(row)
+                        return (
+                          <>
+                            <ReportNameStack name={row.item_type === 'booking_addon' ? `+ ${itemName.name}` : itemName.name} cnName={row.product_cn_name} />
+                            {itemName.context ? <p className="mt-0.5 text-xs text-slate-500">Service: {itemName.context}</p> : null}
+                          </>
+                        )
+                      })()}
                       {row.variant_name?.trim() || row.variant_cn_name?.trim() ? (
                         <div className="mt-1">
                           <VariantNameStack
@@ -714,12 +737,22 @@ export default function MyPosSummaryPage({
                         <p className="text-xs font-semibold text-blue-600">
                           Item
                         </p>
+                      {(() => {
+                        const selectedItemName = formatReportItemName(selectedRow)
+                        return (
+                          <>
                         <ReportNameStack
-                          name={selectedRow.product_name}
+                          name={selectedRow.item_type === 'booking_addon' ? `+ ${selectedItemName.name}` : selectedItemName.name}
                           cnName={selectedRow.product_cn_name}
                           primaryClassName="mt-1 text-base font-bold text-blue-900"
                           secondaryClassName="mt-0.5 text-xs font-medium text-blue-700/80"
                         />
+                        {selectedItemName.context ? (
+                          <p className="mt-1 text-xs font-medium text-blue-700/80">Service: {selectedItemName.context}</p>
+                        ) : null}
+                          </>
+                        )
+                      })()}
                         {selectedRow.variant_name?.trim() || selectedRow.variant_cn_name?.trim() ? (
                           <div className="mt-1">
                             <VariantNameStack

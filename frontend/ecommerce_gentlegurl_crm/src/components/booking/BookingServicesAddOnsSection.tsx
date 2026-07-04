@@ -1,6 +1,7 @@
 'use client'
 
 import { formatPosCurrentOrRangeDisplay } from '@/components/pos/settlementAmountUtils'
+import { storedAddonLinePrice, storedAddonQuantity } from '@/components/pos/bookingAddonQuantity'
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
 export type StaffSplit = { staff_id: number; staff_name?: string | null; name?: string | null; share_percent: number }
@@ -11,6 +12,8 @@ export type BookingServiceAddOn = {
   cn_name?: string | null
   extra_duration_min?: number | null
   extra_price: number
+  quantity?: number | null
+  line_gross_amount?: number | null
   price_mode?: string | null
   price_range_min?: number | null
   price_range_max?: number | null
@@ -69,14 +72,31 @@ const formatServiceAmount = (service: Pick<BookingServiceBlock, 'amount' | 'pric
     extra_price: service.amount,
   })
 
-const formatAddonAmount = (addon: Pick<BookingServiceAddOn, 'extra_price' | 'price_mode' | 'price_range_min' | 'price_range_max' | 'price_finalized'>) =>
-  formatPosCurrentOrRangeDisplay({
+const formatAddonAmount = (addon: Pick<BookingServiceAddOn, 'extra_price' | 'price_mode' | 'price_range_min' | 'price_range_max' | 'price_finalized' | 'quantity' | 'line_gross_amount'>) => {
+  const qty = storedAddonQuantity(addon)
+  const lineTotal = storedAddonLinePrice(addon)
+  const unitDisplay = formatPosCurrentOrRangeDisplay({
     price_mode: addon.price_mode,
     price_range_min: addon.price_range_min,
     price_range_max: addon.price_range_max,
     price_finalized: addon.price_finalized,
     extra_price: addon.extra_price,
   })
+
+  if (qty > 1) {
+    return `${unitDisplay} × ${qty} = RM ${lineTotal.toFixed(2)}`
+  }
+
+  return unitDisplay
+}
+
+const formatAddonDuration = (addon: Pick<BookingServiceAddOn, 'extra_duration_min' | 'quantity'>) => {
+  const unitMinutes = Number(addon.extra_duration_min ?? 0)
+  if (unitMinutes <= 0) return '—'
+  const qty = storedAddonQuantity(addon)
+  const totalMinutes = unitMinutes * qty
+  return qty > 1 ? `${unitMinutes} min × ${qty} = ${totalMinutes} min` : `${unitMinutes} min`
+}
 
 const visibleAddOns = (row: Pick<BookingServicesAddOnsRow, 'add_ons'>) =>
   (row.add_ons ?? []).filter((item) => {
@@ -158,8 +178,11 @@ export default function BookingServicesAddOnsSection({ row, className }: Booking
                     <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">
                       <p className="text-sm font-semibold text-slate-900">{index + 1}. {item.name}</p>
                       {item.cn_name ? <p className="text-xs text-slate-500">{item.cn_name}</p> : null}
+                      {storedAddonQuantity(item) > 1 ? (
+                        <p className="mt-1 text-xs font-medium text-slate-600">Quantity: {storedAddonQuantity(item)}</p>
+                      ) : null}
                       <p className="mt-2 text-sm text-slate-700">Amount: {formatAddonAmount(item)}</p>
-                      <p className="text-sm text-slate-700">Duration: {item.extra_duration_min != null ? `${item.extra_duration_min} min` : '—'}</p>
+                      <p className="text-sm text-slate-700">Duration: {formatAddonDuration(item)}</p>
                       <div className="mt-2">
                         <StaffSplitList splits={item.staff_splits} inherited={item.staff_split_source === 'inherited'} />
                       </div>

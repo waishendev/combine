@@ -11,10 +11,15 @@ export type SettlementRangeSource = {
   } | null
 }
 
+import { getAddonQuantity, isAddonSelected, storedAddonLinePrice, storedAddonQuantity, type AddonSelectionMap, type StoredAddonRowLike } from '@/components/pos/bookingAddonQuantity'
+
 export type PosPriceDisplaySource = {
   price?: number | string | null
   service_price?: number | string | null
   extra_price?: number | string | null
+  quantity?: number | null
+  line_gross_amount?: number | null
+  gross_amount?: number | null
   price_mode?: string | null
   service_price_mode?: string | null
   linked_price_mode?: string | null
@@ -155,14 +160,36 @@ export function posPriceResolvedBounds(
   source?: PosPriceDisplaySource | null,
   overrideAmount?: number,
   hasOverrideKey?: boolean,
+  lineTotalOverride?: number,
+  hasLineTotalOverrideKey?: boolean,
 ): PosPriceBounds {
   const hasRange = posPriceDisplayHasRange(source)
   const finalized = posAddonPriceIsFinalized(source, overrideAmount, hasOverrideKey)
 
+  const qty = storedAddonQuantity(source ?? {})
+
+  if (hasLineTotalOverrideKey && finiteNumber(lineTotalOverride) != null) {
+    const line = finiteNumber(lineTotalOverride)!
+    return { min: line, max: line, hasRange: false }
+  }
+
+  const hasStoredLineGross =
+    (source?.line_gross_amount != null && Number.isFinite(Number(source.line_gross_amount)))
+    || (source?.gross_amount != null && Number.isFinite(Number(source.gross_amount)))
+
+  if (hasStoredLineGross) {
+    const line = storedAddonLinePrice(source ?? {})
+    return { min: line, max: line, hasRange: false }
+  }
+
   if (hasRange && !finalized) {
     const minRaw = finiteNumber(source?.price_range_min ?? source?.service_price_range_min ?? source?.linked_price_range_min) ?? 0
     const maxRaw = finiteNumber(source?.price_range_max ?? source?.service_price_range_max ?? source?.linked_price_range_max) ?? 0
-    return { min: Math.min(minRaw, maxRaw), max: Math.max(minRaw, maxRaw), hasRange: true }
+    return {
+      min: Math.min(minRaw, maxRaw) * qty,
+      max: Math.max(minRaw, maxRaw) * qty,
+      hasRange: true,
+    }
   }
 
   const amount = finiteNumber(
@@ -170,17 +197,98 @@ export function posPriceResolvedBounds(
       ? overrideAmount
       : (source?.price ?? source?.service_price ?? source?.extra_price),
   ) ?? 0
-  return { min: amount, max: amount, hasRange: false }
+  return { min: amount * qty, max: amount * qty, hasRange: false }
+}
+
+export function posPriceDisplayForAddonLine(
+  source?: (PosPriceDisplaySource & StoredAddonRowLike) | null,
+): PosPriceDisplaySource | null {
+  if (!source) return null
+  const qty = storedAddonQuantity(source)
+  const hasExplicitLineTotal =
+    (Number.isFinite(Number(source.line_total_override)) && Number(source.line_total_override) >= 0)
+    || (source.line_gross_amount != null && Number.isFinite(Number(source.line_gross_amount)))
+    || (source.gross_amount != null && Number.isFinite(Number(source.gross_amount)))
+
+  if (qty <= 1 && !hasExplicitLineTotal) {
+    return source
+  }
+  if (posPriceDisplayHasRange(source) && !posPriceDisplayHasFinalPrice(source)) {
+    const scale = (value: number | string | null | undefined) => {
+      const parsed = finiteNumber(value)
+      return parsed != null ? parsed * qty : value
+    }
+    return {
+      ...source,
+      price_range_min: scale(source.price_range_min ?? source.service_price_range_min ?? source.linked_price_range_min),
+      price_range_max: scale(source.price_range_max ?? source.service_price_range_max ?? source.linked_price_range_max),
+      service_price_range_min: scale(source.service_price_range_min),
+      service_price_range_max: scale(source.service_price_range_max),
+      linked_price_range_min: scale(source.linked_price_range_min),
+      linked_price_range_max: scale(source.linked_price_range_max),
+    }
+  }
+  const lineAmount = storedAddonLinePrice(source)
+  return {
+    ...source,
+    extra_price: lineAmount,
+    price: lineAmount,
+    service_price: lineAmount,
+    price_mode: null,
+    service_price_mode: null,
+    linked_price_mode: null,
+  }
+}
+
+export function posAddonDisplayWithSelection(
+  source?: (PosPriceDisplaySource & { id?: number }) | null,
+  selection?: AddonSelectionMap,
+  overrideAmount?: number,
+  hasOverrideKey?: boolean,
+  lineTotalOverride?: number,
+  hasLineTotalOverrideKey?: boolean,
+): PosPriceDisplaySource | null {
+  if (!source) return null
+  const withOverride = posPriceDisplayWithOverride(source, overrideAmount, hasOverrideKey) ?? source
+  const qty = getAddonQuantity(selection ?? {}, Number(source.id ?? 0))
+  if (qty <= 0) return withOverride
+
+  const rangeUnsettled = posPriceDisplayHasRange(withOverride) && !posPriceDisplayHasFinalPrice(withOverride)
+  if (qty <= 1 && rangeUnsettled && !hasLineTotalOverrideKey) {
+    return withOverride
+  }
+
+  return posPriceDisplayForAddonLine({
+    ...withOverride,
+    quantity: qty,
+    line_gross_amount: null,
+    gross_amount: null,
+    line_total_override: hasLineTotalOverrideKey && finiteNumber(lineTotalOverride) != null
+      ? lineTotalOverride
+      : null,
+  })
 }
 
 export function accumulatePosPriceBounds(
-  items: Array<{ source?: PosPriceDisplaySource | null; overrideAmount?: number; hasOverrideKey?: boolean }>,
+  items: Array<{
+    source?: PosPriceDisplaySource | null
+    overrideAmount?: number
+    hasOverrideKey?: boolean
+    lineTotalOverride?: number
+    hasLineTotalOverrideKey?: boolean
+  }>,
 ): PosPriceBounds {
   let min = 0
   let max = 0
   let hasRange = false
   for (const item of items) {
-    const bounds = posPriceResolvedBounds(item.source, item.overrideAmount, item.hasOverrideKey)
+    const bounds = posPriceResolvedBounds(
+      item.source,
+      item.overrideAmount,
+      item.hasOverrideKey,
+      item.lineTotalOverride,
+      item.hasLineTotalOverrideKey,
+    )
     min += bounds.min
     max += bounds.max
     if (bounds.hasRange) hasRange = true
@@ -211,6 +319,103 @@ export function seedFinalizedAddonPriceOverrides(
       .filter((addon) => posPriceDisplayHasFinalPrice(addon))
       .map((addon) => [Number(addon.id), Number(addon.extra_price ?? 0)]),
   )
+}
+
+/** Seed exact line totals from stored rows (line_gross_amount or unit×qty mismatch). */
+export function seedAddonLineTotalOverrides(
+  addons: Array<{ id?: number | null; extra_price?: number | string | null; quantity?: number | null; line_gross_amount?: number | null; gross_amount?: number | null }>,
+): Record<number, number> {
+  const entries: Array<[number, number]> = []
+  for (const addon of addons) {
+    const optionId = Number(addon.id ?? 0)
+    if (optionId <= 0) continue
+    const explicitLine = finiteNumber(addon.line_gross_amount ?? addon.gross_amount)
+    if (explicitLine != null) {
+      const unit = Number(addon.extra_price ?? 0)
+      const qty = storedAddonQuantity(addon)
+      const computed = unit * qty
+      if (Math.abs(explicitLine - computed) > 0.004) {
+        entries.push([optionId, explicitLine])
+      }
+    }
+  }
+  return Object.fromEntries(entries)
+}
+
+export function resolveSettlementAddonLineGross(
+  addon?: (StoredAddonRowLike & { balance_due?: number | null; line_total_after_discount?: number | null }) | null,
+): number {
+  if (!addon) return 0
+  const lineGross = storedAddonLinePrice(addon)
+  if (lineGross > 0.0001) return lineGross
+  return Number(addon.line_total_after_discount ?? addon.balance_due ?? 0)
+}
+
+export function resolveSettlementAddonLineDue(
+  addon?: (StoredAddonRowLike & {
+    balance_due?: number | null
+    line_total_after_discount?: number | null
+    discount_amount?: number | null
+    gross_amount?: number | null
+  }) | null,
+): number {
+  if (!addon) return 0
+  const gross = resolveSettlementAddonLineGross(addon)
+  const discount = Number(addon.discount_amount ?? 0)
+  return Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+}
+
+export function resolveEditSettlementAddonLineAmount(
+  optionId: number,
+  catalogUnitPrice: number,
+  selection: AddonSelectionMap,
+  unitOverrides: Record<number, number>,
+  lineTotalOverrides: Record<number, number>,
+): number | null {
+  if (!isAddonSelected(selection, optionId)) return null
+  if (Object.prototype.hasOwnProperty.call(lineTotalOverrides, optionId)) {
+    return finiteNumber(lineTotalOverrides[optionId]) ?? 0
+  }
+  const qty = getAddonQuantity(selection, optionId)
+  const unit = Object.prototype.hasOwnProperty.call(unitOverrides, optionId)
+    ? Number(unitOverrides[optionId] ?? 0)
+    : catalogUnitPrice
+  return unit * qty
+}
+
+export function resolveEditSettlementAddonUnitDisplay(
+  optionId: number,
+  qty: number,
+  catalogUnitPrice: number,
+  unitOverrides: Record<number, number>,
+  lineTotalOverrides: Record<number, number>,
+): number {
+  if (Object.prototype.hasOwnProperty.call(lineTotalOverrides, optionId)) {
+    const line = finiteNumber(lineTotalOverrides[optionId]) ?? 0
+    return qty > 0 ? line / qty : line
+  }
+  if (Object.prototype.hasOwnProperty.call(unitOverrides, optionId)) {
+    return Number(unitOverrides[optionId] ?? 0)
+  }
+  return catalogUnitPrice
+}
+
+export function buildAddonSettlementSaveOverrides(
+  optionIds: number[],
+  selection: AddonSelectionMap,
+  unitOverrides: Record<number, number>,
+  lineTotalOverrides: Record<number, number>,
+): { addon_price_overrides: Record<number, number>; addon_line_total_overrides: Record<number, number> } {
+  const addonPriceOverrides = { ...unitOverrides }
+  const addonLineTotalOverrides = { ...lineTotalOverrides }
+  for (const optionId of optionIds) {
+    if (!Object.prototype.hasOwnProperty.call(addonLineTotalOverrides, optionId)) continue
+    const line = finiteNumber(addonLineTotalOverrides[optionId])
+    if (line == null) continue
+    const qty = getAddonQuantity(selection, optionId)
+    addonPriceOverrides[optionId] = qty > 0 ? Number((line / qty).toFixed(2)) : line
+  }
+  return { addon_price_overrides: addonPriceOverrides, addon_line_total_overrides: addonLineTotalOverrides }
 }
 
 export const UNSETTLED_RANGE_CHECKOUT_MESSAGE =

@@ -8,10 +8,27 @@ import InternationalPhoneInput from '@/components/common/InternationalPhoneInput
 import BookingServicePicker, { bookingServiceMatchesPickerCategory } from '@/components/pos/BookingServicePicker'
 import { PosCatalogInCartBadge, posCatalogInCartBorderClass } from '@/components/pos/PosCatalogInCartIndicator'
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
+import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import type { PosDepositTransaction } from '@/components/pos/posAppointmentTypes'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import PosModalRemarkField, { type PosModalRemarkFieldHandle } from '@/components/pos/PosModalRemarkField'
+import BookingAddonOptionRow, { PosAddonLineName, PosAddonSelectionDurationLabel, PosAddonSelectionPriceLabel, PosAddonSettlementPriceLabel } from '@/components/pos/BookingAddonOptionRow'
+import {
+  buildAddonQuantitiesPayload,
+  getAddonQuantity,
+  getSelectedAddonIds,
+  isAddonSelected,
+  selectionFromAddonRows,
+  selectionFromOptionIds,
+  setAddonQuantity,
+  storedAddonLineDuration,
+  storedAddonLinePrice,
+  storedAddonQuantity,
+  sumSelectedAddonDuration,
+  toggleAddonSelection,
+  type AddonSelectionMap,
+} from '@/components/pos/bookingAddonQuantity'
 import {
   accumulatePosPriceBounds,
   applyPosCartDiscountsToBounds,
@@ -27,11 +44,17 @@ import {
   parseSettlementAmountInput,
   posPriceDisplayHasFinalPrice,
   posPriceDisplayHasRange,
+  posPriceDisplayForAddonLine,
   posPriceDisplayWithOverride,
   seedFinalizedAddonPriceOverrides,
+  buildAddonSettlementSaveOverrides,
+  resolveEditSettlementAddonUnitDisplay,
+  seedAddonLineTotalOverrides,
   computeSettlementCartItemDueBounds,
   resolveSettlementLineAmountDue,
   resolveSettlementLineFullPrice,
+  resolveSettlementAddonLineGross,
+  resolveSettlementAddonLineDue,
   settlementCartItemHasUnsettledRangePricing,
   settlementNeedsSettledAmount,
   settlementShowsSeparateDepositCredit,
@@ -289,6 +312,8 @@ type AppointmentSettlementCartItem = {
     cn_name?: string | null
     extra_duration_min?: number
     extra_price: number
+    quantity?: number | null
+    line_gross_amount?: number | null
     gross_amount?: number
     paid_amount?: number
     balance_due: number
@@ -324,6 +349,8 @@ type ServiceCartItem = {
     cn_name?: string | null
     extra_duration_min: number
     extra_price: number
+    quantity?: number
+    line_gross_amount?: number
     linked_deposit_amount?: number
     item_kind?: string | null
     linked_booking_service_id?: number | null
@@ -361,7 +388,7 @@ type ServiceCartItem = {
     extra_price?: number
     linked_booking_service_id?: number | null
     is_original?: boolean
-    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
+    add_ons?: Array<{ id?: number | null; name: string; cn_name?: string | null; extra_duration_min?: number; extra_price: number; quantity?: number; line_gross_amount?: number; linked_booking_service_id?: number | null; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_deposit_amount?: number | null; staff_splits?: Array<{ staff_id: number; share_percent: number }> }>
     staff_splits?: Array<{ staff_id: number; share_percent: number }>
   }>
 }
@@ -402,6 +429,8 @@ function getPosServiceMainBlocks(item: ServiceCartItem): NonNullable<ServiceCart
         cn_name: addon.cn_name ?? null,
         extra_duration_min: Number(addon.extra_duration_min ?? 0),
         extra_price: Number(addon.extra_price ?? 0),
+        quantity: storedAddonQuantity(addon),
+        line_gross_amount: storedAddonLinePrice(addon),
         linked_deposit_amount: Number(addon.linked_deposit_amount ?? 0),
         staff_splits: (addon.staff_splits ?? []).map((split) => ({
           staff_id: Number(split.staff_id),
@@ -423,7 +452,8 @@ function getPosServiceAddonDeposit(item: ServiceCartItem, addonId?: number | nul
   if (depositLine) return Number(depositLine.deposit ?? 0)
 
   const addonSnapshot = (item.addon_items ?? []).find((addon) => Number(addon.id ?? 0) === id)
-  return Number(addonSnapshot?.linked_deposit_amount ?? 0)
+  const qty = storedAddonQuantity(addonSnapshot ?? {})
+  return Number(addonSnapshot?.linked_deposit_amount ?? 0) * qty
 }
 
 function getPosServiceAddonDepositReference(
@@ -435,7 +465,8 @@ function getPosServiceAddonDepositReference(
     ? (item.addon_items ?? []).find((row) => Number(row.id ?? 0) === id)
     : null
   const linkedDeposit = Number(addonSnapshot?.linked_deposit_amount ?? addon.linked_deposit_amount ?? 0)
-  if (linkedDeposit > 0.0001) return linkedDeposit
+  const qty = storedAddonQuantity(addonSnapshot ?? addon)
+  if (linkedDeposit > 0.0001) return linkedDeposit * qty
 
   const depositLine = id > 0
     ? (item.deposit_addon_lines ?? []).find((line) => Number(line.id ?? 0) === id)
@@ -613,6 +644,10 @@ type PriceEditTarget =
   | { kind: 'package'; id: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
   | { kind: 'serviceDeposit'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number }
   | { kind: 'settlementLine'; id: number; lineKey: string; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null }
+  | { kind: 'cartEditSettlementAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'cartEditSettlementBlockAddon'; tmpId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'bookingMainAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
+  | { kind: 'bookingBlockAddon'; blockId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity: number; currentLineTotal?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
 
 type DiscountTarget =
   | { kind: 'product'; id: number; name: string; lineTotal: number; discountType?: 'percentage' | 'fixed' | null; discountValue?: number; discountRemark?: string | null; promotionApplied?: boolean; manualDiscountAllowed?: boolean }
@@ -747,6 +782,7 @@ type BookingServiceQuestionOption = {
   linked_price_range_min?: number | null
   linked_price_range_max?: number | null
   is_active?: boolean
+  allow_quantity?: boolean
 }
 
 type BookingServiceQuestion = {
@@ -764,7 +800,9 @@ type BookingExtraServiceBlock = {
   id: string
   service: BookingServiceOption | null
   questions: BookingServiceQuestion[]
-  selectedOptionIds: number[]
+  addonQuantities: AddonSelectionMap
+  addon_price_overrides: Record<number, number>
+  addon_line_total_overrides: Record<number, number>
 }
 
 type ServicePackageOption = {
@@ -1712,7 +1750,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [bookingSlotValue, setBookingSlotValue] = useState('')
   const [bookingQuestions, setBookingQuestions] = useState<BookingServiceQuestion[]>([])
   const bookingRemarkRef = useRef<PosModalRemarkFieldHandle>(null)
-  const [bookingSelectedOptionIds, setBookingSelectedOptionIds] = useState<number[]>([])
+  const [bookingAddonQuantities, setBookingAddonQuantities] = useState<AddonSelectionMap>({})
+  const [bookingAddonPriceOverrides, setBookingAddonPriceOverrides] = useState<Record<number, number>>({})
+  const [bookingAddonLineTotalOverrides, setBookingAddonLineTotalOverrides] = useState<Record<number, number>>({})
   const [bookingExtraServiceBlocks, setBookingExtraServiceBlocks] = useState<BookingExtraServiceBlock[]>([])
   const [bookingExtraServiceCategoryIds, setBookingExtraServiceCategoryIds] = useState<Record<string, number | null>>({})
   const [bookingExtraServiceQueries, setBookingExtraServiceQueries] = useState<Record<string, string>>({})
@@ -1739,7 +1779,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [cartEditSettlementLoading, setCartEditSettlementLoading] = useState(false)
   const [cartEditSettlementError, setCartEditSettlementError] = useState<string | null>(null)
   const [cartEditAddonQuestions, setCartEditAddonQuestions] = useState<Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>>([])
-  const [cartEditSelectedAddonIds, setCartEditSelectedAddonIds] = useState<Set<number>>(new Set())
+  const [cartEditAddonQuantities, setCartEditAddonQuantities] = useState<AddonSelectionMap>({})
   const [cartEditMainServiceCatalog, setCartEditMainServiceCatalog] = useState<BookingServiceOption[]>([])
   const [cartEditMainServiceCatalogLoading, setCartEditMainServiceCatalogLoading] = useState(false)
   const [cartEditMainServiceCategoryId, setCartEditMainServiceCategoryId] = useState<number | null>(null)
@@ -1758,7 +1798,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     price_finalized?: boolean | null
     duration_min: number
     addon_questions: Array<{ id: number; title: string; cn_title?: string | null; question_type: string; is_required: boolean; options: Array<{ id: number; label: string; cn_label?: string | null; cn_name?: string | null; linked_cn_name?: string | null; extra_duration_min: number; extra_price: number; price_mode?: string | null; price_range_min?: number | null; price_range_max?: number | null; linked_price_mode?: string | null; linked_price_range_min?: number | null; linked_price_range_max?: number | null }> }>
-    selected_addon_ids: Set<number>
+    selected_addon_ids: AddonSelectionMap
+    addon_price_overrides: Record<number, number>
+    addon_line_total_overrides: Record<number, number>
     staff_splits: Array<{ staff_id: number | null; share_percent: string }>
     auto_balance: boolean
   }>>([])
@@ -1769,6 +1811,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const [cartEditSettlementItem, setCartEditSettlementItem] = useState<AppointmentSettlementCartItem | null>(null)
   const [cartEditOriginalServicePrice, setCartEditOriginalServicePrice] = useState<number | null>(null)
   const [cartEditAddonPriceOverrides, setCartEditAddonPriceOverrides] = useState<Record<number, number>>({})
+  const [cartEditAddonLineTotalOverrides, setCartEditAddonLineTotalOverrides] = useState<Record<number, number>>({})
   const [cartEditSettlementIdentityMode, setCartEditSettlementIdentityMode] = useState<'member' | 'guest'>('guest')
   const [cartEditSettlementCustomerId, setCartEditSettlementCustomerId] = useState<number | null>(null)
   const [cartEditSettlementMemberSummary, setCartEditSettlementMemberSummary] = useState<{ id: number; name: string; phone?: string | null } | null>(null)
@@ -1907,10 +1950,18 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const getSettlementDurationMin = useCallback((settlement: AppointmentSettlementCartItem): number => {
     const mainDuration = (settlement.main_services ?? []).reduce((sum, service) => {
       const own = Number(service.extra_duration_min ?? 0)
-      const addonDuration = (service.add_ons ?? []).reduce((addonSum, addon) => addonSum + Number(addon.extra_duration_min ?? 0), 0)
+      const addonDuration = (service.add_ons ?? []).reduce(
+        (addonSum, addon) => addonSum + storedAddonLineDuration(addon),
+        0,
+      )
       return sum + own + addonDuration
     }, 0)
     if (mainDuration > 0) return mainDuration
+    const addonOnlyDuration = (settlement.addon_settlement_items ?? []).reduce(
+      (sum, addon) => sum + storedAddonLineDuration(addon),
+      0,
+    )
+    if (addonOnlyDuration > 0) return addonOnlyDuration
     return 0
   }, [])
 
@@ -3558,7 +3609,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setBookingSlots([])
     setBookingSlotValue('')
     setBookingQuestions([])
-    setBookingSelectedOptionIds([])
+    setBookingAddonQuantities({})
+    setBookingAddonPriceOverrides({})
+    setBookingAddonLineTotalOverrides({})
     setBookingExtraServiceBlocks([])
     setBookingExtraServiceCategoryIds({})
     setBookingExtraServiceQueries({})
@@ -3668,36 +3721,56 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   }, [])
 
   const bookingSelectedOptions = useMemo(() => {
-    const selected = new Set(bookingSelectedOptionIds)
+    const selected = new Set(getSelectedAddonIds(bookingAddonQuantities))
     return bookingQuestions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
-  }, [bookingQuestions, bookingSelectedOptionIds])
+  }, [bookingQuestions, bookingAddonQuantities])
   const bookingAddonDurationTotal = useMemo(
-    () => bookingSelectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0),
-    [bookingSelectedOptions],
+    () => sumSelectedAddonDuration(bookingSelectedOptions, bookingAddonQuantities),
+    [bookingAddonQuantities, bookingSelectedOptions],
   )
   const bookingGrandTotalBounds = useMemo(() => {
-    const items: Array<{ source?: PosPriceDisplaySource | null }> = []
+    const items: Array<{
+      source?: PosPriceDisplaySource | null
+      overrideAmount?: number
+      hasOverrideKey?: boolean
+      lineTotalOverride?: number
+      hasLineTotalOverrideKey?: boolean
+    }> = []
     if (bookingServiceDraft) items.push({ source: bookingServiceDraft })
-    bookingSelectedOptions.forEach((option) => items.push({ source: option }))
+    bookingSelectedOptions.forEach((option) => {
+      items.push({
+        source: { ...option, quantity: getAddonQuantity(bookingAddonQuantities, option.id) },
+        overrideAmount: bookingAddonPriceOverrides[option.id],
+        hasOverrideKey: Object.prototype.hasOwnProperty.call(bookingAddonPriceOverrides, option.id),
+        lineTotalOverride: bookingAddonLineTotalOverrides[option.id],
+        hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(bookingAddonLineTotalOverrides, option.id),
+      })
+    })
     for (const block of bookingExtraServiceBlocks) {
       if (!block.service) continue
       items.push({ source: block.service })
-      const selected = new Set(block.selectedOptionIds)
       block.questions
-        .flatMap((question) => question.options.filter((option) => selected.has(option.id)))
-        .forEach((option) => items.push({ source: option }))
+        .flatMap((question) => question.options.filter((option) => isAddonSelected(block.addonQuantities, option.id)))
+        .forEach((option) => {
+          items.push({
+            source: { ...option, quantity: getAddonQuantity(block.addonQuantities, option.id) },
+            overrideAmount: block.addon_price_overrides[option.id],
+            hasOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_price_overrides, option.id),
+            lineTotalOverride: block.addon_line_total_overrides[option.id],
+            hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, option.id),
+          })
+        })
     }
     return accumulatePosPriceBounds(items)
-  }, [bookingExtraServiceBlocks, bookingSelectedOptions, bookingServiceDraft])
+  }, [bookingAddonLineTotalOverrides, bookingAddonPriceOverrides, bookingAddonQuantities, bookingExtraServiceBlocks, bookingSelectedOptions, bookingServiceDraft])
   const bookingExtraTotals = useMemo(() => {
     return bookingExtraServiceBlocks.reduce((acc, block) => {
       if (!block.service) return acc
       acc.baseDuration += Number(block.service.duration_min ?? 0)
       acc.basePrice += Number(block.service.price ?? block.service.service_price ?? 0)
-      const selected = new Set(block.selectedOptionIds)
-      const selectedOptions = block.questions.flatMap((question) => question.options.filter((option) => selected.has(option.id)))
-      acc.addonDuration += selectedOptions.reduce((sum, option) => sum + Number(option.extra_duration_min ?? 0), 0)
-      acc.addonPrice += selectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0), 0)
+      const selectedOptions = block.questions.flatMap((question) => question.options.filter((option) => isAddonSelected(block.addonQuantities, option.id)))
+      acc.addonDuration += sumSelectedAddonDuration(selectedOptions, block.addonQuantities)
+      acc.addonPrice += selectedOptions.reduce((sum, option) => sum + Number(option.extra_price ?? 0) * (block.addonQuantities[option.id] ?? 1), 0)
       return acc
     }, { baseDuration: 0, addonDuration: 0, basePrice: 0, addonPrice: 0 })
   }, [bookingExtraServiceBlocks])
@@ -3844,7 +3917,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
     for (const question of bookingQuestions) {
       if (!question.is_required) continue
-      const hasSelection = question.options.some((option) => bookingSelectedOptionIds.includes(option.id))
+      const hasSelection = question.options.some((option) => isAddonSelected(bookingAddonQuantities, option.id))
       if (!hasSelection) {
         reportBookingModalError(`Please answer required question: ${question.title}`)
         return
@@ -3857,7 +3930,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
       for (const question of block.questions) {
         if (!question.is_required) continue
-        const hasSelection = question.options.some((option) => block.selectedOptionIds.includes(option.id))
+        const hasSelection = question.options.some((option) => isAddonSelected(block.addonQuantities, option.id))
         if (!hasSelection) {
           reportBookingModalError(`Please answer required question: ${question.title}`)
           return
@@ -3887,37 +3960,60 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         booking_service_id: bookingServiceDraft.id,
         staff_splits: checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }],
       },
-      selected_addon_ids: bookingSelectedOptionIds,
-      addon_staff_splits: Object.fromEntries(bookingSelectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? []])),
+      selected_addon_ids: getSelectedAddonIds(bookingAddonQuantities),
+      addon_staff_splits: Object.fromEntries(getSelectedAddonIds(bookingAddonQuantities).map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? []])),
       service_blocks: bookingExtraServiceBlocks.map((block) => ({
         id: block.id,
         booking_service_id: block.service?.id ?? null,
-        selected_addon_ids: block.selectedOptionIds,
+        selected_addon_ids: getSelectedAddonIds(block.addonQuantities),
         staff_splits: checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? [],
-        addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? []])),
+        addon_staff_splits: Object.fromEntries(getSelectedAddonIds(block.addonQuantities).map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? []])),
       })),
     })
     const bookingMainStaffSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }]
+    const bookingMainAddonIds = getSelectedAddonIds(bookingAddonQuantities)
+    const bookingMainAddonOverrides = buildAddonSettlementSaveOverrides(
+      bookingMainAddonIds,
+      bookingAddonQuantities,
+      bookingAddonPriceOverrides,
+      bookingAddonLineTotalOverrides,
+    )
     const payload: Record<string, unknown> = {
       booking_service_id: bookingServiceDraft.id,
       assigned_staff_id: bookingAssignedStaffId,
-      selected_option_ids: bookingSelectedOptionIds,
+      selected_option_ids: bookingMainAddonIds,
+      selected_option_quantities: buildAddonQuantitiesPayload(bookingAddonQuantities),
+      addon_price_overrides: bookingMainAddonOverrides.addon_price_overrides,
+      addon_line_total_overrides: bookingMainAddonOverrides.addon_line_total_overrides,
       main_service_items: [
         {
           booking_service_id: bookingServiceDraft.id,
-          selected_option_ids: bookingSelectedOptionIds,
+          selected_option_ids: bookingMainAddonIds,
+          selected_option_quantities: buildAddonQuantitiesPayload(bookingAddonQuantities),
+          addon_price_overrides: bookingMainAddonOverrides.addon_price_overrides,
+          addon_line_total_overrides: bookingMainAddonOverrides.addon_line_total_overrides,
           staff_splits: bookingMainStaffSplits,
-          addon_staff_splits: Object.fromEntries(bookingSelectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? bookingMainStaffSplits])),
+          addon_staff_splits: Object.fromEntries(bookingMainAddonIds.map((id) => [id, checkoutLineSplits[`booking-draft:addon:${id}`] ?? bookingMainStaffSplits])),
         },
         ...bookingExtraServiceBlocks
           .filter((block) => block.service?.id)
           .map((block) => {
             const blockMainStaffSplits = checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }]
+            const blockAddonIds = getSelectedAddonIds(block.addonQuantities)
+            const blockAddonOverrides = buildAddonSettlementSaveOverrides(
+              blockAddonIds,
+              block.addonQuantities,
+              block.addon_price_overrides,
+              block.addon_line_total_overrides,
+            )
             return {
               booking_service_id: Number(block.service?.id),
-              selected_option_ids: block.selectedOptionIds,
+              selected_option_ids: blockAddonIds,
+              selected_option_quantities: buildAddonQuantitiesPayload(block.addonQuantities),
+              addon_price_overrides: blockAddonOverrides.addon_price_overrides,
+              addon_line_total_overrides: blockAddonOverrides.addon_line_total_overrides,
               staff_splits: blockMainStaffSplits,
-              addon_staff_splits: Object.fromEntries(block.selectedOptionIds.map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? blockMainStaffSplits])),
+              addon_staff_splits: Object.fromEntries(blockAddonIds.map((id) => [id, checkoutLineSplits[`booking-draft:block:${block.id}:addon:${id}`] ?? blockMainStaffSplits])),
             }
           }),
       ],
@@ -3990,7 +4086,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     bookingIdentityMode,
     bookingQuestions,
     bookingExtraServiceBlocks,
-    bookingSelectedOptionIds,
+    bookingAddonQuantities,
+    bookingAddonPriceOverrides,
+    bookingAddonLineTotalOverrides,
     bookingServiceDraft,
     bookingSlotValue,
     bookingSelectedServiceIds,
@@ -4266,30 +4364,120 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
 
   const openPriceEditModal = (target: PriceEditTarget) => {
-    setPriceEditTarget(target)
-    const hasFinalPrice = !('priceSource' in target) || !target.priceSource || posPriceDisplayHasFinalPrice(target.priceSource)
-    setPriceEditValueDraft(hasFinalPrice ? Number(target.currentUnitPrice ?? 0).toFixed(2) : '')
-    setPriceEditLineTotalDraft(hasFinalPrice ? Number(target.currentLineTotal ?? (Number(target.currentUnitPrice ?? 0) * Math.max(1, Number(target.quantity ?? 1)))).toFixed(2) : '')
+    const qty = resolvePriceEditQuantity(target.quantity)
+    const unit = Math.max(0, Number(target.currentUnitPrice ?? 0))
+    const isAddonKind = target.kind === 'cartEditSettlementAddon'
+      || target.kind === 'cartEditSettlementBlockAddon'
+      || target.kind === 'bookingMainAddon'
+      || target.kind === 'bookingBlockAddon'
+    const hasLineTotalOverrideKey = isAddonKind && 'hasLineTotalOverrideKey' in target && Boolean(target.hasLineTotalOverrideKey)
+    const lineTotalOverride = hasLineTotalOverrideKey && 'lineTotalOverride' in target ? Number(target.lineTotalOverride ?? 0) : null
+    setPriceEditTarget({ ...target, quantity: qty })
     setPriceEditMode('unit')
+    const hasFinalPrice = !('priceSource' in target) || !target.priceSource || posPriceDisplayHasFinalPrice(target.priceSource)
+    setPriceEditValueDraft(hasFinalPrice ? unit.toFixed(2) : '')
+    setPriceEditLineTotalDraft(
+      hasFinalPrice
+        ? (hasLineTotalOverrideKey && lineTotalOverride != null
+          ? lineTotalOverride.toFixed(2)
+          : (unit * qty).toFixed(2))
+        : '',
+    )
     setPriceEditReasonDraft('')
     setPriceEditError(null)
   }
 
   const submitPriceEditModal = async () => {
     if (!priceEditTarget || priceEditSaving) return
-    const quantity = Math.max(1, Number(priceEditTarget.quantity ?? 1))
+    const quantity = resolvePriceEditQuantity(priceEditTarget.quantity)
     const parsedInput = parseSettlementAmountInput(priceEditMode === 'line' ? priceEditLineTotalDraft : priceEditValueDraft)
     if (parsedInput == null) {
       showMsg(priceEditMode === 'line' ? 'Please enter a valid line total.' : 'Please enter a valid price.', 'error')
       return
     }
     const nextInput = parsedInput
-    const next = priceEditMode === 'line' ? nextInput / quantity : nextInput
+    const qty = priceEditTarget.kind === 'cartEditSettlementAddon'
+      ? resolvePriceEditQuantity(getAddonQuantity(cartEditAddonQuantities, priceEditTarget.optionId))
+      : priceEditTarget.kind === 'cartEditSettlementBlockAddon'
+        ? resolvePriceEditQuantity(getAddonQuantity(
+          cartEditAddedMainBlocks.find((block) => block.tmp_id === priceEditTarget.tmpId)?.selected_addon_ids ?? {},
+          priceEditTarget.optionId,
+        ))
+        : priceEditTarget.kind === 'bookingMainAddon'
+          ? resolvePriceEditQuantity(getAddonQuantity(bookingAddonQuantities, priceEditTarget.optionId))
+          : priceEditTarget.kind === 'bookingBlockAddon'
+            ? resolvePriceEditQuantity(getAddonQuantity(
+              bookingExtraServiceBlocks.find((block) => block.id === priceEditTarget.blockId)?.addonQuantities ?? {},
+              priceEditTarget.optionId,
+            ))
+            : quantity
+    const next = priceEditMode === 'line' ? nextInput / qty : nextInput
     if (!Number.isFinite(next) || next < 0) {
       showMsg(priceEditMode === 'line' ? 'New line total must be 0 or higher.' : 'New price must be 0 or higher.', 'error')
       return
     }
     const roundedNext = Number(next.toFixed(2))
+    const roundedLineTotal = priceEditMode === 'line' ? Number(nextInput.toFixed(2)) : null
+
+    if (priceEditTarget.kind === 'cartEditSettlementAddon') {
+      setCartEditAddonPriceOverrides((prev) => ({ ...prev, [priceEditTarget.optionId]: roundedNext }))
+      setCartEditAddonLineTotalOverrides((prev) => {
+        const nextOverrides = { ...prev }
+        if (roundedLineTotal != null) nextOverrides[priceEditTarget.optionId] = roundedLineTotal
+        else delete nextOverrides[priceEditTarget.optionId]
+        return nextOverrides
+      })
+      setPriceEditTarget(null)
+      showMsg('Price updated.', 'success')
+      return
+    }
+    if (priceEditTarget.kind === 'cartEditSettlementBlockAddon') {
+      setCartEditAddedMainBlocks((prev) => prev.map((block) => block.tmp_id === priceEditTarget.tmpId
+        ? {
+          ...block,
+          addon_price_overrides: { ...block.addon_price_overrides, [priceEditTarget.optionId]: roundedNext },
+          addon_line_total_overrides: (() => {
+            const nextOverrides = { ...block.addon_line_total_overrides }
+            if (roundedLineTotal != null) nextOverrides[priceEditTarget.optionId] = roundedLineTotal
+            else delete nextOverrides[priceEditTarget.optionId]
+            return nextOverrides
+          })(),
+        }
+        : block))
+      setPriceEditTarget(null)
+      showMsg('Price updated.', 'success')
+      return
+    }
+    if (priceEditTarget.kind === 'bookingMainAddon') {
+      setBookingAddonPriceOverrides((prev) => ({ ...prev, [priceEditTarget.optionId]: roundedNext }))
+      setBookingAddonLineTotalOverrides((prev) => {
+        const nextOverrides = { ...prev }
+        if (roundedLineTotal != null) nextOverrides[priceEditTarget.optionId] = roundedLineTotal
+        else delete nextOverrides[priceEditTarget.optionId]
+        return nextOverrides
+      })
+      setPriceEditTarget(null)
+      showMsg('Price updated.', 'success')
+      return
+    }
+    if (priceEditTarget.kind === 'bookingBlockAddon') {
+      setBookingExtraServiceBlocks((prev) => prev.map((block) => block.id === priceEditTarget.blockId
+        ? {
+          ...block,
+          addon_price_overrides: { ...block.addon_price_overrides, [priceEditTarget.optionId]: roundedNext },
+          addon_line_total_overrides: (() => {
+            const nextOverrides = { ...block.addon_line_total_overrides }
+            if (roundedLineTotal != null) nextOverrides[priceEditTarget.optionId] = roundedLineTotal
+            else delete nextOverrides[priceEditTarget.optionId]
+            return nextOverrides
+          })(),
+        }
+        : block))
+      setPriceEditTarget(null)
+      showMsg('Price updated.', 'success')
+      return
+    }
+
     let endpoint = ''
     if (priceEditTarget.kind === 'product') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/price`
     if (priceEditTarget.kind === 'bookingProductOption') endpoint = `/api/proxy/pos/cart/items/${priceEditTarget.id}/booking-product-options/${priceEditTarget.optionId}/price`
@@ -4326,14 +4514,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             }
           } else if (priceEditTarget.lineKey) {
             const addonLine = (refreshedSettlement.addon_settlement_items ?? []).find((row) => row.line_key === priceEditTarget.lineKey)
-            const savedAmount = Number(addonLine?.gross_amount ?? addonLine?.price_override?.final_unit_price ?? roundedNext)
+            const savedUnit = Number(addonLine?.price_override?.final_unit_price ?? addonLine?.extra_price ?? roundedNext)
             const optionId = Number(addonLine?.id ?? 0)
             if (optionId > 0) {
-              setCartEditAddonPriceOverrides((prev) => ({ ...prev, [optionId]: savedAmount }))
+              setCartEditAddonPriceOverrides((prev) => ({ ...prev, [optionId]: savedUnit }))
             } else {
               const matchedOption = cartEditAddonQuestions.flatMap((question) => question.options).find((opt) => opt.label === addonLine?.name)
               if (matchedOption) {
-                setCartEditAddonPriceOverrides((prev) => ({ ...prev, [matchedOption.id]: savedAmount }))
+                setCartEditAddonPriceOverrides((prev) => ({ ...prev, [matchedOption.id]: savedUnit }))
               }
             }
           }
@@ -4535,9 +4723,23 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         : null,
     )
     setCartEditAddonPriceOverrides(seedFinalizedAddonPriceOverrides(
+      (settlement.addon_settlement_items ?? []).map((addon) => {
+        const qty = Math.max(1, Number(addon.quantity ?? 1))
+        const unitPrice = Number(addon.extra_price ?? 0) > 0.0001
+          ? Number(addon.extra_price)
+          : Number(addon.gross_amount ?? addon.balance_due ?? 0) / qty
+        return {
+          ...addon,
+          extra_price: unitPrice,
+        }
+      }),
+    ))
+    setCartEditAddonLineTotalOverrides(seedAddonLineTotalOverrides(
       (settlement.addon_settlement_items ?? []).map((addon) => ({
-        ...addon,
-        extra_price: addon.gross_amount ?? addon.balance_due ?? addon.extra_price,
+        id: addon.id,
+        extra_price: addon.extra_price,
+        line_gross_amount: addon.gross_amount,
+        gross_amount: addon.gross_amount,
       })),
     ))
     setCartEditOriginalService({
@@ -4552,12 +4754,13 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       duration_min: Number(originalMainService?.extra_duration_min ?? 0),
     })
 
-    const currentAddonIds = new Set(
-      (settlement.addon_settlement_items ?? [])
-        .map((a) => a.id)
-        .filter((id): id is number => id != null),
+    const currentAddonIds = selectionFromAddonRows(
+      (settlement.addon_settlement_items ?? []).map((addon) => ({
+        id: addon.id,
+        quantity: addon.quantity ?? 1,
+      })),
     )
-    setCartEditSelectedAddonIds(currentAddonIds)
+    setCartEditAddonQuantities(currentAddonIds)
     const addedMainBlocksSeed = (settlement.main_services ?? [])
       .filter((service) => !service.is_original)
       .map((service) => ({
@@ -4571,7 +4774,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         price_range_max: service.price_range_max ?? null,
         duration_min: Number(service.extra_duration_min ?? 0),
         addon_questions: [] as typeof cartEditAddonQuestions,
-        selected_addon_ids: new Set<number>((service.add_ons ?? []).map((addon) => Number(addon.id)).filter((id) => Number.isFinite(id) && id > 0)),
+        selected_addon_ids: selectionFromAddonRows((service.add_ons ?? []).map((addon) => ({ id: addon.id, quantity: addon.quantity ?? 1 }))),
+        addon_price_overrides: seedFinalizedAddonPriceOverrides(service.add_ons ?? []),
+        addon_line_total_overrides: seedAddonLineTotalOverrides(service.add_ons ?? []),
         staff_splits: (service.staff_splits ?? []).map((split) => ({
           staff_id: Number(split.staff_id) > 0 ? Number(split.staff_id) : null,
           share_percent: String(split.share_percent ?? ''),
@@ -4682,13 +4887,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
   }
 
-  const toggleCartEditAddon = (optionId: number) => {
-    setCartEditSelectedAddonIds((prev) => {
-      const next = new Set(prev)
-      if (next.has(optionId)) next.delete(optionId)
-      else next.add(optionId)
-      return next
-    })
+  const toggleCartEditAddon = (optionId: number, option: BookingServiceQuestionOption, questionType: string, questionOptionIds: number[]) => {
+    setCartEditAddonQuantities((prev) => toggleAddonSelection(prev, option, questionType, questionOptionIds))
+  }
+
+  const setCartEditAddonQuantity = (option: BookingServiceQuestionOption, qty: number) => {
+    setCartEditAddonQuantities((prev) => setAddonQuantity(prev, option, qty))
   }
 
   const openCartEditMainServicePicker = () => {
@@ -4708,11 +4912,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     reportCartEditSettlementError(null)
     setCartEditOriginalService(service)
     setCartEditSettlementServiceId(service.id)
-    setCartEditSelectedAddonIds(new Set())
+    setCartEditAddonQuantities({})
     setCartEditAddedMainBlocks((prev) => prev.filter((block) => block.service_id !== service.id))
     setCartEditSettledAmount('')
     setCartEditOriginalServicePrice(Number(service.service_price ?? service.price ?? 0))
     setCartEditAddonPriceOverrides({})
+    setCartEditAddonLineTotalOverrides({})
     setCartEditAddonOptionsLoading(true)
     try {
       const res = await fetch(`/api/proxy/pos/services/${service.id}/addon-options`)
@@ -4751,7 +4956,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       price_range_max: service.price_range_max ?? null,
       duration_min: Number(service.duration_min ?? 0),
       addon_questions: questions,
-      selected_addon_ids: new Set<number>(),
+      selected_addon_ids: {},
+      addon_price_overrides: {},
+      addon_line_total_overrides: {},
       staff_splits: [{ staff_id: null, share_percent: '100' }],
       auto_balance: true,
     }])
@@ -4804,18 +5011,74 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     if (Number.isFinite(next) && next >= 0) setCartEditOriginalServicePrice(next)
   }
 
-  const editCartSettlementAddonPrice = (optionId: number, label: string, currentPrice: number) => {
-    if (!cartEditSettlementItem) return
-    const line = (cartEditSettlementItem.addon_settlement_items ?? []).find((row) => Number(row.id ?? 0) === Number(optionId))
-    const current = Number(cartEditAddonPriceOverrides[optionId] ?? line?.gross_amount ?? line?.balance_due ?? currentPrice ?? 0)
-    if (line?.line_key) {
-      openPriceEditModal({ kind: 'settlementLine', id: cartEditSettlementItem.id, lineKey: line.line_key, name: label, currentUnitPrice: current, originalUnitPrice: Number(line.price_override?.original_unit_price ?? line.extra_price ?? current), priceSource: line })
-      return
-    }
-    const raw = window.prompt('New add-on price', current.toFixed(2))
-    if (raw == null) return
-    const next = Number(raw)
-    if (Number.isFinite(next) && next >= 0) setCartEditAddonPriceOverrides((prev) => ({ ...prev, [optionId]: next }))
+  const editCartSettlementAddonPrice = (optionId: number, label: string, unitPrice: number) => {
+    const qty = getAddonQuantity(cartEditAddonQuantities, optionId)
+    const opt = cartEditAddonQuestions.flatMap((question) => question.options).find((row) => row.id === optionId)
+    openPriceEditModal({
+      kind: 'cartEditSettlementAddon',
+      optionId,
+      name: label,
+      currentUnitPrice: resolveEditSettlementAddonUnitDisplay(optionId, qty, Number(unitPrice ?? 0), cartEditAddonPriceOverrides, cartEditAddonLineTotalOverrides),
+      originalUnitPrice: Number(unitPrice ?? 0),
+      quantity: qty,
+      priceSource: opt ? posPriceDisplayWithOverride(opt, cartEditAddonPriceOverrides[optionId], Object.prototype.hasOwnProperty.call(cartEditAddonPriceOverrides, optionId)) ?? opt : null,
+      lineTotalOverride: cartEditAddonLineTotalOverrides[optionId],
+      hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(cartEditAddonLineTotalOverrides, optionId),
+    })
+  }
+
+  const editCartSettlementBlockAddonPrice = (tmpId: string, optionId: number, label: string, unitPrice: number) => {
+    const block = cartEditAddedMainBlocks.find((row) => row.tmp_id === tmpId)
+    if (!block) return
+    const qty = getAddonQuantity(block.selected_addon_ids, optionId)
+    const opt = block.addon_questions.flatMap((question) => question.options).find((row) => row.id === optionId)
+    openPriceEditModal({
+      kind: 'cartEditSettlementBlockAddon',
+      tmpId,
+      optionId,
+      name: label,
+      currentUnitPrice: resolveEditSettlementAddonUnitDisplay(optionId, qty, Number(unitPrice ?? 0), block.addon_price_overrides, block.addon_line_total_overrides),
+      originalUnitPrice: Number(unitPrice ?? 0),
+      quantity: qty,
+      priceSource: opt ? posPriceDisplayWithOverride(opt, block.addon_price_overrides[optionId], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, optionId)) ?? opt : null,
+      lineTotalOverride: block.addon_line_total_overrides[optionId],
+      hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, optionId),
+    })
+  }
+
+  const editBookingMainAddonPrice = (optionId: number, label: string, unitPrice: number) => {
+    const qty = getAddonQuantity(bookingAddonQuantities, optionId)
+    const opt = bookingQuestions.flatMap((question) => question.options).find((row) => row.id === optionId)
+    openPriceEditModal({
+      kind: 'bookingMainAddon',
+      optionId,
+      name: label,
+      currentUnitPrice: resolveEditSettlementAddonUnitDisplay(optionId, qty, Number(unitPrice ?? 0), bookingAddonPriceOverrides, bookingAddonLineTotalOverrides),
+      originalUnitPrice: Number(unitPrice ?? 0),
+      quantity: qty,
+      priceSource: opt ? posPriceDisplayWithOverride(opt, bookingAddonPriceOverrides[optionId], Object.prototype.hasOwnProperty.call(bookingAddonPriceOverrides, optionId)) ?? opt : null,
+      lineTotalOverride: bookingAddonLineTotalOverrides[optionId],
+      hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(bookingAddonLineTotalOverrides, optionId),
+    })
+  }
+
+  const editBookingBlockAddonPrice = (blockId: string, optionId: number, label: string, unitPrice: number) => {
+    const block = bookingExtraServiceBlocks.find((row) => row.id === blockId)
+    if (!block) return
+    const qty = getAddonQuantity(block.addonQuantities, optionId)
+    const opt = block.questions.flatMap((question) => question.options).find((row) => row.id === optionId)
+    openPriceEditModal({
+      kind: 'bookingBlockAddon',
+      blockId,
+      optionId,
+      name: label,
+      currentUnitPrice: resolveEditSettlementAddonUnitDisplay(optionId, qty, Number(unitPrice ?? 0), block.addon_price_overrides, block.addon_line_total_overrides),
+      originalUnitPrice: Number(unitPrice ?? 0),
+      quantity: qty,
+      priceSource: opt ? posPriceDisplayWithOverride(opt, block.addon_price_overrides[optionId], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, optionId)) ?? opt : null,
+      lineTotalOverride: block.addon_line_total_overrides[optionId],
+      hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, optionId),
+    })
   }
 
   const editCartAddedMainServicePrice = (tmpId: string, currentPrice: number) => {
@@ -4832,26 +5095,46 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     setCartEditSettlementLoading(true)
     try {
       const needsSettledAmount = settlementNeedsSettledAmount(cartEditOriginalSettlementSource)
+      const originalAddonIds = getSelectedAddonIds(cartEditAddonQuantities)
+      const originalAddonOverrides = buildAddonSettlementSaveOverrides(
+        originalAddonIds,
+        cartEditAddonQuantities,
+        cartEditAddonPriceOverrides,
+        cartEditAddonLineTotalOverrides,
+      )
       const payload: Record<string, unknown> = {
-        addon_option_ids: Array.from(cartEditSelectedAddonIds),
+        addon_option_ids: originalAddonIds,
+        addon_quantities: buildAddonQuantitiesPayload(cartEditAddonQuantities),
         availability_override: true,
         availability_override_type: 'outside_staff_schedule',
         availability_override_reason: null,
-        addon_staff_splits: Object.fromEntries(Array.from(cartEditSelectedAddonIds).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`] ?? []])),
-        addon_price_overrides: cartEditAddonPriceOverrides,
+        addon_staff_splits: Object.fromEntries(originalAddonIds.map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`] ?? []])),
+        addon_price_overrides: originalAddonOverrides.addon_price_overrides,
+        addon_line_total_overrides: originalAddonOverrides.addon_line_total_overrides,
         main_service_ids: cartEditAddedMainBlocks.map((block) => block.service_id),
-        main_service_items: cartEditAddedMainBlocks.map((block) => ({
-          booking_service_id: block.service_id,
-          price: block.price,
-          price_finalized: Boolean(block.price_finalized),
-          addon_price_overrides: cartEditAddonPriceOverrides,
-          addon_option_ids: Array.from(block.selected_addon_ids),
-          addon_staff_splits: Object.fromEntries(Array.from(block.selected_addon_ids).map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
-          staff_splits: block.staff_splits.map((row) => ({
-            staff_id: Number(row.staff_id ?? 0),
-            share_percent: Number.parseInt(row.share_percent || '0', 10),
-          })),
-        })),
+        main_service_items: cartEditAddedMainBlocks.map((block) => {
+          const blockAddonIds = getSelectedAddonIds(block.selected_addon_ids)
+          const blockAddonOverrides = buildAddonSettlementSaveOverrides(
+            blockAddonIds,
+            block.selected_addon_ids,
+            block.addon_price_overrides,
+            block.addon_line_total_overrides,
+          )
+          return {
+            booking_service_id: block.service_id,
+            price: block.price,
+            price_finalized: Boolean(block.price_finalized),
+            addon_option_ids: blockAddonIds,
+            addon_quantities: buildAddonQuantitiesPayload(block.selected_addon_ids),
+            addon_price_overrides: blockAddonOverrides.addon_price_overrides,
+            addon_line_total_overrides: blockAddonOverrides.addon_line_total_overrides,
+            addon_staff_splits: Object.fromEntries(blockAddonIds.map((id) => [id, checkoutLineSplits[`settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`] ?? []])),
+            staff_splits: block.staff_splits.map((row) => ({
+              staff_id: Number(row.staff_id ?? 0),
+              share_percent: Number.parseInt(row.share_percent || '0', 10),
+            })),
+          }
+        }),
       }
       const originalServiceId = Number(cartEditOriginalService?.id ?? cartEditSettlementItem?.booking_service_id ?? 0)
       if (originalServiceId > 0 && originalServiceId !== Number(cartEditSettlementItem?.booking_service_id ?? 0)) {
@@ -4951,7 +5234,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             .find((line, idx) => line.is_original ?? idx === 0)?.line_key ?? 'service:original'
           next[`settlement:${settlementId}:${originalLineKey}`] = normalizedSplits
 
-          Array.from(cartEditSelectedAddonIds).forEach((addonId) => {
+          getSelectedAddonIds(cartEditAddonQuantities).forEach((addonId) => {
             const editKey = `settlement-edit:${settlementId}:addon:${addonId}`
             const addonLineKey = (cartEditSettlementItem.addon_settlement_items ?? [])
               .find((addon) => Number(addon.id ?? 0) === Number(addonId))?.line_key ?? `addon:${addonId}`
@@ -5978,7 +6261,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         if (amount > 0.0001) keys.push(`settlement:${settlement.id}:${service.line_key ?? `service:${service.id ?? idx}`}`)
       })
       ;(settlement.addon_settlement_items ?? []).forEach((addon, idx) => {
-        const amount = Number(addon.line_total_after_discount ?? addon.balance_due ?? addon.gross_amount ?? addon.extra_price ?? 0)
+        const amount = resolveSettlementAddonLineDue(addon)
         if (amount > 0.0001) keys.push(`settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`)
       })
     })
@@ -8261,7 +8544,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               <div key={`dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                 <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                   <span className="text-gray-500">+</span>
-                                  <ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />
+                                  <div className="min-w-0 text-[11px] text-gray-700">
+                                    <PosAddonLineName name={addon.name} cnName={addon.cn_name} quantity={addon.quantity} layout="stacked" prefix="+ " cnClassName="block text-[10px] text-gray-500" quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600" />
+                                  </div>
                                   <div className="flex flex-col items-end gap-1 text-right">
                                     <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
                                     {!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? (
@@ -8437,7 +8722,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         0,
                       )
                       const addonRows = settlement.addon_settlement_items ?? []
-                      const addonDueSum = addonRows.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
+                      const addonDueSum = addonRows.reduce((sum, a) => sum + resolveSettlementAddonLineDue(a), 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const totalDue = Number(settlement.balance_due ?? settlement.amount_due_now ?? 0)
                       const isRangeUnsettled = settlement.is_range_priced && settlement.settled_service_amount == null
@@ -8483,7 +8768,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                           {!coveredByPackage && !discount && amountDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? (
                                             <span className="block text-[10px] font-medium text-gray-500">Due now: RM {amountDue.toFixed(2)}</span>
                                           ) : null}
-                                          {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(service)}</span> : null}
                                           {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
@@ -8491,22 +8775,32 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   )
                                 })}
                                 {addonRows.map((addon, idx) => {
-                                  const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
-                                  const addonReference = Number(addon.extra_price ?? gross)
+                                  const gross = resolveSettlementAddonLineGross(addon)
                                   const discount = Number(addon.discount_amount ?? 0)
-                                  const net = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+                                  const net = resolveSettlementAddonLineDue(addon)
+                                  const addonUnitReference = Number(addon.extra_price ?? 0)
+                                  const addonReference = gross > 0.0001 ? gross : addonUnitReference * storedAddonQuantity(addon)
                                   const coveredByPackage = pkgOffset > originalServiceReference + 0.0001 && net <= 0.0001 && addonReference > 0.0001
                                   const displayGross = coveredByPackage ? addonReference : gross
                                   const displayNet = coveredByPackage ? 0 : net
+                                  const addonPriceSource = posPriceDisplayForAddonLine(addon)
                                   return (
                                     <div key={`settlement-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5">
                                       <div className="flex justify-between gap-2 text-gray-700">
-                                        <span>+ {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</span>
+                                        <PosAddonLineName
+                                          layout="stacked"
+                                          prefix="+ "
+                                          name={addon.name}
+                                          cnName={addon.cn_name}
+                                          quantity={addon.quantity}
+                                          cnClassName="block text-[10px] text-gray-500"
+                                          quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600"
+                                          trailing={coveredByPackage ? <span className="mt-0.5 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}
+                                        />
                                         <span className="text-right font-semibold tabular-nums">
-                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: displayGross })}</span> : null}
+                                          {coveredByPackage || discount > 0 ? <span className="block text-[10px] text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: displayGross })}</span> : null}
                                           {!coveredByPackage && discount > 0 ? <span className="block text-[10px] font-semibold text-amber-700">- RM {discount.toFixed(2)}</span> : null}
-                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...addon, extra_price: displayNet })}</span>
-                                          {posPriceDisplayHasRange(addon) && posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(addon)}</span> : null}
+                                          <span className="block">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: displayNet })}</span>
                                           {posPriceDisplayHasRange(addon) && !posPriceDisplayHasFinalPrice(addon) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                         </span>
                                       </div>
@@ -9076,8 +9370,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       type="button"
                       onClick={() => {
                         const lineKeys = [
-                          ...Array.from(cartEditSelectedAddonIds).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`),
-                          ...cartEditAddedMainBlocks.flatMap((block) => Array.from(block.selected_addon_ids).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`)),
+                          ...getSelectedAddonIds(cartEditAddonQuantities).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:addon:${id}`),
+                          ...cartEditAddedMainBlocks.flatMap((block) => getSelectedAddonIds(block.selected_addon_ids).map((id) => `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${id}`)),
                         ]
                         const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
                         void openBulkSplitEditor('Edit Settlement Lines', lineKeys, inherited, [], [], { applyCartEditSettlementMainServices: true })
@@ -9243,43 +9537,42 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       <div key={question.id}>
                         <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
                         <div className="space-y-1.5">
-                          {question.options.map((opt) => {
-                            const checked = cartEditSelectedAddonIds.has(opt.id)
-                            return (
-                              <label
-                                key={opt.id}
-                                className={`flex cursor-pointer items-center justify-between rounded-lg border-2 px-3 py-2.5 transition-all ${
-                                  checked
-                                    ? 'border-indigo-500 bg-indigo-50 ring-1 ring-indigo-200'
-                                    : 'border-gray-200 bg-white hover:border-gray-300'
-                                }`}
-                              >
-                                <div className="flex items-center gap-2.5">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => toggleCartEditAddon(opt.id)}
-                                    className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                                  />
-                                  <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm font-medium text-gray-900" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                                </div>
-                                <span className="flex flex-col items-end gap-1 text-xs font-semibold tabular-nums text-gray-600">
-                                  <span>+{formatPosCurrentOrRangeDisplay(posPriceDisplayWithOverride(opt, cartEditAddonPriceOverrides[opt.id], Object.prototype.hasOwnProperty.call(cartEditAddonPriceOverrides, opt.id)) ?? opt, { prefix: 'RM' })}{opt.extra_duration_min > 0 ? ` · ${opt.extra_duration_min}min` : ''}</span>
-                                  {checked ? (() => {
-                                    const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
-                                    const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
-                                    return (
-                                      <>
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button>
-                                        {renderLineSplitStack(lineKey, inherited, 'main service')}
-                                        <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                      </>
-                                    )
-                                  })() : null}
-                                </span>
-                              </label>
-                            )
-                          })}
+                          {question.options.map((opt) => (
+                            <BookingAddonOptionRow
+                              key={opt.id}
+                              variant="settlement"
+                              option={opt}
+                              selection={cartEditAddonQuantities}
+                              onToggle={() => toggleCartEditAddon(opt.id, opt, question.question_type, question.options.map((row) => row.id))}
+                              onQuantityChange={(qty) => setCartEditAddonQuantity(opt, qty)}
+                              durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={cartEditAddonQuantities} />}
+                              priceLabel={
+                                <PosAddonSettlementPriceLabel
+                                  option={opt}
+                                  selection={cartEditAddonQuantities}
+                                  useRangeDisplay
+                                  emphasis
+                                  overrideAmount={cartEditAddonPriceOverrides[opt.id]}
+                                  hasOverrideKey={Object.prototype.hasOwnProperty.call(cartEditAddonPriceOverrides, opt.id)}
+                                  lineTotalOverride={cartEditAddonLineTotalOverrides[opt.id]}
+                                  hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(cartEditAddonLineTotalOverrides, opt.id)}
+                                />
+                              }
+                              trailing={(() => {
+                                const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:addon:${opt.id}`
+                                const inherited = cartEditStaffSplits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                                return (
+                                  <div className="space-y-2.5">
+                                    {renderLineSplitStack(lineKey, inherited, 'main service')}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                            />
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -9466,9 +9759,17 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
               {cartEditAddedMainBlocks.map((block) => {
                 const addonOptions = block.addon_questions.flatMap((q) => q.options)
-                const selectedAddons = addonOptions.filter((opt) => block.selected_addon_ids.has(opt.id))
-                const addonTotal = selectedAddons.reduce((sum, opt) => sum + Number(opt.extra_price ?? 0), 0)
-                const blockSubtotal = Number(block.price ?? 0) + addonTotal
+                const selectedAddons = addonOptions.filter((opt) => isAddonSelected(block.selected_addon_ids, opt.id))
+                const blockAddonBounds = accumulatePosPriceBounds(
+                  selectedAddons.map((opt) => ({
+                    source: { ...opt, quantity: getAddonQuantity(block.selected_addon_ids, opt.id) },
+                    overrideAmount: block.addon_price_overrides[opt.id],
+                    hasOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id),
+                    lineTotalOverride: block.addon_line_total_overrides[opt.id],
+                    hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id),
+                  })),
+                )
+                const blockSubtotal = Number(block.price ?? 0) + blockAddonBounds.min
                 return (
                   <div key={`cart-added-main-block-${block.tmp_id}`} className="rounded-lg border border-gray-200 bg-white p-3">
                     <div className="mb-2 flex items-start justify-between gap-2">
@@ -9488,41 +9789,46 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     {block.addon_questions.map((question) => (
                       <div key={`cart-added-q-${block.service_id}-${question.id}`} className="mb-2">
                         <div><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
-                        {question.options.map((opt) => {
-                          const checked = block.selected_addon_ids.has(opt.id)
-                          return (
-                            <label key={`cart-added-opt-${block.service_id}-${opt.id}`} className="mt-1 flex items-center justify-between rounded-md border border-gray-200 px-2 py-1.5 text-sm">
-                              <div className="flex items-center gap-2">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => {
-                                    if (item.service_id !== block.service_id) return item
-                                    const next = new Set(item.selected_addon_ids)
-                                    if (next.has(opt.id)) next.delete(opt.id)
-                                    else next.add(opt.id)
-                                    return { ...item, selected_addon_ids: next }
-                                  }))}
-                                  className="h-4 w-4 rounded border-gray-300 text-indigo-600"
-                                />
-                                <ServiceNameStack name={opt.label} cnName={opt.cn_label ?? opt.cn_name ?? opt.linked_cn_name} primaryClassName="text-sm text-gray-700" secondaryClassName="mt-0.5 text-[11px] text-gray-500" />
-                              </div>
-                              <span className="flex flex-col items-end gap-1 text-xs font-semibold text-gray-500">
-                                <span>+{formatPosPriceDisplay(opt, { prefix: 'RM' })}</span>
-                                {checked ? (() => {
-                                  const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${opt.id}`
-                                  const inherited = block.staff_splits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
-                                  return (
-                                    <>
-                                      {renderLineSplitStack(lineKey, inherited, 'service block')}
-                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                    </>
-                                  )
-                                })() : null}
-                              </span>
-                            </label>
-                          )
-                        })}
+                        {question.options.map((opt) => (
+                          <BookingAddonOptionRow
+                            key={`cart-added-opt-${block.service_id}-${opt.id}`}
+                            variant="settlement"
+                            option={opt}
+                            selection={block.selected_addon_ids}
+                            onToggle={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                              ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
+                              : item))}
+                            onQuantityChange={(qty) => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                              ? { ...item, selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty) }
+                              : item))}
+                            durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
+                            priceLabel={
+                              <PosAddonSettlementPriceLabel
+                                option={opt}
+                                selection={block.selected_addon_ids}
+                                useRangeDisplay
+                                emphasis
+                                overrideAmount={block.addon_price_overrides[opt.id]}
+                                hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)}
+                                lineTotalOverride={block.addon_line_total_overrides[opt.id]}
+                                hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id)}
+                              />
+                            }
+                            trailing={(() => {
+                              const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${opt.id}`
+                              const inherited = block.staff_splits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                              return (
+                                <div className="space-y-2.5">
+                                  {renderLineSplitStack(lineKey, inherited, 'service block')}
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementBlockAddonPrice(block.tmp_id, opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          />
+                        ))}
                       </div>
                     ))}
                     <div className="space-y-2">
@@ -9601,12 +9907,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
               {(() => {
                 const allOptions = cartEditAddonQuestions.flatMap((q) => q.options)
-                const selectedAddons = allOptions.filter((o) => cartEditSelectedAddonIds.has(o.id))
+                const selectedAddons = allOptions.filter((o) => isAddonSelected(cartEditAddonQuantities, o.id))
                 const addonBounds = accumulatePosPriceBounds(
                   selectedAddons.map((option) => ({
-                    source: option,
+                    source: { ...option, quantity: getAddonQuantity(cartEditAddonQuantities, option.id) },
                     overrideAmount: cartEditAddonPriceOverrides[option.id],
                     hasOverrideKey: Object.prototype.hasOwnProperty.call(cartEditAddonPriceOverrides, option.id),
+                    lineTotalOverride: cartEditAddonLineTotalOverrides[option.id],
+                    hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(cartEditAddonLineTotalOverrides, option.id),
                   })),
                 )
                 const selectedMainServices = cartEditAddedMainBlocks
@@ -9614,8 +9922,14 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   const addonOptions = service.addon_questions.flatMap((q) => q.options)
                   const blockAddonBounds = accumulatePosPriceBounds(
                     addonOptions
-                      .filter((opt) => service.selected_addon_ids.has(opt.id))
-                      .map((opt) => ({ source: opt })),
+                      .filter((opt) => isAddonSelected(service.selected_addon_ids, opt.id))
+                      .map((opt) => ({
+                        source: { ...opt, quantity: getAddonQuantity(service.selected_addon_ids, opt.id) },
+                        overrideAmount: service.addon_price_overrides[opt.id],
+                        hasOverrideKey: Object.prototype.hasOwnProperty.call(service.addon_price_overrides, opt.id),
+                        lineTotalOverride: service.addon_line_total_overrides[opt.id],
+                        hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(service.addon_line_total_overrides, opt.id),
+                      })),
                   )
                   return sum + Number(service.price ?? 0) + blockAddonBounds.min
                 }, 0)
@@ -10169,7 +10483,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         <div key={`checkout-dep-service-addon-${serviceItem.id}-${idx}-${addon.id ?? addonIdx}`} className={`space-y-0.5 rounded pl-5 ${addon.covered_by_package ? 'bg-emerald-50/80 py-1 pr-1 ring-1 ring-emerald-100' : ''}`}>
                                           <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                             <span className="text-gray-500">+</span>
-                                            <div>{renderGlobalBulkLineCheckbox(addonLineKey)}<ServiceNameStack name={addon.name} cnName={addon.cn_name} primaryClassName="text-[11px] text-gray-700" secondaryClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(addonLineKey, addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-1">{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonLineKey, addon.name ?? 'Service add-on deposit', addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[addonLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
+                                            <div>{renderGlobalBulkLineCheckbox(addonLineKey)}<PosAddonLineName name={addon.name} cnName={addon.cn_name} quantity={addon.quantity} prefix="" cnClassName="mt-0.5 text-[10px] text-gray-500" />{renderLineSplitStack(addonLineKey, addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [], 'main service')}<div className="mt-1 flex flex-wrap gap-1">{!addon.covered_by_package && Number(addon.deposit ?? 0) > 0.0001 ? <button type="button" onClick={() => openPriceEditModal({ kind: 'serviceDeposit', id: serviceItem.id, lineKey: addon.line_key ?? `addon:${Number(addon.id ?? 0)}`, name: addon.name ?? 'Service add-on deposit', currentUnitPrice: Number(addon.deposit ?? 0), originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.reference_deposit ?? addon.deposit ?? 0) })} className="rounded border border-blue-300 bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-700">Edit Price</button> : null}<button type="button" onClick={() => void openLineSplitEditor(addonLineKey, addon.name ?? 'Service add-on deposit', addon.staff_splits ?? service.staff_splits ?? serviceItem.staff_splits ?? [])} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[addonLineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button></div></div>
                                             <div className="text-right"><PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} /></div>
                                           </div>
                                           {addon.package_note ? (
@@ -10207,7 +10521,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       const addonCount = addons.length
                       const checkoutServiceBlocks = settlement.main_service_settlement_items ?? []
                       const hasServiceBlocks = checkoutServiceBlocks.length > 0
-                      const addonDueSum = addons.reduce((sum, a) => sum + Number(a.balance_due ?? a.extra_price ?? 0), 0)
+                      const addonDueSum = addons.reduce((sum, a) => sum + resolveSettlementAddonLineDue(a), 0)
                       const serviceTotalRef = Number(settlement.service_total ?? 0)
                       const depositCredit = Number(settlement.deposit_contribution ?? 0)
                       const pkgOffset = Number(settlement.package_offset ?? 0)
@@ -10335,7 +10649,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         ) : (
                                           <>
                                             <span className="block">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayFullPrice })}</span>
-                                            {posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(service)}</span> : null}
                                             {posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <span className="block text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</span> : null}
                                           </>
                                         )}
@@ -10348,10 +10661,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                             <p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: serviceFullPrice })}</p>
                                             <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
                                             <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceDue.toFixed(2)}</p>
-                                            {posPriceDisplayHasRange(service) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(service)}</p> : null}
                                           </div>
                                         ) : (
-                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayFullPrice })}</p>{serviceDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? <p className="text-[10px] font-medium text-gray-500">Due now: RM {serviceDue.toFixed(2)}</p> : null}{posPriceDisplayHasRange(service) && posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(service)}</p> : null}{posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</p> : null}</div>
+                                          <div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...service, extra_price: displayFullPrice })}</p>{serviceDue + 0.0001 < displayFullPrice && !settlementShowsSeparateDepositCredit(settlement) ? <p className="text-[10px] font-medium text-gray-500">Due now: RM {serviceDue.toFixed(2)}</p> : null}{posPriceDisplayHasRange(service) && !posPriceDisplayHasFinalPrice(service) ? <p className="text-[10px] font-medium text-amber-700">Range pricing — please set final price before checkout.</p> : null}</div>
                                         )}
                                       </td>
                                       <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2.5" aria-hidden />
@@ -10368,18 +10680,32 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 )
                               })}
                               {addonCount > 0 ? addons.map((addon, idx) => {
-                                const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
-                                const addonReference = Number(addon.extra_price ?? gross)
+                                const gross = resolveSettlementAddonLineGross(addon)
+                                const addonUnitReference = Number(addon.extra_price ?? 0)
+                                const addonReference = gross > 0.0001 ? gross : addonUnitReference * storedAddonQuantity(addon)
                                 const discount = Number(addon.discount_amount ?? 0)
-                                const due = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+                                const due = resolveSettlementAddonLineDue(addon)
                                 const coveredByPackage = pkgOffset > checkoutOriginalServiceReference + 0.0001 && due <= 0.0001 && addonReference > 0.0001
                                 const addonOriginalPrice = resolveSettlementLineOriginalPrice(addon, addonReference, gross)
                                 const displayDue = coveredByPackage ? 0 : due
                                 const addonSettlementSplitKey = `settlement:${settlement.id}:${addon.line_key ?? `addon:${addon.id ?? idx}`}`
+                                const addonPriceSource = posPriceDisplayForAddonLine(addon)
                                 return (
                                   <tr key={`chk-st-addon-block-${settlement.id}-${addon.id ?? addon.name}-${idx}`} className={`${stRowClass} align-top`}>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2 text-center align-top">{renderGlobalBulkColumnCheckbox(addonSettlementSplitKey)}</td>
-                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10"><p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p><span className="text-gray-500">+</span> {addon.name}{addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}{coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}</td>
+                                    <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
+                                      <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Add-on</p>
+                                      <PosAddonLineName
+                                        layout="stacked"
+                                        prefix="+ "
+                                        name={addon.name}
+                                        cnName={addon.cn_name}
+                                        quantity={addon.quantity}
+                                        cnClassName="block text-[10px] text-gray-500"
+                                        quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600"
+                                        trailing={coveredByPackage ? <span className="mt-1 block pl-2 text-[10px] font-medium leading-snug text-emerald-700">Included in your package (add-on)</span> : null}
+                                      />
+                                    </td>
                                     <td className="min-w-[260px] px-4 py-2 align-top">
                                       <div className="space-y-2">
                                         {renderCheckoutLineSplitSummary(addonSettlementSplitKey, settlementInheritedSplits)}
@@ -10390,8 +10716,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         </div>
                                       </div>
                                     </td>
-                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <><span className="block">RM {due.toFixed(2)}</span>{posPriceDisplayHasRange(addon) ? <span className="block text-[10px] font-medium text-gray-500">Ref: {formatPosPriceDisplay(addon)}</span> : null}</>}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addon, extra_price: gross })}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(addon)}</p> : null}</div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>{posPriceDisplayHasRange(addon) ? <p className="text-[10px] font-medium text-gray-500">Ref range: {formatPosPriceDisplay(addon)}</p> : null}</div>)}</td>
+                                    <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <span className="block">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</span>}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: gross })}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</p></div>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
@@ -10440,9 +10766,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-1.5" aria-hidden />
                               </tr>
                               {addons.map((addon, idx) => {
-                                const gross = Number(addon.gross_amount ?? addon.balance_due ?? addon.extra_price ?? 0)
+                                const gross = resolveSettlementAddonLineGross(addon)
                                 const discount = Number(addon.discount_amount ?? 0)
-                                const due = Number(addon.line_total_after_discount ?? Math.max(0, gross - discount))
+                                const due = resolveSettlementAddonLineDue(addon)
                                 return (
                                   <tr
                                     key={`chk-st-addon-${settlement.id}-${addon.id ?? addon.name}-${idx}`}
@@ -10450,8 +10776,15 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   >
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                     <td className="px-4 py-2 pl-8 text-xs text-gray-700 sm:px-5 sm:pl-10">
-                                      <span className="text-gray-500">+</span> {addon.name}
-                                      {addon.cn_name ? <span className="block pl-2 text-[10px] text-gray-500">{addon.cn_name}</span> : null}
+                                      <PosAddonLineName
+                                        layout="stacked"
+                                        prefix="+ "
+                                        name={addon.name}
+                                        cnName={addon.cn_name}
+                                        quantity={addon.quantity}
+                                        cnClassName="block text-[10px] text-gray-500"
+                                        quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600"
+                                      />
                                     </td>
                                     <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross), priceSource: addon })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
@@ -11182,8 +11515,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       ) : null}
 
 
-      {priceEditTarget ? (
-        <div className="fixed inset-0 z-[170] flex items-center justify-center overflow-y-auto bg-black/50 p-4">
+      {renderPosBodyModalPortal(
+        priceEditTarget ? (
+        <div className="pos-body-stack-modal-top flex items-center justify-center overflow-y-auto bg-black/50 p-4">
           <div className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
             {priceEditError ? (
@@ -11198,10 +11532,15 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             ) : null}
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{priceEditTarget.name}</p>
-            <div className="mt-4 grid grid-cols-2 gap-3 rounded-lg bg-gray-50 p-3 text-sm">
-              <div><p className="text-xs text-gray-500">Original price / Reference range</p><p className="font-semibold tabular-nums">{'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) ? formatPosPriceDisplay(priceEditTarget.priceSource) : `RM ${Number(priceEditTarget.originalUnitPrice ?? 0).toFixed(2)}`}</p></div>
-              <div><p className="text-xs text-gray-500">Current price</p><p className="font-semibold tabular-nums">{'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Not set' : `RM ${Number(priceEditTarget.currentUnitPrice ?? 0).toFixed(2)}`}</p></div>
-            </div>
+            <PosPriceEditSummaryGrid
+              kind={priceEditTarget.kind}
+              originalUnitPrice={Number(priceEditTarget.originalUnitPrice ?? 0)}
+              currentUnitPrice={Number(priceEditTarget.currentUnitPrice ?? 0)}
+              quantity={priceEditTarget.quantity}
+              priceSource={'priceSource' in priceEditTarget ? priceEditTarget.priceSource : null}
+              lineTotalOverride={'lineTotalOverride' in priceEditTarget ? priceEditTarget.lineTotalOverride : null}
+              hasLineTotalOverrideKey={'hasLineTotalOverrideKey' in priceEditTarget ? priceEditTarget.hasLineTotalOverrideKey : false}
+            />
             <div className="mt-4 rounded-lg border border-gray-200 p-3">
               <p className="text-sm font-semibold text-gray-700">Edit by</p>
               <div className="mt-2 flex gap-3 text-sm">
@@ -11220,7 +11559,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     placeholder={'priceSource' in priceEditTarget && priceEditTarget.priceSource && posPriceDisplayHasRange(priceEditTarget.priceSource) && !posPriceDisplayHasFinalPrice(priceEditTarget.priceSource) ? 'Enter final price' : '0.00'}
                     className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
                   />
-                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Line Total: RM {((parseSettlementAmountInput(priceEditValueDraft) ?? 0) * Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(2)}</span>
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Line Total: RM {((parseSettlementAmountInput(priceEditValueDraft) ?? 0) * resolvePriceEditQuantity(priceEditTarget.quantity)).toFixed(2)}</span>
                 </label>
               ) : (
                 <label className="mt-3 block text-sm font-semibold text-gray-700">New Line Total
@@ -11234,7 +11573,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     placeholder="0.00"
                     className="mt-1 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm tabular-nums"
                   />
-                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Unit Price: RM {((parseSettlementAmountInput(priceEditLineTotalDraft) ?? 0) / Math.max(1, Number(priceEditTarget.quantity ?? 1))).toFixed(6)}</span>
+                  <span className="mt-1 block text-xs font-medium text-gray-500">Calculated Unit Price: RM {((parseSettlementAmountInput(priceEditLineTotalDraft) ?? 0) / resolvePriceEditQuantity(priceEditTarget.quantity)).toFixed(2)}</span>
                 </label>
               )}
             </div>
@@ -11248,7 +11587,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             </div>
           </div>
         </div>
-      ) : null}
+        ) : null,
+        bodyModalRoot,
+      )}
 
       {discountModalOpen && discountTarget ? (
         <div className="fixed inset-0 z-[130] flex items-center justify-center overflow-y-auto bg-black/45 p-4">
@@ -11550,10 +11891,10 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         onClick={() => {
                           const lineKeys = [
                             `booking-draft:main:${bookingServiceDraft.id}`,
-                            ...bookingSelectedOptionIds.map((id) => `booking-draft:addon:${id}`),
+                            ...getSelectedAddonIds(bookingAddonQuantities).map((id) => `booking-draft:addon:${id}`),
                             ...bookingExtraServiceBlocks.flatMap((block) => [
                               ...(block.service ? [`booking-draft:block:${block.id}:main`] : []),
-                              ...block.selectedOptionIds.map((id) => `booking-draft:block:${block.id}:addon:${id}`),
+                              ...getSelectedAddonIds(block.addonQuantities).map((id) => `booking-draft:block:${block.id}:addon:${id}`),
                             ]),
                           ]
                           void openBulkSplitEditor('Apply Staff Split to Service Lines', lineKeys, bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
@@ -11568,7 +11909,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         onClick={() => {
                           setBookingExtraServiceBlocks((prev) => [
                             ...prev,
-                            { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], selectedOptionIds: [] },
+                            { id: `${Date.now()}_${Math.random().toString(16).slice(2)}`, service: null, questions: [], addonQuantities: {}, addon_price_overrides: {}, addon_line_total_overrides: {} },
                           ])
                         }}
                         className="min-h-[44px] w-full touch-manipulation rounded-lg border border-blue-300 bg-white px-3 py-2 text-xs font-semibold text-blue-700 sm:min-h-0 sm:w-auto sm:rounded-md sm:px-2 sm:py-1"
@@ -11601,53 +11942,42 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         {question.description ? <p className="text-[11px] text-gray-500">{question.description}</p> : null}
                         {question.cn_description ? <p className="text-[11px] text-gray-500">{question.cn_description}</p> : null}
                         <div className="mt-2 space-y-1">
-                          {question.options.map((option) => {
-                            const checked = bookingSelectedOptionIds.includes(option.id)
-                            return (
-                              <label key={option.id} className="flex cursor-pointer items-center justify-between gap-3 text-sm text-gray-800">
-                                <div className="flex min-w-0 items-start gap-2">
-                                  <input
-                                    type="checkbox"
-                                    name={`booking-question-${question.id}`}
-                                    checked={checked}
-                                    onChange={() => {
-                                      setBookingSelectedOptionIds((prev) => {
-                                        if (question.question_type === 'single_choice') {
-                                          const withoutQuestion = prev.filter((id) => !question.options.some((opt) => opt.id === id))
-                                          return checked ? withoutQuestion : [...withoutQuestion, option.id]
-                                        }
-                                        return checked ? prev.filter((id) => id !== option.id) : [...prev, option.id]
-                                      })
-                                    }}
-                                  />
-                                  <div className="min-w-0">
-                                    <ServiceNameStack
-                                      name={option.label}
-                                      cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
-                                      primaryClassName="block truncate font-medium text-gray-900"
-                                      secondaryClassName="mt-0.5 block truncate text-[11px] font-normal text-gray-500"
-                                    />
-                                    <span className="mt-0.5 block text-[11px] font-semibold text-gray-600 tabular-nums">
-                                      TIME: {Number(option.extra_duration_min ?? 0)} min
-                                    </span>
+                          {question.options.map((option) => (
+                            <BookingAddonOptionRow
+                              key={option.id}
+                              variant="settlement"
+                              option={option}
+                              selection={bookingAddonQuantities}
+                              onToggle={() => setBookingAddonQuantities((prev) => toggleAddonSelection(prev, option, question.question_type, question.options.map((row) => row.id)))}
+                              onQuantityChange={(qty) => setBookingAddonQuantities((prev) => setAddonQuantity(prev, option, qty))}
+                              durationLabel={<PosAddonSelectionDurationLabel option={option} selection={bookingAddonQuantities} />}
+                              priceLabel={
+                                <PosAddonSettlementPriceLabel
+                                  option={option}
+                                  selection={bookingAddonQuantities}
+                                  useRangeDisplay
+                                  emphasis
+                                  overrideAmount={bookingAddonPriceOverrides[option.id]}
+                                  hasOverrideKey={Object.prototype.hasOwnProperty.call(bookingAddonPriceOverrides, option.id)}
+                                  lineTotalOverride={bookingAddonLineTotalOverrides[option.id]}
+                                  hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(bookingAddonLineTotalOverrides, option.id)}
+                                />
+                              }
+                              trailing={(() => {
+                                const lineKey = `booking-draft:addon:${option.id}`
+                                const mainSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
+                                return (
+                                  <div className="space-y-2.5">
+                                    {renderLineSplitStack(lineKey, mainSplits, 'main service')}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editBookingMainAddonPrice(option.id, option.label, Number(option.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </div>
                                   </div>
-                                </div>
-                                <div className="shrink-0 text-right">
-                                  <span className="block tabular-nums font-semibold text-gray-900">+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
-                                  {checked ? (() => {
-                                    const lineKey = `booking-draft:addon:${option.id}`
-                                    const mainSplits = checkoutLineSplits[`booking-draft:main:${bookingServiceDraft.id}`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
-                                    return (
-                                      <span className="mt-1 block text-[10px] font-medium text-gray-600">
-                                        {renderLineSplitStack(lineKey, mainSplits, 'main service')}
-                                        <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="ml-1 rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                      </span>
-                                    )
-                                  })() : null}
-                                </div>
-                              </label>
-                            )
-                          })}
+                                )
+                              })()}
+                            />
+                          ))}
                         </div>
                       </div>
                     ))}
@@ -11731,7 +12061,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           onCategoryChange={(next) => {
                             setBookingExtraServiceCategoryIds((prev) => ({ ...prev, [block.id]: next }))
                             if (next && block.service && !bookingServiceMatchesPickerCategory(block.service, next)) {
-                              setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], selectedOptionIds: [] } : row))
+                              setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id ? { ...row, service: null, questions: [], addonQuantities: {}, addon_price_overrides: {}, addon_line_total_overrides: {} } : row))
                             }
                           }}
                           searchQuery={bookingExtraServiceQueries[block.id] ?? ''}
@@ -11744,7 +12074,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             setBookingExtraServiceBlocks((prev) =>
                               prev.map((row) =>
                                 row.id === block.id
-                                  ? { ...row, service: selected, questions, selectedOptionIds: [] }
+                                  ? { ...row, service: selected, questions, addonQuantities: {}, addon_price_overrides: {}, addon_line_total_overrides: {} }
                                   : row,
                               ),
                             )
@@ -11763,48 +12093,46 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         </p>
                         {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
                         <div className="mt-1 space-y-1">
-                          {question.options.map((option) => {
-                            const checked = block.selectedOptionIds.includes(option.id)
-                            return (
-                              <label key={`${block.id}-option-${option.id}`} className="flex items-center justify-between gap-2 text-xs text-gray-700">
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="checkbox"
-                                    checked={checked}
-                                    onChange={() => {
-                                      setBookingExtraServiceBlocks((prev) => prev.map((row) => {
-                                        if (row.id !== block.id) return row
-                                        if (question.question_type === 'single_choice') {
-                                          const withoutQuestion = row.selectedOptionIds.filter((id) => !question.options.some((opt) => opt.id === id))
-                                          return { ...row, selectedOptionIds: checked ? withoutQuestion : [...withoutQuestion, option.id] }
-                                        }
-                                        return { ...row, selectedOptionIds: checked ? row.selectedOptionIds.filter((id) => id !== option.id) : [...row.selectedOptionIds, option.id] }
-                                      }))
-                                    }}
-                                  />
-                                  <ServiceNameStack
-                                    name={option.label}
-                                    cnName={option.cn_label ?? option.cn_name ?? option.linked_cn_name}
-                                    primaryClassName="text-xs text-gray-700"
-                                    secondaryClassName="mt-0.5 text-[11px] text-gray-500"
-                                  />
-                                </div>
-                                <span className="flex flex-col items-end gap-1 font-semibold text-gray-900">
-                                  <span>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
-                                  {checked ? (() => {
-                                    const lineKey = `booking-draft:block:${block.id}:addon:${option.id}`
-                                    const mainSplits = checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
-                                    return (
-                                      <>
-                                        {renderLineSplitStack(lineKey, mainSplits, 'service block')}
-                                        <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded border border-indigo-300 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                      </>
-                                    )
-                                  })() : null}
-                                </span>
-                              </label>
-                            )
-                          })}
+                          {question.options.map((option) => (
+                            <BookingAddonOptionRow
+                              key={`${block.id}-option-${option.id}`}
+                              variant="settlement"
+                              option={option}
+                              selection={block.addonQuantities}
+                              onToggle={() => setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id
+                                ? { ...row, addonQuantities: toggleAddonSelection(row.addonQuantities, option, question.question_type, question.options.map((item) => item.id)) }
+                                : row))}
+                              onQuantityChange={(qty) => setBookingExtraServiceBlocks((prev) => prev.map((row) => row.id === block.id
+                                ? { ...row, addonQuantities: setAddonQuantity(row.addonQuantities, option, qty) }
+                                : row))}
+                              durationLabel={<PosAddonSelectionDurationLabel option={option} selection={block.addonQuantities} />}
+                              priceLabel={
+                                <PosAddonSettlementPriceLabel
+                                  option={option}
+                                  selection={block.addonQuantities}
+                                  useRangeDisplay
+                                  emphasis
+                                  overrideAmount={block.addon_price_overrides[option.id]}
+                                  hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, option.id)}
+                                  lineTotalOverride={block.addon_line_total_overrides[option.id]}
+                                  hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, option.id)}
+                                />
+                              }
+                              trailing={(() => {
+                                const lineKey = `booking-draft:block:${block.id}:addon:${option.id}`
+                                const mainSplits = checkoutLineSplits[`booking-draft:block:${block.id}:main`] ?? (bookingAssignedStaffId ? [{ staff_id: bookingAssignedStaffId, share_percent: 100 }] : [])
+                                return (
+                                  <div className="space-y-2.5">
+                                    {renderLineSplitStack(lineKey, mainSplits, 'service block')}
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editBookingBlockAddonPrice(block.id, option.id, option.label, Number(option.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); void openLineSplitEditor(lineKey, option.label, mainSplits) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </div>
+                                  </div>
+                                )
+                              })()}
+                            />
+                          ))}
                         </div>
                       </div>
                     ))}

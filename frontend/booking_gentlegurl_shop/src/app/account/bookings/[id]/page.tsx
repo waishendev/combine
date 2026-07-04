@@ -15,6 +15,10 @@ import {
 import { BookingPolicy, BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingDateTime, formatBookingTime } from "@/lib/bookingTime";
+import {
+  formatBookingAddonDurationText,
+  formatBookingAddonPriceText,
+} from "@/lib/bookingAddonDisplay";
 
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
@@ -487,15 +491,22 @@ export default function BookingDetailPage() {
                       ) : <p className="mt-1 text-sm text-[var(--text-muted)]">No add-ons selected.</p>
                     ) : (booking.add_ons?.length ?? 0) > 0 ? (
                       <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        {booking.add_ons?.map((addon, index) => (
+                        {booking.add_ons?.map((addon, index) => {
+                          const durationText = formatBookingAddonDurationText(addon);
+                          const priceText = formatBookingAddonPriceText(addon, (value) => formatCurrency(value));
+                          return (
                           <div key={`${addon.id ?? addon.name}-${index}`} className="rounded-lg bg-[var(--card)] p-3 text-sm">
                             <p className="font-medium">{addon.name}</p>
                             {addon.cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{addon.cn_name}</p> : null}
-                            <p className="mt-1 text-xs text-[var(--text-muted)]">
-                              +{Number(addon.extra_duration_min ?? 0)} mins · {formatCurrency(Number(addon.extra_price ?? 0))}
-                            </p>
+                            {durationText || priceText ? (
+                              <div className="mt-1 space-y-0.5 text-xs text-[var(--text-muted)]">
+                                {durationText ? <p>{durationText}</p> : null}
+                                {priceText ? <p>{priceText}</p> : null}
+                              </div>
+                            ) : null}
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <p className="mt-1 text-sm text-[var(--text-muted)]">No add-ons selected.</p>

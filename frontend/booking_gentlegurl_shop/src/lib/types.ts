@@ -188,6 +188,8 @@ export type BookingRecord = {
     cn_name?: string | null;
     extra_duration_min: number;
     extra_price: number;
+    quantity?: number | null;
+    line_gross_amount?: number | null;
   }>;
   addon_total_duration_min?: number;
   addon_total_price?: number;
