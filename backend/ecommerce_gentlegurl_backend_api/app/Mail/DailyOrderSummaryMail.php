@@ -14,9 +14,11 @@ class DailyOrderSummaryMail extends Mailable
     /**
      * @param array{
      *   date:string,
-     *   total_orders:int,
+     *   total_tasks:int,
+     *   total_ecommerce_orders:int,
+     *   total_booking_requests:int,
      *   total_revenue:float|int|string,
-     *   orders:array<int, array{
+     *   ecommerce_orders:array<int, array{
      *     order_number:string|int|null,
      *     order_kind:string,
      *     status:string|null,
@@ -25,6 +27,16 @@ class DailyOrderSummaryMail extends Mailable
      *     customer_name:string|null,
      *     total_amount:float|int|string|null,
      *     product_names:array<int, string>
+     *   }>,
+     *   booking_requests:array<int, array{
+     *     key:string,
+     *     request_type:string,
+     *     reference:string,
+     *     customer_name:string,
+     *     contact:string,
+     *     requested_at:?string,
+     *     status:string,
+     *     reason:?string
      *   }>
      * } $summary
      */
@@ -34,7 +46,7 @@ class DailyOrderSummaryMail extends Mailable
 
     public function build(): self
     {
-        return $this->subject('Daily Pending Orders Summary')
+        return $this->subject('Current Pending Orders Summary')
             ->view('emails.daily-order-summary', [
                 'summary' => $this->summary,
             ]);

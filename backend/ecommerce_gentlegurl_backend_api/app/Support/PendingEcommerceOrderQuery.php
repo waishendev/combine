@@ -6,8 +6,8 @@ use App\Models\Ecommerce\Order;
 use Illuminate\Database\Eloquent\Builder;
 
 /**
- * Customer-facing orders for the daily admin summary email.
- * Includes shop ecommerce orders and booking deposit orders (not POS-created).
+ * Orders surfaced in POS Request Center → Ecommerce tab (daily admin summary email).
+ * Excludes booking deposit / settlement orders and POS-created orders.
  */
 class PendingEcommerceOrderQuery
 {
@@ -20,38 +20,50 @@ class PendingEcommerceOrderQuery
     }
 
     /**
-     * Pending orders that still need admin attention.
+     * Ecommerce shop orders that still appear in POS Request Center.
      *
-     * Included:
-     * - pending + unpaid
-     * - processing + unpaid
-     * - processing + paid
+     * Mirrors PosRequestCenter ECOMMERCE_REQUEST_FILTERS + shouldShowEcommerceOrder:
+     * - shop orders only (no booking deposit / settlement lines)
+     * - status: pending, processing, confirmed, ready_for_pickup, shipped
+     * - or payment_status: failed
      *
-     * Excluded:
-     * - cancelled / completed
-     * - reject_payment_proof
+     * Excluded: cancelled, completed, reject_payment_proof, booking orders.
      */
     public static function pendingRequestOrders(): Builder
     {
-        return static::customerOrders()
-            ->whereNotIn('status', ['cancelled', 'completed'])
-            ->where('status', '!=', 'reject_payment_proof')
-            ->where(function ($query) {
-                $query
-                    ->where(function ($subQuery) {
-                        $subQuery->where('status', 'pending')
-                            ->where('payment_status', 'unpaid');
-                    })
-                    ->orWhere(function ($subQuery) {
-                        $subQuery->where('status', 'processing')
-                            ->where('payment_status', 'unpaid');
-                    })
-                    ->orWhere(function ($subQuery) {
-                        $subQuery->where('status', 'processing')
-                            ->where('payment_status', 'paid');
-                    });
+        $query = static::customerOrders();
+        static::applyNonBookingOrderScope($query);
+
+        return $query
+            ->whereNotIn('status', ['cancelled', 'completed', 'reject_payment_proof'])
+            ->where(function ($statusQuery) {
+                $statusQuery
+                    ->whereIn('status', ['pending', 'processing', 'confirmed', 'ready_for_pickup', 'shipped'])
+                    ->orWhere('payment_status', 'failed');
             })
             ->orderByDesc('id');
+    }
+
+    /**
+     * @param Builder<Order> $query
+     */
+    protected static function applyNonBookingOrderScope(Builder $query): void
+    {
+        $query
+            ->whereDoesntHave('items', function ($itemQuery) {
+                $itemQuery->whereIn('line_type', [
+                    'booking_deposit',
+                    'booking_addon',
+                    'booking_settlement',
+                    'booking_product',
+                    'service_package',
+                ]);
+            })
+            ->whereDoesntHave('serviceItems')
+            ->where(function ($noteQuery) {
+                $noteQuery->whereNull('notes')
+                    ->orWhere('notes', 'not like', '%Booking cart checkout%');
+            });
     }
 
     public static function isBookingOrder(Order $order): bool

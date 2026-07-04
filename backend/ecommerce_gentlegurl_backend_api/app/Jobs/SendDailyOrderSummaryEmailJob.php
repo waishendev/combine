@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Mail\DailyOrderSummaryMail;
 use App\Models\Ecommerce\Order;
 use App\Support\PendingEcommerceOrderQuery;
+use App\Support\RequestCenterPendingTasksQuery;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -28,10 +29,10 @@ class SendDailyOrderSummaryEmailJob implements ShouldQueue
         }
 
         $orders = PendingEcommerceOrderQuery::pendingRequestOrders()
-            ->with(['items.product', 'customer'])
+            ->with(['items.product', 'customer', 'serviceItems'])
             ->get();
 
-        $ordersData = $orders->map(function (Order $order) {
+        $ecommerceOrders = $orders->map(function (Order $order) {
             $productNames = $order->items
                 ->map(function ($item) {
                     return $item->product?->name
@@ -55,11 +56,16 @@ class SendDailyOrderSummaryEmailJob implements ShouldQueue
             ];
         })->all();
 
+        $bookingRequests = RequestCenterPendingTasksQuery::pendingBookingRequestRows()->all();
+
         $summary = [
             'date' => now()->toDateString(),
-            'total_orders' => count($ordersData),
+            'total_tasks' => count($ecommerceOrders) + count($bookingRequests),
+            'total_ecommerce_orders' => count($ecommerceOrders),
+            'total_booking_requests' => count($bookingRequests),
             'total_revenue' => $orders->sum('grand_total'),
-            'orders' => $ordersData,
+            'ecommerce_orders' => $ecommerceOrders,
+            'booking_requests' => $bookingRequests,
         ];
 
         foreach ($recipients as $recipient) {
