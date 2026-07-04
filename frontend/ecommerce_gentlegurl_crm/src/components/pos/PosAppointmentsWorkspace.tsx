@@ -19,6 +19,7 @@ import {
   getSettlementRangeBounds,
   optionalSettlementAmountPayload,
   parseSettlementAmountInput,
+  posAddonHasStoredLineTotal,
   posPriceDisplayHasFinalPrice,
   posPriceDisplayHasRange,
   posPriceDisplayForAddonLine,
@@ -4317,8 +4318,7 @@ export default function PosAppointmentsWorkspace({
                                           : posPriceDisplayForAddonLine(addon)
                                         const hasExplicitAddonLinePrice = hasEditLineOverride
                                           || hasPendingEditLineOverride
-                                          || (addon.line_gross_amount != null && Number.isFinite(Number(addon.line_gross_amount)))
-                                          || (addon.gross_amount != null && Number.isFinite(Number(addon.gross_amount)))
+                                          || posAddonHasStoredLineTotal(addon)
                                         const showAddonUnsettledRange = posPriceDisplayHasRange(addon)
                                           && !posPriceDisplayHasFinalPrice(addon)
                                           && !hasExplicitAddonLinePrice

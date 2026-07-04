@@ -115,6 +115,15 @@ export function posPriceDisplayHasFinalPrice(source?: PosPriceDisplaySource | nu
   return finiteNumber(source?.settled_service_amount) != null
 }
 
+/** Zero line totals are placeholders for unsettled range addons and must not block range display. */
+export function posAddonHasStoredLineTotal(source?: PosPriceDisplaySource | null): boolean {
+  const lineGross = finiteNumber(source?.line_gross_amount ?? source?.gross_amount)
+  if (lineGross == null) return false
+  if (lineGross > 0.0001) return true
+  if (posPriceDisplayHasRange(source) && !posPriceDisplayHasFinalPrice(source)) return false
+  return true
+}
+
 export function formatPosCurrentOrRangeDisplay(source?: PosPriceDisplaySource | null, options?: { prefix?: string }): string {
   if (posPriceDisplayHasRange(source) && !posPriceDisplayHasFinalPrice(source)) {
     return formatPosPriceDisplay(source, options)
@@ -173,11 +182,7 @@ export function posPriceResolvedBounds(
     return { min: line, max: line, hasRange: false }
   }
 
-  const hasStoredLineGross =
-    (source?.line_gross_amount != null && Number.isFinite(Number(source.line_gross_amount)))
-    || (source?.gross_amount != null && Number.isFinite(Number(source.gross_amount)))
-
-  if (hasStoredLineGross) {
+  if (posAddonHasStoredLineTotal(source)) {
     const line = storedAddonLinePrice(source ?? {})
     return { min: line, max: line, hasRange: false }
   }
@@ -207,8 +212,7 @@ export function posPriceDisplayForAddonLine(
   const qty = storedAddonQuantity(source)
   const hasExplicitLineTotal =
     (Number.isFinite(Number(source.line_total_override)) && Number(source.line_total_override) >= 0)
-    || (source.line_gross_amount != null && Number.isFinite(Number(source.line_gross_amount)))
-    || (source.gross_amount != null && Number.isFinite(Number(source.gross_amount)))
+    || posAddonHasStoredLineTotal(source)
 
   if (qty <= 1 && !hasExplicitLineTotal) {
     return source

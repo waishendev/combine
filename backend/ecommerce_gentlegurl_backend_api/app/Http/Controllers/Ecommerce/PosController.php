@@ -1691,7 +1691,15 @@ class PosController extends Controller
         $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
         $remark = $remark !== '' ? $remark : null;
         $userId = (int) $request->user()->id;
-        $previousAmount = round((float) ($depositItem->line_total ?? 0), 2);
+        $siblingDepositItems = $this->siblingDepositOrderItemsForItem($depositItem);
+        $activeSiblingItems = $siblingDepositItems->filter(fn (OrderItem $item) => (float) ($item->line_total ?? 0) > 0.0001)->values();
+        $isGroupedOrderDeposit = $activeSiblingItems->count() > 1;
+        $targetDepositItem = $isGroupedOrderDeposit
+            ? $this->primaryDepositOrderItemInGroup($siblingDepositItems)
+            : $depositItem;
+        $previousAmount = $isGroupedOrderDeposit
+            ? round((float) $activeSiblingItems->sum(fn (OrderItem $item) => (float) ($item->line_total ?? 0)), 2)
+            : round((float) ($depositItem->line_total ?? 0), 2);
         $hasPaymentUpdate = $request->hasAny(['payment_method', 'payments']);
         $paymentRows = $newAmount > 0.0001
             ? ($hasPaymentUpdate
@@ -1712,27 +1720,47 @@ class PosController extends Controller
             ], $newAmount);
         }
 
-        DB::transaction(function () use ($depositItem, $booking, $newAmount, $previousAmount, $remark, $userId, $paymentRows, $hasPaymentUpdate) {
-            $originalAmount = round((float) ($depositItem->line_total_snapshot ?? $depositItem->price_snapshot ?? $previousAmount), 2);
+        DB::transaction(function () use ($depositItem, $targetDepositItem, $siblingDepositItems, $isGroupedOrderDeposit, $booking, $newAmount, $previousAmount, $remark, $userId, $paymentRows, $hasPaymentUpdate) {
+            $originalAmount = round((float) ($targetDepositItem->line_total_snapshot ?? $targetDepositItem->price_snapshot ?? $previousAmount), 2);
             if ($originalAmount <= 0.0001) {
                 $originalAmount = $previousAmount > 0.0001 ? $previousAmount : $newAmount;
+            }
+            if ($isGroupedOrderDeposit) {
+                $originalAmount = max($originalAmount, $previousAmount);
             }
 
             $overrideSnapshot = (abs($newAmount - $previousAmount) > 0.0001 || $remark !== null)
                 ? $this->buildOrderPriceOverrideSnapshot($originalAmount, $newAmount, 1, $remark, $userId)
-                : $depositItem->price_override_snapshot;
+                : $targetDepositItem->price_override_snapshot;
 
-            $depositItem->update([
+            $shouldConsolidateGroupedLines = $isGroupedOrderDeposit;
+
+            $targetDepositItem->update([
                 'price_snapshot' => $newAmount > 0.0001 ? $newAmount : $originalAmount,
                 'unit_price_snapshot' => $newAmount,
                 'line_total' => $newAmount,
-                'line_total_snapshot' => max((float) ($depositItem->line_total_snapshot ?? $originalAmount), $originalAmount),
+                'line_total_snapshot' => max((float) ($targetDepositItem->line_total_snapshot ?? $originalAmount), $originalAmount),
                 'effective_unit_price' => $newAmount,
                 'effective_line_total' => $newAmount,
                 'line_total_after_discount' => $newAmount,
                 'price_override_snapshot' => $overrideSnapshot,
                 'discount_remark' => $remark,
             ]);
+
+            if ($shouldConsolidateGroupedLines) {
+                foreach ($siblingDepositItems as $sibling) {
+                    if ((int) $sibling->id === (int) $targetDepositItem->id) {
+                        continue;
+                    }
+
+                    $sibling->update([
+                        'line_total' => 0,
+                        'line_total_after_discount' => 0,
+                        'effective_line_total' => 0,
+                        'effective_unit_price' => 0,
+                    ]);
+                }
+            }
 
             $order = Order::query()->find((int) $depositItem->order_id);
             if ($order) {
@@ -7207,9 +7235,31 @@ class PosController extends Controller
         });
     }
 
-    protected function resolveAppointmentDepositTransactions(Booking $booking): array
+    protected function siblingDepositOrderItemsForItem(OrderItem $depositItem): \Illuminate\Support\Collection
     {
         return OrderItem::query()
+            ->where('order_id', (int) $depositItem->order_id)
+            ->where('booking_id', (int) $depositItem->booking_id)
+            ->where(function ($query) {
+                $query->where('line_type', 'booking_deposit')
+                    ->orWhere(function ($addonQuery) {
+                        $addonQuery->where('line_type', 'booking_addon')
+                            ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                    });
+            })
+            ->orderBy('id')
+            ->get();
+    }
+
+    protected function primaryDepositOrderItemInGroup(\Illuminate\Support\Collection $items): OrderItem
+    {
+        return $items->first(fn (OrderItem $item) => (string) ($item->line_type ?? '') === 'booking_deposit')
+            ?? $items->first();
+    }
+
+    protected function resolveAppointmentDepositTransactions(Booking $booking): array
+    {
+        $items = OrderItem::query()
             ->with(['order' => fn ($query) => $query->with(['payments', 'creator:id,name'])])
             ->where('booking_id', (int) $booking->id)
             ->whereHas('order', fn ($query) => $query->whereNotIn('status', ['voided', 'cancelled', 'draft']))
@@ -7222,9 +7272,21 @@ class PosController extends Controller
             })
             ->orderBy('id')
             ->get()
-            ->filter(fn (OrderItem $item) => (float) ($item->line_total ?? 0) > 0.0001)
-            ->map(function (OrderItem $item) {
-                $order = $item->order;
+            ->filter(fn (OrderItem $item) => (float) ($item->line_total ?? 0) > 0.0001);
+
+        if ($items->isEmpty()) {
+            return [];
+        }
+
+        return $items
+            ->groupBy(fn (OrderItem $item) => (int) ($item->order_id ?? 0))
+            ->map(function ($group) {
+                $sorted = $group->sortBy('id')->values();
+                /** @var OrderItem $primaryItem */
+                $primaryItem = $this->primaryDepositOrderItemInGroup($sorted);
+                $order = $primaryItem->order;
+                $totalAmount = round((float) $sorted->sum(fn (OrderItem $item) => (float) ($item->line_total ?? 0)), 2);
+                $lineCount = $sorted->count();
                 $payments = collect($order?->payments ?? [])
                     ->map(fn ($payment) => [
                         'method' => (string) ($payment->payment_method ?? ''),
@@ -7233,29 +7295,41 @@ class PosController extends Controller
                     ->filter(fn (array $row) => $row['method'] !== '' && $row['amount'] > 0)
                     ->values()
                     ->all();
+                $remarks = $sorted
+                    ->map(fn (OrderItem $item) => trim((string) ($item->discount_remark ?? data_get($item->price_override_snapshot, 'reason') ?? '')))
+                    ->filter()
+                    ->unique()
+                    ->values();
 
                 return [
-                    'id' => (int) $item->id,
-                    'order_id' => (int) ($item->order_id ?? 0),
+                    'id' => (int) $primaryItem->id,
+                    'order_id' => (int) ($order?->id ?? 0),
                     'order_number' => (string) ($order?->order_number ?? ''),
-                    'line_type' => (string) ($item->line_type ?? ''),
-                    'kind' => strcasecmp((string) ($item->variant_name_snapshot ?? ''), 'Booking Add-on Deposit') === 0
-                        ? 'addon_deposit'
-                        : 'service_deposit',
-                    'label' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Deposit'),
-                    'amount' => (float) ($item->line_total ?? 0),
+                    'line_type' => 'booking_deposit',
+                    'kind' => $lineCount > 1 ? 'grouped_deposit' : (
+                        strcasecmp((string) ($primaryItem->variant_name_snapshot ?? ''), 'Booking Add-on Deposit') === 0
+                            ? 'addon_deposit'
+                            : 'service_deposit'
+                    ),
+                    'label' => $lineCount > 1
+                        ? 'Booking Deposit'
+                        : (string) ($primaryItem->display_name_snapshot ?: $primaryItem->product_name_snapshot ?: 'Deposit'),
+                    'amount' => $totalAmount,
+                    'is_grouped' => $lineCount > 1,
+                    'line_item_count' => $lineCount,
                     'payment_method' => (string) ($order?->payment_method ?? ''),
                     'payments' => $payments,
                     'paid_at' => optional($order?->paid_at ?? $order?->created_at)?->toIso8601String(),
-                    'created_at' => optional($item->created_at)?->toIso8601String(),
+                    'created_at' => optional($primaryItem->created_at)?->toIso8601String(),
                     'receipt_public_url' => $order ? $this->buildReceiptUrlForOrder((int) $order->id) : null,
                     'created_by' => $order?->creator ? [
                         'id' => (int) $order->creator->id,
                         'name' => (string) $order->creator->name,
                     ] : null,
-                    'remark' => $item->discount_remark ?? data_get($item->price_override_snapshot, 'reason'),
+                    'remark' => $remarks->isNotEmpty() ? $remarks->implode(' · ') : null,
                 ];
             })
+            ->sortBy('id')
             ->values()
             ->all();
     }
@@ -9628,13 +9702,67 @@ class PosController extends Controller
         ];
     }
 
+    protected function resolveAddonItemPriceMeta(array $item, callable $priceMetaForServiceId): array
+    {
+        $linked = $priceMetaForServiceId($item['linked_booking_service_id'] ?? null);
+        if (! empty($linked['price_mode'])) {
+            return $linked;
+        }
+
+        $mode = $item['linked_price_mode'] ?? $item['price_mode'] ?? null;
+        if (! is_string($mode) || trim($mode) === '') {
+            return $linked;
+        }
+
+        $rangeMin = array_key_exists('linked_price_range_min', $item)
+            ? $item['linked_price_range_min']
+            : ($item['price_range_min'] ?? null);
+        $rangeMax = array_key_exists('linked_price_range_max', $item)
+            ? $item['linked_price_range_max']
+            : ($item['price_range_max'] ?? null);
+
+        return [
+            'price_mode' => (string) $mode,
+            'price_range_min' => $rangeMin !== null && $rangeMin !== '' ? (float) $rangeMin : null,
+            'price_range_max' => $rangeMax !== null && $rangeMax !== '' ? (float) $rangeMax : null,
+            'linked_price_mode' => $item['linked_price_mode'] ?? (string) $mode,
+            'linked_price_range_min' => $rangeMin !== null && $rangeMin !== '' ? (float) $rangeMin : null,
+            'linked_price_range_max' => $rangeMax !== null && $rangeMax !== '' ? (float) $rangeMax : null,
+        ];
+    }
+
+    protected function addonItemPriceIsFinalized(array $item, array $priceMeta): bool
+    {
+        if (($priceMeta['price_mode'] ?? null) !== 'range') {
+            return true;
+        }
+        if ((bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? false)) {
+            return true;
+        }
+
+        foreach (['final_price', 'settled_price', 'adjusted_price', 'override_price', 'price_override'] as $field) {
+            if (array_key_exists($field, $item) && $item[$field] !== null && $item[$field] !== '') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     protected function mapFinancialSummaryAddonRow(array $item, callable $effectivePriceForItem, callable $priceIsFinalizedForItem, callable $priceMetaForServiceId): array
     {
         $quantity = $this->addonQuantityService->resolveStoredQuantity($item);
-        $unitPrice = $effectivePriceForItem($item, $item['linked_booking_service_id'] ?? null);
-        $lineGrossAmount = array_key_exists('line_gross_amount', $item) && $item['line_gross_amount'] !== null
-            ? round(max(0, (float) $item['line_gross_amount']), 2)
-            : round($unitPrice * $quantity, 2);
+        $priceMeta = $this->resolveAddonItemPriceMeta($item, $priceMetaForServiceId);
+        $priceFinalized = $this->addonItemPriceIsFinalized($item, $priceMeta);
+        $unitPrice = $priceFinalized
+            ? round(max(0, (float) ($item['final_price'] ?? $item['settled_price'] ?? $item['adjusted_price'] ?? $item['override_price'] ?? $item['extra_price'] ?? 0)), 2)
+            : 0.0;
+        $lineGrossAmount = null;
+        if ($priceFinalized) {
+            $lineGrossAmount = array_key_exists('line_gross_amount', $item) && $item['line_gross_amount'] !== null
+                ? round(max(0, (float) $item['line_gross_amount']), 2)
+                : round($unitPrice * $quantity, 2);
+        }
 
         return [
             'id' => isset($item['id']) ? (int) $item['id'] : null,
@@ -9645,8 +9773,8 @@ class PosController extends Controller
             'quantity' => $quantity,
             'line_gross_amount' => $lineGrossAmount,
             'linked_booking_service_id' => isset($item['linked_booking_service_id']) ? (int) $item['linked_booking_service_id'] : null,
-            'price_finalized' => $priceIsFinalizedForItem($item, $item['linked_booking_service_id'] ?? null),
-            ...$priceMetaForServiceId($item['linked_booking_service_id'] ?? null),
+            'price_finalized' => $priceFinalized,
+            ...$priceMeta,
             'staff_splits' => collect($item['staff_splits'] ?? [])->map(fn ($split) => [
                 'staff_id' => (int) ($split['staff_id'] ?? 0),
                 'share_percent' => (int) ($split['share_percent'] ?? 0),
@@ -9808,12 +9936,17 @@ class PosController extends Controller
                         'extra_duration_min' => (int) ($addon['extra_duration_min'] ?? 0),
                         'extra_price' => (float) ($addon['extra_price'] ?? 0),
                         'quantity' => (int) ($addon['quantity'] ?? 1),
-                        'line_gross_amount' => (float) ($addon['line_gross_amount'] ?? 0),
+                        'line_gross_amount' => array_key_exists('line_gross_amount', $addon) && $addon['line_gross_amount'] !== null
+                            ? (float) $addon['line_gross_amount']
+                            : null,
                         'linked_booking_service_id' => $addon['linked_booking_service_id'] ?? null,
-                        'price_finalized' => (bool) ($addon['price_finalized'] ?? true),
+                        'price_finalized' => (bool) ($addon['price_finalized'] ?? false),
                         'price_mode' => $addon['price_mode'] ?? null,
                         'price_range_min' => $addon['price_range_min'] ?? null,
                         'price_range_max' => $addon['price_range_max'] ?? null,
+                        'linked_price_mode' => $addon['linked_price_mode'] ?? null,
+                        'linked_price_range_min' => $addon['linked_price_range_min'] ?? null,
+                        'linked_price_range_max' => $addon['linked_price_range_max'] ?? null,
                         'staff_splits' => $addon['staff_splits'] ?? [],
                     ])->values()->all(),
                 ];

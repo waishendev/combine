@@ -5,9 +5,11 @@ export type PosDepositTransaction = {
   order_id?: number
   order_number?: string
   line_type?: string
-  kind?: 'service_deposit' | 'addon_deposit' | string
+  kind?: 'service_deposit' | 'addon_deposit' | 'grouped_deposit' | string
   label?: string
   amount: number
+  is_grouped?: boolean
+  line_item_count?: number
   payment_method?: string
   payments?: Array<{ method?: string; amount?: number }>
   paid_at?: string | null
