@@ -14,6 +14,7 @@ import {
   accumulatePosPriceBounds,
   applyPosCartDiscountsToBounds,
   appointmentDetailHasUnsettledRangePricing,
+  appointmentNeedsZeroBalanceCheckout,
   bookingServiceSettlementSource,
   computePosCartGrossAmountBounds,
   formatPosAccumulatedPriceDisplay,
@@ -76,6 +77,17 @@ const buildDefaultSplitForTotal = (total: number): Record<SplitPaymentMethod, st
 
 const isSplitManuallyLocked = (amounts: Record<SplitPaymentMethod, string>) =>
   toPaymentCents(amounts.cash) > 0 && toPaymentCents(amounts.qrpay) > 0
+
+const isPosPaymentMethodSelected = (selected: string, method: SplitPaymentMethod) =>
+  method === 'credit_card'
+    ? selected === 'credit_card' || selected === 'billplz_credit_card'
+    : selected === method
+
+const mapPosZeroCheckoutPaymentMethod = (method: string) => {
+  if (method === 'credit_card' || method === 'billplz_credit_card') return 'billplz_credit_card'
+  if (method === 'split') return 'qrpay'
+  return method
+}
 
 const applyAutoSplitEdit = (
   prev: Record<SplitPaymentMethod, string>,
@@ -5955,6 +5967,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const splitCreditCardCents = toPaymentCents(splitPaymentAmounts.credit_card)
   const splitTotalPaidCents = splitCashCents + splitQrPayCents + splitCreditCardCents
   const cartTotalCents = toPaymentCents(cartTotal)
+  const cartCheckoutIsZeroTotal = cartTotal <= 0.0001
   const splitHasNonCashPayment = splitQrPayCents > 0 || splitCreditCardCents > 0
   const hasQrPayAmount = splitQrPayCents > 0
   const splitCashOnlyOverpaid = splitCashCents > cartTotalCents && splitQrPayCents === 0 && splitCreditCardCents === 0
@@ -5963,7 +5976,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const splitOverpaid = Math.max(0, (splitTotalPaidCents - cartTotalCents) / 100)
   const splitChange = splitCashOnlyOverpaid ? splitOverpaid : 0
   const splitPaymentMatchesTotal = splitTotalPaidCents === cartTotalCents
-  const splitPaymentValid = checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
+  const splitPaymentValid = cartCheckoutIsZeroTotal
+    ? paymentMethod === 'cash' || paymentMethod === 'qrpay' || paymentMethod === 'billplz_credit_card'
+    : checkoutPaymentRows.length > 0 && (splitPaymentMatchesTotal || splitCashOnlyOverpaid)
 
   const handleSplitPaymentAmountChange = useCallback((method: SplitPaymentMethod, rawValue: string) => {
     reportCheckoutError(null)
@@ -5983,7 +5998,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       cash: '',
       qrpay: '',
       credit_card: '',
-      [method]: cartTotal > 0 ? cartTotal.toFixed(2) : '',
+      ...(cartTotal > 0.0001 ? { [method]: cartTotal.toFixed(2) } : {}),
     })
   }, [cartTotal, reportCheckoutError])
 
@@ -6165,8 +6180,12 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
         : {}
 
     const checkoutPayload = {
-        payment_method: checkoutPaymentRows.length === 1 ? (checkoutPaymentRows[0].method === 'credit_card' ? 'billplz_credit_card' : checkoutPaymentRows[0].method) : 'split',
-        payments: checkoutPaymentRows,
+        payment_method: cartCheckoutIsZeroTotal
+          ? mapPosZeroCheckoutPaymentMethod(paymentMethod)
+          : checkoutPaymentRows.length === 1
+            ? (checkoutPaymentRows[0].method === 'credit_card' ? 'billplz_credit_card' : checkoutPaymentRows[0].method)
+            : 'split',
+        payments: cartCheckoutIsZeroTotal ? [] : checkoutPaymentRows,
         member_id: checkoutGuestIsUnknown ? null : (selectedMember?.id ?? null),
         ...guestCheckoutPayload,
         items: cartItems.map((item) => ({
@@ -7819,6 +7838,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : (
                     settlementAppointments.map((appt) => {
                       const due = Number(appt.amount_due_now ?? appt.balance_due ?? 0)
+                      const pendingZeroCheckout = appointmentNeedsZeroBalanceCheckout(appt)
                       const apptHasUnsettledRange = appointmentDetailHasUnsettledRangePricing({
                         requires_settled_amount: appt.requires_settled_amount,
                         add_ons: appt.add_ons,
@@ -7841,7 +7861,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             ]),
                             { prefix: 'RM' },
                           )
-                        : `RM ${Number.isFinite(due) ? due.toFixed(2) : '0.00'}`
+                        : pendingZeroCheckout
+                          ? 'RM 0.00'
+                          : `RM ${Number.isFinite(due) ? due.toFixed(2) : '0.00'}`
                       const serviceLabel = Array.isArray(appt.service_names) && appt.service_names.length
                         ? appt.service_names.join(', ')
                         : ''
@@ -7928,6 +7950,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             <span className="text-sm font-bold text-gray-900">
                               {settlementListPriceLabel}
                             </span>
+                            {pendingZeroCheckout ? (
+                              <span className="max-w-[220px] text-right text-[10px] font-medium text-slate-500">
+                                Deposit/package covers balance — checkout for receipt
+                              </span>
+                            ) : null}
                             <button
                               type="button"
                               disabled={disableSettlementAdd}
@@ -10851,9 +10878,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               <div className="mt-6 rounded-xl border-2 border-gray-200 bg-gradient-to-br from-white to-gray-50 p-5 shadow-sm">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-sm font-bold text-gray-800">Split Payment</p>
-                    <p className="text-xs font-semibold text-gray-500">Defaults to QRPay. Edit price/discount updates amounts unless Cash and QRPay are both filled.</p>
+                    <p className="text-sm font-bold text-gray-800">
+                      {cartCheckoutIsZeroTotal ? 'Payment Method (for receipt)' : 'Split Payment'}
+                    </p>
+                    <p className="text-xs font-semibold text-gray-500">
+                      {cartCheckoutIsZeroTotal
+                        ? 'RM 0 to collect — choose how this settlement is recorded on the receipt.'
+                        : 'Defaults to QRPay. Edit price/discount updates amounts unless Cash and QRPay are both filled.'}
+                    </p>
                   </div>
+                  {!cartCheckoutIsZeroTotal ? (
                   <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">
                     <input
                       type="checkbox"
@@ -10863,6 +10897,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     />
                     Auto Calculate Split
                   </label>
+                  ) : null}
                 </div>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
@@ -10870,10 +10905,16 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       <button
                         type="button"
                         onClick={() => handleSplitPaymentMethodShortcut(method)}
-                        className="mb-3 w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-bold text-blue-700 transition hover:bg-blue-100"
+                        className={`mb-3 w-full rounded-lg border px-3 py-2 text-sm font-bold transition ${
+                          isPosPaymentMethodSelected(paymentMethod, method)
+                            ? 'border-blue-600 bg-blue-50 text-blue-800'
+                            : 'border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100'
+                        }`}
                       >
                         {label}
                       </button>
+                      {!cartCheckoutIsZeroTotal ? (
+                      <>
                       <label className="text-xs font-semibold uppercase tracking-wide text-gray-500">{label} Amount</label>
                       <input
                         type="number"
@@ -10884,9 +10925,15 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         className="mt-1 h-12 w-full rounded-xl border-2 border-gray-300 bg-white px-4 text-base font-bold focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                         placeholder="0.00"
                       />
+                      </>
+                      ) : (
+                        <p className="text-xs font-medium text-slate-500">No amount required</p>
+                      )}
                     </div>
                   ))}
                 </div>
+                {!cartCheckoutIsZeroTotal ? (
+                <>
                 <div className="mt-4 grid grid-cols-1 gap-3 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm sm:grid-cols-3">
                   <div className="flex justify-between sm:block">
                     <span className="text-gray-500">Grand Total</span>
@@ -10909,6 +10956,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 </div>
                 {splitMixedOverpaid ? (
                   <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total for split/non-cash payment.</p>
+                ) : null}
+                </>
                 ) : null}
               </div>
 

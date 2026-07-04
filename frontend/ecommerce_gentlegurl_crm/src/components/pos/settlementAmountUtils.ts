@@ -389,6 +389,36 @@ export function appointmentDetailHasUnsettledRangePricing(detail?: {
   return false
 }
 
+export function appointmentVisitCheckoutFinalized(detail?: {
+  visit_checkout_finalized?: boolean | null
+  settlement_paid?: number | null
+} | null): boolean {
+  if (!detail) return false
+  if (detail.visit_checkout_finalized === true) return true
+  if (detail.visit_checkout_finalized === false) return false
+  return Number(detail.settlement_paid ?? 0) > 0.0001
+}
+
+/** Balance is RM 0 but POS checkout / receipt is still required (deposit or package covers the visit). */
+export function appointmentNeedsZeroBalanceCheckout(detail?: {
+  visit_checkout_finalized?: boolean | null
+  settlement_paid?: number | null
+  amount_due_now?: number | null
+  balance_due?: number | null
+  requires_settled_amount?: boolean | null
+  add_ons?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null }>
+  main_services?: Array<PosPriceDisplaySource & {
+    price_finalized?: boolean | null
+    add_ons?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null }>
+  }>
+} | null): boolean {
+  if (!detail) return false
+  if (appointmentDetailHasUnsettledRangePricing(detail)) return false
+  if (appointmentVisitCheckoutFinalized(detail)) return false
+  const due = Number(detail.amount_due_now ?? detail.balance_due ?? 0)
+  return due <= 0.0001
+}
+
 export function settlementCartItemHasUnsettledRangePricing(settlement?: {
   requires_settled_amount?: boolean | null
   addon_settlement_items?: Array<PosPriceDisplaySource & { price_finalized?: boolean | null; is_original?: boolean }>

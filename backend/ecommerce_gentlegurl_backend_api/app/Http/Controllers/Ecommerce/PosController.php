@@ -407,6 +407,7 @@ class PosController extends Controller
                 'can_apply_package' => (bool) ($summary['can_apply_package'] ?? false),
                 'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
                 'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
+                ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
             ];
         })->when($statusFilterNeedsActiveCheck, function ($rows) use ($unpaidOnly) {
             return $rows->filter(fn (array $row) => $this->appointmentRowBlocksActiveSchedule($row, $unpaidOnly));
@@ -553,6 +554,7 @@ class PosController extends Controller
             'package_status' => $summary['package_status'],
             'payment_history' => $history,
             'receipts' => $history,
+            ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
             'uploaded_item_photos' => $booking->itemPhotos->map(fn ($photo) => [
                 'id' => (int) $photo->id,
                 'image_path' => (string) ($photo->file_path ?? ''),
@@ -1004,14 +1006,7 @@ class PosController extends Controller
             return $this->respondError(__('Please set the service amount before finalising. This service uses range pricing.'), 422);
         }
 
-        if (OrderServiceItem::query()->where('booking_id', (int) $booking->id)->exists()) {
-            return $this->respondError(__('This appointment is already finalised.'), 422);
-        }
-
-        if (OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
-            ->where('line_type', 'booking_settlement')
-            ->exists()) {
+        if ($this->appointmentVisitCheckoutFinalized((int) $booking->id)) {
             return $this->respondError(__('This appointment is already finalised.'), 422);
         }
 
@@ -1639,9 +1634,14 @@ class PosController extends Controller
         DB::transaction(function () use ($booking, $hasOutstandingBalance, $hasPackageUsage) {
             $booking->status = 'COMPLETED';
             $booking->completed_at = now();
-            // Allow "completed but unpaid" so staff can settle later in POS checkout.
-            // When there is no outstanding balance, mark as PAID immediately.
-            $booking->payment_status = $hasOutstandingBalance ? 'UNPAID' : 'PAID';
+            // Completed visit may still need POS checkout/receipt even when deposit covers the balance.
+            if ($hasOutstandingBalance) {
+                $booking->payment_status = 'UNPAID';
+            } elseif ($this->appointmentVisitCheckoutFinalized((int) $booking->id)) {
+                $booking->payment_status = 'PAID';
+            } else {
+                $booking->payment_status = 'PARTIAL';
+            }
             $booking->save();
 
             // Only consume existing reserved claims. Do NOT auto-attach claims here;
@@ -2384,7 +2384,74 @@ class PosController extends Controller
             return true;
         }
 
+        $bookingId = (int) ($row['id'] ?? 0);
+        if ($bookingId > 0 && $amountDueNow <= 0.0001 && $balanceDue <= 0.0001 && ! $this->appointmentVisitCheckoutFinalized($bookingId)) {
+            $payableTotal = round(
+                max(0.0, (float) ($row['service_total'] ?? 0))
+                + max(0.0, (float) ($row['addon_total_price'] ?? 0)),
+                2
+            );
+            if ($payableTotal > 0.0001) {
+                return true;
+            }
+        }
+
         return $paymentStatus !== 'PAID';
+    }
+
+    protected function appointmentVisitCheckoutFinalized(int $bookingId): bool
+    {
+        if ($bookingId <= 0) {
+            return false;
+        }
+
+        if (OrderItem::query()
+            ->where('booking_id', $bookingId)
+            ->where('line_type', 'booking_settlement')
+            ->exists()) {
+            return true;
+        }
+
+        // Deposit orders also attach an OrderServiceItem for commission/receipt context — that is not visit checkout.
+        return OrderServiceItem::query()
+            ->where('booking_id', $bookingId)
+            ->whereHas('order', function ($orderQuery) use ($bookingId) {
+                $orderQuery->whereDoesntHave('items', function ($itemQuery) use ($bookingId) {
+                    $itemQuery->where('booking_id', $bookingId)
+                        ->where('line_type', 'booking_deposit');
+                });
+            })
+            ->exists();
+    }
+
+    /**
+     * @return array{visit_register_order_id: int|null, visit_checkout_finalized: bool}
+     */
+    protected function resolveAppointmentVisitCheckoutMeta(int $bookingId): array
+    {
+        $visitRegisterOrderId = OrderServiceItem::query()
+            ->where('booking_id', $bookingId)
+            ->whereHas('order', function ($orderQuery) use ($bookingId) {
+                $orderQuery->whereDoesntHave('items', function ($itemQuery) use ($bookingId) {
+                    $itemQuery->where('booking_id', $bookingId)
+                        ->where('line_type', 'booking_deposit');
+                });
+            })
+            ->orderByDesc('id')
+            ->value('order_id');
+
+        if ($visitRegisterOrderId === null) {
+            $visitRegisterOrderId = OrderItem::query()
+                ->where('booking_id', $bookingId)
+                ->where('line_type', 'booking_settlement')
+                ->orderByDesc('id')
+                ->value('order_id');
+        }
+
+        return [
+            'visit_register_order_id' => $visitRegisterOrderId !== null ? (int) $visitRegisterOrderId : null,
+            'visit_checkout_finalized' => $this->appointmentVisitCheckoutFinalized($bookingId),
+        ];
     }
 
     public function availabilityCheck(Request $request)
@@ -3566,7 +3633,9 @@ class PosController extends Controller
         $balanceDue = (float) ($settlementSummary['balance_due'] ?? 0);
         $hasUnfinalizedRangePricing = $this->appointmentSummaryHasUnfinalizedRangePricing($settlementSummary);
         if ($balanceDue <= 0.0001 && ! $hasUnfinalizedRangePricing) {
-            return $this->respondError(__('No balance due for this appointment settlement.'), 422);
+            if ($this->appointmentVisitCheckoutFinalized((int) $booking->id)) {
+                return $this->respondError(__('No balance due for this appointment settlement.'), 422);
+            }
         }
 
         $hasMember = !empty($booking->customer_id);
@@ -6750,7 +6819,15 @@ class PosController extends Controller
     {
         $expectedCents = (int) round($expectedTotal * 100);
         if ($expectedCents <= 0) {
-            return [];
+            $method = $this->normalizePosPaymentMethod((string) ($validated['payment_method'] ?? 'qrpay'));
+            if (! in_array($method, ['cash', 'qrpay', 'credit_card'], true)) {
+                $method = 'qrpay';
+            }
+
+            return [[
+                'method' => $method,
+                'amount' => 0.0,
+            ]];
         }
 
         $rows = collect($validated['payments'] ?? [])
@@ -6780,7 +6857,7 @@ class PosController extends Controller
             if (! in_array((string) $row['method'], $allowed, true)) {
                 throw ValidationException::withMessages(['payments' => __('Unsupported payment method.')]);
             }
-            if ((int) round(((float) $row['amount']) * 100) <= 0) {
+            if ((int) round(((float) $row['amount']) * 100) <= 0 && $expectedCents > 0) {
                 throw ValidationException::withMessages(['payments' => __('Payment amount must be greater than 0.')]);
             }
         }
@@ -8889,6 +8966,7 @@ class PosController extends Controller
             'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
             'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
             'receipts' => $receiptHistory,
+            ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
         ];
     }
 
@@ -8922,6 +9000,10 @@ class PosController extends Controller
         }
 
         if ($paidTotal + 0.0001 < $payableTotal) {
+            return 'PARTIAL';
+        }
+
+        if ($payableTotal > 0.0001 && ! (bool) ($summary['visit_checkout_finalized'] ?? false)) {
             return 'PARTIAL';
         }
 
@@ -9541,6 +9623,7 @@ class PosController extends Controller
             'addon_balance_due' => round($addonBalanceDue, 2),
             'balance_due' => round($balanceDue, 2),
             'amount_due_now' => round($balanceDue, 2),
+            'visit_checkout_finalized' => $this->appointmentVisitCheckoutFinalized((int) $booking->id),
             'package_status' => $packageUsage ? [
                 'status' => (string) $packageUsage->status,
                 'used_qty' => (int) ($packageUsage->used_qty ?? 1),
@@ -9773,6 +9856,68 @@ class PosController extends Controller
             'commission_amount' => $commissionAmount,
             'item_type' => 'service',
         ]);
+
+        $mainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
+        $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
+        $serviceLines = $mainSettlementItems->isNotEmpty()
+            ? $mainSettlementItems
+            : collect([[
+                'name' => (string) ($booking->service?->name ?? 'Service'),
+                'extra_price' => $listTotal,
+                'balance_due' => 0.0,
+                'linked_booking_service_id' => (int) ($booking->service_id ?? 0),
+            ]]);
+
+        foreach ($serviceLines as $mainLine) {
+            $gross = max(0.0, (float) ($mainLine['extra_price'] ?? $mainLine['balance_due'] ?? 0));
+            if ($gross <= 0.0001) {
+                continue;
+            }
+
+            $serviceName = (string) ($mainLine['name'] ?? $booking->service?->name ?? 'Service');
+            OrderItem::query()->create([
+                'order_id' => (int) $order->id,
+                'line_type' => 'booking_settlement',
+                'product_name_snapshot' => 'Final Settlement - ' . $serviceName,
+                'display_name_snapshot' => 'Final Settlement - ' . $serviceName,
+                'quantity' => 1,
+                'price_snapshot' => $gross,
+                'unit_price_snapshot' => $gross,
+                'line_total' => 0,
+                'line_total_snapshot' => $gross,
+                'effective_unit_price' => 0,
+                'effective_line_total' => 0,
+                'line_total_after_discount' => 0,
+                'locked' => true,
+                'booking_id' => (int) $booking->id,
+                'booking_service_id' => (int) ($mainLine['linked_booking_service_id'] ?? $booking->service_id ?? 0),
+            ]);
+        }
+
+        foreach ($addonSettlementItems as $addon) {
+            $gross = max(0.0, (float) ($addon['extra_price'] ?? $addon['balance_due'] ?? 0));
+            if ($gross <= 0.0001) {
+                continue;
+            }
+
+            OrderItem::query()->create([
+                'order_id' => (int) $order->id,
+                'line_type' => 'booking_addon',
+                'product_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
+                'display_name_snapshot' => (string) ($addon['name'] ?? 'Add-on'),
+                'variant_name_snapshot' => 'Booking Add-on Settlement',
+                'quantity' => 1,
+                'price_snapshot' => $gross,
+                'unit_price_snapshot' => $gross,
+                'line_total' => 0,
+                'line_total_snapshot' => $gross,
+                'effective_unit_price' => 0,
+                'effective_line_total' => 0,
+                'line_total_after_discount' => 0,
+                'locked' => true,
+                'booking_id' => (int) $booking->id,
+            ]);
+        }
 
         $booking->payment_status = 'PAID';
         $booking->save();

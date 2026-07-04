@@ -9,6 +9,8 @@ import InternationalPhoneInput from '@/components/common/InternationalPhoneInput
 import {
   accumulatePosPriceBounds,
   appointmentDetailHasUnsettledRangePricing,
+  appointmentNeedsZeroBalanceCheckout,
+  appointmentVisitCheckoutFinalized,
   bookingServiceSettlementSource,
   formatPosAccumulatedPriceDisplay,
   formatPosCurrentOrRangeDisplay,
@@ -107,6 +109,17 @@ const toPaymentCents = (value: number | string | null | undefined) => {
   const numeric = Number(value ?? 0)
   return Number.isFinite(numeric) ? Math.round(numeric * 100) : 0
 }
+
+const mapZeroSettlementPaymentMethod = (method: string) => {
+  if (method === 'credit_card' || method === 'billplz_credit_card') return 'billplz_credit_card'
+  if (method === 'split') return 'qrpay'
+  return method
+}
+
+const isAppointmentPaymentMethodSelected = (
+  selected: string,
+  method: SplitPaymentMethod,
+) => (method === 'credit_card' ? selected === 'credit_card' || selected === 'billplz_credit_card' : selected === method)
 
 type StaffOption = {
   id: number
@@ -1852,10 +1865,9 @@ export default function PosAppointmentsWorkspace({
         : Math.min(grossDueAmount, discountDraftValue)
     const dueAmount = Math.max(0, grossDueAmount - discountAmount)
     const settlementPaidSnapshot = Number(appointmentDetail?.settlement_paid ?? 0)
-    const packageStatusSnapshot = String(appointmentDetail?.package_status?.status ?? '').toLowerCase()
-    const isZeroPackageFinalize =
-      packageStatusSnapshot === 'reserved' && settlementPaidSnapshot <= 0.0001 && dueAmount <= 0.0001
-    const paymentRows = isZeroPackageFinalize
+    const isZeroBalanceFinalize =
+      settlementPaidSnapshot <= 0.0001 && dueAmount <= 0.0001 && appointmentNeedsZeroBalanceCheckout(appointmentDetail)
+    const paymentRows = isZeroBalanceFinalize
       ? []
       : SPLIT_PAYMENT_METHODS
           .map(({ method }) => ({ method, amount: Number(appointmentSettlementPaymentAmounts[method] || 0) }))
@@ -1871,12 +1883,12 @@ export default function PosAppointmentsWorkspace({
     const settlementHasQrPay = settlementQrPayCents > 0
     const settlementChange = settlementCashOnlyOverpaid ? Math.max(0, (settlementTotalPaidCents - dueCents) / 100) : 0
 
-    if (!isZeroPackageFinalize && dueAmount <= 0) {
+    if (!isZeroBalanceFinalize && dueAmount <= 0) {
       reportAppointmentCheckoutError('No balance due for this appointment.')
       return
     }
 
-    if (!isZeroPackageFinalize) {
+    if (!isZeroBalanceFinalize) {
       if (paymentRows.length === 0 || (settlementTotalPaidCents !== dueCents && !settlementCashOnlyOverpaid)) {
         reportAppointmentCheckoutError(settlementMixedOverpaid ? 'Payment total cannot exceed grand total for split/non-cash payment.' : 'Total paid must equal the amount due.')
         return
@@ -1923,11 +1935,12 @@ export default function PosAppointmentsWorkspace({
         settlement_line_staff_splits: settlementLineStaffSplits,
       }
 
-      const endpoint = isZeroPackageFinalize
+      const endpoint = isZeroBalanceFinalize
         ? `/api/proxy/pos/appointments/${appointmentDetail.id}/finalize-zero-settlement`
         : `/api/proxy/pos/appointments/${appointmentDetail.id}/collect-payment`
 
-      const settlementBody = appointmentQrProofFile && settlementHasQrPay ? new FormData() : null
+      const zeroSettlementBody = { payment_method: mapZeroSettlementPaymentMethod(appointmentPaymentMethod) }
+      const settlementBody = !isZeroBalanceFinalize && appointmentQrProofFile && settlementHasQrPay ? new FormData() : null
       if (settlementBody) {
         settlementBody.append('payload', JSON.stringify(payload))
         settlementBody.append('qr_payment_proof', appointmentQrProofFile as File)
@@ -1938,7 +1951,7 @@ export default function PosAppointmentsWorkspace({
         : {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
+            body: JSON.stringify(isZeroBalanceFinalize ? zeroSettlementBody : payload),
           })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
@@ -1946,7 +1959,7 @@ export default function PosAppointmentsWorkspace({
         return
       }
 
-      showMsg(isZeroPackageFinalize ? 'Appointment finalised.' : 'Appointment payment collected.', 'success')
+      showMsg(isZeroBalanceFinalize ? 'Appointment finalised.' : 'Appointment payment collected.', 'success')
       reportAppointmentCheckoutError(null)
       setAppointmentCheckoutConfirmationOpen(false)
       setAppointmentSettlementResult({
@@ -1954,9 +1967,9 @@ export default function PosAppointmentsWorkspace({
         order_number: String(json?.data?.order_number ?? '-'),
         receipt_public_url: json?.data?.receipt_public_url ?? null,
         payment_method: paymentRows.length > 1 ? 'split' : (paymentRows[0]?.method ?? appointmentPaymentMethod),
-        paid_amount: isZeroPackageFinalize ? 0 : dueAmount,
-        cash_received: isZeroPackageFinalize ? 0 : settlementTotalPaid,
-        change_amount: isZeroPackageFinalize ? 0 : settlementChange,
+        paid_amount: isZeroBalanceFinalize ? 0 : dueAmount,
+        cash_received: isZeroBalanceFinalize ? 0 : settlementTotalPaid,
+        change_amount: isZeroBalanceFinalize ? 0 : settlementChange,
       })
       setAppointmentReceiptEmail(formatAppointmentReceiptDefaultEmail(appointmentDetail))
       setAppointmentReceiptEmailError(null)
@@ -3300,7 +3313,6 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
-  const appointmentPaymentStatusUpper = String(appointmentDetail?.payment_status ?? '').toUpperCase()
   const appointmentPackageApplied = ['reserved', 'consumed'].includes(
     String(appointmentDetail?.package_status?.status ?? '').toLowerCase(),
   )
@@ -3312,12 +3324,11 @@ export default function PosAppointmentsWorkspace({
     [appointmentDetail?.package_status?.status, appointmentSettlementPaid],
   )
   /** Reserved package, remaining balance, or non-PAID status ⇒ still unpaid at register. */
+  const appointmentCheckoutCompleted = appointmentVisitCheckoutFinalized(appointmentDetail)
   const appointmentPaymentBadgeIsPaid =
-    !packageReservedPendingRegister &&
+    appointmentCheckoutCompleted &&
     !appointmentHasUnsettledRangePricing &&
-    appointmentDueAmountNow <= 0.0001 &&
-    (appointmentPaymentStatusUpper.length === 0 || appointmentPaymentStatusUpper === 'PAID')
-  const appointmentCheckoutCompleted = appointmentPaymentBadgeIsPaid
+    appointmentDueAmountNow <= 0.0001
   const appointmentShowApplyPackageButton = useMemo(
     () =>
       !appointmentPackageApplied &&
@@ -3349,14 +3360,18 @@ export default function PosAppointmentsWorkspace({
     appointmentStatusUpper !== 'COMPLETED'
 
   /** Reserved package, amount to collect is RM 0 — finalise in place (receipt) without sending the user to Main POS. */
-  const checkoutZeroPackageSettlement =
-    packageReservedPendingRegister && appointmentDueAmountNow <= 0.0001
+  const checkoutZeroBalanceSettlement = appointmentNeedsZeroBalanceCheckout(appointmentDetail)
+  const checkoutZeroBalanceHint = packageReservedPendingRegister
+    ? 'Package covers this visit—tap Checkout to confirm and issue the receipt (same flow as when collecting payment).'
+    : Number(appointmentDetail?.deposit_paid ?? 0) > 0.0001
+      ? 'Deposit covers the balance—tap Checkout to confirm and issue the receipt (RM 0 to collect now).'
+      : 'No amount to collect—tap Checkout to confirm and issue the receipt.'
 
   const showAppointmentCollectPayment =
     !appointmentIsTerminalCancelled &&
     appointmentStatusUpper === 'COMPLETED' &&
     !appointmentCheckoutCompleted &&
-    (appointmentDueAmountNow > 0.0001 || packageReservedPendingRegister || appointmentHasUnsettledRangePricing)
+    (appointmentDueAmountNow > 0.0001 || checkoutZeroBalanceSettlement || appointmentHasUnsettledRangePricing)
 
   const showAppointmentMarkCompletedBlock =
     !appointmentIsTerminalCancelled && appointmentStatusUpper === 'CONFIRMED'
@@ -4264,8 +4279,8 @@ export default function PosAppointmentsWorkspace({
                       <div className="space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Collect payment</p>
                         <p className="text-xs text-slate-500">
-                          {checkoutZeroPackageSettlement
-                            ? 'Package covers this visit—tap Checkout to confirm and issue the receipt (same flow as when collecting payment).'
+                          {checkoutZeroBalanceSettlement
+                            ? checkoutZeroBalanceHint
                             : 'Settle this completed appointment via cash or QRPay.'}
                         </p>
                         <div
@@ -4279,12 +4294,17 @@ export default function PosAppointmentsWorkspace({
                               cashShiftActionDisabled ||
                               appointmentActionLoading ||
                               appointmentHasUnsettledRangePricing ||
-                              (appointmentDueAmountNow <= 0.0001 && !checkoutZeroPackageSettlement)
+                              (appointmentDueAmountNow <= 0.0001 && !checkoutZeroBalanceSettlement)
                             }
                             onClick={() => {
                               const due = appointmentDueAmountNow
-                              setAppointmentPaymentMethod('cash')
-                              setAppointmentSettlementPaymentAmounts({ cash: due > 0 ? due.toFixed(2) : '', qrpay: '', credit_card: '' })
+                              if (checkoutZeroBalanceSettlement) {
+                                setAppointmentPaymentMethod('qrpay')
+                                setAppointmentSettlementPaymentAmounts({ cash: '', qrpay: '', credit_card: '' })
+                              } else {
+                                setAppointmentPaymentMethod('cash')
+                                setAppointmentSettlementPaymentAmounts({ cash: due > 0 ? due.toFixed(2) : '', qrpay: '', credit_card: '' })
+                              }
                               setAppointmentDiscountTypeDraft('fixed')
                               setAppointmentDiscountValueDraft('')
                               setAppointmentDiscountRemarkDraft('')
@@ -4297,7 +4317,7 @@ export default function PosAppointmentsWorkspace({
                                 ? requireOpenShiftMessage
                                 : appointmentHasUnsettledRangePricing
                                 ? UNSETTLED_RANGE_CHECKOUT_MESSAGE
-                                : checkoutZeroPackageSettlement
+                                : checkoutZeroBalanceSettlement
                                   ? 'Confirm checkout and receipt'
                                   : undefined
                             }
@@ -6833,8 +6853,8 @@ export default function PosAppointmentsWorkspace({
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Checkout Confirmation</h4>
                 <p className="text-xs text-gray-500">
-                  {checkoutZeroPackageSettlement
-                    ? 'Confirm payment method (cash or QRPay). QR proof is optional. Package covers the amount due — this step records the receipt.'
+                  {checkoutZeroBalanceSettlement
+                    ? 'Confirm payment method (cash or QRPay). QR proof is optional. RM 0 to collect — this step issues the settlement receipt.'
                     : 'Select payment method before collecting settlement. QR proof is optional.'}
                 </p>
               </div>
@@ -6868,9 +6888,13 @@ export default function PosAppointmentsWorkspace({
                 <p className="text-xs text-gray-600">
                   Amount Due:{' '}
                   <span className="font-semibold text-emerald-700">RM {appointmentDueAmount.toFixed(2)}</span>
-                  {checkoutZeroPackageSettlement ? (
+                  {checkoutZeroBalanceSettlement ? (
                     <span className="block pt-1 text-[11px] font-normal text-slate-500">
-                      Covered by package — RM 0 to collect at checkout.
+                      {packageReservedPendingRegister
+                        ? 'Covered by package — RM 0 to collect at checkout.'
+                        : Number(appointmentDetail.deposit_paid ?? 0) > 0.0001
+                          ? 'Covered by deposit — RM 0 to collect at checkout.'
+                          : 'RM 0 to collect at checkout.'}
                     </span>
                   ) : null}
                 </p>
@@ -6884,7 +6908,7 @@ export default function PosAppointmentsWorkspace({
                   </p>
                 ) : null}
               </div>
-              {!checkoutZeroPackageSettlement ? (
+              {!checkoutZeroBalanceSettlement ? (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <p className="mb-3 text-sm font-bold text-gray-900">Settlement Discount</p>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -6934,7 +6958,31 @@ export default function PosAppointmentsWorkspace({
                   </label>
                 </div>
               ) : null}
-              {!checkoutZeroPackageSettlement ? (
+              {checkoutZeroBalanceSettlement ? (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+                  <p className="mb-3 text-sm font-bold text-gray-900">Payment Method (for receipt)</p>
+                  <p className="mb-3 text-xs text-slate-600">RM 0 to collect — choose how this settlement is recorded on the receipt.</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    {SPLIT_PAYMENT_METHODS.map(({ method, label }) => (
+                      <button
+                        key={method}
+                        type="button"
+                        onClick={() => {
+                          reportAppointmentCheckoutError(null)
+                          setAppointmentPaymentMethod(method === 'credit_card' ? 'credit_card' : method)
+                        }}
+                        className={`rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition ${
+                          isAppointmentPaymentMethodSelected(appointmentPaymentMethod, method)
+                            ? 'border-blue-600 bg-blue-50 text-blue-800 shadow-sm'
+                            : 'border-gray-200 bg-white text-gray-700 hover:border-blue-300 hover:bg-blue-50/40'
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <div className="mb-3 flex items-center justify-between gap-3">
                     <p className="text-sm font-bold text-gray-900">Split Payment</p>
@@ -6986,7 +7034,7 @@ export default function PosAppointmentsWorkspace({
                     <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">Payment total cannot exceed grand total for split/non-cash payment.</p>
                   ) : null}
                 </div>
-              ) : null}
+              )}
               <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
                   <label className="mb-2 block text-sm font-bold text-gray-900">Upload Payment Proof (optional)</label>
                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -7021,7 +7069,7 @@ export default function PosAppointmentsWorkspace({
                   disabled={
                     cashShiftActionDisabled ||
                     appointmentActionLoading ||
-                    (!checkoutZeroPackageSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
+                    (!checkoutZeroBalanceSettlement && (appointmentDueAfterDiscount <= 0 || !appointmentSettlementPaymentValid))
                   }
                   onClick={() => void settleAppointmentPayment()}
                   title={cashShiftActionTitle}
