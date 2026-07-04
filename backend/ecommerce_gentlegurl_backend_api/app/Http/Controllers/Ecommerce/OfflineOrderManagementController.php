@@ -147,10 +147,22 @@ class OfflineOrderManagementController extends Controller
         ], 'Bill date updated successfully.');
     }
 
+    public function voidOrderPreview(Order $order)
+    {
+        try {
+            $preview = $this->service->buildVoidOrderPreview($order);
+        } catch (RuntimeException $e) {
+            return $this->respondError($e->getMessage(), 422);
+        }
+
+        return $this->respond($preview);
+    }
+
     public function voidOrder(Request $request, Order $order)
     {
         $validated = $request->validate([
             'remark' => ['required', 'string', 'min:3', 'max:2000'],
+            'void_scope' => ['nullable', 'string', 'in:order_only,order_and_appointment'],
         ]);
 
         try {
@@ -158,6 +170,7 @@ class OfflineOrderManagementController extends Controller
                 $order,
                 trim((string) $validated['remark']),
                 $request->user()?->id,
+                isset($validated['void_scope']) ? (string) $validated['void_scope'] : null,
             );
         } catch (RuntimeException $e) {
             return $this->respondError($e->getMessage(), 422);

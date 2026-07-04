@@ -6,6 +6,28 @@ type StaffOption = { id: number; name: string }
 type PaymentMethodKey = 'cash' | 'qrpay' | 'credit_card'
 type PaymentBreakdownRow = { method?: string | null; payment_method?: string | null; amount?: number | string | null }
 
+type VoidScope = 'order_only' | 'order_and_appointment'
+
+type VoidPreview = {
+  order_id: number
+  order_number: string
+  is_deposit_only_order: boolean
+  has_active_settlement: boolean
+  requires_void_scope_choice: boolean
+  other_active_deposit_order_count: number
+  other_active_non_deposit_order_count: number
+  default_void_scope: VoidScope
+  linked_bookings: Array<{
+    booking_id: number
+    booking_code: string
+    status: string
+    other_active_order_count: number
+    other_active_deposit_order_count?: number
+    other_active_non_deposit_order_count?: number
+  }>
+  message?: string | null
+}
+
 type SplitRow = {
   id: string
   staff_id: number | null
@@ -91,6 +113,9 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
   const [paymentAmounts, setPaymentAmounts] = useState<Record<PaymentMethodKey, string>>(emptyPaymentAmounts)
   const [billDateInput, setBillDateInput] = useState('')
   const [remark, setRemark] = useState('')
+  const [voidPreview, setVoidPreview] = useState<VoidPreview | null>(null)
+  const [voidScope, setVoidScope] = useState<VoidScope>('order_and_appointment')
+  const [voidPreviewLoading, setVoidPreviewLoading] = useState(false)
   const [autoBalanceByItem, setAutoBalanceByItem] = useState<Record<number, boolean>>({})
 
 
@@ -140,6 +165,41 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setError(null)
     setModal('bill_date')
     setMenuOpen(false)
+  }
+
+  const openVoidModal = () => {
+    setRemark('')
+    setError(null)
+    setVoidPreview(null)
+    setVoidScope('order_and_appointment')
+    setModal('void')
+    setMenuOpen(false)
+    void loadVoidPreview()
+  }
+
+  const loadVoidPreview = async () => {
+    setVoidPreviewLoading(true)
+    try {
+      const res = await fetch(`/api/proxy/ecommerce/orders/${orderId}/offline-actions/void-preview`, { cache: 'no-store' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok || json?.success === false) {
+        setError(typeof json?.message === 'string' ? json.message : 'Unable to load void options.')
+        return
+      }
+
+      const preview = json?.data as VoidPreview | undefined
+      if (!preview) {
+        setError('Unable to load void options.')
+        return
+      }
+
+      setVoidPreview(preview)
+      setVoidScope(preview.default_void_scope ?? 'order_and_appointment')
+    } catch {
+      setError('Unable to load void options.')
+    } finally {
+      setVoidPreviewLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -249,6 +309,9 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
     setRemark('')
     setError(null)
     setSubmitting(false)
+    setVoidPreview(null)
+    setVoidScope('order_and_appointment')
+    setVoidPreviewLoading(false)
   }
 
   const validateItem = (item: ItemSplitDraft): string | null => {
@@ -326,7 +389,10 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
           return
         }
         endpoint = `/api/proxy/ecommerce/orders/${orderId}/offline-actions/void`
-        payload = { remark: remark.trim() }
+        payload = {
+          remark: remark.trim(),
+          void_scope: voidPreview?.requires_void_scope_choice ? voidScope : undefined,
+        }
       }
 
       const res = await fetch(endpoint, {
@@ -406,7 +472,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
             ) : null}
             <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openPaymentModal}>Edit Payment Method</button>
             <button type="button" className="block w-full px-3 py-2 text-left text-xs hover:bg-slate-100" onClick={openBillDateModal}>Edit Bill Date</button>
-            <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={() => { setModal('void'); setMenuOpen(false) }}>Void Order</button>
+            <button type="button" className="block w-full px-3 py-2 text-left text-xs text-red-600 hover:bg-red-50" onClick={openVoidModal}>Void Order</button>
           </div>
         ) : null}
       </div>
@@ -415,7 +481,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
         <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
           <div className="absolute inset-0 bg-black/50" onClick={closeModal} />
           <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-lg bg-white shadow-lg" onClick={(e) => e.stopPropagation()}>
-            <div className="border-b px-5 py-3">
+            <div className="border-b px-5 py-3 text-left">
               <h3 className="text-base font-semibold">
                 {modal === 'sales_person'
                   ? staffActionModalTitle
@@ -423,11 +489,14 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                     ? 'Edit Payment Method'
                     : modal === 'bill_date'
                       ? 'Edit Bill Date'
-                      : 'Void Offline Order'}
+                      : 'Void Order'}
               </h3>
+              {modal === 'void' ? (
+                <p className="mt-1 text-xs text-slate-500">This action cannot be undone. A remark is required.</p>
+              ) : null}
             </div>
 
-            <div className="space-y-3 px-5 py-4 text-sm">
+            <div className="space-y-3 px-5 py-4 text-left text-sm">
               {modal === 'sales_person' ? (
                 <div className="overflow-hidden rounded-xl border border-slate-200">
                   <div className="grid grid-cols-4 gap-4 bg-slate-100 px-4 py-3 text-xs font-bold uppercase text-slate-600">
@@ -518,9 +587,77 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                 </div>
               ) : null}
 
-              {modal === 'void' ? <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-red-700">Warning: This will void the offline order and invalidate related payments.</p> : null}
+              {modal === 'void' ? (
+                <div className="space-y-3">
+                  {voidPreviewLoading ? (
+                    <p className="rounded border border-slate-200 bg-slate-50 px-4 py-2.5 text-left text-sm text-slate-600">Loading void options…</p>
+                  ) : null}
 
-              <textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={3} className="w-full rounded border border-slate-300 px-3 py-2" placeholder={modal === 'void' ? 'Remarks (required)' : 'Remarks (optional)'} />
+                  {voidPreview?.requires_void_scope_choice ? (
+                    <div className="space-y-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-left text-amber-900">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold">This order is linked to an appointment</p>
+                        <p className="text-xs text-amber-800/90">
+                          Select how this void should be applied.
+                        </p>
+                      </div>
+                      {voidPreview.linked_bookings.length > 0 ? (
+                        <p className="text-xs text-amber-800/80">
+                          Booking: {voidPreview.linked_bookings.map((row) => row.booking_code).join(', ')}
+                          {voidPreview.other_active_deposit_order_count > 0
+                            ? ` · ${voidPreview.other_active_deposit_order_count} other deposit receipt(s)`
+                            : ''}
+                          {voidPreview.other_active_non_deposit_order_count > 0
+                            ? ` · ${voidPreview.other_active_non_deposit_order_count} other settlement receipt(s)`
+                            : ''}
+                        </p>
+                      ) : null}
+                      <div className="space-y-2">
+                        <label className="flex w-full cursor-pointer items-start gap-3 rounded border border-amber-300 bg-white px-3 py-2.5 text-left">
+                          <input
+                            type="radio"
+                            name="void_scope"
+                            checked={voidScope === 'order_only'}
+                            onChange={() => setVoidScope('order_only')}
+                            className="mt-1 shrink-0"
+                          />
+                          <span className="min-w-0 text-left">
+                            <span className="block text-sm font-semibold text-slate-900">Void this order only</span>
+                            <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                              {voidPreview.is_deposit_only_order && voidPreview.other_active_deposit_order_count > 0
+                                ? 'Cancel this deposit receipt only. The appointment remains active; other deposits are not affected.'
+                                : 'Cancel this order only. The appointment remains active.'}
+                            </span>
+                          </span>
+                        </label>
+                        <label className="flex w-full cursor-pointer items-start gap-3 rounded border border-red-300 bg-white px-3 py-2.5 text-left">
+                          <input
+                            type="radio"
+                            name="void_scope"
+                            checked={voidScope === 'order_and_appointment'}
+                            onChange={() => setVoidScope('order_and_appointment')}
+                            className="mt-1 shrink-0"
+                          />
+                          <span className="min-w-0 text-left">
+                            <span className="block text-sm font-semibold text-slate-900">Void entire appointment</span>
+                            <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                              Cancel all linked orders (deposits and settlement) and mark the appointment as Voided.
+                            </span>
+                          </span>
+                        </label>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="rounded border border-red-200 bg-red-50 px-4 py-3 text-left text-sm leading-relaxed text-red-700">
+                      {voidPreview?.has_active_settlement
+                        ? 'This appointment already has a settlement recorded. To proceed, the entire appointment must be voided. All linked deposit receipts and settlement orders will be voided, and the appointment status will be updated to Voided.'
+                        : `This will void the offline order${voidPreview?.linked_bookings?.length ? ' and the linked appointment' : ''} and cancel the related payment records.`}
+                    </p>
+                  )}
+                </div>
+              ) : null}
+
+              <textarea value={remark} onChange={(e) => setRemark(e.target.value)} rows={3} className="w-full rounded border border-slate-300 px-3 py-2 text-left" placeholder={modal === 'void' ? 'Reason for void (required)' : 'Remarks (optional)'} />
 
               {error ? <p className="text-xs text-red-600">{error}</p> : null}
             </div>
@@ -532,6 +669,7 @@ export default function OfflineOrderActions({ orderId, channel, billDate, curren
                 onClick={() => void submit()}
                 disabled={
                   submitting
+                  || (modal === 'void' && voidPreviewLoading)
                   || (modal === 'payment_method' && !paymentTotalMatches)
                   || (modal === 'bill_date' && !billDateInput.trim())
                   || (modal === 'sales_person' && (canEditStaffSplit === false || draftItems.length === 0))

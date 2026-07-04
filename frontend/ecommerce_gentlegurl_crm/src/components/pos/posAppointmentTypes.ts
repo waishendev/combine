@@ -1,5 +1,22 @@
 /** Shared types for POS appointments workspace (not used by checkout cart). */
 
+export type PosDepositTransaction = {
+  id: number
+  order_id?: number
+  order_number?: string
+  line_type?: string
+  kind?: 'service_deposit' | 'addon_deposit' | string
+  label?: string
+  amount: number
+  payment_method?: string
+  payments?: Array<{ method?: string; amount?: number }>
+  paid_at?: string | null
+  created_at?: string | null
+  receipt_public_url?: string | null
+  created_by?: { id?: number; name?: string } | null
+  remark?: string | null
+}
+
 /** Active staff row for day schedule columns (all staff, not only with bookings). */
 export type PosScheduleStaff = { id: number; name: string }
 
@@ -134,6 +151,7 @@ export type PosAppointmentDetail = {
   eligible_package_count?: number
   payment_history?: Array<{ order_id?: number; order_number?: string; line_type?: string; amount?: number; payment_method?: string; paid_at?: string | null }>
   receipts?: Array<{ order_id?: number; order_number?: string; line_type?: string; stage_label?: string; amount?: number; payment_method?: string; paid_at?: string | null; receipt_public_url?: string | null }>
+  deposit_transactions?: PosDepositTransaction[]
   hold_expires_at?: string | null
   hold_deposit_order?: {
     id: number

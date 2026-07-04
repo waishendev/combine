@@ -2,6 +2,7 @@
 
 namespace App\Services\Ecommerce;
 
+use App\Http\Controllers\Ecommerce\PosController;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPayment;
 use App\Models\Booking\CustomerServicePackage;
@@ -544,7 +545,75 @@ class OfflineOrderManagementService
         return $rows->all();
     }
 
-    public function voidOrder(Order $order, string $remark, ?int $actorId): Order
+    public function buildVoidOrderPreview(Order $order): array
+    {
+        $this->ensureOfflineOrder($order);
+
+        if ($order->status === 'voided') {
+            throw new RuntimeException('This order is already voided.');
+        }
+
+        $isDepositOnlyOrder = $this->isDepositOnlyOrder($order);
+        $bookingIds = $this->bookingIdsForOrder($order);
+
+        $linkedBookings = [];
+        $totalOtherActiveDepositOrders = 0;
+        $totalOtherActiveNonDepositOrders = 0;
+
+        foreach ($bookingIds as $bookingId) {
+            $booking = Booking::query()->find($bookingId);
+            if (! $booking) {
+                continue;
+            }
+
+            $activeOrders = $this->activeOrdersForBookings([$bookingId], (int) $order->id);
+            $otherDepositOrders = $activeOrders->filter(fn (Order $candidate) => $this->isDepositOnlyOrder($candidate));
+            $otherNonDepositOrders = $activeOrders->reject(fn (Order $candidate) => $this->isDepositOnlyOrder($candidate));
+
+            $totalOtherActiveDepositOrders += $otherDepositOrders->count();
+            $totalOtherActiveNonDepositOrders += $otherNonDepositOrders->count();
+
+            $linkedBookings[] = [
+                'booking_id' => $bookingId,
+                'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $bookingId)),
+                'status' => (string) $booking->status,
+                'other_active_order_count' => $activeOrders->count(),
+                'other_active_deposit_order_count' => $otherDepositOrders->count(),
+                'other_active_non_deposit_order_count' => $otherNonDepositOrders->count(),
+            ];
+        }
+
+        $appointmentAlreadyTerminal = collect($linkedBookings)->contains(
+            fn (array $row) => in_array(strtoupper((string) ($row['status'] ?? '')), ['VOIDED', 'CANCELLED'], true),
+        );
+
+        $hasLinkedAppointment = ! empty($linkedBookings);
+        $hasActiveSettlement = ! $isDepositOnlyOrder || $totalOtherActiveNonDepositOrders > 0;
+        $requiresVoidScopeChoice = $hasLinkedAppointment
+            && ! $appointmentAlreadyTerminal
+            && ! $hasActiveSettlement;
+
+        $defaultVoidScope = $requiresVoidScopeChoice ? 'order_only' : 'order_and_appointment';
+
+        return [
+            'order_id' => (int) $order->id,
+            'order_number' => (string) $order->order_number,
+            'is_deposit_only_order' => $isDepositOnlyOrder,
+            'has_active_settlement' => $hasActiveSettlement,
+            'requires_void_scope_choice' => $requiresVoidScopeChoice,
+            'other_active_deposit_order_count' => $totalOtherActiveDepositOrders,
+            'other_active_non_deposit_order_count' => $totalOtherActiveNonDepositOrders,
+            'default_void_scope' => $defaultVoidScope,
+            'linked_bookings' => $linkedBookings,
+            'message' => $hasActiveSettlement
+                ? 'This appointment has a settlement on file. A full appointment void is required.'
+                : ($requiresVoidScopeChoice
+                    ? 'Select how this void should be applied.'
+                    : null),
+        ];
+    }
+
+    public function voidOrder(Order $order, string $remark, ?int $actorId, ?string $voidScope = null): Order
     {
         $this->ensureOfflineOrder($order);
 
@@ -556,52 +625,48 @@ class OfflineOrderManagementService
             throw new RuntimeException('Order is not in a valid status for void.');
         }
 
+        $preview = $this->buildVoidOrderPreview($order);
+        $resolvedVoidScope = $voidScope;
+        if (! in_array((string) $resolvedVoidScope, ['order_only', 'order_and_appointment'], true)) {
+            $resolvedVoidScope = (string) ($preview['default_void_scope'] ?? 'order_and_appointment');
+        }
+
+        if ($resolvedVoidScope === 'order_only' && ($preview['has_active_settlement'] ?? false)) {
+            $resolvedVoidScope = 'order_and_appointment';
+        }
+
+        $voidAppointment = $resolvedVoidScope === 'order_and_appointment';
+        $ordersToVoid = $this->resolveOrdersToVoidForScope($order, $resolvedVoidScope);
         $bookingRecalculateTargets = [];
 
-        DB::transaction(function () use ($order, $remark, $actorId, &$bookingRecalculateTargets) {
-            $order->refresh();
-            if ($order->status === 'voided') {
-                throw new RuntimeException('This order is already voided.');
+        DB::transaction(function () use ($order, $ordersToVoid, $remark, $actorId, $voidAppointment, $resolvedVoidScope, &$bookingRecalculateTargets) {
+            $voidedOrderIds = [];
+
+            foreach ($ordersToVoid as $orderId) {
+                $targetOrder = (int) $orderId === (int) $order->id
+                    ? $order
+                    : Order::query()->find($orderId);
+
+                if (! $targetOrder || $targetOrder->status === 'voided') {
+                    continue;
+                }
+
+                $this->voidSingleOrderRecord($targetOrder, $remark, $actorId);
+                $voidedOrderIds[] = (int) $targetOrder->id;
             }
 
-            $packageIds = CustomerServicePackage::query()
-                ->where('purchased_from', 'POS')
-                ->where('purchased_ref_id', (int) $order->id)
-                ->pluck('id')
-                ->map(fn ($id) => (int) $id)
-                ->all();
-
-            if (! empty($packageIds)) {
-                $usedCount = CustomerServicePackageUsage::query()
-                    ->whereIn('customer_service_package_id', $packageIds)
-                    ->count();
-
-                if ($usedCount > 0) {
-                    throw new RuntimeException('This package has already been used and cannot be voided.');
-                }
+            if (empty($voidedOrderIds)) {
+                throw new RuntimeException('No orders were available to void.');
             }
 
             $bookingIds = DB::table('order_items')
-                ->where('order_id', (int) $order->id)
+                ->whereIn('order_id', $voidedOrderIds)
                 ->whereNotNull('booking_id')
                 ->pluck('booking_id')
                 ->map(fn ($id) => (int) $id)
                 ->unique()
                 ->values()
                 ->all();
-
-            $beforeOrder = [
-                'status' => $order->status,
-                'payment_status' => $order->payment_status,
-            ];
-
-            $order->status = 'voided';
-            $order->save();
-
-            $this->log('order', (int) $order->id, 'void_order', $beforeOrder, [
-                'status' => $order->status,
-                'payment_status' => $order->payment_status,
-            ], $remark, $actorId);
 
             if (! empty($bookingIds)) {
                 $bookings = Booking::query()
@@ -620,30 +685,46 @@ class OfflineOrderManagementService
                         ];
                     }
 
-                    $beforeBooking = [
-                        'status' => $booking->status,
-                        'payment_status' => $booking->payment_status,
-                        'notes' => $booking->notes,
-                    ];
+                    if ($voidAppointment) {
+                        $beforeBooking = [
+                            'status' => $booking->status,
+                            'payment_status' => $booking->payment_status,
+                            'notes' => $booking->notes,
+                        ];
 
-                    $booking->status = 'VOIDED';
-                    $booking->payment_status = 'FAILED';
-                    $booking->notes = trim((string) $booking->notes . "\n[VOID REMARK] {$remark}");
-                    $booking->save();
+                        $booking->status = 'VOIDED';
+                        $booking->payment_status = 'FAILED';
+                        $booking->notes = trim((string) $booking->notes . "\n[VOID REMARK] {$remark}");
+                        $booking->save();
 
-                    $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
+                        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
 
-                    $this->log('appointment', (int) $booking->id, 'void_order', $beforeBooking, [
-                        'status' => $booking->status,
-                        'payment_status' => $booking->payment_status,
-                        'notes' => $booking->notes,
-                    ], $remark, $actorId);
+                        $this->log('appointment', (int) $booking->id, 'void_order', $beforeBooking, [
+                            'status' => $booking->status,
+                            'payment_status' => $booking->payment_status,
+                            'notes' => $booking->notes,
+                        ], $remark, $actorId);
+                    } else {
+                        app(PosController::class)->refreshBookingFinancialState($booking->fresh(['service']));
+                    }
                 }
 
                 $payments = BookingPayment::query()
                     ->whereIn('booking_id', $bookingIds)
                     ->where('status', 'PAID')
-                    ->get();
+                    ->get()
+                    ->filter(function (BookingPayment $payment) use ($voidAppointment, $order) {
+                        if ($voidAppointment) {
+                            return true;
+                        }
+
+                        $raw = is_array($payment->raw_response) ? $payment->raw_response : [];
+                        $paymentOrderId = (int) (data_get($raw, 'order_id') ?? 0);
+                        $paymentRef = (string) ($payment->ref ?? '');
+
+                        return $paymentOrderId === (int) $order->id
+                            || $paymentRef === (string) $order->order_number;
+                    });
 
                 foreach ($payments as $payment) {
                     $beforePayment = [
@@ -654,6 +735,7 @@ class OfflineOrderManagementService
                     $raw = is_array($payment->raw_response) ? $payment->raw_response : [];
                     $raw['voided_by_order_id'] = (int) $order->id;
                     $raw['void_remark'] = $remark;
+                    $raw['void_scope'] = $resolvedVoidScope;
 
                     $payment->status = 'VOIDED';
                     $payment->raw_response = $raw;
@@ -665,40 +747,154 @@ class OfflineOrderManagementService
                     ], $remark, $actorId);
                 }
             }
-
-            if (! empty($packageIds)) {
-                $packages = CustomerServicePackage::query()
-                    ->whereIn('id', $packageIds)
-                    ->get();
-
-                DB::table('service_package_staff_splits')
-                    ->whereIn('customer_service_package_id', $packageIds)
-                    ->delete();
-
-                DB::table('customer_service_package_balances')
-                    ->whereIn('customer_service_package_id', $packageIds)
-                    ->delete();
-
-                foreach ($packages as $package) {
-                    $beforePackage = [
-                        'id' => $package->id,
-                        'status' => $package->status,
-                        'purchased_ref_id' => $package->purchased_ref_id,
-                    ];
-
-                    $package->delete();
-
-                    $this->log('service_package', (int) $beforePackage['id'], 'void_order', $beforePackage, [
-                        'deleted' => true,
-                    ], $remark, $actorId);
-                }
-            }
         });
 
-        $this->recalculateEcommerceCommissionForOrderMonth($order, 'void_order', $remark, $actorId);
+        foreach ($ordersToVoid as $voidedOrderId) {
+            $voidedOrder = (int) $voidedOrderId === (int) $order->id
+                ? $order
+                : Order::query()->find($voidedOrderId);
+            if ($voidedOrder) {
+                $this->recalculateEcommerceCommissionForOrderMonth($voidedOrder, 'void_order', $remark, $actorId);
+            }
+        }
+
         $this->recalculateBookingCommissionsForTargets($bookingRecalculateTargets, $order, 'void_order', $remark, $actorId);
 
         return $order->fresh();
+    }
+
+    private function voidSingleOrderRecord(Order $order, string $remark, ?int $actorId): void
+    {
+        $order->refresh();
+        if ($order->status === 'voided') {
+            return;
+        }
+
+        $packageIds = CustomerServicePackage::query()
+            ->where('purchased_from', 'POS')
+            ->where('purchased_ref_id', (int) $order->id)
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if (! empty($packageIds)) {
+            $usedCount = CustomerServicePackageUsage::query()
+                ->whereIn('customer_service_package_id', $packageIds)
+                ->count();
+
+            if ($usedCount > 0) {
+                throw new RuntimeException('This package has already been used and cannot be voided.');
+            }
+        }
+
+        $beforeOrder = [
+            'status' => $order->status,
+            'payment_status' => $order->payment_status,
+        ];
+
+        $order->status = 'voided';
+        $order->save();
+
+        $this->log('order', (int) $order->id, 'void_order', $beforeOrder, [
+            'status' => $order->status,
+            'payment_status' => $order->payment_status,
+        ], $remark, $actorId);
+
+        if (! empty($packageIds)) {
+            $packages = CustomerServicePackage::query()
+                ->whereIn('id', $packageIds)
+                ->get();
+
+            DB::table('service_package_staff_splits')
+                ->whereIn('customer_service_package_id', $packageIds)
+                ->delete();
+
+            DB::table('customer_service_package_balances')
+                ->whereIn('customer_service_package_id', $packageIds)
+                ->delete();
+
+            foreach ($packages as $package) {
+                $beforePackage = [
+                    'id' => $package->id,
+                    'status' => $package->status,
+                    'purchased_ref_id' => $package->purchased_ref_id,
+                ];
+
+                $package->delete();
+
+                $this->log('service_package', (int) $beforePackage['id'], 'void_order', $beforePackage, [
+                    'deleted' => true,
+                ], $remark, $actorId);
+            }
+        }
+    }
+
+    private function resolveOrdersToVoidForScope(Order $primary, string $voidScope): array
+    {
+        $bookingIds = $this->bookingIdsForOrder($primary);
+        $primaryId = (int) $primary->id;
+
+        if (empty($bookingIds)) {
+            return [$primaryId];
+        }
+
+        if ($voidScope === 'order_and_appointment') {
+            return Order::query()
+                ->whereNotIn('status', ['voided', 'cancelled', 'draft'])
+                ->whereHas('items', fn ($query) => $query->whereIn('booking_id', $bookingIds))
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        return [$primaryId];
+    }
+
+    private function bookingIdsForOrder(Order $order): array
+    {
+        return DB::table('order_items')
+            ->where('order_id', (int) $order->id)
+            ->whereNotNull('booking_id')
+            ->pluck('booking_id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    private function activeOrdersForBookings(array $bookingIds, ?int $excludeOrderId = null)
+    {
+        $query = Order::query()
+            ->whereNotIn('status', ['voided', 'cancelled', 'draft'])
+            ->whereHas('items', fn ($itemQuery) => $itemQuery->whereIn('booking_id', $bookingIds));
+
+        if ($excludeOrderId !== null) {
+            $query->where('id', '!=', $excludeOrderId);
+        }
+
+        return $query->get();
+    }
+
+    private function isDepositOnlyOrder(Order $order): bool
+    {
+        $items = DB::table('order_items')
+            ->where('order_id', (int) $order->id)
+            ->get(['line_type', 'variant_name_snapshot']);
+
+        if ($items->isEmpty()) {
+            return false;
+        }
+
+        return $items->every(function ($row) {
+            if ((string) $row->line_type === 'booking_deposit') {
+                return true;
+            }
+
+            return (string) $row->line_type === 'booking_addon'
+                && strcasecmp((string) ($row->variant_name_snapshot ?? ''), 'Booking Add-on Deposit') === 0;
+        });
     }
 
     private function recalculateBookingCommissionsForTargets(

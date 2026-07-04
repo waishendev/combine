@@ -554,6 +554,7 @@ class PosController extends Controller
             'package_status' => $summary['package_status'],
             'payment_history' => $history,
             'receipts' => $history,
+            'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
             ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
             'uploaded_item_photos' => $booking->itemPhotos->map(fn ($photo) => [
                 'id' => (int) $photo->id,
@@ -1580,6 +1581,190 @@ class PosController extends Controller
             'add_ons' => $summary['add_ons'],
             'policy_warnings' => $settlementPolicyWarnings,
         ], __('Appointment settlement updated.'));
+    }
+
+    public function addAppointmentDeposit(Request $request, int $id)
+    {
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        if (in_array(strtoupper((string) $booking->status), ['CANCELLED', 'VOID', 'VOIDED'], true)) {
+            return $this->respondError(__('Cannot add deposit to a cancelled appointment.'), 422);
+        }
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'gt:0'],
+            'remark' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $amount = round((float) $validated['amount'], 2);
+        $paymentRows = $this->resolveOrderPaymentRows($validated, $amount);
+        $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
+        $remark = $remark !== '' ? $remark : null;
+        $userId = (int) $request->user()->id;
+        $serviceName = (string) ($booking->service?->name ?? 'Service');
+
+        DB::transaction(function () use ($booking, $amount, $paymentRows, $remark, $userId, $serviceName) {
+            $order = Order::query()->create([
+                'order_number' => $this->generateOrderNumber(),
+                'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
+                'created_by_user_id' => $userId,
+                'status' => 'completed',
+                'payment_status' => 'paid',
+                'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
+                'payment_provider' => 'manual',
+                'subtotal' => $amount,
+                'discount_total' => 0,
+                'shipping_fee' => 0,
+                'grand_total' => $amount,
+                'pickup_or_shipping' => 'in_store',
+                'billing_name' => $booking->customer?->name ?? ($booking->guest_name ?: null),
+                'placed_at' => now(),
+                'paid_at' => now(),
+                'completed_at' => now(),
+                'notes' => 'POS add appointment deposit by user #' . $userId . ' | booking_id=' . $booking->id . ' | booking_deposit=' . number_format($amount, 2, '.', ''),
+            ]);
+
+            $depositOrderItem = OrderItem::query()->create([
+                'order_id' => (int) $order->id,
+                'line_type' => 'booking_deposit',
+                'product_name_snapshot' => 'Booking Deposit - ' . $serviceName,
+                'display_name_snapshot' => 'Booking Deposit - ' . $serviceName,
+                'quantity' => 1,
+                'price_snapshot' => $amount,
+                'unit_price_snapshot' => $amount,
+                'line_total' => $amount,
+                'line_total_snapshot' => $amount,
+                'effective_unit_price' => $amount,
+                'effective_line_total' => $amount,
+                'line_total_after_discount' => $amount,
+                'locked' => true,
+                'booking_id' => (int) $booking->id,
+                'booking_service_id' => (int) ($booking->service_id ?? 0),
+                'discount_remark' => $remark,
+            ]);
+
+            foreach ($paymentRows as $paymentRow) {
+                BookingPayment::query()->create([
+                    'booking_id' => (int) $booking->id,
+                    'provider' => (string) $paymentRow['method'],
+                    'ref' => (string) $order->order_number,
+                    'amount' => round((float) $paymentRow['amount'], 2),
+                    'status' => 'PAID',
+                    'raw_response' => [
+                        'source' => 'pos_add_appointment_deposit',
+                        'order_id' => (int) $order->id,
+                        'order_item_id' => (int) $depositOrderItem->id,
+                        'payment_method' => (string) $paymentRow['method'],
+                    ],
+                ]);
+            }
+
+            $this->replaceOrderPayments($order, $paymentRows, 'pos_add_appointment_deposit');
+            $this->orderPaymentService->handlePaid($order->fresh(['items']));
+            $this->syncBookingDepositAmountFromOrderItems($booking->fresh(['service']));
+            $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
+        });
+
+        return $this->respondAppointmentDepositMutation(
+            $booking->fresh(['customer', 'service', 'staff']),
+            __('Deposit added.'),
+        );
+    }
+
+    public function editAppointmentDepositTransaction(Request $request, int $id, int $orderItemId)
+    {
+        $booking = Booking::query()->with(['service', 'customer'])->findOrFail($id);
+        $depositItem = OrderItem::query()
+            ->with(['order.payments'])
+            ->where('id', $orderItemId)
+            ->where('booking_id', (int) $booking->id)
+            ->where(function ($query) {
+                $query->where('line_type', 'booking_deposit')
+                    ->orWhere(function ($addonQuery) {
+                        $addonQuery->where('line_type', 'booking_addon')
+                            ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                    });
+            })
+            ->firstOrFail();
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:0'],
+            'payment_method' => ['nullable', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.method' => ['required_with:payments', 'string', 'in:cash,qrpay,credit_card,billplz_credit_card'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
+            'remark' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $newAmount = round(max(0, (float) $validated['amount']), 2);
+        $remark = isset($validated['remark']) ? trim((string) $validated['remark']) : null;
+        $remark = $remark !== '' ? $remark : null;
+        $userId = (int) $request->user()->id;
+        $previousAmount = round((float) ($depositItem->line_total ?? 0), 2);
+        $hasPaymentUpdate = $request->hasAny(['payment_method', 'payments']);
+        $paymentRows = $newAmount > 0.0001
+            ? ($hasPaymentUpdate
+                ? $this->resolveOrderPaymentRows($validated, $newAmount)
+                : collect($depositItem->order?->payments ?? [])
+                    ->map(fn ($payment) => [
+                        'method' => $this->normalizePosPaymentMethod((string) ($payment->payment_method ?? '')),
+                        'amount' => round((float) ($payment->amount ?? 0), 2),
+                    ])
+                    ->filter(fn (array $row) => $row['method'] !== '' && $row['amount'] > 0)
+                    ->values()
+                    ->all())
+            : [];
+
+        if ($newAmount > 0.0001 && empty($paymentRows)) {
+            $paymentRows = $this->resolveOrderPaymentRows([
+                'payment_method' => (string) ($depositItem->order?->payment_method ?? 'qrpay'),
+            ], $newAmount);
+        }
+
+        DB::transaction(function () use ($depositItem, $booking, $newAmount, $previousAmount, $remark, $userId, $paymentRows, $hasPaymentUpdate) {
+            $originalAmount = round((float) ($depositItem->line_total_snapshot ?? $depositItem->price_snapshot ?? $previousAmount), 2);
+            if ($originalAmount <= 0.0001) {
+                $originalAmount = $previousAmount > 0.0001 ? $previousAmount : $newAmount;
+            }
+
+            $overrideSnapshot = (abs($newAmount - $previousAmount) > 0.0001 || $remark !== null)
+                ? $this->buildOrderPriceOverrideSnapshot($originalAmount, $newAmount, 1, $remark, $userId)
+                : $depositItem->price_override_snapshot;
+
+            $depositItem->update([
+                'price_snapshot' => $newAmount > 0.0001 ? $newAmount : $originalAmount,
+                'unit_price_snapshot' => $newAmount,
+                'line_total' => $newAmount,
+                'line_total_snapshot' => max((float) ($depositItem->line_total_snapshot ?? $originalAmount), $originalAmount),
+                'effective_unit_price' => $newAmount,
+                'effective_line_total' => $newAmount,
+                'line_total_after_discount' => $newAmount,
+                'price_override_snapshot' => $overrideSnapshot,
+                'discount_remark' => $remark,
+            ]);
+
+            $order = Order::query()->find((int) $depositItem->order_id);
+            if ($order) {
+                $this->refreshOrderTotalsFromItems($order);
+                if ($newAmount > 0.0001 && ($hasPaymentUpdate || abs($newAmount - $previousAmount) > 0.0001)) {
+                    $order->update([
+                        'payment_method' => $this->orderPaymentMethodForRows($paymentRows),
+                    ]);
+                    $this->replaceOrderPayments($order, $paymentRows, 'pos_edit_appointment_deposit');
+                }
+            }
+
+            $this->syncBookingDepositAmountFromOrderItems($booking->fresh(['service']));
+            $this->staffCommissionService->resyncBookingCommission($booking->fresh(['service']));
+        });
+
+        return $this->respondAppointmentDepositMutation(
+            $booking->fresh(['customer', 'service', 'staff']),
+            __('Deposit updated.'),
+        );
     }
 
     public function getServiceAddonOptions(int $serviceId)
@@ -6894,6 +7079,7 @@ class PosController extends Controller
 
     /**
      * Adjust the deposit credit applied toward settlement (amount + optional remark), without collecting a new payment.
+     * @deprecated Prefer editAppointmentDepositTransaction for per-transaction edits.
      */
     protected function adjustAppointmentDepositContribution(Booking $booking, float $newAmount, ?string $remark, int $userId): void
     {
@@ -7011,6 +7197,108 @@ class PosController extends Controller
             $lockedBooking->payment_status = $this->calculateAppointmentPaymentStatus($freshSummary);
             $lockedBooking->save();
         });
+    }
+
+    protected function resolveAppointmentDepositTransactions(Booking $booking): array
+    {
+        return OrderItem::query()
+            ->with(['order' => fn ($query) => $query->with(['payments', 'creator:id,name'])])
+            ->where('booking_id', (int) $booking->id)
+            ->whereHas('order', fn ($query) => $query->whereNotIn('status', ['voided', 'cancelled', 'draft']))
+            ->where(function ($query) {
+                $query->where('line_type', 'booking_deposit')
+                    ->orWhere(function ($addonQuery) {
+                        $addonQuery->where('line_type', 'booking_addon')
+                            ->where('variant_name_snapshot', 'Booking Add-on Deposit');
+                    });
+            })
+            ->orderBy('id')
+            ->get()
+            ->map(function (OrderItem $item) {
+                $order = $item->order;
+                $payments = collect($order?->payments ?? [])
+                    ->map(fn ($payment) => [
+                        'method' => (string) ($payment->payment_method ?? ''),
+                        'amount' => (float) ($payment->amount ?? 0),
+                    ])
+                    ->filter(fn (array $row) => $row['method'] !== '' && $row['amount'] > 0)
+                    ->values()
+                    ->all();
+
+                return [
+                    'id' => (int) $item->id,
+                    'order_id' => (int) ($item->order_id ?? 0),
+                    'order_number' => (string) ($order?->order_number ?? ''),
+                    'line_type' => (string) ($item->line_type ?? ''),
+                    'kind' => strcasecmp((string) ($item->variant_name_snapshot ?? ''), 'Booking Add-on Deposit') === 0
+                        ? 'addon_deposit'
+                        : 'service_deposit',
+                    'label' => (string) ($item->display_name_snapshot ?: $item->product_name_snapshot ?: 'Deposit'),
+                    'amount' => (float) ($item->line_total ?? 0),
+                    'payment_method' => (string) ($order?->payment_method ?? ''),
+                    'payments' => $payments,
+                    'paid_at' => optional($order?->paid_at ?? $order?->created_at)?->toIso8601String(),
+                    'created_at' => optional($item->created_at)?->toIso8601String(),
+                    'receipt_public_url' => $order ? $this->buildReceiptUrlForOrder((int) $order->id) : null,
+                    'created_by' => $order?->creator ? [
+                        'id' => (int) $order->creator->id,
+                        'name' => (string) $order->creator->name,
+                    ] : null,
+                    'remark' => $item->discount_remark ?? data_get($item->price_override_snapshot, 'reason'),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    protected function respondAppointmentDepositMutation(Booking $booking, string $message)
+    {
+        $summary = $this->resolveAppointmentFinancialSummary($booking);
+
+        return $this->respond([
+            'appointment' => $this->resolveAppointmentSnapshot($booking),
+            'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
+            'deposit_total' => (float) ($summary['deposit_previously_collected_amount'] ?? $summary['deposit_contribution'] ?? 0),
+            'balance_due' => (float) $summary['balance_due'],
+            'amount_due_now' => (float) $summary['amount_due_now'],
+        ], $message);
+    }
+
+    protected function syncBookingDepositAmountFromOrderItems(Booking $booking): void
+    {
+        $summary = $this->resolveAppointmentFinancialSummary($booking->fresh(['service']));
+        $booking->deposit_amount = (float) ($summary['deposit_previously_collected_amount'] ?? $summary['deposit_contribution'] ?? 0);
+        $booking->payment_status = $this->calculateAppointmentPaymentStatus($summary);
+        $booking->save();
+    }
+
+    public function refreshBookingFinancialState(Booking $booking): void
+    {
+        $booking->loadMissing(['service']);
+        $this->syncBookingDepositAmountFromOrderItems($booking->fresh(['service']));
+        $this->staffCommissionService->syncBookingCommissionState($booking->fresh(['service']));
+    }
+
+    protected function activeBookingOrderItemQuery(?int $bookingId = null): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = OrderItem::query()
+            ->whereHas('order', fn ($orderQuery) => $orderQuery->whereNotIn('status', ['voided', 'cancelled', 'draft']));
+
+        if ($bookingId !== null) {
+            $query->where('booking_id', $bookingId);
+        }
+
+        return $query;
+    }
+
+    protected function refreshOrderTotalsFromItems(Order $order): void
+    {
+        $order->loadMissing('items');
+        $subtotal = round((float) $order->items->sum(fn (OrderItem $item) => (float) ($item->line_total_after_discount ?? $item->line_total ?? 0)), 2);
+        $order->update([
+            'subtotal' => $subtotal,
+            'grand_total' => $subtotal,
+        ]);
     }
 
     private function orderPaymentMethodForRows(array $paymentRows): ?string
@@ -7812,6 +8100,7 @@ class PosController extends Controller
                 'deposit_contribution' => (float) ($summary['deposit_contribution'] ?? 0),
                 'deposit_previously_collected' => (bool) ($summary['deposit_previously_collected'] ?? false),
                 'deposit_previously_collected_amount' => (float) ($summary['deposit_previously_collected_amount'] ?? 0),
+                'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
                 'package_offset' => (float) ($summary['package_offset'] ?? 0),
                 'amount_due_now' => (float) $netLineTotal,
                 'service_balance_due' => (float) ($hasPerLineDiscounts ? $mainSettlementItems->sum('line_total_after_discount') : ($summary['service_balance_due'] ?? 0)),
@@ -8966,6 +9255,7 @@ class PosController extends Controller
             'package_disabled_reason' => $summary['package_disabled_reason'] ?? null,
             'eligible_package_count' => (int) ($summary['eligible_package_count'] ?? 0),
             'receipts' => $receiptHistory,
+            'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
             ...$this->resolveAppointmentVisitCheckoutMeta((int) $booking->id),
         ];
     }
@@ -9013,8 +9303,9 @@ class PosController extends Controller
     protected function resolveAppointmentPaymentHistory(int $bookingId): array
     {
         return OrderItem::query()
-            ->with(['order:id,order_number,payment_method,paid_at,created_at'])
+            ->with(['order:id,order_number,payment_method,paid_at,created_at,status'])
             ->where('booking_id', $bookingId)
+            ->whereHas('order', fn ($query) => $query->whereNotIn('status', ['voided', 'cancelled', 'draft']))
             ->whereIn('line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
             ->orderBy('id')
             ->get()
@@ -9228,7 +9519,11 @@ class PosController extends Controller
             ->first();
 
         if (! $receiptToken) {
-            return null;
+            $receiptToken = OrderReceiptToken::create([
+                'order_id' => $orderId,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
         }
 
         $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
@@ -9433,8 +9728,7 @@ class PosController extends Controller
         })->values();
         $addonTotalDurationMin = (int) $addonItems->sum('extra_duration_min');
         $addonTotalPrice = round((float) $addonItems->sum('extra_price'), 2);
-        $addonPaidRows = OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
+        $addonPaidRows = $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_addon')
             ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'line_total_snapshot', 'variant_name_snapshot']);
         $addonPaidByName = $addonPaidRows
@@ -9479,19 +9773,14 @@ class PosController extends Controller
         $expectedDepositByAddonId = collect($depositBreakdown['addon_deposit_items'] ?? [])
             ->mapWithKeys(fn (array $row) => [(int) ($row['id'] ?? 0) => (float) ($row['deposit_contribution'] ?? 0)]);
 
-        $mainDepositCollected = round((float) OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
+        $mainDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_deposit')
             ->sum('line_total'), 2);
-        $addonDepositCollected = round((float) OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
+        $addonDepositCollected = round((float) $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_addon')
             ->where('variant_name_snapshot', 'Booking Add-on Deposit')
             ->sum('line_total'), 2);
         $actualAppointmentDepositCollected = round($mainDepositCollected + $addonDepositCollected, 2);
-        if ($actualAppointmentDepositCollected <= 0.0001) {
-            $actualAppointmentDepositCollected = round(max(0, (float) ($booking->deposit_amount ?? 0)), 2);
-        }
 
         $depositPaid = $actualAppointmentDepositCollected;
         $linkedBookingDeposit = $actualAppointmentDepositCollected > 0.0001
@@ -9521,8 +9810,7 @@ class PosController extends Controller
             ];
         })->values();
 
-        $mainSettlementPaidRows = OrderItem::query()
-            ->where('booking_id', (int) $booking->id)
+        $mainSettlementPaidRows = $this->activeBookingOrderItemQuery((int) $booking->id)
             ->where('line_type', 'booking_settlement')
             ->get(['display_name_snapshot', 'product_name_snapshot', 'line_total', 'line_total_snapshot']);
         $serviceSettlementPaid = (float) $mainSettlementPaidRows

@@ -486,6 +486,8 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
         Route::post('/appointments/{id}/finalize-zero-settlement', [PosController::class, 'finalizeAppointmentZeroSettlement']);
         Route::post('/appointments/{id}/edit-settlement', [PosController::class, 'editAppointmentSettlement']);
+        Route::post('/appointments/{id}/deposits', [PosController::class, 'addAppointmentDeposit']);
+        Route::patch('/appointments/{id}/deposits/{orderItemId}', [PosController::class, 'editAppointmentDepositTransaction']);
         Route::get('/services/{serviceId}/addon-options', [PosController::class, 'getServiceAddonOptions']);
         Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment']);
         Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment']);
@@ -831,6 +833,9 @@ $protectedRoutes = function () {
         Route::put('/orders/{order}/offline-actions/bill-date', [OfflineOrderManagementController::class, 'updateBillDate'])
             ->middleware('permission:ecommerce.orders.update|ecommerce.daily-sales-reports.view');
         Route::post('/orders/{order}/offline-actions/bill-date', [OfflineOrderManagementController::class, 'updateBillDate'])
+            ->middleware('permission:ecommerce.orders.update|ecommerce.daily-sales-reports.view');
+
+        Route::get('/orders/{order}/offline-actions/void-preview', [OfflineOrderManagementController::class, 'voidOrderPreview'])
             ->middleware('permission:ecommerce.orders.update|ecommerce.daily-sales-reports.view');
 
         Route::put('/orders/{order}/offline-actions/void', [OfflineOrderManagementController::class, 'voidOrder'])
