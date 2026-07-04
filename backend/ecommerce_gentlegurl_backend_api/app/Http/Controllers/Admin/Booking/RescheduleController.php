@@ -27,7 +27,15 @@ class RescheduleController extends Controller
         $newEnd = $newStart->copy()->addMinutes((int) $booking->service->duration_min);
 
         if (! $this->availabilityService->isWithinStaffAvailability((int) $booking->staff_id, $newStart, $newEnd)
-            || $this->availabilityService->hasConflict((int) $booking->staff_id, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking)) {
+            || $this->availabilityService->hasConflict(
+                (int) $booking->staff_id,
+                $newStart,
+                $newEnd,
+                (int) $booking->buffer_min,
+                (int) $booking->id,
+                $booking,
+                BookingAvailabilityService::SCOPE_CRM,
+            )) {
             return $this->respondError('Selected slot is not available.', 409);
         }
 

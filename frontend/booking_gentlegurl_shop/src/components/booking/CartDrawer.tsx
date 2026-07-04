@@ -7,6 +7,7 @@ import InternationalPhoneInput from "@/components/common/InternationalPhoneInput
 import { useAuth } from "@/contexts/AuthContext";
 import { normalizeInternationalPhone } from "@/lib/phone";
 import {
+  ApiError,
   checkoutCart,
   getBookingBankAccounts,
   getBookingCart,
@@ -31,6 +32,39 @@ import { bankQrImageCompactClass, BANK_QR_IMAGE_HEIGHT, BANK_QR_IMAGE_WIDTH } fr
 import { BookingCart } from "@/lib/types";
 
 const TZ = process.env.NEXT_PUBLIC_TIMEZONE || "Asia/Kuala_Lumpur";
+const SLOT_ITEM_UNAVAILABLE_MESSAGE =
+  "This time slot is no longer available. Remove this item and choose a new time.";
+
+function slotUnavailableSummaryMessage(count: number): string {
+  if (count <= 1) {
+    return "There is 1 time slot in your cart that is no longer available.";
+  }
+
+  return `There are ${count} time slots in your cart that are no longer available.`;
+}
+
+function parseUnavailableSlotItemIds(err: ApiError, cartItems: BookingCart["items"] | undefined): number[] {
+  const payloadData = err.data?.data;
+  if (
+    payloadData &&
+    typeof payloadData === "object" &&
+    Array.isArray((payloadData as { unavailable_items?: unknown }).unavailable_items)
+  ) {
+    return (payloadData as { unavailable_items: Array<{ cart_item_id?: number }> }).unavailable_items
+      .map((row) => Number(row?.cart_item_id ?? 0))
+      .filter((id) => id > 0);
+  }
+
+  const ids = Array.isArray((payloadData as { unavailable_cart_item_ids?: unknown })?.unavailable_cart_item_ids)
+    ? (payloadData as { unavailable_cart_item_ids: number[] }).unavailable_cart_item_ids
+    : [];
+
+  if (ids.length > 0) {
+    return ids.map((id) => Number(id)).filter((id) => id > 0);
+  }
+
+  return (cartItems ?? []).map((item) => item.id);
+}
 
 function formatSlotRange(startAt: string, endAt: string) {
   const start = new Date(startAt);
@@ -112,7 +146,18 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   const [depositTncText, setDepositTncText] = useState("");
   const [depositTncImage, setDepositTncImage] = useState<string | null>(null);
   const [depositTncImagePreviewOpen, setDepositTncImagePreviewOpen] = useState(false);
+  const [unavailableSlotItemIds, setUnavailableSlotItemIds] = useState<number[]>([]);
   const fieldRefs = useRef<Record<string, HTMLElement | null>>({});
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const cartItemRefs = useRef<Record<number, HTMLElement | null>>({});
+
+  const unavailableSlotItemIdSet = useMemo(() => new Set(unavailableSlotItemIds), [unavailableSlotItemIds]);
+
+  const scrollToUnavailableSlots = useCallback((_itemIds: number[]) => {
+    requestAnimationFrame(() => {
+      scrollContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, []);
 
   const scrollToField = useCallback((fieldKey: string) => {
     requestAnimationFrame(() => {
@@ -265,6 +310,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
     try {
       setFieldErrors({});
       setMessage(null);
+      setUnavailableSlotItemIds([]);
 
       const nextErrors: Record<string, string> = {};
       const normalizedGuestPhone = normalizeInternationalPhone(guestPhone);
@@ -448,6 +494,23 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
 
       setMessage("Unable to create booking payment. Please try again.");
     } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        const parsedUnavailableIds = parseUnavailableSlotItemIds(err, cart?.items);
+        const isSlotUnavailable =
+          parsedUnavailableIds.length > 0 ||
+          (err.message || "").toLowerCase().includes("no longer available");
+
+        if (isSlotUnavailable) {
+          const count = parsedUnavailableIds.length > 0 ? parsedUnavailableIds.length : 1;
+          setUnavailableSlotItemIds(parsedUnavailableIds);
+          setMessage(slotUnavailableSummaryMessage(count));
+          scrollToUnavailableSlots(parsedUnavailableIds);
+          return;
+        }
+
+        setMessage(err.message || "Checkout failed. Please review your cart and try again.");
+        return;
+      }
       setMessage(err instanceof Error ? err.message : "Checkout failed. Please review your cart and try again.");
     }
   };
@@ -467,6 +530,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
   useEffect(() => {
     if (!isOpen) {
       setMessage(null);
+      setUnavailableSlotItemIds([]);
       setFieldErrors({});
       setPackageActionItemId(null);
       setPackageQtyBusyId(null);
@@ -642,7 +706,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
+        <div ref={scrollContainerRef} className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-5 sm:px-6">
           {message ? (
             <div
               className="mb-5 rounded-2xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[var(--status-warning-text)]"
@@ -699,16 +763,28 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
               const payLaterLine = menuListedTotal > 0 ? Math.max(0, menuListedTotal - lineDeposit) : null;
               const payLaterRangeMin = itemIsRange ? Math.max(0, Number(item.price_range_min) + Number(item.addon_price ?? 0) - lineDeposit) : null;
               const payLaterRangeMax = itemIsRange ? Math.max(0, Number(item.price_range_max) + Number(item.addon_price ?? 0) - lineDeposit) : null;
+              const isSlotUnavailable = unavailableSlotItemIdSet.has(item.id);
 
               return (
                 <article
                   key={item.id}
+                  ref={(el) => {
+                    cartItemRefs.current[item.id] = el;
+                  }}
                   className={`rounded-xl border bg-[var(--card)] px-3 py-2.5 shadow-sm ${
-                    premium
+                    isSlotUnavailable
+                      ? "border-[var(--status-error)] bg-[var(--status-error-bg)] ring-1 ring-[var(--status-error)]/25"
+                      : premium
                       ? "border-[var(--accent-strong)]/40 border-l-[3px] border-l-[var(--accent-strong)]"
                       : "border-[var(--card-border)]"
                   }`}
                 >
+                  {isSlotUnavailable ? (
+                    <div className="mb-2 flex items-start gap-2 rounded-lg border border-[var(--status-error-border)] bg-[var(--card)]/90 px-2.5 py-2 text-[11px] font-medium text-[var(--status-error)]">
+                      <i className="fa-solid fa-circle-exclamation mt-0.5 text-[10px]" aria-hidden />
+                      <span>{SLOT_ITEM_UNAVAILABLE_MESSAGE}</span>
+                    </div>
+                  ) : null}
                   <div className="flex flex-wrap items-start justify-between gap-x-2 gap-y-1">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-1.5">

@@ -35,6 +35,8 @@ use RuntimeException;
 
 class CartController extends Controller
 {
+    private const SLOT_UNAVAILABLE_MESSAGE = 'This time slot is no longer available. Please select another time.';
+
     public function __construct(
         private readonly BookingAvailabilityService $availabilityService,
         private readonly BookingCartCleanupService $cartCleanupService,
@@ -99,8 +101,16 @@ class CartController extends Controller
             $this->cleanupExpiredItems($cart);
 
             if (! $this->availabilityService->isWithinStaffAvailability((int) $validated['staff_id'], $startAt, $endAt)
-                || $this->availabilityService->hasConflict((int) $validated['staff_id'], $startAt, $endAt, (int) $service->buffer_min)) {
-                return $this->respondError('Selected slot is no longer available.', 409);
+                || $this->availabilityService->hasConflict(
+                    (int) $validated['staff_id'],
+                    $startAt,
+                    $endAt,
+                    (int) $service->buffer_min,
+                    null,
+                    null,
+                    BookingAvailabilityService::SCOPE_CUSTOMER,
+                )) {
+                return $this->respondError(self::SLOT_UNAVAILABLE_MESSAGE, 409);
             }
 
             $expiresAt = now()->addMinutes($this->getCartHoldMinutes());
@@ -490,6 +500,30 @@ class CartController extends Controller
             if ($paymentMethod === 'billplz_credit_card' && ! $selectedGatewayOption && $this->hasActiveBillplzOptions('credit_card')) {
                 return $this->respondError('Credit card payment is not available.', 422);
             }
+
+            $unavailableItems = [];
+            foreach ($activeItems as $item) {
+                $service = $item->service;
+                if (! $service) {
+                    continue;
+                }
+
+                if ($message = $this->advanceBookingLimitError(Carbon::parse($item->start_at))) {
+                    return $this->respondError($message, 422);
+                }
+
+                if ($this->resolveCheckoutSlotAvailabilityError($item, (int) $service->buffer_min, $activeItemIds) !== null) {
+                    $unavailableItems[] = $this->formatUnavailableCartItem($item);
+                }
+            }
+
+            if ($unavailableItems !== []) {
+                return $this->respondError(self::SLOT_UNAVAILABLE_MESSAGE, 409, [
+                    'unavailable_cart_item_ids' => collect($unavailableItems)->pluck('cart_item_id')->map(fn ($id) => (int) $id)->values()->all(),
+                    'unavailable_items' => $unavailableItems,
+                ]);
+            }
+
             $order = null;
 
             $order = Order::query()->create([
@@ -527,10 +561,6 @@ class CartController extends Controller
 
                 if ($message = $this->advanceBookingLimitError(Carbon::parse($item->start_at))) {
                     return $this->respondError($message, 422);
-                }
-
-                if (! $this->isItemStillAvailable($item, (int) $service->buffer_min, $activeItemIds)) {
-                    return $this->respondError('One or more selected slots are no longer available.', 409);
                 }
 
                 $contactName = (string) ($validated['guest_name'] ?? '');
@@ -1050,46 +1080,47 @@ class CartController extends Controller
         ];
     }
 
-    private function isItemStillAvailable(BookingCartItem $item, int $bufferMin, array $ignoreCartItemIds): bool
+    private function formatUnavailableCartItem(BookingCartItem $item): array
+    {
+        $item->loadMissing(['service:id,name,cn_name', 'staff:id,name']);
+
+        return [
+            'cart_item_id' => (int) $item->id,
+            'service_name' => (string) ($item->service?->name ?? 'Service'),
+            'service_cn_name' => $item->service?->cn_name,
+            'staff_name' => (string) ($item->staff?->name ?? ''),
+            'start_at' => $item->start_at?->toIso8601String(),
+            'end_at' => $item->end_at?->toIso8601String(),
+        ];
+    }
+
+    private function resolveCheckoutSlotAvailabilityError(BookingCartItem $item, int $bufferMin, array $ignoreCartItemIds): ?string
     {
         if (! $this->availabilityService->isWithinStaffAvailability((int) $item->staff_id, $item->start_at, $item->end_at)) {
-            return false;
+            return self::SLOT_UNAVAILABLE_MESSAGE;
         }
 
-        $startAt = $item->start_at->copy()->setTimezone((string) config('app.timezone', 'Asia/Kuala_Lumpur'))->toDateTimeString();
-        $blockEndAt = $item->end_at->copy()->addMinutes($bufferMin)->setTimezone((string) config('app.timezone', 'Asia/Kuala_Lumpur'))->toDateTimeString();
+        $diagnostics = $this->availabilityService->getConflictDiagnostics(
+            (int) $item->staff_id,
+            $item->start_at,
+            $item->end_at,
+            $bufferMin,
+            null,
+            null,
+            BookingAvailabilityService::SCOPE_CUSTOMER,
+            $ignoreCartItemIds,
+        );
 
-        $bookingConflict = Booking::query()
-            ->where('staff_id', $item->staff_id)
-            ->whereIn('status', BookingAvailabilityService::BLOCKING_BOOKING_STATUSES)
-            ->where('start_at', '<', $blockEndAt)
-            ->get(['end_at', 'buffer_min'])
-            ->contains(function (Booking $booking) use ($startAt) {
-                if (! $booking->end_at) {
-                    return false;
-                }
-
-                return $booking->end_at
-                    ->copy()
-                    ->setTimezone((string) config('app.timezone', 'Asia/Kuala_Lumpur'))
-                    ->addMinutes(max(0, (int) ($booking->buffer_min ?? 0)))
-                    ->gt(Carbon::parse($startAt, (string) config('app.timezone', 'Asia/Kuala_Lumpur')));
-            });
-
-        if ($bookingConflict) {
-            return false;
+        if (! (bool) ($diagnostics['has_conflict'] ?? false)) {
+            return null;
         }
 
-        $cartConflict = BookingCartItem::query()
-            ->where('staff_id', $item->staff_id)
-            ->where('status', 'active')
-            ->where('expires_at', '>', now())
-            ->whereNotIn('id', $ignoreCartItemIds)
-            ->where('start_at', '<', $blockEndAt)
-            ->where('end_at', '>', $startAt)
-            ->exists();
+        return self::SLOT_UNAVAILABLE_MESSAGE;
+    }
 
-        return ! $cartConflict;
+    private function isItemStillAvailable(BookingCartItem $item, int $bufferMin, array $ignoreCartItemIds): bool
+    {
+        return $this->resolveCheckoutSlotAvailabilityError($item, $bufferMin, $ignoreCartItemIds) === null;
     }
 
     private function resolveDepositByCartItem(array $items, array $claimStatusesByItem = []): array

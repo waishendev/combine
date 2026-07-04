@@ -6,6 +6,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingBlock;
 use App\Models\Booking\BookingCartItem;
 use App\Models\Booking\BookingService;
+use App\Models\Ecommerce\PosCartServiceItem;
 use App\Models\Booking\BookingStaffSchedule;
 use App\Models\Booking\BookingStaffTimeoff;
 use App\Models\Booking\BookingLeaveRequest;
@@ -23,6 +24,12 @@ class BookingAvailabilityService
      * @var array<int,string>
      */
     public const BLOCKING_BOOKING_STATUSES = ['HOLD', 'CONFIRMED', 'PENDING', 'IN_PROGRESS', 'CHECKED_IN'];
+
+    /** Customer-facing checks: bookings, CRM POS cart locks, and other customer cart reserves. */
+    public const SCOPE_CUSTOMER = 'customer';
+
+    /** CRM/staff checks: bookings and CRM POS cart locks only (customer cart reserves are ignored). */
+    public const SCOPE_CRM = 'crm';
 
     /**
      * @return array<int, array{
@@ -163,9 +170,28 @@ class BookingAvailabilityService
         return $visible;
     }
 
-    public function hasConflict(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null, ?Booking $ignoreBooking = null): bool
-    {
-        return $this->getConflictDiagnostics($staffId, $startAt, $endAt, $bufferMin, $ignoreBookingId, $ignoreBooking)['has_conflict'];
+    public function hasConflict(
+        int $staffId,
+        Carbon $startAt,
+        Carbon $endAt,
+        int $bufferMin,
+        ?int $ignoreBookingId = null,
+        ?Booking $ignoreBooking = null,
+        string $conflictScope = self::SCOPE_CUSTOMER,
+        array $ignoreCartItemIds = [],
+        array $ignorePosCartServiceItemIds = [],
+    ): bool {
+        return $this->getConflictDiagnostics(
+            $staffId,
+            $startAt,
+            $endAt,
+            $bufferMin,
+            $ignoreBookingId,
+            $ignoreBooking,
+            $conflictScope,
+            $ignoreCartItemIds,
+            $ignorePosCartServiceItemIds,
+        )['has_conflict'];
     }
 
     protected function businessTimezone(): string
@@ -209,12 +235,22 @@ class BookingAvailabilityService
      *   conflicting_booking_ids:array<int,int>,
      *   conflicting_booking_codes:array<int,string>,
      *   conflicting_cart_item_ids:array<int,int>,
+     *   conflicting_pos_cart_item_ids:array<int,int>,
      *   detected_leave_ids:array<int,int>,
      *   detected_block_ids:array<int,int>
      * }
      */
-    public function getConflictDiagnostics(int $staffId, Carbon $startAt, Carbon $endAt, int $bufferMin, ?int $ignoreBookingId = null, ?Booking $ignoreBooking = null): array
-    {
+    public function getConflictDiagnostics(
+        int $staffId,
+        Carbon $startAt,
+        Carbon $endAt,
+        int $bufferMin,
+        ?int $ignoreBookingId = null,
+        ?Booking $ignoreBooking = null,
+        string $conflictScope = self::SCOPE_CUSTOMER,
+        array $ignoreCartItemIds = [],
+        array $ignorePosCartServiceItemIds = [],
+    ): array {
         $blockEnd = $endAt->copy()->addMinutes($bufferMin);
         $queryStartAt = $this->normalizeForStorage($startAt);
         $queryEndAt = $this->normalizeForStorage($endAt);
@@ -250,28 +286,64 @@ class BookingAvailabilityService
             })
             ->values();
 
-        $cartConflicts = BookingCartItem::where('staff_id', $staffId)
-            ->where('status', 'active')
-            ->where('expires_at', '>', now())
-            ->when($ignoreBooking !== null && $ignoreStartAt && $ignoreServiceId > 0, function ($query) use ($ignoreStartAt, $ignoreServiceId) {
-                // Stale active cart holds from the original booking flow can keep the old range.
-                // Exclude only the hold that matches this same booking's staff/service/start;
-                // different starts/services remain real conflicts.
-                $query->where(function ($nested) use ($ignoreStartAt, $ignoreServiceId) {
-                    $nested->where('service_id', '!=', $ignoreServiceId)
-                        ->orWhere('start_at', '!=', $ignoreStartAt);
-                });
-            })
+        $cartConflicts = [];
+        if ($conflictScope === self::SCOPE_CUSTOMER) {
+            $ignoredCartItemIds = collect($ignoreCartItemIds)
+                ->map(fn ($id) => (int) $id)
+                ->filter(fn (int $id) => $id > 0)
+                ->unique()
+                ->values()
+                ->all();
+
+            $cartConflicts = BookingCartItem::where('staff_id', $staffId)
+                ->where('status', 'active')
+                ->where('expires_at', '>', now())
+                ->when(! empty($ignoredCartItemIds), fn ($query) => $query->whereNotIn('id', $ignoredCartItemIds))
+                ->when($ignoreBooking !== null && $ignoreStartAt && $ignoreServiceId > 0, function ($query) use ($ignoreStartAt, $ignoreServiceId) {
+                    // Stale active cart holds from the original booking flow can keep the old range.
+                    // Exclude only the hold that matches this same booking's staff/service/start;
+                    // different starts/services remain real conflicts.
+                    $query->where(function ($nested) use ($ignoreStartAt, $ignoreServiceId) {
+                        $nested->where('service_id', '!=', $ignoreServiceId)
+                            ->orWhere('start_at', '!=', $ignoreStartAt);
+                    });
+                })
+                ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
+                    $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
+                })
+                ->get(['id', 'start_at', 'end_at', 'service_id', 'status'])
+                ->map(fn (BookingCartItem $item) => [
+                    'id' => (int) $item->id,
+                    'service_id' => (int) ($item->service_id ?? 0),
+                    'start_at' => optional($item->start_at)?->toDateTimeString(),
+                    'end_at' => optional($item->end_at)?->toDateTimeString(),
+                    'status' => (string) ($item->status ?? ''),
+                ])
+                ->values()
+                ->all();
+        }
+
+        $ignoredPosCartServiceItemIds = collect($ignorePosCartServiceItemIds)
+            ->map(fn ($id) => (int) $id)
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+
+        $posCartConflicts = PosCartServiceItem::query()
+            ->where('assigned_staff_id', $staffId)
+            ->whereNotNull('start_at')
+            ->whereNotNull('end_at')
+            ->when(! empty($ignoredPosCartServiceItemIds), fn ($query) => $query->whereNotIn('id', $ignoredPosCartServiceItemIds))
             ->where(function ($query) use ($queryStartAt, $queryBlockEndAt) {
                 $this->whereOverlaps($query, $queryStartAt, $queryBlockEndAt);
             })
-            ->get(['id', 'start_at', 'end_at', 'service_id', 'status'])
-            ->map(fn (BookingCartItem $item) => [
+            ->get(['id', 'start_at', 'end_at', 'booking_service_id'])
+            ->map(fn (PosCartServiceItem $item) => [
                 'id' => (int) $item->id,
-                'service_id' => (int) ($item->service_id ?? 0),
+                'booking_service_id' => (int) ($item->booking_service_id ?? 0),
                 'start_at' => optional($item->start_at)?->toDateTimeString(),
                 'end_at' => optional($item->end_at)?->toDateTimeString(),
-                'status' => (string) ($item->status ?? ''),
             ])
             ->values()
             ->all();
@@ -359,11 +431,16 @@ class BookingAvailabilityService
         ])->values()->all();
         $conflictingBookingIds = collect($conflictingBookingRows)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $conflictingCartItemIds = collect($cartConflicts)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+        $conflictingPosCartItemIds = collect($posCartConflicts)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $timeoffIds = collect($timeoffConflicts)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
         $blockIdList = collect($blockConflicts)->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
 
         $diagnostics = [
-            'has_conflict' => ! empty($conflictingBookingIds) || ! empty($cartConflicts) || ! empty($timeoffIds) || ! empty($blockIdList),
+            'has_conflict' => ! empty($conflictingBookingIds)
+                || ! empty($cartConflicts)
+                || ! empty($posCartConflicts)
+                || ! empty($timeoffIds)
+                || ! empty($blockIdList),
             'current_booking_id' => $ignoreBooking?->id ? (int) $ignoreBooking->id : ($ignoreBookingId ? (int) $ignoreBookingId : null),
             'current_appointment_id' => $ignoreBooking?->id ? (int) $ignoreBooking->id : ($ignoreBookingId ? (int) $ignoreBookingId : null),
             'staff_id' => $staffId,
@@ -381,6 +458,8 @@ class BookingAvailabilityService
             'conflicting_appointments' => $conflictingBookingRows,
             'conflicting_cart_item_ids' => $conflictingCartItemIds,
             'conflicting_cart_items' => $cartConflicts,
+            'conflicting_pos_cart_item_ids' => $conflictingPosCartItemIds,
+            'conflicting_pos_cart_items' => $posCartConflicts,
             'detected_leave_ids' => $timeoffIds,
             'detected_leave_types' => collect($timeoffConflicts)->pluck('leave_type')->filter()->unique()->values()->all(),
             'detected_leaves' => $timeoffConflicts,
@@ -529,6 +608,9 @@ class BookingAvailabilityService
         ?callable $conflictReasonResolver = null,
         ?int $ignoreBookingId = null,
         ?Booking $ignoreBooking = null,
+        string $conflictScope = self::SCOPE_CRM,
+        array $ignoreCartItemIds = [],
+        array $ignorePosCartServiceItemIds = [],
     ): array {
         $staffIds = collect($staffIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
         if ($staffIds === []) {
@@ -548,11 +630,13 @@ class BookingAvailabilityService
             ->values()
             ->all();
 
-        $context = $this->prefetchPosDayAvailabilityContext($staffIds, $day, $bufferMin);
+        $context = $this->prefetchPosDayAvailabilityContext($staffIds, $day, $bufferMin, $conflictScope);
         $context['ignore_booking_ids'] = $ignoreBookingIds;
         $context['ignore_booking_code'] = trim((string) ($ignoreBooking?->booking_code ?? ''));
         $context['ignore_booking_start_at'] = $ignoreBooking?->start_at ? $ignoreBooking->start_at->toDateTimeString() : null;
         $context['ignore_booking_service_id'] = (int) ($ignoreBooking?->service_id ?? 0);
+        $context['ignore_cart_item_ids'] = collect($ignoreCartItemIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
+        $context['ignore_pos_cart_service_item_ids'] = collect($ignorePosCartServiceItemIds)->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all();
 
         $visibleStartMinute = max(0, $visibleStartMinute);
         $visibleEndMinute = max($visibleStartMinute, $visibleEndMinute);
@@ -612,12 +696,13 @@ class BookingAvailabilityService
      *   schedules:array<int, BookingStaffSchedule>,
      *   bookings_by_staff:array<int, array<int, array<string,mixed>>>,
      *   cart_by_staff:array<int, array<int, array<string,mixed>>>,
+     *   pos_cart_by_staff:array<int, array<int, array<string,mixed>>>,
      *   timeoffs_by_staff:array<int, array<int, array<string,mixed>>>,
      *   leave_by_staff:array<int, array<int, array<string,mixed>>>,
      *   blocks:array<int, array<string,mixed>>
      * }
      */
-    protected function prefetchPosDayAvailabilityContext(array $staffIds, Carbon $day, int $bufferMin): array
+    protected function prefetchPosDayAvailabilityContext(array $staffIds, Carbon $day, int $bufferMin, string $conflictScope = self::SCOPE_CRM): array
     {
         $timezone = $this->businessTimezone();
         $dayStart = $day->copy()->startOfDay();
@@ -660,23 +745,44 @@ class BookingAvailabilityService
             ];
         }
 
-        $cartRows = BookingCartItem::query()
-            ->whereIn('staff_id', $staffIds)
-            ->where('status', 'active')
-            ->where('expires_at', '>', now())
+        $cartByStaff = [];
+        if ($conflictScope === self::SCOPE_CUSTOMER) {
+            $cartRows = BookingCartItem::query()
+                ->whereIn('staff_id', $staffIds)
+                ->where('status', 'active')
+                ->where('expires_at', '>', now())
+                ->where('start_at', '<', $queryEnd->toDateTimeString())
+                ->where('end_at', '>', $queryStart->toDateTimeString())
+                ->get(['id', 'staff_id', 'start_at', 'end_at', 'service_id', 'status']);
+
+            foreach ($cartRows as $item) {
+                $staffId = (int) $item->staff_id;
+                $cartByStaff[$staffId][] = [
+                    'id' => (int) $item->id,
+                    'service_id' => (int) ($item->service_id ?? 0),
+                    'start_at' => optional($item->start_at)?->toDateTimeString(),
+                    'end_at' => optional($item->end_at)?->toDateTimeString(),
+                    'status' => (string) ($item->status ?? ''),
+                ];
+            }
+        }
+
+        $posCartRows = PosCartServiceItem::query()
+            ->whereIn('assigned_staff_id', $staffIds)
+            ->whereNotNull('start_at')
+            ->whereNotNull('end_at')
             ->where('start_at', '<', $queryEnd->toDateTimeString())
             ->where('end_at', '>', $queryStart->toDateTimeString())
-            ->get(['id', 'staff_id', 'start_at', 'end_at', 'service_id', 'status']);
+            ->get(['id', 'assigned_staff_id', 'start_at', 'end_at', 'booking_service_id']);
 
-        $cartByStaff = [];
-        foreach ($cartRows as $item) {
-            $staffId = (int) $item->staff_id;
-            $cartByStaff[$staffId][] = [
+        $posCartByStaff = [];
+        foreach ($posCartRows as $item) {
+            $staffId = (int) $item->assigned_staff_id;
+            $posCartByStaff[$staffId][] = [
                 'id' => (int) $item->id,
-                'service_id' => (int) ($item->service_id ?? 0),
+                'booking_service_id' => (int) ($item->booking_service_id ?? 0),
                 'start_at' => optional($item->start_at)?->toDateTimeString(),
                 'end_at' => optional($item->end_at)?->toDateTimeString(),
-                'status' => (string) ($item->status ?? ''),
             ];
         }
 
@@ -756,6 +862,8 @@ class BookingAvailabilityService
             'schedules' => $schedules,
             'bookings_by_staff' => $bookingsByStaff,
             'cart_by_staff' => $cartByStaff,
+            'pos_cart_by_staff' => $posCartByStaff,
+            'conflict_scope' => $conflictScope,
             'timeoffs_by_staff' => $timeoffsByStaff,
             'leave_by_staff' => $leaveByStaff,
             'blocks' => $blocks,
@@ -823,12 +931,16 @@ class BookingAvailabilityService
         $conflictingBookingIds = [];
         $conflictingBookingCodes = [];
         $conflictingCartItemIds = [];
+        $conflictingPosCartItemIds = [];
         $detectedLeaveIds = [];
         $detectedLeaveTypes = [];
         $detectedBlockIds = [];
 
         $ignoreBookingIds = array_values(array_filter(array_map('intval', $context['ignore_booking_ids'] ?? [])));
         $ignoreBookingCode = trim((string) ($context['ignore_booking_code'] ?? ''));
+        $ignoredCartItemIds = array_values(array_filter(array_map('intval', $context['ignore_cart_item_ids'] ?? [])));
+        $ignoredPosCartServiceItemIds = array_values(array_filter(array_map('intval', $context['ignore_pos_cart_service_item_ids'] ?? [])));
+        $conflictScope = (string) ($context['conflict_scope'] ?? self::SCOPE_CRM);
 
         foreach ($context['bookings_by_staff'][$staffId] ?? [] as $booking) {
             $bookingId = (int) ($booking['id'] ?? 0);
@@ -853,18 +965,38 @@ class BookingAvailabilityService
         $ignoreStartAt = $context['ignore_booking_start_at'] ?? null;
         $ignoreServiceId = (int) ($context['ignore_booking_service_id'] ?? 0);
 
-        foreach ($context['cart_by_staff'][$staffId] ?? [] as $cartItem) {
-            if ($ignoreStartAt && $ignoreServiceId > 0) {
-                if ((int) ($cartItem['service_id'] ?? 0) === $ignoreServiceId
-                    && (string) ($cartItem['start_at'] ?? '') === $ignoreStartAt) {
+        if ($conflictScope === self::SCOPE_CUSTOMER) {
+            foreach ($context['cart_by_staff'][$staffId] ?? [] as $cartItem) {
+                $cartItemId = (int) ($cartItem['id'] ?? 0);
+                if ($cartItemId > 0 && in_array($cartItemId, $ignoredCartItemIds, true)) {
                     continue;
                 }
+
+                if ($ignoreStartAt && $ignoreServiceId > 0) {
+                    if ((int) ($cartItem['service_id'] ?? 0) === $ignoreServiceId
+                        && (string) ($cartItem['start_at'] ?? '') === $ignoreStartAt) {
+                        continue;
+                    }
+                }
+
+                $cartStart = Carbon::parse((string) ($cartItem['start_at'] ?? ''));
+                $cartEnd = Carbon::parse((string) ($cartItem['end_at'] ?? ''));
+                if ($cartStart->lt($queryBlockEndAt) && $cartEnd->gt($queryStartAt)) {
+                    $conflictingCartItemIds[] = $cartItemId;
+                }
+            }
+        }
+
+        foreach ($context['pos_cart_by_staff'][$staffId] ?? [] as $posCartItem) {
+            $posCartItemId = (int) ($posCartItem['id'] ?? 0);
+            if ($posCartItemId > 0 && in_array($posCartItemId, $ignoredPosCartServiceItemIds, true)) {
+                continue;
             }
 
-            $cartStart = Carbon::parse((string) ($cartItem['start_at'] ?? ''));
-            $cartEnd = Carbon::parse((string) ($cartItem['end_at'] ?? ''));
+            $cartStart = Carbon::parse((string) ($posCartItem['start_at'] ?? ''));
+            $cartEnd = Carbon::parse((string) ($posCartItem['end_at'] ?? ''));
             if ($cartStart->lt($queryBlockEndAt) && $cartEnd->gt($queryStartAt)) {
-                $conflictingCartItemIds[] = (int) ($cartItem['id'] ?? 0);
+                $conflictingPosCartItemIds[] = $posCartItemId;
             }
         }
 
@@ -895,16 +1027,22 @@ class BookingAvailabilityService
 
         $conflictingBookingIds = array_values(array_unique(array_filter($conflictingBookingIds)));
         $conflictingCartItemIds = array_values(array_unique(array_filter($conflictingCartItemIds)));
+        $conflictingPosCartItemIds = array_values(array_unique(array_filter($conflictingPosCartItemIds)));
         $detectedLeaveIds = array_values(array_unique(array_filter($detectedLeaveIds)));
         $detectedBlockIds = array_values(array_unique(array_filter($detectedBlockIds)));
         $detectedLeaveTypes = array_values(array_unique($detectedLeaveTypes));
 
         return [
-            'has_conflict' => ! empty($conflictingBookingIds) || ! empty($conflictingCartItemIds) || ! empty($detectedLeaveIds) || ! empty($detectedBlockIds),
+            'has_conflict' => ! empty($conflictingBookingIds)
+                || ! empty($conflictingCartItemIds)
+                || ! empty($conflictingPosCartItemIds)
+                || ! empty($detectedLeaveIds)
+                || ! empty($detectedBlockIds),
             'staff_id' => $staffId,
             'conflicting_booking_ids' => $conflictingBookingIds,
             'conflicting_booking_codes' => array_values(array_unique($conflictingBookingCodes)),
             'conflicting_cart_item_ids' => $conflictingCartItemIds,
+            'conflicting_pos_cart_item_ids' => $conflictingPosCartItemIds,
             'detected_leave_ids' => $detectedLeaveIds,
             'detected_leave_types' => $detectedLeaveTypes,
             'detected_block_ids' => $detectedBlockIds,

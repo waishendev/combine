@@ -1499,7 +1499,15 @@ class PosController extends Controller
                     $outsideScheduleOverrideRequested = (bool) $request->boolean('availability_override')
                         && (string) $request->input('availability_override_type') === 'outside_staff_schedule'
                         && $scheduleFailureReason === 'outside_staff_schedule';
-                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($staffId, $startAt, $transactionNewEndAt, $bufferMin, (int) $lockedBooking->id, $lockedBooking);
+                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                        $staffId,
+                        $startAt,
+                        $transactionNewEndAt,
+                        $bufferMin,
+                        (int) $lockedBooking->id,
+                        $lockedBooking,
+                        BookingAvailabilityService::SCOPE_CRM,
+                    );
 
                     if (((! (bool) ($scheduleDiagnostics['is_available'] ?? false)) && ! $outsideScheduleOverrideRequested) || (bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
                         $settlementReasonCode = (bool) ($conflictDiagnostics['has_conflict'] ?? false)
@@ -2140,7 +2148,15 @@ class PosController extends Controller
             return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', Staff::query()->findOrFail($targetStaffId), $newStart, $newEnd, $scheduleDiagnostics);
         }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics($targetStaffId, $newStart, $newEnd, (int) $booking->buffer_min, (int) $booking->id, $booking);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+            $targetStaffId,
+            $newStart,
+            $newEnd,
+            (int) $booking->buffer_min,
+            (int) $booking->id,
+            $booking,
+            BookingAvailabilityService::SCOPE_CRM,
+        );
         if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
             return $this->respondPosAvailabilityError($conflictDiagnostics);
         }
@@ -2668,7 +2684,15 @@ class PosController extends Controller
         }
 
         $scheduleDiagnostics = $this->availabilityService->getStaffAvailabilityDiagnostics((int) $staff->id, $startAt, $endAt);
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin, $ignoreBooking?->id, $ignoreBooking);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+            (int) $staff->id,
+            $startAt,
+            $endAt,
+            $bufferMin,
+            $ignoreBooking?->id,
+            $ignoreBooking,
+            BookingAvailabilityService::SCOPE_CRM,
+        );
         $conflictPayload = array_merge($conflictDiagnostics, [
             'staff_id' => (int) $staff->id,
             'staff_schedule' => $scheduleDiagnostics,
@@ -2997,7 +3021,15 @@ class PosController extends Controller
             return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
         }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+            (int) $staff->id,
+            $startAt,
+            $endAt,
+            $bufferMin,
+            null,
+            null,
+            BookingAvailabilityService::SCOPE_CRM,
+        );
         if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
             return $this->respondPosAvailabilityError($conflictDiagnostics);
         }
@@ -3186,7 +3218,15 @@ class PosController extends Controller
         $endAt = $startAt->copy()->addMinutes((int) $service->duration_min);
 
         if (! $availabilityService->isWithinStaffAvailability((int) $staff->id, $startAt, $endAt)
-            || $availabilityService->hasConflict((int) $staff->id, $startAt, $endAt, (int) $service->buffer_min)) {
+            || $availabilityService->hasConflict(
+                (int) $staff->id,
+                $startAt,
+                $endAt,
+                (int) $service->buffer_min,
+                null,
+                null,
+                BookingAvailabilityService::SCOPE_CRM,
+            )) {
             return $this->respondError(__('Selected slot is no longer available.'), 409);
         }
 
@@ -3427,7 +3467,15 @@ class PosController extends Controller
             return $this->respondPosScheduleFailure($scheduleFailureReason ?: 'staff_unavailable', $staff, $startAt, $endAt, $scheduleDiagnostics);
         }
 
-        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $staff->id, $startAt, $endAt, $bufferMin);
+        $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+            (int) $staff->id,
+            $startAt,
+            $endAt,
+            $bufferMin,
+            null,
+            null,
+            BookingAvailabilityService::SCOPE_CRM,
+        );
         if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
             return $this->respondPosAvailabilityError($conflictDiagnostics);
         }
@@ -6407,7 +6455,17 @@ class PosController extends Controller
                 }
 
                 if ($serviceItem->assigned_staff_id) {
-                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics((int) $serviceItem->assigned_staff_id, $startAt, $endAt, $bufferMin);
+                    $conflictDiagnostics = $this->availabilityService->getConflictDiagnostics(
+                        (int) $serviceItem->assigned_staff_id,
+                        $startAt,
+                        $endAt,
+                        $bufferMin,
+                        null,
+                        null,
+                        BookingAvailabilityService::SCOPE_CRM,
+                        [],
+                        [(int) $serviceItem->id],
+                    );
                     if ((bool) ($conflictDiagnostics['has_conflict'] ?? false)) {
                         abort(409, $this->posAvailabilityMessage($this->posAvailabilityReasonCode($conflictDiagnostics)));
                     }
@@ -8886,7 +8944,10 @@ class PosController extends Controller
             return 'staff_leave';
         }
 
-        if (! empty($diagnostics['conflicting_booking_ids'] ?? []) || ! empty($diagnostics['conflicting_cart_item_ids'] ?? []) || ! empty($diagnostics['detected_block_ids'] ?? [])) {
+        if (! empty($diagnostics['conflicting_booking_ids'] ?? [])
+            || ! empty($diagnostics['conflicting_cart_item_ids'] ?? [])
+            || ! empty($diagnostics['conflicting_pos_cart_item_ids'] ?? [])
+            || ! empty($diagnostics['detected_block_ids'] ?? [])) {
             return 'booking_conflict';
         }
 

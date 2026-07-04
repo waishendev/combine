@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { formatDateTime12Hour } from '@/lib/formatDateTime'
 
@@ -68,6 +68,7 @@ type PosAppointmentDepositCreditSectionProps = {
 
 export default function PosAppointmentDepositCreditSection({
   bookingId,
+  initialTransactions,
   initialTotal,
   onTotalChange,
   onAppointmentUpdated,
@@ -75,9 +76,24 @@ export default function PosAppointmentDepositCreditSection({
   showMsg,
   disabled = false,
 }: PosAppointmentDepositCreditSectionProps) {
-  const [transactions, setTransactions] = useState<PosDepositTransaction[]>([])
-  const [depositTotal, setDepositTotal] = useState(Number(initialTotal ?? 0))
-  const [loading, setLoading] = useState(false)
+  const [transactions, setTransactions] = useState<PosDepositTransaction[]>(() => initialTransactions ?? [])
+  const [depositTotal, setDepositTotal] = useState(() => Number(initialTotal ?? 0))
+  const [loading, setLoading] = useState(() => initialTransactions === undefined && bookingId > 0)
+  const onTotalChangeRef = useRef(onTotalChange)
+  const onAppointmentUpdatedRef = useRef(onAppointmentUpdated)
+  const onErrorRef = useRef(onError)
+
+  useEffect(() => {
+    onTotalChangeRef.current = onTotalChange
+  }, [onTotalChange])
+
+  useEffect(() => {
+    onAppointmentUpdatedRef.current = onAppointmentUpdated
+  }, [onAppointmentUpdated])
+
+  useEffect(() => {
+    onErrorRef.current = onError
+  }, [onError])
   const [saving, setSaving] = useState(false)
   const [formMode, setFormMode] = useState<DepositFormMode>({ type: 'idle' })
   const [remarkDraft, setRemarkDraft] = useState('')
@@ -85,10 +101,17 @@ export default function PosAppointmentDepositCreditSection({
   const [splitPayments, setSplitPayments] = useState<Record<SplitPaymentMethod, string>>(EMPTY_SPLIT_PAYMENTS)
 
   useEffect(() => {
+    if (initialTransactions !== undefined) {
+      setTransactions(initialTransactions)
+    }
+  }, [bookingId, initialTransactions])
+
+  useEffect(() => {
     if (!Number.isFinite(initialTotal)) return
-    setDepositTotal(Number(initialTotal))
-    onTotalChange?.(Number(initialTotal))
-  }, [initialTotal, onTotalChange])
+    const total = Number(initialTotal)
+    setDepositTotal(total)
+    onTotalChangeRef.current?.(total)
+  }, [initialTotal])
 
   const applyAppointmentDetailResponse = useCallback((data: Record<string, unknown> | null | undefined) => {
     if (!data) return
@@ -98,8 +121,8 @@ export default function PosAppointmentDepositCreditSection({
 
     setTransactions(rows)
     setDepositTotal(total)
-    onTotalChange?.(total)
-    onAppointmentUpdated?.({
+    onTotalChangeRef.current?.(total)
+    onAppointmentUpdatedRef.current?.({
       deposit_transactions: rows,
       deposit_total: total,
       balance_due: Number(data.balance_due ?? 0),
@@ -118,27 +141,32 @@ export default function PosAppointmentDepositCreditSection({
         ...(data.settlement_paid !== undefined ? { settlement_paid: data.settlement_paid } : {}),
       },
     })
-  }, [onAppointmentUpdated, onTotalChange])
+  }, [])
 
-  const refreshDeposits = useCallback(async () => {
+  const refreshDeposits = useCallback(async (options?: { silent?: boolean }) => {
     if (!bookingId) return
-    setLoading(true)
+    if (!options?.silent) {
+      setLoading(true)
+    }
     try {
       const res = await fetch(`/api/proxy/pos/appointments/${bookingId}`, { cache: 'no-store' })
       const json = await res.json().catch(() => null)
       if (!res.ok) {
-        onError?.(json?.message ?? 'Failed to load deposit transactions.')
+        onErrorRef.current?.(json?.message ?? 'Failed to load deposit transactions.')
         return
       }
       applyAppointmentDetailResponse((json?.data ?? null) as Record<string, unknown> | null)
     } finally {
-      setLoading(false)
+      if (!options?.silent) {
+        setLoading(false)
+      }
     }
-  }, [applyAppointmentDetailResponse, bookingId, onError])
+  }, [applyAppointmentDetailResponse, bookingId])
 
   useEffect(() => {
     if (bookingId <= 0) return
-    void refreshDeposits()
+    const silent = initialTransactions !== undefined
+    void refreshDeposits({ silent })
   }, [bookingId, refreshDeposits])
 
   useEffect(() => {
@@ -146,7 +174,7 @@ export default function PosAppointmentDepositCreditSection({
 
     const handleVisibilityRefresh = () => {
       if (document.visibilityState === 'visible') {
-        void refreshDeposits()
+        void refreshDeposits({ silent: true })
       }
     }
 
@@ -240,15 +268,15 @@ export default function PosAppointmentDepositCreditSection({
 
     setTransactions(rows)
     setDepositTotal(total)
-    onTotalChange?.(total)
-    onAppointmentUpdated?.({
+    onTotalChangeRef.current?.(total)
+    onAppointmentUpdatedRef.current?.({
       deposit_transactions: rows,
       deposit_total: total,
       balance_due: Number(data.balance_due ?? 0),
       amount_due_now: Number(data.amount_due_now ?? 0),
       appointment: (data.appointment ?? undefined) as Record<string, unknown> | undefined,
     })
-  }, [onAppointmentUpdated, onTotalChange])
+  }, [])
 
   const saveDeposit = useCallback(async () => {
     const amount = Math.max(0, splitPaymentTotal)

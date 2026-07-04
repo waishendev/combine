@@ -2,10 +2,10 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookingProgress } from "@/components/booking/BookingProgress";
 import { ServiceTierBadge } from "@/components/booking/ServiceTierBadge";
-import { addCartItem, getAvailabilityPooled, getBookingServiceDetail, uploadBookingCartItemPhotos } from "@/lib/apiClient";
+import { addCartItem, ApiError, getAvailabilityPooled, getBookingServiceDetail, uploadBookingCartItemPhotos } from "@/lib/apiClient";
 import { depositPreviewForService } from "@/lib/bookingDepositPreview";
 import { clearBookingPhotoDraft, loadBookingPhotoDraft } from "@/lib/bookingPhotoDraft";
 import { Service, Staff } from "@/lib/types";
@@ -18,6 +18,24 @@ function formatTime(iso: string) {
     minute: "2-digit",
     timeZone: TZ,
   });
+}
+
+function formatTimeRangeLabel(startIso: string, endIso: string) {
+  const format = (iso: string) =>
+    new Date(iso).toLocaleTimeString("en-US", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: TZ,
+    });
+  return `${format(startIso)} – ${format(endIso)}`;
+}
+
+function buildSlotTakenMessage(staffName: string, startIso: string, endIso: string) {
+  return {
+    line1: `This staff ${staffName} is no longer available for the selected time (${formatTimeRangeLabel(startIso, endIso)}).`,
+    line2: "Please choose another staff member or select a different time slot.",
+  };
 }
 
 type ServiceDetail = Service & { staffs?: Staff[] };
@@ -56,6 +74,8 @@ export default function ServiceStaffPage() {
   const [verifiedAvailableStaffIds, setVerifiedAvailableStaffIds] = useState<number[] | null>(null);
   const [verifyingAvailability, setVerifyingAvailability] = useState(false);
   const [confirmStaff, setConfirmStaff] = useState<Staff | null>(null);
+  const [confirmError, setConfirmError] = useState<{ line1: string; line2?: string } | null>(null);
+  const [confirmErrorIsSlotTaken, setConfirmErrorIsSlotTaken] = useState(false);
   const [adding, setAdding] = useState(false);
   const [cartAddSuccessOpen, setCartAddSuccessOpen] = useState(false);
 
@@ -146,6 +166,8 @@ export default function ServiceStaffPage() {
         setVerifiedAvailableStaffIds(staffIds);
         if (confirmStaff && !staffIds.includes(confirmStaff.id)) {
           setConfirmStaff(null);
+          setConfirmError(null);
+          setConfirmErrorIsSlotTaken(false);
         }
       })
       .catch((err) => {
@@ -186,10 +208,27 @@ export default function ServiceStaffPage() {
     return new File([blob], name, { type: mimeType || blob.type || "image/jpeg" });
   }, []);
 
+  const closeConfirmModal = useCallback(() => {
+    if (adding) return;
+    setConfirmStaff(null);
+    setConfirmError(null);
+    setConfirmErrorIsSlotTaken(false);
+  }, [adding]);
+
+  const confirmModalScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!confirmError) return;
+    requestAnimationFrame(() => {
+      confirmModalScrollRef.current?.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, [confirmError]);
+
   const handleConfirmAdd = useCallback(async () => {
-    if (!confirmStaff || !startAt) return;
+    if (!confirmStaff || !startAt || !endAt) return;
     setAdding(true);
-    setError(null);
+    setConfirmError(null);
+    setConfirmErrorIsSlotTaken(false);
     try {
       let updatedCart = await addCartItem({
         service_id: Number(id),
@@ -217,15 +256,25 @@ export default function ServiceStaffPage() {
       }
 
       setConfirmStaff(null);
+      setConfirmError(null);
+      setConfirmErrorIsSlotTaken(false);
       const itemCount = (updatedCart?.items?.length || 0) + (updatedCart?.package_items?.length || 0);
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: itemCount }));
       setCartAddSuccessOpen(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add to cart (or upload service photos).");
+      if (err instanceof ApiError && err.status === 409) {
+        setConfirmError(buildSlotTakenMessage(confirmStaff.name, startAt, endAt));
+        setConfirmErrorIsSlotTaken(true);
+      } else {
+        setConfirmError({
+          line1: err instanceof Error ? err.message : "Failed to add to cart (or upload service photos).",
+        });
+        setConfirmErrorIsSlotTaken(false);
+      }
     } finally {
       setAdding(false);
     }
-  }, [confirmStaff, draftDataUrlToFile, id, remarksParam, selectedOptionIds, service?.allow_photo_upload, startAt]);
+  }, [confirmStaff, draftDataUrlToFile, endAt, id, remarksParam, selectedOptionIds, service?.allow_photo_upload, startAt]);
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-5xl px-4 py-6 pb-24 sm:py-10">
@@ -382,7 +431,11 @@ export default function ServiceStaffPage() {
                   <button
                     key={staff.id}
                     type="button"
-                    onClick={() => setConfirmStaff(staff)}
+                    onClick={() => {
+                      setConfirmError(null);
+                      setConfirmErrorIsSlotTaken(false);
+                      setConfirmStaff(staff);
+                    }}
                     className="group flex w-full flex-row items-center gap-3 rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-3 text-left shadow-sm transition hover:border-[var(--accent-strong)] hover:shadow md:flex-col md:items-stretch md:p-6"
                   >
                     {/* <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--muted)] ring-1 ring-[var(--card-border)] md:mx-auto md:mb-1 md:h-24 md:w-24 md:ring-0">
@@ -415,7 +468,7 @@ export default function ServiceStaffPage() {
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-[var(--foreground)]/25 p-0 backdrop-blur-[6px] sm:items-center sm:p-4"
           role="presentation"
-          onClick={() => !adding && setConfirmStaff(null)}
+          onClick={closeConfirmModal}
         >
           <div
             className="relative flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden rounded-t-[1.75rem] border border-[var(--card-border)] bg-[var(--card)] shadow-[0_-8px_40px_-12px_rgba(60,36,50,0.2)] ring-1 ring-black/[0.04] sm:max-h-[min(92dvh,880px)] sm:max-w-xl sm:rounded-3xl sm:shadow-2xl md:max-w-2xl lg:max-w-3xl"
@@ -427,7 +480,7 @@ export default function ServiceStaffPage() {
             <div className="h-1 shrink-0 bg-gradient-to-r from-[var(--accent)] via-[var(--accent-strong)] to-[var(--accent-stronger)]" />
             <button
               type="button"
-              onClick={() => !adding && setConfirmStaff(null)}
+              onClick={closeConfirmModal}
               disabled={adding}
               className="absolute right-3 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-full text-[var(--text-muted)] transition-colors hover:bg-[var(--muted)] hover:text-[var(--foreground)] disabled:pointer-events-none disabled:opacity-40 sm:right-4 sm:top-5"
               aria-label="Close"
@@ -436,7 +489,10 @@ export default function ServiceStaffPage() {
             </button>
 
             <div className="flex min-h-0 flex-1 flex-col">
-              <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-7 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8 md:px-10 lg:px-12">
+              <div
+                ref={confirmModalScrollRef}
+                className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-6 pb-4 pt-7 [-webkit-overflow-scrolling:touch] sm:px-8 sm:pt-8 md:px-10 lg:px-12"
+              >
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-strong)]">Almost there</p>
               <h3 id="staff-confirm-title" className="font-[var(--font-heading)] pr-10 text-2xl font-semibold tracking-tight text-[var(--foreground)] sm:text-3xl">
                 Confirm your slot
@@ -444,6 +500,17 @@ export default function ServiceStaffPage() {
               <p className="mt-2 text-base leading-relaxed text-[var(--text-muted)]">
                 Review the details below, then add this appointment to your cart. You&apos;ll return to the booking start — open the cart icon when you&apos;re ready to pay.
               </p>
+
+              {confirmError ? (
+                <div
+                  className="mt-4 rounded-2xl border border-[var(--status-warning-border)] bg-[var(--status-warning-bg)] px-4 py-3 text-sm text-[var(--status-warning-text)]"
+                  role="alert"
+                  aria-live="assertive"
+                >
+                  <p>{confirmError.line1}</p>
+                  {confirmError.line2 ? <p className="mt-2">{confirmError.line2}</p> : null}
+                </div>
+              ) : null}
 
               <div className="mt-6 rounded-2xl bg-gradient-to-br from-[var(--muted)]/90 to-[var(--background-soft)]/50 p-5 ring-1 ring-[var(--card-border)]/80 sm:p-6">
                 <div className="flex items-center justify-center gap-2.5 text-[var(--text-muted)]">
@@ -553,15 +620,13 @@ export default function ServiceStaffPage() {
                   <span className="font-semibold tabular-nums text-[var(--accent-strong)]">RM {estimatedTotalCost.toFixed(2)}</span>
                 </li> */}
               </ul>
-
-              {error && confirmStaff ? <p className="mt-3 text-base text-[var(--status-error)]">{error}</p> : null}
             </div>
 
             <div className="shrink-0 border-t border-[var(--card-border)] bg-[var(--card)] px-6 pb-6 pt-4 sm:px-8 md:px-10 lg:px-12">
               <div className="flex flex-col-reverse gap-3 sm:flex-row">
                 <button
                   type="button"
-                  onClick={() => !adding && setConfirmStaff(null)}
+                  onClick={closeConfirmModal}
                   disabled={adding}
                   className="w-full rounded-full border-2 border-[var(--card-border)] bg-transparent py-3.5 text-base font-semibold text-[var(--foreground)] transition-all hover:border-[var(--accent)] hover:bg-[var(--muted)]/40 disabled:opacity-50"
                 >
@@ -570,8 +635,8 @@ export default function ServiceStaffPage() {
                 <button
                   type="button"
                   onClick={handleConfirmAdd}
-                  disabled={adding}
-                  className="w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-base font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:opacity-70"
+                  disabled={adding || confirmErrorIsSlotTaken}
+                  className="w-full rounded-full bg-[var(--accent-strong)] py-3.5 text-base font-semibold text-white shadow-md transition-all hover:bg-[var(--accent-stronger)] hover:shadow-lg disabled:pointer-events-none disabled:opacity-40"
                 >
                   {adding ? (
                     <span className="inline-flex items-center justify-center gap-2">
