@@ -226,6 +226,23 @@ type AppointmentPriceEditTarget =
   | { kind: 'createMainAddon'; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
   | { kind: 'createBlockAddon'; blockId: string; optionId: number; name: string; currentUnitPrice: number; originalUnitPrice: number; quantity?: number; priceSource?: PosPriceDisplaySource | null; lineTotalOverride?: number; hasLineTotalOverrideKey?: boolean }
 
+type AppointmentAddonPriceEditTarget = Extract<
+  AppointmentPriceEditTarget,
+  { kind: 'originalAddon' | 'addedAddon' | 'createMainAddon' | 'createBlockAddon' }
+>
+
+function getAppointmentAddonPriceEditTarget(target: AppointmentPriceEditTarget): AppointmentAddonPriceEditTarget | null {
+  if (
+    target.kind === 'originalAddon'
+    || target.kind === 'addedAddon'
+    || target.kind === 'createMainAddon'
+    || target.kind === 'createBlockAddon'
+  ) {
+    return target
+  }
+  return null
+}
+
 
 /** POS member search row (`/api/proxy/pos/members/search`) */
 type PosMemberSearchRow = {
@@ -2624,12 +2641,9 @@ export default function PosAppointmentsWorkspace({
   const openAppointmentPriceEditModal = useCallback((target: AppointmentPriceEditTarget) => {
     const qty = resolvePriceEditQuantity(target.quantity)
     const unit = Math.max(0, Number(target.currentUnitPrice ?? 0))
-    const isAddonKind = target.kind === 'originalAddon'
-      || target.kind === 'addedAddon'
-      || target.kind === 'createMainAddon'
-      || target.kind === 'createBlockAddon'
-    const hasLineTotalOverrideKey = Boolean(isAddonKind && target.hasLineTotalOverrideKey)
-    const lineTotalOverride = hasLineTotalOverrideKey ? Number(target.lineTotalOverride ?? 0) : null
+    const addonTarget = getAppointmentAddonPriceEditTarget(target)
+    const hasLineTotalOverrideKey = Boolean(addonTarget?.hasLineTotalOverrideKey)
+    const lineTotalOverride = hasLineTotalOverrideKey ? Number(addonTarget?.lineTotalOverride ?? 0) : null
     setAppointmentPriceEditTarget({ ...target, quantity: qty })
     setAppointmentPriceEditMode('unit')
     const hasFinalPrice = !target.priceSource || posPriceDisplayHasFinalPrice(target.priceSource)
@@ -6967,23 +6981,20 @@ export default function PosAppointmentsWorkspace({
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
             <h4 className="text-lg font-bold text-gray-900">Edit Price</h4>
             <p className="mt-1 text-sm text-gray-600">{appointmentPriceEditTarget.name}</p>
+            {(() => {
+              const addonPriceTarget = getAppointmentAddonPriceEditTarget(appointmentPriceEditTarget)
+              return (
             <PosPriceEditSummaryGrid
               kind={appointmentPriceEditTarget.kind}
               originalUnitPrice={Number(appointmentPriceEditTarget.originalUnitPrice ?? 0)}
               currentUnitPrice={Number(appointmentPriceEditTarget.currentUnitPrice ?? 0)}
               quantity={appointmentPriceEditTarget.quantity}
               priceSource={appointmentPriceEditTarget.priceSource}
-              lineTotalOverride={
-                (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon'].includes(appointmentPriceEditTarget.kind))
-                  && appointmentPriceEditTarget.hasLineTotalOverrideKey
-                  ? appointmentPriceEditTarget.lineTotalOverride
-                  : null
-              }
-              hasLineTotalOverrideKey={
-                (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon'].includes(appointmentPriceEditTarget.kind))
-                  && appointmentPriceEditTarget.hasLineTotalOverrideKey
-              }
+              lineTotalOverride={addonPriceTarget?.hasLineTotalOverrideKey ? addonPriceTarget.lineTotalOverride ?? null : null}
+              hasLineTotalOverrideKey={Boolean(addonPriceTarget?.hasLineTotalOverrideKey)}
             />
+              )
+            })()}
             <div className="mt-4">
               <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">Edit Method</p>
               <div className="flex flex-wrap gap-4 text-sm font-semibold text-gray-700">

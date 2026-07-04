@@ -13,6 +13,18 @@ export function resolvePriceEditQuantity(quantity?: number | null): number {
   return Number.isFinite(qty) && qty >= 1 ? Math.floor(qty) : 1
 }
 
+function normalizeAddonLinePriceSource(
+  priceSource: PosPriceDisplaySource,
+  quantity: number,
+  extraPrice?: number,
+) {
+  return {
+    ...priceSource,
+    quantity,
+    extra_price: extraPrice ?? Number(priceSource.extra_price ?? 0),
+  }
+}
+
 export function priceEditTargetUsesQuantityBreakdown(kind: string, quantity?: number | null): boolean {
   if (['originalAddon', 'addedAddon', 'createMainAddon', 'createBlockAddon', 'cartEditSettlementAddon', 'cartEditSettlementBlockAddon', 'bookingMainAddon', 'bookingBlockAddon'].includes(kind)) {
     return true
@@ -68,13 +80,13 @@ export function formatPriceEditCurrentCombinedDisplay(
   const rangeUnsettled = priceSource && posPriceDisplayHasRange(priceSource) && !posPriceDisplayHasFinalPrice(priceSource)
 
   if (priceSource) {
-    const lineSource = posPriceDisplayForAddonLine({
-      ...priceSource,
-      quantity: qty,
-      extra_price: posPriceDisplayHasFinalPrice(priceSource)
-        ? currentUnitPrice
-        : priceSource.extra_price,
-    })
+    const lineSource = posPriceDisplayForAddonLine(
+      normalizeAddonLinePriceSource(
+        priceSource,
+        qty,
+        posPriceDisplayHasFinalPrice(priceSource) ? currentUnitPrice : undefined,
+      ),
+    )
     if (lineSource && rangeUnsettled) {
       return formatPosPriceDisplay(lineSource)
     }
@@ -83,7 +95,9 @@ export function formatPriceEditCurrentCombinedDisplay(
   const total = Number(currentUnitPrice ?? 0) * qty
   if (rangeUnsettled && total <= 0) {
     return priceSource
-      ? formatPosPriceDisplay(posPriceDisplayForAddonLine({ ...priceSource, quantity: qty }) ?? priceSource)
+      ? formatPosPriceDisplay(
+        posPriceDisplayForAddonLine(normalizeAddonLinePriceSource(priceSource, qty)) ?? priceSource,
+      )
       : 'Not set'
   }
   return `RM ${total.toFixed(2)}`

@@ -279,6 +279,7 @@ export default function BookingServiceEditModal({
                     extra_price?: number
                     sort_order?: number
                     is_active?: boolean
+                    allow_quantity?: boolean
                   }>
                 }>
               }).questions ?? []).map((question, questionIndex) => ({

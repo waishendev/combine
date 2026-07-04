@@ -124,6 +124,7 @@ type BookingServiceApiItemWithRelations = BookingServiceApiItem & {
       linked_booking_service_id?: number | null
       sort_order?: number
       is_active?: boolean
+      allow_quantity?: boolean
     }>
   }>
   allowed_staff_ids?: unknown[]

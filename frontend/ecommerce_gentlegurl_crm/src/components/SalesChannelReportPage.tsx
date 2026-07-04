@@ -365,7 +365,7 @@ const staffSplitDisplay = (line: OrderDetailLine) => {
 
 type DisplayOrderDetailLine = OrderDetailLine & { isChildLine?: boolean; parentName?: string }
 
-const formatDetailLineName = (line: Pick<OrderDetailLine, 'line_type' | 'name' | 'addon_service_context' | 'isChildLine'>) => {
+const formatDetailLineName = (line: Pick<DisplayOrderDetailLine, 'line_type' | 'name' | 'addon_service_context' | 'isChildLine'>) => {
   if (String(line.line_type ?? '').toLowerCase() === 'booking_addon') {
     const formatted = formatBookingAddonReceiptLabel(line.name)
     const context = line.addon_service_context?.trim() || formatted.serviceContext

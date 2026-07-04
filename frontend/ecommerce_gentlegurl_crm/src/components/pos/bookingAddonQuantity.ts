@@ -148,7 +148,7 @@ export function formatAddonQuantityLabel(qty: number): string {
 
 export type StoredAddonRowLike = {
   extra_duration_min?: number
-  extra_price?: number
+  extra_price?: number | string | null
   quantity?: number | null
   line_gross_amount?: number | null
   gross_amount?: number | null
