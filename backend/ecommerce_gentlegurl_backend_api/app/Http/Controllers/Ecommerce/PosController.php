@@ -3560,10 +3560,10 @@ class PosController extends Controller
                     }
                 };
 
-                foreach ($mainItems as $index => $mainItem) {
-                    $lineService = $mainItem['service'];
-                    $lineAmount = $index === 0 ? $depositAmount : 0.0;
-                    $lineSplits = collect($mainItem['staff_splits'] ?? [])
+                $primaryMainItem = $mainItems->first();
+                if ($primaryMainItem) {
+                    $lineService = $primaryMainItem['service'];
+                    $lineSplits = collect($primaryMainItem['staff_splits'] ?? [])
                         ->filter(fn ($split) => is_array($split))
                         ->values()
                         ->all();
@@ -3578,19 +3578,19 @@ class PosController extends Controller
                         'product_name_snapshot' => 'Booking Deposit - ' . (string) ($lineService->name ?: 'Service'),
                         'display_name_snapshot' => 'Booking Deposit - ' . (string) ($lineService->name ?: 'Service'),
                         'quantity' => 1,
-                        'price_snapshot' => $lineAmount,
-                        'unit_price_snapshot' => $lineAmount,
-                        'line_total' => $lineAmount,
-                        'line_total_snapshot' => $lineAmount,
-                        'effective_unit_price' => $lineAmount,
-                        'effective_line_total' => $lineAmount,
-                        'line_total_after_discount' => $lineAmount,
+                        'price_snapshot' => $depositAmount,
+                        'unit_price_snapshot' => $depositAmount,
+                        'line_total' => $depositAmount,
+                        'line_total_snapshot' => $depositAmount,
+                        'effective_unit_price' => $depositAmount,
+                        'effective_line_total' => $depositAmount,
+                        'line_total_after_discount' => $depositAmount,
                         'locked' => true,
                         'booking_id' => (int) $booking->id,
                         'booking_service_id' => (int) $lineService->id,
                     ]);
 
-                    $persistDepositLineSplits($depositOrderItem, $lineSplits, $lineAmount, (string) $lineService->id);
+                    $persistDepositLineSplits($depositOrderItem, $lineSplits, $depositAmount, (string) $lineService->id);
                 }
 
                 $this->replaceOrderPayments($depositOrder, $depositPayments, 'pos_create_appointment_deposit');
@@ -7222,6 +7222,7 @@ class PosController extends Controller
             })
             ->orderBy('id')
             ->get()
+            ->filter(fn (OrderItem $item) => (float) ($item->line_total ?? 0) > 0.0001)
             ->map(function (OrderItem $item) {
                 $order = $item->order;
                 $payments = collect($order?->payments ?? [])

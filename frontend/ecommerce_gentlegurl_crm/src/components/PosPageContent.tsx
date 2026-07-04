@@ -8545,7 +8545,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 <div className="grid grid-cols-[1.25rem_minmax(0,1fr)_auto] gap-2 tabular-nums text-gray-700">
                                   <span className="text-gray-500">+</span>
                                   <div className="min-w-0 text-[11px] text-gray-700">
-                                    <PosAddonLineName name={addon.name} cnName={addon.cn_name} quantity={addon.quantity} layout="stacked" prefix="+ " cnClassName="block text-[10px] text-gray-500" quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600" />
+                                    <PosAddonLineName name={addon.name} cnName={addon.cn_name} quantity={addon.quantity} layout="stacked" prefix="" cnClassName="block text-[10px] text-gray-500" quantityClassName="text-[11px] font-semibold tabular-nums text-gray-600" />
                                   </div>
                                   <div className="flex flex-col items-end gap-1 text-right">
                                     <PosDepositAmount amount={Number(addon.deposit ?? 0)} referenceAmount={Number(addon.reference_deposit ?? addon.deposit ?? 0)} />
@@ -9330,9 +9330,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       )}
 
       {cartEditSettlementOpen && cartEditSettlementItem && (
-        <div className="fixed inset-0 z-[140] flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+        <div className="fixed inset-0 z-[140] flex items-end justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:items-center sm:p-4">
+          <div className="relative mx-auto flex h-full max-h-[95dvh] w-full max-w-full flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white shadow-2xl sm:max-h-[min(90dvh,calc(100vh-2rem))] sm:max-w-5xl sm:rounded-2xl lg:max-w-7xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-3 sm:px-5 sm:py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
                 <p className="text-xs text-gray-500">{cartEditSettlementItem.booking_code} · {cartEditOriginalService?.name ?? cartEditSettlementItem.service_name ?? '—'}</p>
@@ -9346,7 +9346,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
               {cartEditSettlementError ? (
                 <div
                   ref={cartEditSettlementErrorRef}
@@ -9534,9 +9534,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                 ) : (
                   <div className="space-y-3">
                     {cartEditAddonQuestions.map((question) => (
-                      <div key={question.id}>
+                      <div key={question.id} className="rounded-xl border border-gray-200 bg-gray-50/40 p-2.5 sm:p-3">
                         <div className="mb-1.5"><p className="text-xs font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
-                        <div className="space-y-1.5">
+                        <div className="space-y-2">
                           {question.options.map((opt) => (
                             <BookingAddonOptionRow
                               key={opt.id}
@@ -9564,7 +9564,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                 return (
                                   <div className="space-y-2.5">
                                     {renderLineSplitStack(lineKey, inherited, 'main service')}
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementAddonPrice(opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
                                       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                     </div>
@@ -9786,51 +9786,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         Remove
                       </button>
                     </div>
-                    {block.addon_questions.map((question) => (
-                      <div key={`cart-added-q-${block.service_id}-${question.id}`} className="mb-2">
-                        <div><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
-                        {question.options.map((opt) => (
-                          <BookingAddonOptionRow
-                            key={`cart-added-opt-${block.service_id}-${opt.id}`}
-                            variant="settlement"
-                            option={opt}
-                            selection={block.selected_addon_ids}
-                            onToggle={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                              ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
-                              : item))}
-                            onQuantityChange={(qty) => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                              ? { ...item, selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty) }
-                              : item))}
-                            durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
-                            priceLabel={
-                              <PosAddonSettlementPriceLabel
-                                option={opt}
-                                selection={block.selected_addon_ids}
-                                useRangeDisplay
-                                emphasis
-                                overrideAmount={block.addon_price_overrides[opt.id]}
-                                hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)}
-                                lineTotalOverride={block.addon_line_total_overrides[opt.id]}
-                                hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id)}
-                              />
-                            }
-                            trailing={(() => {
-                              const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${opt.id}`
-                              const inherited = block.staff_splits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
-                              return (
-                                <div className="space-y-2.5">
-                                  {renderLineSplitStack(lineKey, inherited, 'service block')}
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementBlockAddonPrice(block.tmp_id, opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
-                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                  </div>
-                                </div>
-                              )
-                            })()}
-                          />
-                        ))}
-                      </div>
-                    ))}
                     <div className="space-y-2">
                       <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                         <input
@@ -9842,7 +9797,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         Auto Balance (lock first row, auto adjust to 100%)
                       </label>
                       {block.staff_splits.map((split, idx) => (
-                        <div key={`cart-added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                        <div key={`cart-added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px_auto]">
                           <select
                             value={split.staff_id ?? ''}
                             onChange={(e) => {
@@ -9895,6 +9850,53 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                       >
                         + Add Staff
                       </button>
+                    </div>
+                    <div className="mt-3">
+                    {block.addon_questions.map((question) => (
+                      <div key={`cart-added-q-${block.service_id}-${question.id}`} className="mb-2 rounded-xl border border-gray-200 bg-gray-50/40 p-2.5 sm:p-3">
+                        <div><p className="text-[11px] font-semibold uppercase tracking-wide text-gray-600">{question.title}</p>{question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}</div>
+                        {question.options.map((opt) => (
+                          <BookingAddonOptionRow
+                            key={`cart-added-opt-${block.service_id}-${opt.id}`}
+                            variant="settlement"
+                            option={opt}
+                            selection={block.selected_addon_ids}
+                            onToggle={() => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                              ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
+                              : item))}
+                            onQuantityChange={(qty) => setCartEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                              ? { ...item, selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty) }
+                              : item))}
+                            durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
+                            priceLabel={
+                              <PosAddonSettlementPriceLabel
+                                option={opt}
+                                selection={block.selected_addon_ids}
+                                useRangeDisplay
+                                emphasis
+                                overrideAmount={block.addon_price_overrides[opt.id]}
+                                hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)}
+                                lineTotalOverride={block.addon_line_total_overrides[opt.id]}
+                                hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id)}
+                              />
+                            }
+                            trailing={(() => {
+                              const lineKey = `settlement-edit:${cartEditSettlementItem?.id}:block:${block.tmp_id}:addon:${opt.id}`
+                              const inherited = block.staff_splits.map((row) => ({ staff_id: Number(row.staff_id ?? 0), share_percent: Number.parseInt(row.share_percent || '0', 10) })).filter((row) => row.staff_id > 0 && row.share_percent > 0)
+                              return (
+                                <div className="space-y-2.5">
+                                  {renderLineSplitStack(lineKey, inherited, 'service block')}
+                                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); editCartSettlementBlockAddonPrice(block.tmp_id, opt.id, opt.label, Number(opt.extra_price ?? 0)) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{checkoutLineSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                  </div>
+                                </div>
+                              )
+                            })()}
+                          />
+                        ))}
+                      </div>
+                    ))}
                     </div>
                     <div className="mt-3 border-t border-gray-200 pt-2 text-sm font-semibold text-gray-800">Block Subtotal: RM {blockSubtotal.toFixed(2)}</div>
                   </div>

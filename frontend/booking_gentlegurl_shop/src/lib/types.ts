@@ -182,6 +182,31 @@ export type BookingRecord = {
   item_type?: string | null;
   service_name: string;
   service_cn_name?: string | null;
+  service_blocks?: Array<{
+    service_id?: number | null;
+    name: string;
+    cn_name?: string | null;
+    amount?: number | null;
+    price_mode?: string | null;
+    price_range_min?: number | null;
+    price_range_max?: number | null;
+    price_finalized?: boolean | null;
+    duration_min?: number | null;
+    is_original?: boolean | null;
+    add_ons?: Array<{
+      id?: number | null;
+      name: string;
+      cn_name?: string | null;
+      extra_duration_min: number;
+      extra_price: number;
+      quantity?: number | null;
+      line_gross_amount?: number | null;
+      price_mode?: string | null;
+      price_range_min?: number | null;
+      price_range_max?: number | null;
+      price_finalized?: boolean | null;
+    }>;
+  }>;
   add_ons?: Array<{
     id?: number | null;
     name: string;

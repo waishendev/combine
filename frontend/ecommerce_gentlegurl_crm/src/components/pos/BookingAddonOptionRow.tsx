@@ -157,11 +157,15 @@ export function PosAddonSettlementPriceLabel({
   const qty = getAddonQuantity(selection, optionId)
   const selected = qty > 0
 
+  const priceClassName = emphasis
+    ? 'block max-w-full break-words text-left text-[11px] font-bold leading-snug text-gray-800 tabular-nums sm:text-right sm:text-sm'
+    : 'block max-w-full break-words text-left text-[10px] font-semibold leading-snug text-gray-700 tabular-nums sm:text-right sm:text-xs'
+
   if (!selected) {
     if (useRangeDisplay && posPriceDisplayHasRange(option)) {
-      return <span className={`tabular-nums ${emphasis ? 'text-sm font-bold text-gray-800' : 'text-xs font-semibold text-gray-700'}`}>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
+      return <span className={priceClassName}>+{formatPosPriceDisplay(option, { prefix: 'RM' })}</span>
     }
-    return <span className={`tabular-nums ${emphasis ? 'text-sm font-bold text-gray-800' : 'text-xs font-semibold text-gray-900'}`}>+RM {Number(option.extra_price ?? 0).toFixed(2)}</span>
+    return <span className={priceClassName}>+RM {Number(option.extra_price ?? 0).toFixed(2)}</span>
   }
 
   const lineDisplay = posAddonDisplayWithSelection(
@@ -188,7 +192,7 @@ export function PosAddonSettlementPriceLabel({
       )
 
   return (
-    <span className={`tabular-nums ${emphasis ? 'text-sm font-bold text-indigo-950' : 'text-xs font-bold text-gray-900'}`}>+{priceText}</span>
+    <span className={`${priceClassName} ${emphasis ? 'text-indigo-950' : 'text-gray-900'}`}>+{priceText}</span>
   )
 }
 
@@ -276,29 +280,29 @@ export default function BookingAddonOptionRow({
             : 'border-gray-200 bg-gray-50/60 hover:border-gray-300 hover:bg-white'
         }`}
       >
-        <div className="flex items-start gap-3 p-3.5">
+        <div className="flex items-start gap-2.5 p-3 sm:gap-3 sm:p-3.5">
           <input
             type="checkbox"
             checked={checked}
             onChange={onToggle}
-            className="mt-1 h-4 w-4 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
           />
 
-          <div className="flex min-w-0 flex-1 items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-gray-900">{option.label}</p>
+          <div className="min-w-0 flex-1 space-y-2">
+            <div className="min-w-0">
+              <p className="break-words text-sm font-semibold leading-snug text-gray-900">{option.label}</p>
               {option.cn_label ?? option.cn_name ?? option.linked_cn_name ? (
-                <p className="mt-0.5 text-[11px] text-gray-500">{option.cn_label ?? option.cn_name ?? option.linked_cn_name}</p>
+                <p className="mt-0.5 break-words text-[11px] leading-snug text-gray-500">{option.cn_label ?? option.cn_name ?? option.linked_cn_name}</p>
               ) : null}
               {durationLabel ? (
-                <span className="mt-1.5 inline-flex items-center rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-gray-600 tabular-nums ring-1 ring-gray-200">
+                <span className="mt-1.5 inline-flex max-w-full items-center rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-gray-600 ring-1 ring-gray-200">
                   {durationLabel}
                 </span>
               ) : null}
             </div>
 
-            <div className="flex shrink-0 flex-col items-end gap-2">
-              <span className={`inline-flex items-center rounded-lg px-2.5 py-1 tabular-nums ${
+            <div className="flex flex-col items-start gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+              <span className={`inline-flex w-auto max-w-full items-center rounded-lg px-2 py-1 sm:px-2.5 ${
                 checked
                   ? 'border border-indigo-200 bg-white text-indigo-950 shadow-sm'
                   : 'border border-gray-200 bg-white/80 text-gray-700'
@@ -313,7 +317,7 @@ export default function BookingAddonOptionRow({
         </div>
 
         {checked && trailing ? (
-          <div className="border-t border-indigo-100/80 bg-white/50 px-3.5 py-3">
+          <div className="border-t border-indigo-100/80 bg-white/50 px-3 py-2.5 sm:px-3.5 sm:py-3 [&_button]:w-full sm:[&_button]:w-auto">
             {trailing}
           </div>
         ) : null}

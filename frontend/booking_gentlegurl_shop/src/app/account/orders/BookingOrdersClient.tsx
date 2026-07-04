@@ -9,6 +9,7 @@ import {
   PublicAccountOrder,
 } from "@/lib/apiClient";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
+import { formatOrderPaymentMethod, normalizeOrderPayments } from "@/lib/orderPaymentDisplay";
 
 function money(amount: number | null | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`;
@@ -24,17 +25,6 @@ function formatDate(value?: string | null) {
     day: "2-digit",
   }).format(date);
 }
-
-const formatPaymentMethod = (method?: string | null) => {
-  const key = String(method ?? "").toLowerCase();
-  if (key === "cash") return "Cash";
-  if (key === "qrpay") return "QRPay";
-  if (key === "manual_transfer") return "Manual Transfer";
-  if (key === "billplz_online_banking") return "Online Banking";
-  if (key === "billplz_credit_card" || key === "credit_card") return "Credit Card";
-  if (key === "split") return "Split";
-  return method || "N/A";
-};
 
 function BookingProductOptionsList({
   options,
@@ -246,6 +236,7 @@ export function BookingOrdersClient() {
           const isExpanded = expandedOrderId === order.id;
           const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
           const receiptUrl = order.receipt_public_url ? `${order.receipt_public_url}/invoice` : null;
+          const paymentRows = normalizeOrderPayments(order);
 
           let displayStatus: string;
           if (statusKey === "cancelled" || isPendingUnpaidExpired) {
@@ -318,16 +309,16 @@ export function BookingOrdersClient() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Payment</p>
                   <div className="text-base font-medium text-[var(--foreground)]">
                     <p>{paymentStatusValue}</p>
-                    {order.payments?.length ? (
-                      <div className="mt-1 max-h-24 overflow-y-auto text-xs text-[var(--foreground)]/70">
-                        {order.payments.map((payment) => (
-                          <p key={`${payment.method}-${payment.amount}`} className="truncate">
-                            {formatPaymentMethod(payment.method)} {money(payment.amount)}
+                    {paymentRows.length > 0 ? (
+                      <div className="mt-1 space-y-1 text-xs text-[var(--foreground)]/70">
+                        {paymentRows.map((payment, index) => (
+                          <p key={`${payment.method}-${payment.amount}-${index}`}>
+                            {formatOrderPaymentMethod(payment.method)} {money(payment.amount)}
                           </p>
                         ))}
                       </div>
                     ) : (
-                      <p className="mt-1 text-xs text-[var(--foreground)]/70">{formatPaymentMethod(order.payment_method)}</p>
+                      <p className="mt-1 text-xs text-[var(--foreground)]/70">{formatOrderPaymentMethod(order.payment_method)}</p>
                     )}
                   </div>
                 </div>

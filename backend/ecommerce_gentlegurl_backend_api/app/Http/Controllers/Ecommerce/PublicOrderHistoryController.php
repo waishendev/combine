@@ -79,10 +79,7 @@ class PublicOrderHistoryController extends Controller
                 'status' => $order->status,
                 'payment_status' => $order->payment_status,
                 'payment_method' => $order->payment_method,
-                'payments' => $order->payments->map(fn ($payment) => [
-                    'method' => (string) $payment->payment_method,
-                    'amount' => (float) $payment->amount,
-                ])->values(),
+                'payments' => $this->mapOrderPaymentsForResponse($order),
                 'grand_total' => $order->grand_total,
                 'created_at' => $order->created_at?->toDateTimeString(),
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
@@ -142,6 +139,18 @@ class PublicOrderHistoryController extends Controller
         return $this->respond($data);
     }
 
+
+    private function mapOrderPaymentsForResponse(Order $order): array
+    {
+        return $order->payments
+            ->filter(fn ($payment) => (float) ($payment->amount ?? 0) > 0.0001)
+            ->map(fn ($payment) => [
+                'method' => (string) $payment->payment_method,
+                'amount' => round((float) $payment->amount, 2),
+            ])
+            ->values()
+            ->all();
+    }
 
     private function isFakeMainServiceBookingAddon($item): bool
     {
@@ -288,10 +297,7 @@ class PublicOrderHistoryController extends Controller
                 'payment_status' => $order->payment_status,
                 'reserve_expires_at' => $this->orderReserveService->getReserveExpiresAt($order)->toDateTimeString(),
                 'payment_method' => $order->payment_method,
-                'payments' => $order->payments->map(fn ($payment) => [
-                    'method' => (string) $payment->payment_method,
-                    'amount' => (float) $payment->amount,
-                ])->values(),
+                'payments' => $this->mapOrderPaymentsForResponse($order),
                 'payment_provider' => $order->payment_provider,
                 'subtotal' => $order->subtotal,
                 'discount_total' => $order->discount_total,

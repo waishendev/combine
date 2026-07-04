@@ -6069,9 +6069,9 @@ export default function PosAppointmentsWorkspace({
 
       {renderPosBodyModalPortal(
         editSettlementOpen && appointmentDetail ? (
-        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-4">
-          <div className="relative mx-auto flex w-full max-w-5xl lg:max-w-7xl max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-5 py-4">
+        <div className="pos-body-stack-modal flex items-end justify-center overflow-y-auto bg-black/60 backdrop-blur-sm p-2 sm:items-center sm:p-4">
+          <div className="relative mx-auto flex h-full max-h-[95dvh] w-full max-w-full flex-col overflow-hidden rounded-t-2xl border border-gray-200 bg-white shadow-2xl sm:max-h-[min(90dvh,calc(100vh-2rem))] sm:max-w-5xl sm:rounded-2xl lg:max-w-7xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-3 sm:px-5 sm:py-4">
               <div>
                 <h4 className="text-lg font-bold text-gray-900">Edit Settlement</h4>
                 <p className="text-xs text-gray-500">{appointmentDetail.booking_code} · {editOriginalService?.name ?? appointmentDetail.service?.name ?? '—'}</p>
@@ -6085,7 +6085,7 @@ export default function PosAppointmentsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-5 sm:py-4">
               {editSettlementError ? (
                 <div
                   ref={editSettlementErrorRef}
@@ -6305,7 +6305,7 @@ export default function PosAppointmentsWorkspace({
                 ) : (
                   <div className="space-y-4">
                     {editAddonQuestions.map((question) => (
-                      <div key={question.id} className="rounded-xl border border-gray-200 bg-gray-50/40 p-3">
+                      <div key={question.id} className="rounded-xl border border-gray-200 bg-gray-50/40 p-2.5 sm:p-3">
                         <div className="mb-2.5">
                           <p className="text-xs font-bold uppercase tracking-wide text-gray-700">{question.title}</p>
                           {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
@@ -6339,7 +6339,7 @@ export default function PosAppointmentsWorkspace({
                                 return (
                                   <div className="space-y-2.5">
                                     {renderAppointmentLineSplitStack(lineKey, inherited, 'main service')}
-                                    <div className="flex flex-wrap items-center gap-2">
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
                                       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'originalAddon', optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: resolveEditSettlementAddonUnitDisplay(opt.id, qty, Number(opt.extra_price ?? 0), editAddonPriceOverrides, editAddonLineTotalOverrides), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: qty, priceSource: posPriceDisplayWithOverride(opt, editAddonPriceOverrides[opt.id], Object.prototype.hasOwnProperty.call(editAddonPriceOverrides, opt.id)) ?? opt, lineTotalOverride: editAddonLineTotalOverrides[opt.id], hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(editAddonLineTotalOverrides, opt.id) }) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
                                       <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
                                     </div>
@@ -6593,63 +6593,7 @@ export default function PosAppointmentsWorkspace({
 
                     {block.service_id > 0 ? (
                       <>
-                      <div className="space-y-2">
-                      {block.addon_questions.map((question) => (
-                        <div key={`added-q-${block.service_id}-${question.id}`} className="rounded-xl border border-gray-200 bg-gray-50/40 p-3">
-                          <div className="mb-2.5">
-                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700">{question.title}</p>
-                            {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
-                          </div>
-                          <div className="space-y-2">
-                          {question.options.map((opt) => (
-                            <BookingAddonOptionRow
-                              key={`added-opt-${block.service_id}-${opt.id}`}
-                              variant="settlement"
-                              option={opt}
-                              selection={block.selected_addon_ids}
-                              onToggle={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                                ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
-                                : item))}
-                              onQuantityChange={(qty) => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
-                                ? {
-                                  ...item,
-                                  selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty),
-                                }
-                                : item))}
-                              durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
-                              priceLabel={
-                                <PosAddonSettlementPriceLabel
-                                  option={opt}
-                                  selection={block.selected_addon_ids}
-                                  useRangeDisplay
-                                  emphasis
-                                  overrideAmount={block.addon_price_overrides[opt.id]}
-                                  hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)}
-                                  lineTotalOverride={block.addon_line_total_overrides[opt.id]}
-                                  hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id)}
-                                />
-                              }
-                              trailing={appointmentDetail?.id ? (() => {
-                                const lineKey = `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${opt.id}`
-                                const inherited = editStaffSplitsToLineSplits(block.staff_splits)
-                                const qty = getAddonQuantity(block.selected_addon_ids, opt.id)
-                                return (
-                                  <div className="space-y-2.5">
-                                    {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: resolveEditSettlementAddonUnitDisplay(opt.id, qty, Number(opt.extra_price ?? 0), block.addon_price_overrides, block.addon_line_total_overrides), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: qty, priceSource: posPriceDisplayWithOverride(opt, block.addon_price_overrides[opt.id], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)) ?? opt, lineTotalOverride: block.addon_line_total_overrides[opt.id], hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id) }) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
-                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
-                                    </div>
-                                  </div>
-                                )
-                              })() : null}
-                            />
-                          ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 space-y-2">
+                    <div className="space-y-2">
                       <label className="flex items-center gap-2 text-xs font-semibold text-gray-700">
                         <input
                           type="checkbox"
@@ -6660,7 +6604,7 @@ export default function PosAppointmentsWorkspace({
                         Auto Balance (lock first row, auto adjust to 100%)
                       </label>
                       {block.staff_splits.map((split, idx) => (
-                        <div key={`added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-[1fr_120px_auto] gap-2">
+                        <div key={`added-split-${block.tmp_id}-${idx}`} className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_120px_auto]">
                           <div className="min-w-0">
                             <BookingPackageItemServicePicker
                               options={activeStaffs
@@ -6717,6 +6661,62 @@ export default function PosAppointmentsWorkspace({
                       >
                         + Add Staff
                       </button>
+                    </div>
+                      <div className="mt-3 space-y-2">
+                      {block.addon_questions.map((question) => (
+                        <div key={`added-q-${block.service_id}-${question.id}`} className="rounded-xl border border-gray-200 bg-gray-50/40 p-2.5 sm:p-3">
+                          <div className="mb-2.5">
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-700">{question.title}</p>
+                            {question.cn_title ? <p className="mt-0.5 text-[11px] text-gray-500">{question.cn_title}</p> : null}
+                          </div>
+                          <div className="space-y-2">
+                          {question.options.map((opt) => (
+                            <BookingAddonOptionRow
+                              key={`added-opt-${block.service_id}-${opt.id}`}
+                              variant="settlement"
+                              option={opt}
+                              selection={block.selected_addon_ids}
+                              onToggle={() => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                                ? { ...item, selected_addon_ids: toggleAddonSelection(item.selected_addon_ids, opt, question.question_type, question.options.map((row) => row.id)) }
+                                : item))}
+                              onQuantityChange={(qty) => setEditAddedMainBlocks((prev) => prev.map((item) => item.tmp_id === block.tmp_id
+                                ? {
+                                  ...item,
+                                  selected_addon_ids: setAddonQuantity(item.selected_addon_ids, opt, qty),
+                                }
+                                : item))}
+                              durationLabel={<PosAddonSelectionDurationLabel option={opt} selection={block.selected_addon_ids} />}
+                              priceLabel={
+                                <PosAddonSettlementPriceLabel
+                                  option={opt}
+                                  selection={block.selected_addon_ids}
+                                  useRangeDisplay
+                                  emphasis
+                                  overrideAmount={block.addon_price_overrides[opt.id]}
+                                  hasOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)}
+                                  lineTotalOverride={block.addon_line_total_overrides[opt.id]}
+                                  hasLineTotalOverrideKey={Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id)}
+                                />
+                              }
+                              trailing={appointmentDetail?.id ? (() => {
+                                const lineKey = `appointment-settlement:${appointmentDetail.id}:block:${block.tmp_id}:addon:${opt.id}`
+                                const inherited = editStaffSplitsToLineSplits(block.staff_splits)
+                                const qty = getAddonQuantity(block.selected_addon_ids, opt.id)
+                                return (
+                                  <div className="space-y-2.5">
+                                    {renderAppointmentLineSplitStack(lineKey, inherited, 'service block')}
+                                    <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openAppointmentPriceEditModal({ kind: 'addedAddon', tmpId: block.tmp_id, optionId: opt.id, name: opt.label ?? 'Add-on', currentUnitPrice: resolveEditSettlementAddonUnitDisplay(opt.id, qty, Number(opt.extra_price ?? 0), block.addon_price_overrides, block.addon_line_total_overrides), originalUnitPrice: Number(opt.extra_price ?? 0), quantity: qty, priceSource: posPriceDisplayWithOverride(opt, block.addon_price_overrides[opt.id], Object.prototype.hasOwnProperty.call(block.addon_price_overrides, opt.id)) ?? opt, lineTotalOverride: block.addon_line_total_overrides[opt.id], hasLineTotalOverrideKey: Object.prototype.hasOwnProperty.call(block.addon_line_total_overrides, opt.id) }) }} className="rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-[11px] font-semibold text-blue-700 hover:bg-blue-100">Edit Price</button>
+                                      <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); void openAppointmentLineSplitEditor(lineKey, opt.label, inherited) }} className="rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100">{appointmentLineStaffSplits[lineKey]?.length ? 'Edit Staff Split' : 'Assign Staff Split'}</button>
+                                    </div>
+                                  </div>
+                                )
+                              })() : null}
+                            />
+                          ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                     <div className="mt-3 border-t border-gray-200 pt-2 text-sm font-semibold text-gray-800">Block Subtotal: RM {blockSubtotal.toFixed(2)}</div>
                       </>

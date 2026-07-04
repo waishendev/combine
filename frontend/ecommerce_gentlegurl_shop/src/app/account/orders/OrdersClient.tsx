@@ -11,6 +11,7 @@ import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import { NameStack, VariantNameBlock } from "@/components/common/NameStack";
+import { formatOrderPaymentMethod, normalizeOrderPayments } from "@/lib/orderPaymentDisplay";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -29,16 +30,6 @@ type SlipModalState = {
 type CompleteModalState = {
   orderId: number;
 };
-
-const formatPaymentMethod = (method?: string | null) => {
-  const key = String(method ?? '').toLowerCase();
-  if (key === 'cash') return 'Cash';
-  if (key === 'qrpay') return 'QRPay';
-  if (key === 'credit_card' || key === 'billplz_credit_card') return 'Credit Card';
-  if (key === 'split') return 'Split';
-  return method || 'N/A';
-};
-
 
 const formatOptionPrice = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
 
@@ -294,6 +285,7 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped";
         const isCompleted = statusKey === "completed";
         const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
+        const paymentRows = normalizeOrderPayments(order);
         
         // New status display logic based on the requirements
         let displayStatus: string;
@@ -366,14 +358,16 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Payment</p>
                 <div className="text-base font-medium text-[var(--foreground)]">
                   <p>{paymentStatusValue}</p>
-                  {order.payments?.length ? (
-                    <div className="mt-1 text-xs text-[var(--foreground)]/70">
-                      {order.payments.map((payment) => (
-                        <p key={`${payment.method}-${payment.amount}`}>{formatPaymentMethod(payment.method)} RM {Number(payment.amount).toFixed(2)}</p>
+                  {paymentRows.length > 0 ? (
+                    <div className="mt-1 space-y-1 text-xs text-[var(--foreground)]/70">
+                      {paymentRows.map((payment, index) => (
+                        <p key={`${payment.method}-${payment.amount}-${index}`}>
+                          {formatOrderPaymentMethod(payment.method)} RM {Number(payment.amount).toFixed(2)}
+                        </p>
                       ))}
                     </div>
                   ) : (
-                    <p className="mt-1 text-xs text-[var(--foreground)]/70">{formatPaymentMethod(order.payment_method)}</p>
+                    <p className="mt-1 text-xs text-[var(--foreground)]/70">{formatOrderPaymentMethod(order.payment_method)}</p>
                   )}
                 </div>
               </div>

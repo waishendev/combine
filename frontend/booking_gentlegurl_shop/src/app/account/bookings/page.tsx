@@ -7,6 +7,8 @@ import { getMyBookings, payBooking } from "@/lib/apiClient";
 import { BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingTime } from "@/lib/bookingTime";
+import { storedAddonQuantity } from "@/lib/bookingAddonDisplay";
+import { serviceBlocksForBooking } from "@/lib/bookingServiceDisplay";
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
   return (
@@ -20,12 +22,14 @@ function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | nu
 const formatDate = (value: string) =>
   new Date(value).toLocaleDateString("en-MY", { dateStyle: "medium" });
 
+const formatAddonLabel = (name: string, qty: number) => (qty > 1 ? `${name} (${qty})` : name);
+
 const addonSummary = (booking: BookingRecord) => {
-  const addOns = booking.add_ons ?? [];
-  if (addOns.length === 0) return null;
-  const names = addOns.slice(0, 2).map((addon) => addon.name).join(", ");
-  const remaining = addOns.length > 2 ? ` +${addOns.length - 2} more` : "";
-  return `${names}${remaining}`;
+  const labels = serviceBlocksForBooking(booking).flatMap((block) =>
+    (block.add_ons ?? []).map((addon) => formatAddonLabel(addon.name, storedAddonQuantity(addon))),
+  );
+
+  return labels.length > 0 ? labels.join(", ") : "None";
 };
 
 const formatCurrency = (value?: number | string | null) => `RM ${Number(value ?? 0).toFixed(2)}`;
@@ -168,10 +172,11 @@ export default function MyBookingsPage() {
         <div className="mt-6 max-h-[min(70vh,720px)] overflow-y-auto overscroll-contain pr-1">
           <div className="grid gap-3">
             {bookings.map((booking) => {
-              const addOns = addonSummary(booking);
               const isBookingProduct = isBookingProductRecord(booking);
               const productOptions = bookingProductOptions(booking);
               const serviceCnName = booking.service_cn_name ?? booking.service?.cn_name;
+              const serviceBlocks = serviceBlocksForBooking(booking);
+              const multiService = !isBookingProduct && serviceBlocks.length > 1;
               const payment = getCustomerPaymentSummary(booking);
               const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
 
@@ -183,10 +188,37 @@ export default function MyBookingsPage() {
                   <div className="space-y-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <ServiceNameStack name={booking.service_name} cnName={serviceCnName} />
-                        <p className="mt-1 truncate font-mono text-xs text-[var(--text-muted)]">
-                          {booking.booking_code || `BOOKING-${booking.id}`}
-                        </p>
+                        {multiService ? (
+                          <>
+                            <p className="text-sm font-medium text-[var(--text-muted)]">
+                              {serviceBlocks.length} services booked together
+                            </p>
+                            <p className="mt-2 truncate font-mono text-sm font-semibold text-[var(--foreground)]">
+                              {booking.booking_code || `BOOKING-${booking.id}`}
+                            </p>
+                            <ol className="mt-2 space-y-2">
+                              {serviceBlocks.map((block, index) => (
+                                <li key={`${block.service_id ?? block.name}-${index}`} className="flex gap-2">
+                                  <span className="shrink-0 text-sm font-semibold tabular-nums text-[var(--text-muted)]">
+                                    {index + 1}.
+                                  </span>
+                                  <div className="min-w-0 flex-1">
+                                    <ServiceNameStack name={block.name} cnName={block.cn_name} />
+                                  </div>
+                                </li>
+                              ))}
+                            </ol>
+                          </>
+                        ) : (
+                          <>
+                            <p className="truncate font-mono text-sm font-semibold text-[var(--foreground)]">
+                              {booking.booking_code || `BOOKING-${booking.id}`}
+                            </p>
+                            <div className="mt-2">
+                              <ServiceNameStack name={booking.service_name} cnName={serviceCnName} />
+                            </div>
+                          </>
+                        )}
                       </div>
 
                       <div className="flex flex-wrap gap-2 sm:justify-end">
@@ -210,7 +242,7 @@ export default function MyBookingsPage() {
                         Staff: <span className="text-[var(--foreground)]">{isBookingProduct ? "-" : (booking.staff_name || "Any staff")}</span>
                       </p>
                       <p className="min-w-0 truncate">
-                        Add-ons: <span className="text-[var(--foreground)]">{isBookingProduct ? (productOptions.length ? `${productOptions.length} selected` : "None") : (addOns || "None")}</span>
+                        Add-ons: <span className="text-[var(--foreground)]">{isBookingProduct ? (productOptions.length ? `${productOptions.length} selected` : "None") : addonSummary(booking)}</span>
                       </p>
                       <p className="min-w-0 truncate">
                         Deposit Paid: <span className="text-emerald-700">{formatCurrency(payment.depositPaid)}</span>

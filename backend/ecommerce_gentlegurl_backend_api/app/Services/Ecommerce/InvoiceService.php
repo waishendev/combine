@@ -228,7 +228,7 @@ class InvoiceService
 
     public function buildPdf(Order $order)
     {
-        $order->loadMissing(['items.product', 'items.productVariant', 'items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'customer']);
+        $order->loadMissing(['items.product', 'items.productVariant', 'items.bookingService', 'items.booking.service', 'serviceItems.bookingService', 'pickupStore', 'customer', 'payments']);
 
         $invoiceProfile = SettingService::get('ecommerce.invoice_profile', $this->defaultInvoiceProfile());
         $mixedItems = $order->items->map(fn (OrderItem $item) => $this->mapOrderItemToInvoiceRow($item))->values();

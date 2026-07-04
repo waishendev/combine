@@ -15,10 +15,7 @@ import {
 import { BookingPolicy, BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingDateTime, formatBookingTime } from "@/lib/bookingTime";
-import {
-  formatBookingAddonDurationText,
-  formatBookingAddonPriceText,
-} from "@/lib/bookingAddonDisplay";
+import BookingServiceBlocksSection from "@/components/booking/BookingServiceBlocksSection";
 
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
@@ -469,16 +466,22 @@ export default function BookingDetailPage() {
               <section>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">{isBookingProduct ? "Booking Product" : "Service"}</p>
-                    <div className="mt-1">
-                      <ServiceNameStack name={booking.service_name} cnName={booking.service_cn_name ?? booking.service?.cn_name} />
-                    </div>
+                    {isBookingProduct ? (
+                      <>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Booking Product</p>
+                        <div className="mt-1">
+                          <ServiceNameStack name={booking.service_name} cnName={booking.service_cn_name ?? booking.service?.cn_name} />
+                        </div>
+                      </>
+                    ) : (
+                      <BookingServiceBlocksSection booking={booking} />
+                    )}
                   </div>
 
-                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
-                    {isBookingProduct ? (
-                      productOptions.length > 0 ? (
+                  {isBookingProduct ? (
+                    <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:col-span-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Options</p>
+                      {productOptions.length > 0 ? (
                         <div className="mt-2 grid gap-2 sm:grid-cols-2">
                           {productOptions.map((option, index) => (
                             <div key={`${option.id ?? option.label ?? index}`} className="rounded-lg bg-[var(--card)] p-3 text-sm">
@@ -488,30 +491,11 @@ export default function BookingDetailPage() {
                             </div>
                           ))}
                         </div>
-                      ) : <p className="mt-1 text-sm text-[var(--text-muted)]">No add-ons selected.</p>
-                    ) : (booking.add_ons?.length ?? 0) > 0 ? (
-                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                        {booking.add_ons?.map((addon, index) => {
-                          const durationText = formatBookingAddonDurationText(addon);
-                          const priceText = formatBookingAddonPriceText(addon, (value) => formatCurrency(value));
-                          return (
-                          <div key={`${addon.id ?? addon.name}-${index}`} className="rounded-lg bg-[var(--card)] p-3 text-sm">
-                            <p className="font-medium">{addon.name}</p>
-                            {addon.cn_name ? <p className="mt-0.5 text-xs text-[var(--text-muted)]">{addon.cn_name}</p> : null}
-                            {durationText || priceText ? (
-                              <div className="mt-1 space-y-0.5 text-xs text-[var(--text-muted)]">
-                                {durationText ? <p>{durationText}</p> : null}
-                                {priceText ? <p>{priceText}</p> : null}
-                              </div>
-                            ) : null}
-                          </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <p className="mt-1 text-sm text-[var(--text-muted)]">No add-ons selected.</p>
-                    )}
-                  </div>
+                      ) : (
+                        <p className="mt-1 text-sm text-[var(--text-muted)]">No options selected.</p>
+                      )}
+                    </div>
+                  ) : null}
 
                   <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
                     <p className="text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Staff</p>
