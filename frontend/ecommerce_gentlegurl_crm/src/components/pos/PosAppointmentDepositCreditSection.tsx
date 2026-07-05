@@ -25,6 +25,10 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   qrpay: 'QRPay',
   credit_card: 'Credit Card',
   billplz_credit_card: 'Credit Card',
+  billplz_card: 'Credit Card',
+  billplz_fpx: 'Online Banking',
+  billplz_online_banking: 'Online Banking',
+  manual_transfer: 'Manual Transfer',
   split: 'Split',
 }
 
@@ -364,6 +368,16 @@ export default function PosAppointmentDepositCreditSection({
                     <span className="font-semibold tabular-nums text-gray-900">RM {Number(transaction.amount ?? 0).toFixed(2)}</span>
                     <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
                       {formatPaymentMethodLabel(transaction.payment_method, transaction.payments)}
+                    </span>
+                    <span
+                      className={[
+                        'rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+                        transaction.channel === 'online'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-amber-100 text-amber-800',
+                      ].join(' ')}
+                    >
+                      {transaction.channel === 'online' ? 'Online' : 'Offline'}
                     </span>
                   </div>
                   {transaction.is_grouped && transaction.label ? (

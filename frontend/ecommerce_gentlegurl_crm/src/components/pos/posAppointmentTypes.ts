@@ -12,6 +12,7 @@ export type PosDepositTransaction = {
   line_item_count?: number
   payment_method?: string
   payments?: Array<{ method?: string; amount?: number }>
+  channel?: 'online' | 'offline' | string | null
   paid_at?: string | null
   created_at?: string | null
   receipt_public_url?: string | null
@@ -32,6 +33,7 @@ export type PosPaymentLink = {
   provider?: string | null
   payment_ref?: string | null
   order_id?: number | null
+  receipt_url?: string | null
   manual_review_status?: string | null
   manual_slip_url?: string | null
   has_slip?: boolean

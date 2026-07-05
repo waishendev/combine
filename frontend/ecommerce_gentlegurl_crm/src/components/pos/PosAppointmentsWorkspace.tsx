@@ -6545,16 +6545,6 @@ export default function PosAppointmentsWorkspace({
                     }}
                   />
 
-                  <PosAppointmentPaymentLinksSection
-                    bookingId={appointmentDetail.id}
-                    defaultAmount={Number(appointmentDetail.balance_due ?? appointmentDetail.amount_due_now ?? 0)}
-                    showMsg={showMsg}
-                    onDepositRecorded={() => {
-                      void refreshOpenedAppointmentDetail()
-                      void fetchAppointments({ silent: true })
-                    }}
-                  />
-
                   <div className="rounded-xl border border-slate-200 bg-white p-3">
                     <label className="text-xs font-semibold text-gray-700">Settlement Note</label>
                     <textarea

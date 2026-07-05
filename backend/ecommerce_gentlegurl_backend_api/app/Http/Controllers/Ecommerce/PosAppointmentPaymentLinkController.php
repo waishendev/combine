@@ -5,10 +5,12 @@ namespace App\Http\Controllers\Ecommerce;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentLink;
+use App\Models\Ecommerce\OrderReceiptToken;
 use App\Services\Booking\BookingPaymentLinkService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Throwable;
 
 class PosAppointmentPaymentLinkController extends Controller
@@ -234,6 +236,7 @@ class PosAppointmentPaymentLinkController extends Controller
             'provider' => $link->provider,
             'payment_ref' => $link->payment_ref,
             'order_id' => $link->order_id ? (int) $link->order_id : null,
+            'receipt_url' => $link->status === 'PAID' && $link->order_id ? $this->buildReceiptUrl((int) $link->order_id) : null,
             'manual_review_status' => $link->manual_review_status,
             'manual_slip_url' => $link->manual_slip_url,
             'has_slip' => (bool) $link->manual_slip_path,
@@ -248,5 +251,28 @@ class PosAppointmentPaymentLinkController extends Controller
             'created_at' => optional($link->created_at)->toDateTimeString(),
             'created_by' => $link->createdBy ? ['id' => (int) $link->createdBy->id, 'name' => (string) $link->createdBy->name] : null,
         ];
+    }
+
+    /**
+     * Public receipt/invoice URL for the deposit order created when the link was paid.
+     */
+    protected function buildReceiptUrl(int $orderId): ?string
+    {
+        $receiptToken = OrderReceiptToken::query()
+            ->where('order_id', $orderId)
+            ->latest('id')
+            ->first();
+
+        if (! $receiptToken) {
+            $receiptToken = OrderReceiptToken::create([
+                'order_id' => $orderId,
+                'token' => Str::random(64),
+                'expires_at' => null,
+            ]);
+        }
+
+        $frontendUrl = rtrim((string) config('services.frontend_url', config('app.url')), '/');
+
+        return $frontendUrl . '/api/proxy/public/receipt/' . $receiptToken->token . '/invoice';
     }
 }

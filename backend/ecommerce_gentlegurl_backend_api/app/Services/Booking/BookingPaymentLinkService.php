@@ -251,7 +251,10 @@ class BookingPaymentLinkService
             $order = Order::query()->create([
                 'order_number' => $this->generateOrderNumber(),
                 'customer_id' => $booking->customer_id ? (int) $booking->customer_id : null,
-                'created_by_user_id' => $link->created_by,
+                // Customer paid online via the deposit link (self-service), so this is an ONLINE
+                // sale. Reports classify channel by created_by_user_id (NULL = online). The staff
+                // who generated the link is still tracked on the link itself (created_by).
+                'created_by_user_id' => null,
                 'status' => 'completed',
                 'payment_status' => 'paid',
                 'payment_method' => $normalizedProvider,

@@ -30,10 +30,6 @@ const STATUS_LABEL: Record<PosPaymentLinkStatus, string> = {
   EXPIRED: 'Expired',
 }
 
-function qrImageUrl(url: string): string {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(url)}`
-}
-
 export default function PosAppointmentPaymentLinksSection({
   bookingId,
   defaultAmount,
@@ -50,7 +46,7 @@ export default function PosAppointmentPaymentLinksSection({
   const [notesDraft, setNotesDraft] = useState('')
   const [actionId, setActionId] = useState<number | null>(null)
   const [copiedId, setCopiedId] = useState<number | null>(null)
-  const [qrLinkId, setQrLinkId] = useState<number | null>(null)
+  const [collapsed, setCollapsed] = useState(true)
   const onDepositRecordedRef = useRef(onDepositRecorded)
 
   useEffect(() => {
@@ -78,6 +74,7 @@ export default function PosAppointmentPaymentLinksSection({
   }, [refreshLinks])
 
   const openForm = useCallback(() => {
+    setCollapsed(false)
     setShowForm(true)
     const suggested = Number(defaultAmount ?? 0)
     setAmountDraft(suggested > 0 ? suggested.toFixed(2) : '')
@@ -111,7 +108,6 @@ export default function PosAppointmentPaymentLinksSection({
       const created = json?.data?.payment_link as PosPaymentLink | undefined
       if (created) {
         setLinks((prev) => [created, ...prev])
-        setQrLinkId(created.id)
       }
       setShowForm(false)
       showMsg?.('Deposit link created.', 'success')
@@ -165,15 +161,68 @@ export default function PosAppointmentPaymentLinksSection({
     }
   }, [bookingId, showMsg])
 
+  const rejectProof = useCallback(async (link: PosPaymentLink) => {
+    setActionId(link.id)
+    try {
+      const res = await fetch(`/api/proxy/pos/appointments/${bookingId}/payment-links/${link.id}/reject-proof`, { method: 'POST' })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) {
+        showMsg?.(json?.message ?? 'Failed to reject payment proof.', 'error')
+        return
+      }
+      const updated = json?.data?.payment_link as PosPaymentLink | undefined
+      if (updated) setLinks((prev) => prev.map((row) => (row.id === updated.id ? updated : row)))
+      showMsg?.('Payment proof rejected. The customer can upload a new one.', 'success')
+    } finally {
+      setActionId(null)
+    }
+  }, [bookingId, showMsg])
+
+  const paidCount = links.filter((link) => link.status === 'PAID').length
+  const paidTotal = links
+    .filter((link) => link.status === 'PAID')
+    .reduce((sum, link) => sum + Number(link.amount ?? 0), 0)
+  const actionNeededCount = links.filter(
+    (link) => link.status === 'PENDING' && link.manual_review_status === 'slip_uploaded_pending_review',
+  ).length
+
   return (
     <div className="rounded-xl border border-purple-100 bg-purple-50/40 p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <label className="text-xs font-semibold text-gray-700">Online Deposit Links</label>
+      <button
+        type="button"
+        onClick={() => setCollapsed((prev) => !prev)}
+        className="flex w-full items-center justify-between gap-3 text-left"
+        aria-expanded={!collapsed}
+      >
+        <div className="min-w-0">
+          <span className="text-xs font-semibold text-gray-700">Online Deposit History</span>
           <p className="mt-0.5 text-[11px] font-medium text-gray-500">
-            Generate a payment link for the customer to pay a deposit online.
+            {links.length === 0
+              ? 'Generate a payment link for the customer to pay a deposit online.'
+              : `${links.length} link${links.length > 1 ? 's' : ''}${paidCount > 0 ? ` · ${paidCount} paid · RM ${paidTotal.toFixed(2)} collected` : ''}`}
           </p>
         </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {actionNeededCount > 0 ? (
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-800">
+              {actionNeededCount} to review
+            </span>
+          ) : null}
+          <svg
+            className={`h-4 w-4 text-gray-500 transition-transform ${collapsed ? '' : 'rotate-180'}`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+            aria-hidden
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </div>
+      </button>
+
+      {collapsed ? null : (
+      <div className="mt-3">
+      <div className="mb-3 flex justify-end">
         {!showForm ? (
           <button
             type="button"
@@ -258,6 +307,7 @@ export default function PosAppointmentPaymentLinksSection({
           {links.map((link) => {
             const canCancel = link.status === 'PENDING'
             const canApprove = link.status === 'PENDING' && Boolean(link.has_slip)
+            const canRejectProof = link.status === 'PENDING' && Boolean(link.has_slip)
             const busy = actionId === link.id
             return (
               <li key={link.id} className="rounded-lg border border-white/80 bg-white px-3 py-2.5 text-xs shadow-sm">
@@ -288,20 +338,15 @@ export default function PosAppointmentPaymentLinksSection({
                     ) : null}
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => void copyLink(link)}
-                      className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
-                    >
-                      {copiedId === link.id ? 'Copied!' : 'Copy'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setQrLinkId((prev) => (prev === link.id ? null : link.id))}
-                      className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
-                    >
-                      QR
-                    </button>
+                    {link.status === 'PENDING' ? (
+                      <button
+                        type="button"
+                        onClick={() => void copyLink(link)}
+                        className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                      >
+                        {copiedId === link.id ? 'Copied!' : 'Copy'}
+                      </button>
+                    ) : null}
                     {link.manual_slip_url ? (
                       <a
                         href={link.manual_slip_url}
@@ -312,6 +357,16 @@ export default function PosAppointmentPaymentLinksSection({
                         Slip
                       </a>
                     ) : null}
+                    {link.status === 'PAID' && link.receipt_url ? (
+                      <a
+                        href={link.receipt_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-800 hover:bg-emerald-100"
+                      >
+                        Receipt
+                      </a>
+                    ) : null}
                     {canApprove ? (
                       <button
                         type="button"
@@ -320,6 +375,16 @@ export default function PosAppointmentPaymentLinksSection({
                         className="rounded-md border border-emerald-300 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-100 disabled:opacity-50"
                       >
                         {busy ? '…' : 'Approve'}
+                      </button>
+                    ) : null}
+                    {canRejectProof ? (
+                      <button
+                        type="button"
+                        disabled={busy || disabled}
+                        onClick={() => void rejectProof(link)}
+                        className="rounded-md border border-orange-300 bg-orange-50 px-2 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50"
+                      >
+                        {busy ? '…' : 'Reject'}
                       </button>
                     ) : null}
                     {canCancel ? (
@@ -334,17 +399,12 @@ export default function PosAppointmentPaymentLinksSection({
                     ) : null}
                   </div>
                 </div>
-                {qrLinkId === link.id ? (
-                  <div className="mt-3 flex flex-col items-center gap-2 rounded-lg border border-dashed border-purple-200 bg-purple-50/50 p-3">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={qrImageUrl(link.url)} alt="Payment link QR" className="h-40 w-40 rounded bg-white p-2" />
-                    <p className="break-all text-center font-mono text-[10px] text-gray-500">{link.url}</p>
-                  </div>
-                ) : null}
               </li>
             )
           })}
         </ul>
+      )}
+      </div>
       )}
     </div>
   )

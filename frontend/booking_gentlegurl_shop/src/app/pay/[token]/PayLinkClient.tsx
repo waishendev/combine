@@ -7,6 +7,8 @@ import {
   ApiError,
   BillplzPaymentGatewayOption,
   PaymentLinkDetail,
+  PaymentLinkServiceBlock,
+  PaymentLinkServiceBlockAddon,
   PublicBookingBankAccount,
   cancelPaymentLinkSlip,
   getBillplzPaymentGatewayOptions,
@@ -42,6 +44,87 @@ function formatDateTime(value?: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function formatMoney(value?: number | string | null): string {
+  return `RM ${Number(value ?? 0).toFixed(2)}`;
+}
+
+function formatServicePrice(block: PaymentLinkServiceBlock): string {
+  const mode = String(block.price_mode ?? "fixed").toLowerCase();
+  const finalized = block.price_finalized !== false;
+  const amount = Number(block.amount ?? 0);
+  const rangeMin = Number(block.price_range_min ?? 0);
+  const rangeMax = Number(block.price_range_max ?? 0);
+  if (mode === "range" && !finalized && amount <= 0) {
+    if (rangeMin > 0 || rangeMax > 0) {
+      return `${formatMoney(Math.min(rangeMin, rangeMax))} – ${formatMoney(Math.max(rangeMin, rangeMax))}`;
+    }
+    return "Price on consultation";
+  }
+  return formatMoney(amount);
+}
+
+function formatAddonPrice(addon: PaymentLinkServiceBlockAddon): string {
+  const qty = Number(addon.quantity ?? 1);
+  const line = Number(addon.line_gross_amount ?? (Number(addon.extra_price ?? 0) * (qty > 0 ? qty : 1)));
+  if (line <= 0) return "";
+  return formatMoney(line);
+}
+
+function ServiceBlockRow({ block }: { block: PaymentLinkServiceBlock }) {
+  const addOns = block.add_ons ?? [];
+  const isRangePending = String(block.price_mode ?? "").toLowerCase() === "range" && block.price_finalized === false;
+
+  return (
+    <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="font-semibold text-[var(--foreground)]">{block.name}</p>
+            {block.cn_name ? <span className="text-xs text-[var(--text-muted)]">{block.cn_name}</span> : null}
+          </div>
+          {Number(block.duration_min ?? 0) > 0 ? (
+            <p className="mt-0.5 text-xs text-[var(--text-muted)]">{block.duration_min} mins</p>
+          ) : null}
+        </div>
+        <div className="shrink-0 text-right">
+          <p className={`text-sm font-semibold tabular-nums ${isRangePending ? "text-amber-700" : "text-[var(--foreground)]"}`}>
+            {formatServicePrice(block)}
+          </p>
+          {isRangePending ? <p className="mt-0.5 text-[10px] text-amber-700">Final price at salon</p> : null}
+        </div>
+      </div>
+
+      {addOns.length > 0 ? (
+        <div className="mt-2 space-y-1.5 border-t border-[var(--card-border)] pt-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
+          {addOns.map((addon, index) => {
+            const qty = Number(addon.quantity ?? 1);
+            const priceText = formatAddonPrice(addon);
+            return (
+              <div key={`${addon.id ?? addon.name}-${index}`} className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <p className="text-sm text-[var(--foreground)]">{addon.name}</p>
+                    {qty > 1 ? (
+                      <span className="rounded-full bg-[var(--background)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+                        × {qty}
+                      </span>
+                    ) : null}
+                  </div>
+                  {addon.cn_name ? <p className="text-xs text-[var(--text-muted)]">{addon.cn_name}</p> : null}
+                </div>
+                {priceText ? (
+                  <p className="shrink-0 text-right text-xs font-medium tabular-nums text-[var(--text-muted)]">{priceText}</p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export default function PayLinkClient({ token }: { token: string }) {
@@ -233,33 +316,91 @@ export default function PayLinkClient({ token }: { token: string }) {
 
   const appointment = link.appointment;
 
+  const serviceBlocks = appointment?.service_blocks ?? [];
+  const hasBlocks = serviceBlocks.length > 0;
+  const multiService = Boolean(appointment?.multi_service) || serviceBlocks.length > 1;
+  const durationMin = Number(appointment?.estimated_duration_min ?? 0);
+  const itemsTotal = Number(appointment?.items_total ?? 0);
+  const depositCollected = Number(appointment?.deposit_collected ?? 0);
+
   const summaryCard = (
     <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Deposit request</p>
       <p className="mt-1 text-3xl font-semibold tabular-nums text-[var(--foreground)]">{amountLabel}</p>
+
       {appointment ? (
-        <div className="mt-4 space-y-1.5 border-t border-[var(--card-border)] pt-4 text-sm">
-          <div className="flex justify-between gap-3">
-            <span className="text-[var(--text-muted)]">Service</span>
-            <span className="text-right font-medium text-[var(--foreground)]">{appointment.service_name}</span>
+        <>
+          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--card-border)] pt-4 text-sm">
+            {appointment.staff_name ? (
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Stylist</p>
+                <p className="mt-0.5 truncate font-medium text-[var(--foreground)]">{appointment.staff_name}</p>
+              </div>
+            ) : null}
+            {appointment.booking_code ? (
+              <div className="min-w-0 text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Reference</p>
+                <p className="mt-0.5 truncate font-mono text-xs text-[var(--foreground)]">{appointment.booking_code}</p>
+              </div>
+            ) : null}
+            <div className="min-w-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Appointment</p>
+              <p className="mt-0.5 font-medium text-[var(--foreground)]">{formatDateTime(appointment.start_at)}</p>
+            </div>
+            {durationMin > 0 ? (
+              <div className="min-w-0 text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Duration</p>
+                <p className="mt-0.5 font-medium text-[var(--foreground)]">{durationMin} mins</p>
+              </div>
+            ) : null}
           </div>
-          {appointment.staff_name ? (
-            <div className="flex justify-between gap-3">
-              <span className="text-[var(--text-muted)]">Stylist</span>
-              <span className="text-right font-medium text-[var(--foreground)]">{appointment.staff_name}</span>
+
+          <div className="mt-4 border-t border-[var(--card-border)] pt-4">
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
+                {multiService ? "Services" : "Service"}
+              </p>
+              {multiService ? (
+                <span className="rounded-full bg-[var(--background)] px-2 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
+                  {serviceBlocks.length} services
+                </span>
+              ) : null}
+            </div>
+
+            <div className="space-y-2">
+              {hasBlocks
+                ? serviceBlocks.map((block, index) => (
+                    <ServiceBlockRow key={`${block.service_id ?? block.name}-${index}`} block={block} />
+                  ))
+                : (
+                  <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                    <p className="font-semibold text-[var(--foreground)]">{appointment.service_name}</p>
+                  </div>
+                )}
+            </div>
+          </div>
+
+          {itemsTotal > 0 || depositCollected > 0 ? (
+            <div className="mt-4 space-y-1.5 border-t border-[var(--card-border)] pt-4 text-sm">
+              {itemsTotal > 0 ? (
+                <div className="flex justify-between gap-3">
+                  <span className="text-[var(--text-muted)]">Booking total</span>
+                  <span className="font-medium tabular-nums text-[var(--foreground)]">{formatMoney(itemsTotal)}</span>
+                </div>
+              ) : null}
+              {depositCollected > 0 ? (
+                <div className="flex justify-between gap-3">
+                  <span className="text-[var(--text-muted)]">Deposit already paid</span>
+                  <span className="font-medium tabular-nums text-emerald-700">{formatMoney(depositCollected)}</span>
+                </div>
+              ) : null}
+              <div className="flex justify-between gap-3 border-t border-[var(--card-border)] pt-2 text-base">
+                <span className="font-semibold text-[var(--foreground)]">This deposit</span>
+                <span className="font-semibold tabular-nums text-[var(--accent-strong,var(--accent))]">{amountLabel}</span>
+              </div>
             </div>
           ) : null}
-          <div className="flex justify-between gap-3">
-            <span className="text-[var(--text-muted)]">Appointment</span>
-            <span className="text-right font-medium text-[var(--foreground)]">{formatDateTime(appointment.start_at)}</span>
-          </div>
-          {appointment.booking_code ? (
-            <div className="flex justify-between gap-3">
-              <span className="text-[var(--text-muted)]">Reference</span>
-              <span className="text-right font-mono text-xs text-[var(--foreground)]">{appointment.booking_code}</span>
-            </div>
-          ) : null}
-        </div>
+        </>
       ) : null}
     </div>
   );

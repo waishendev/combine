@@ -434,7 +434,42 @@ export type PaymentLinkDetail = {
     start_at?: string | null;
     end_at?: string | null;
     customer_name?: string | null;
+    service_blocks?: PaymentLinkServiceBlock[];
+    service_total?: number;
+    addon_total?: number;
+    items_total?: number;
+    deposit_collected?: number;
+    estimated_duration_min?: number;
+    multi_service?: boolean;
   } | null;
+};
+
+export type PaymentLinkServiceBlockAddon = {
+  id?: number | null;
+  name: string;
+  cn_name?: string | null;
+  quantity?: number | null;
+  extra_price?: number | null;
+  extra_duration_min?: number | null;
+  line_gross_amount?: number | null;
+  price_mode?: string | null;
+  price_range_min?: number | null;
+  price_range_max?: number | null;
+  price_finalized?: boolean | null;
+};
+
+export type PaymentLinkServiceBlock = {
+  service_id?: number | null;
+  name: string;
+  cn_name?: string | null;
+  amount?: number | null;
+  price_mode?: string | null;
+  price_range_min?: number | null;
+  price_range_max?: number | null;
+  price_finalized?: boolean | null;
+  duration_min?: number | null;
+  is_original?: boolean | null;
+  add_ons?: PaymentLinkServiceBlockAddon[];
 };
 
 export type PaymentLinkPayResponse = {

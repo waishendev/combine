@@ -7319,6 +7319,7 @@ class PosController extends Controller
                     'line_item_count' => $lineCount,
                     'payment_method' => (string) ($order?->payment_method ?? ''),
                     'payments' => $payments,
+                    'channel' => ($order && $order->created_by_user_id === null) ? 'online' : 'offline',
                     'paid_at' => optional($order?->paid_at ?? $order?->created_at)?->toIso8601String(),
                     'created_at' => optional($primaryItem->created_at)?->toIso8601String(),
                     'receipt_public_url' => $order ? $this->buildReceiptUrlForOrder((int) $order->id) : null,

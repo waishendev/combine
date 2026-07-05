@@ -7,6 +7,7 @@ use App\Models\BankAccount;
 use App\Models\BillplzPaymentGatewayOption;
 use App\Models\Booking\BookingPaymentLink;
 use App\Services\Booking\BookingPaymentLinkService;
+use App\Services\Booking\BookingServiceBlocksResolver;
 use App\Support\WorkspaceType;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -17,6 +18,7 @@ class PaymentLinkController extends Controller
 {
     public function __construct(
         protected BookingPaymentLinkService $service,
+        protected BookingServiceBlocksResolver $serviceBlocksResolver,
     ) {
     }
 
@@ -280,7 +282,7 @@ class PaymentLinkController extends Controller
         }
 
         return BookingPaymentLink::query()
-            ->with(['booking.service', 'booking.staff'])
+            ->with(['booking.service', 'booking.staff', 'booking.customer'])
             ->where('token', $token)
             ->first();
     }
@@ -331,6 +333,36 @@ class PaymentLinkController extends Controller
     {
         $booking = $link->booking;
 
+        $appointment = null;
+        if ($booking) {
+            $serviceBlocks = $this->serviceBlocksResolver->blocks($booking);
+
+            $serviceTotal = round(collect($serviceBlocks)->sum(fn (array $block) => (float) ($block['amount'] ?? 0)), 2);
+            $addonTotal = round(collect($serviceBlocks)->sum(
+                fn (array $block) => collect($block['add_ons'] ?? [])->sum(fn (array $addon) => (float) ($addon['line_gross_amount'] ?? 0))
+            ), 2);
+            $durationMin = (int) collect($serviceBlocks)->sum(
+                fn (array $block) => (int) ($block['duration_min'] ?? 0)
+                    + collect($block['add_ons'] ?? [])->sum(fn (array $addon) => (int) ($addon['extra_duration_min'] ?? 0))
+            );
+
+            $appointment = [
+                'booking_code' => (string) $booking->booking_code,
+                'service_name' => (string) ($booking->service?->name ?? 'Service'),
+                'staff_name' => (string) ($booking->staff?->name ?? ''),
+                'start_at' => optional($booking->start_at)->toDateTimeString(),
+                'end_at' => optional($booking->end_at)->toDateTimeString(),
+                'customer_name' => $booking->customer?->name ?: $booking->guest_name ?: null,
+                'service_blocks' => $serviceBlocks,
+                'service_total' => $serviceTotal,
+                'addon_total' => $addonTotal,
+                'items_total' => round($serviceTotal + $addonTotal, 2),
+                'deposit_collected' => round((float) ($booking->deposit_amount ?? 0), 2),
+                'estimated_duration_min' => $durationMin,
+                'multi_service' => count($serviceBlocks) > 1,
+            ];
+        }
+
         return [
             'token' => (string) $link->token,
             'status' => (string) $link->status,
@@ -342,14 +374,7 @@ class PaymentLinkController extends Controller
             'provider' => $link->provider,
             'manual_review_status' => $link->manual_review_status,
             'manual_slip_url' => $link->manual_slip_url,
-            'appointment' => $booking ? [
-                'booking_code' => (string) $booking->booking_code,
-                'service_name' => (string) ($booking->service?->name ?? 'Service'),
-                'staff_name' => (string) ($booking->staff?->name ?? ''),
-                'start_at' => optional($booking->start_at)->toDateTimeString(),
-                'end_at' => optional($booking->end_at)->toDateTimeString(),
-                'customer_name' => $booking->customer?->name ?: $booking->guest_name ?: null,
-            ] : null,
+            'appointment' => $appointment,
         ];
     }
 
