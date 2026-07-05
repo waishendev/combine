@@ -383,20 +383,20 @@ export default function PosAppointmentDepositCreditSection({
                   {transaction.is_grouped && transaction.label ? (
                     <p className="mt-0.5 text-[11px] font-medium text-gray-600">{transaction.label}</p>
                   ) : null}
-                  <p className="mt-1 text-[11px] text-gray-600">
+                  <div className="mt-1 space-y-0.5 text-[11px] text-gray-600">
                     {transaction.order_number ? (
-                      <span className="font-mono text-slate-500">{transaction.order_number}</span>
-                    ) : '—'}
+                      <p className="font-mono text-slate-500">{transaction.order_number}</p>
+                    ) : null}
                     {transaction.paid_at || transaction.created_at ? (
-                      <span>
-                        {' · '}
-                        {formatDateTime12Hour(transaction.paid_at ?? transaction.created_at)}
-                      </span>
+                      <p>{formatDateTime12Hour(transaction.paid_at ?? transaction.created_at)}</p>
                     ) : null}
                     {transaction.created_by?.name ? (
-                      <span>{' · '}{transaction.created_by.name}</span>
+                      <p>{transaction.created_by.name}</p>
                     ) : null}
-                  </p>
+                    {!transaction.order_number && !transaction.paid_at && !transaction.created_at && !transaction.created_by?.name ? (
+                      <p>—</p>
+                    ) : null}
+                  </div>
                   {transaction.remark ? (
                     <p className="mt-1 text-[11px] italic text-gray-500">{transaction.remark}</p>
                   ) : null}

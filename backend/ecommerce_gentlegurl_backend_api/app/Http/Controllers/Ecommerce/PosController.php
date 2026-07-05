@@ -49,6 +49,7 @@ use App\Models\Ecommerce\OrderVoucher;
 use App\Models\Ecommerce\CustomerVoucher;
 use App\Models\Ecommerce\PointsEarnBatch;
 use App\Services\Ecommerce\InvoiceService;
+use App\Services\Ecommerce\OfflineOrderManagementService;
 use App\Services\Ecommerce\OrderPaymentService;
 use App\Services\Voucher\VoucherEligibilityService;
 use App\Services\Voucher\VoucherService;
@@ -1846,10 +1847,12 @@ class PosController extends Controller
     {
         $validated = $request->validate([
             'status' => ['required', 'in:COMPLETED,CANCELLED,LATE_CANCELLATION,NO_SHOW,NOTIFIED_CANCELLATION'],
+            'void_deposit' => ['sometimes', 'boolean'],
         ]);
 
         $booking = Booking::query()->with(['customer', 'service', 'staff'])->findOrFail($id);
         $targetStatus = (string) $validated['status'];
+        $voidDeposit = (bool) ($validated['void_deposit'] ?? false);
         if ((string) $booking->status !== 'CONFIRMED') {
             return $this->respondError(__('Only CONFIRMED appointment can be updated from POS settlement.'), 422);
         }
@@ -1858,7 +1861,7 @@ class PosController extends Controller
             return $this->markAppointmentCompleted($id);
         }
 
-        DB::transaction(function () use ($booking, $targetStatus) {
+        DB::transaction(function () use ($booking, $targetStatus, $voidDeposit, $request) {
             $booking->status = $targetStatus;
             if (in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NOTIFIED_CANCELLATION'], true)) {
                 $booking->cancelled_at = now();
@@ -1869,11 +1872,24 @@ class PosController extends Controller
             if (in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW', 'NOTIFIED_CANCELLATION'], true)) {
                 $this->customerServicePackageService->releaseReservedClaimsForBooking((int) $booking->id);
             }
+
+            if ($voidDeposit && in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW'], true)) {
+                app(OfflineOrderManagementService::class)->voidBookingDepositOrders(
+                    $booking,
+                    "Deposit voided — appointment marked {$targetStatus} from POS",
+                    optional($request->user())->id,
+                );
+            }
         });
+
+        $message = __('Appointment status updated.');
+        if ($voidDeposit && in_array($targetStatus, ['CANCELLED', 'LATE_CANCELLATION', 'NO_SHOW'], true)) {
+            $message = __('Appointment status updated and deposit receipt(s) voided.');
+        }
 
         return $this->respond([
             'appointment' => $this->resolveAppointmentSnapshot($booking->fresh(['customer', 'service', 'staff'])),
-        ], __('Appointment status updated.'));
+        ], $message);
     }
 
     public function approveHoldAppointment(Request $request, int $id)

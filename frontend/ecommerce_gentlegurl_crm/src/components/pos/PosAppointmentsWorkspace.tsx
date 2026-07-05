@@ -113,6 +113,14 @@ const APPOINTMENT_STATUS_FILTER_OPTIONS: Array<{ value: AppointmentStatusFilterV
   { value: 'VOIDED', label: 'Voided' },
 ]
 
+type AppointmentTerminalStatusAction = 'CANCELLED' | 'LATE_CANCELLATION' | 'NO_SHOW'
+
+const APPOINTMENT_TERMINAL_STATUS_ACTION_LABELS: Record<AppointmentTerminalStatusAction, string> = {
+  CANCELLED: 'Cancel',
+  LATE_CANCELLATION: 'Late cancellation',
+  NO_SHOW: 'No Show',
+}
+
 const appointmentStatusFilterApiValue = (value: string) =>
   ['COMPLETED_UNPAID', 'COMPLETED_PAID'].includes(value) ? 'COMPLETED' : value
 
@@ -489,6 +497,9 @@ export default function PosAppointmentsWorkspace({
   const [holdReviewNote, setHoldReviewNote] = useState('')
   const [holdCancelReason, setHoldCancelReason] = useState('')
   const [holdRejectNote, setHoldRejectNote] = useState('')
+  const [appointmentStatusConfirmOpen, setAppointmentStatusConfirmOpen] = useState(false)
+  const [appointmentStatusConfirmTarget, setAppointmentStatusConfirmTarget] = useState<AppointmentTerminalStatusAction | null>(null)
+  const [appointmentStatusVoidDeposit, setAppointmentStatusVoidDeposit] = useState(false)
 
   const [editSettlementOpen, setEditSettlementOpen] = useState(false)
   const [editSettlementLoading, setEditSettlementLoading] = useState(false)
@@ -2840,21 +2851,31 @@ export default function PosAppointmentsWorkspace({
   }, [appointmentDetail, showMsg])
 
   const updateAppointmentStatus = useCallback(
-    async (status: 'CANCELLED' | 'LATE_CANCELLATION' | 'NO_SHOW') => {
+    async (status: AppointmentTerminalStatusAction, voidDeposit = false) => {
       if (!appointmentDetail?.id) return
       setAppointmentActionLoading(true)
       try {
         const res = await fetch(`/api/proxy/pos/appointments/${appointmentDetail.id}/status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({ status, void_deposit: voidDeposit }),
         })
         const json = await res.json().catch(() => null)
         if (!res.ok) {
           showMsg(json?.message ?? 'Unable to update status.', 'error')
           return
         }
-        showMsg('Appointment status updated.', 'success')
+        showMsg(
+          typeof json?.message === 'string' && json.message.trim()
+            ? json.message
+            : voidDeposit
+              ? 'Appointment status updated and deposit receipt(s) voided.'
+              : 'Appointment status updated.',
+          'success',
+        )
+        setAppointmentStatusConfirmOpen(false)
+        setAppointmentStatusConfirmTarget(null)
+        setAppointmentStatusVoidDeposit(false)
         await fetchAppointments({ silent: true })
         await refreshOpenedAppointmentDetail()
       } finally {
@@ -2862,6 +2883,22 @@ export default function PosAppointmentsWorkspace({
       }
     },
     [appointmentDetail?.id, fetchAppointments, refreshOpenedAppointmentDetail, showMsg],
+  )
+
+  const requestAppointmentStatusUpdate = useCallback(
+    (status: AppointmentTerminalStatusAction) => {
+      const hasActiveDeposit = (appointmentDetail?.deposit_transactions ?? []).some(
+        (tx) => Number(tx.amount ?? 0) > 0.0001,
+      )
+      if (hasActiveDeposit) {
+        setAppointmentStatusVoidDeposit(false)
+        setAppointmentStatusConfirmTarget(status)
+        setAppointmentStatusConfirmOpen(true)
+        return
+      }
+      void updateAppointmentStatus(status, false)
+    },
+    [appointmentDetail?.deposit_transactions, updateAppointmentStatus],
   )
 
   const approveHoldAppointment = useCallback(async () => {
@@ -3544,6 +3581,14 @@ export default function PosAppointmentsWorkspace({
   const appointmentIsHold = appointmentStatusUpper === 'HOLD'
   const appointmentHoldProofCount = appointmentDetail?.payment_proofs?.length ?? 0
   const appointmentHoldDepositOrder = appointmentDetail?.hold_deposit_order ?? null
+  const appointmentActiveDepositTransactions = useMemo(
+    () => (appointmentDetail?.deposit_transactions ?? []).filter((tx) => Number(tx.amount ?? 0) > 0.0001),
+    [appointmentDetail?.deposit_transactions],
+  )
+  const appointmentActiveDepositTotal = useMemo(
+    () => appointmentActiveDepositTransactions.reduce((sum, tx) => sum + Number(tx.amount ?? 0), 0),
+    [appointmentActiveDepositTransactions],
+  )
   const canRejectHoldPaymentProof = Boolean(
     appointmentIsHold &&
       ((appointmentHoldDepositOrder?.status === 'processing' &&
@@ -3682,6 +3727,7 @@ export default function PosAppointmentsWorkspace({
       holdRejectConfirmOpen ||
       holdCancelConfirmOpen ||
       cancellationConfirmOpen ||
+      appointmentStatusConfirmOpen ||
       appointmentSettlementResult != null ||
       appointmentQrCodeFullscreen,
     [
@@ -3691,6 +3737,7 @@ export default function PosAppointmentsWorkspace({
       appointmentQrCodeFullscreen,
       appointmentRescheduleOpen,
       appointmentSettlementResult,
+      appointmentStatusConfirmOpen,
       cancellationConfirmOpen,
       cancellationRequestsModalOpen,
       createAppointmentMemberPickerOpen,
@@ -4733,7 +4780,7 @@ export default function PosAppointmentsWorkspace({
                           type="button"
                           disabled={cashShiftActionDisabled || appointmentActionLoading}
                           title={cashShiftActionTitle}
-                          onClick={() => void updateAppointmentStatus('CANCELLED')}
+                          onClick={() => requestAppointmentStatusUpdate('CANCELLED')}
                           className="min-h-[48px] rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition hover:bg-white disabled:opacity-50"
                         >
                           Cancel
@@ -4742,7 +4789,7 @@ export default function PosAppointmentsWorkspace({
                           type="button"
                           disabled={cashShiftActionDisabled || appointmentActionLoading}
                           title={cashShiftActionDisabled && canPosCheckout ? requireOpenShiftMessage : 'Customer did not attend the scheduled appointment (DNA / no-show).'}
-                          onClick={() => void updateAppointmentStatus('NO_SHOW')}
+                          onClick={() => requestAppointmentStatusUpdate('NO_SHOW')}
                           className="min-h-[48px] rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-sm font-semibold text-rose-900 shadow-sm transition hover:bg-rose-50 disabled:opacity-50"
                         >
                           No Show
@@ -4751,7 +4798,7 @@ export default function PosAppointmentsWorkspace({
                           type="button"
                           disabled={cashShiftActionDisabled || appointmentActionLoading}
                           title={cashShiftActionTitle}
-                          onClick={() => void updateAppointmentStatus('LATE_CANCELLATION')}
+                          onClick={() => requestAppointmentStatusUpdate('LATE_CANCELLATION')}
                           className="min-h-[48px] rounded-xl border border-orange-200 bg-white px-3 py-2.5 text-sm font-semibold text-orange-900 shadow-sm transition hover:bg-orange-50 disabled:opacity-50"
                         >
                           Late cancellation
@@ -5955,6 +6002,105 @@ export default function PosAppointmentsWorkspace({
                 className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
               >
                 {appointmentActionLoading ? 'Cancelling…' : 'Confirm cancel'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null,
+        bodyModalRoot,
+      )}
+
+      {renderPosBodyModalPortal(
+        appointmentStatusConfirmOpen && appointmentDetail && appointmentStatusConfirmTarget ? (
+        <div className="pos-body-stack-modal flex items-center justify-center overflow-y-auto bg-black/55 p-4 backdrop-blur-sm">
+          <div
+            className="relative mx-auto flex w-full max-w-md max-h-[min(90dvh,calc(100vh-2rem))] flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pos-appointment-status-confirm-title"
+          >
+            <div className="shrink-0 border-b border-gray-200 px-5 py-4">
+              <h3 id="pos-appointment-status-confirm-title" className="text-lg font-bold text-gray-900">
+                {APPOINTMENT_TERMINAL_STATUS_ACTION_LABELS[appointmentStatusConfirmTarget]} appointment?
+              </h3>
+              <p className="mt-1 text-sm text-gray-600">
+                This will mark <span className="font-mono font-semibold">{appointmentDetail.booking_code}</span> as{' '}
+                {APPOINTMENT_TERMINAL_STATUS_ACTION_LABELS[appointmentStatusConfirmTarget].toLowerCase()}.
+              </p>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
+              <div className="space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950">
+                <p className="text-sm font-semibold">Deposit collected</p>
+                <p className="text-xs text-amber-900/90">
+                  RM {appointmentActiveDepositTotal.toFixed(2)} across {appointmentActiveDepositTransactions.length}{' '}
+                  deposit receipt{appointmentActiveDepositTransactions.length === 1 ? '' : 's'}. Choose whether to void the deposit order(s) or keep them on record.
+                </p>
+                <ul className="space-y-1 text-xs text-amber-900/80">
+                  {appointmentActiveDepositTransactions.map((tx) => (
+                    <li key={`${tx.order_id ?? tx.id}`} className="flex items-center justify-between gap-2">
+                      <span className="font-mono">{tx.order_number || `Order #${tx.order_id ?? tx.id}`}</span>
+                      <span className="font-semibold tabular-nums">RM {Number(tx.amount ?? 0).toFixed(2)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="space-y-2">
+                <label className="flex w-full cursor-pointer items-start gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-left">
+                  <input
+                    type="radio"
+                    name="appointment_status_void_deposit"
+                    checked={!appointmentStatusVoidDeposit}
+                    onChange={() => setAppointmentStatusVoidDeposit(false)}
+                    disabled={appointmentActionLoading}
+                    className="mt-1 shrink-0"
+                  />
+                  <span className="min-w-0 text-left">
+                    <span className="block text-sm font-semibold text-slate-900">Keep deposit</span>
+                    <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                      Update the appointment status only. Deposit receipt(s) stay active.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex w-full cursor-pointer items-start gap-3 rounded-lg border border-rose-200 bg-rose-50/40 px-3 py-2.5 text-left">
+                  <input
+                    type="radio"
+                    name="appointment_status_void_deposit"
+                    checked={appointmentStatusVoidDeposit}
+                    onChange={() => setAppointmentStatusVoidDeposit(true)}
+                    disabled={appointmentActionLoading}
+                    className="mt-1 shrink-0"
+                  />
+                  <span className="min-w-0 text-left">
+                    <span className="block text-sm font-semibold text-slate-900">Void deposit receipt(s)</span>
+                    <span className="mt-0.5 block text-xs leading-relaxed text-slate-600">
+                      Void the linked deposit order(s) and update the appointment status.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+            <div className="flex shrink-0 justify-end gap-2 border-t border-gray-200 px-5 py-3">
+              <button
+                type="button"
+                disabled={appointmentActionLoading}
+                onClick={() => {
+                  setAppointmentStatusConfirmOpen(false)
+                  setAppointmentStatusConfirmTarget(null)
+                  setAppointmentStatusVoidDeposit(false)
+                }}
+                className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-700 disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={appointmentActionLoading}
+                onClick={() => void updateAppointmentStatus(appointmentStatusConfirmTarget, appointmentStatusVoidDeposit)}
+                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {appointmentActionLoading
+                  ? 'Processing…'
+                  : `Confirm ${APPOINTMENT_TERMINAL_STATUS_ACTION_LABELS[appointmentStatusConfirmTarget]}`}
               </button>
             </div>
           </div>

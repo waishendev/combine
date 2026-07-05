@@ -975,6 +975,102 @@ class OfflineOrderManagementService
         }
     }
 
+    /**
+     * Void all active deposit receipts for a booking (order_only). Used when cancelling / no-show from POS.
+     */
+    public function voidBookingDepositOrders(Booking $booking, string $remark, ?int $actorId): void
+    {
+        $bookingId = (int) $booking->id;
+        $orderIds = DB::table('order_items')
+            ->join('orders', 'orders.id', '=', 'order_items.order_id')
+            ->where('order_items.booking_id', $bookingId)
+            ->whereNotIn('orders.status', ['voided', 'cancelled', 'draft'])
+            ->where(function ($query) {
+                $query->where('order_items.line_type', 'booking_deposit')
+                    ->orWhere(function ($addonQuery) {
+                        $addonQuery->where('order_items.line_type', 'booking_addon')
+                            ->where('order_items.variant_name_snapshot', 'Booking Add-on Deposit');
+                    });
+            })
+            ->pluck('orders.id')
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        foreach ($orderIds as $orderId) {
+            $order = Order::query()->find($orderId);
+            if (! $order || $order->status === 'voided') {
+                continue;
+            }
+
+            if (! $this->isDepositOnlyOrder($order)) {
+                throw new RuntimeException('Cannot void non-deposit order during appointment cancellation.');
+            }
+
+            if ($order->created_by_user_id) {
+                $this->voidOrder($order, $remark, $actorId, 'order_only');
+
+                continue;
+            }
+
+            $this->voidOnlineBookingDepositOrder($order, $remark, $actorId, $bookingId);
+        }
+
+        app(PosController::class)->refreshBookingFinancialState($booking->fresh(['service']));
+    }
+
+    private function voidOnlineBookingDepositOrder(Order $order, string $remark, ?int $actorId, int $bookingId): void
+    {
+        if ($order->status === 'voided') {
+            return;
+        }
+
+        if (! in_array((string) $order->status, self::ALLOWED_VOID_STATUSES, true)) {
+            throw new RuntimeException('Deposit order is not in a valid status for void.');
+        }
+
+        DB::transaction(function () use ($order, $remark, $actorId, $bookingId) {
+            $this->voidSingleOrderRecord($order, $remark, $actorId);
+
+            $payments = BookingPayment::query()
+                ->where('booking_id', $bookingId)
+                ->where('status', 'PAID')
+                ->get()
+                ->filter(function (BookingPayment $payment) use ($order) {
+                    $raw = is_array($payment->raw_response) ? $payment->raw_response : [];
+                    $paymentOrderId = (int) (data_get($raw, 'order_id') ?? 0);
+                    $paymentRef = (string) ($payment->ref ?? '');
+
+                    return $paymentOrderId === (int) $order->id
+                        || $paymentRef === (string) $order->order_number;
+                });
+
+            foreach ($payments as $payment) {
+                $beforePayment = [
+                    'status' => $payment->status,
+                    'raw_response' => $payment->raw_response,
+                ];
+
+                $raw = is_array($payment->raw_response) ? $payment->raw_response : [];
+                $raw['voided_by_order_id'] = (int) $order->id;
+                $raw['void_remark'] = $remark;
+                $raw['void_scope'] = 'order_only';
+
+                $payment->status = 'VOIDED';
+                $payment->raw_response = $raw;
+                $payment->save();
+
+                $this->log('settlement', (int) $payment->id, 'void_order', $beforePayment, [
+                    'status' => $payment->status,
+                    'raw_response' => $payment->raw_response,
+                ], $remark, $actorId);
+            }
+        });
+
+        $this->recalculateEcommerceCommissionForOrderMonth($order->fresh(), 'void_order', $remark, $actorId);
+    }
+
     private function ensureOfflineOrder(Order $order): void
     {
         if (! $order->created_by_user_id) {
