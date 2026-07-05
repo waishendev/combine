@@ -107,6 +107,11 @@ export function getPrimaryProductImage(
   return PLACEHOLDER_IMAGE;
 }
 
+export function getOrderItemDisplayImage(source: ProductMediaSource): string | null {
+  const image = getPrimaryProductImage(source);
+  return image === PLACEHOLDER_IMAGE ? null : image;
+}
+
 // Detail gallery rule: video (if any) first, then images sorted by sort_order.
 export function buildProductGalleryMedia(source: ProductMediaSource): ProductMediaItem[] {
   const mediaItems = Array.isArray(source.media) ? source.media : [];

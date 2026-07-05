@@ -9,7 +9,7 @@ import { RatingStars } from "@/components/reviews/RatingStars";
 import { cancelOrder, completeOrder, payOrder } from "@/lib/apiClient";
 import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
-import { getPrimaryProductImage } from "@/lib/productMedia";
+import { getOrderItemDisplayImage, getPrimaryProductImage } from "@/lib/productMedia";
 import { NameStack, VariantNameBlock } from "@/components/common/NameStack";
 import { formatOrderPaymentMethodsLabel } from "@/lib/orderPaymentDisplay";
 
@@ -450,8 +450,8 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                       const canReview = item.can_review === true;
                       const disabled = isReviewed || !item.product_slug || !canReview;
                       const shouldShowVariant = item.product_type === "variant" || !!item.product_variant_id;
-                      const isProductLine = !item.line_type || item.line_type === "product";
                       const variantName = item.variant_name ?? "—";
+                      const itemImage = getOrderItemDisplayImage(item);
                       const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
                       return (
                         <div
@@ -459,18 +459,23 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                         >
                           <div className="flex items-center gap-3">
-                            {isProductLine ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={getPrimaryProductImage(item)}
-                                alt={item.name ?? "Product image"}
-                                className="h-12 w-12 rounded-lg object-cover"
-                              />
-                            ) : (
-                              <div className="flex h-12 w-12 items-center justify-center rounded-lg border border-[var(--muted)] bg-[var(--background)] text-[10px] font-semibold uppercase text-[var(--foreground)]/60">
-                                {String(item.line_type ?? "item").replaceAll("_", " ")}
-                              </div>
-                            )}
+                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+                              {itemImage ? (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={itemImage}
+                                  alt={item.name ?? "Item image"}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src="/images/placeholder.png"
+                                  alt="No image"
+                                  className="h-full w-full object-contain"
+                                />
+                              )}
+                            </div>
                             <div>
                               <NameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
                               {shouldShowVariant && (

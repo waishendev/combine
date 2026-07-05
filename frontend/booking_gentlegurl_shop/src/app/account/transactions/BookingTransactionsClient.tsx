@@ -10,6 +10,7 @@ import {
 } from "@/lib/apiClient";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 import { formatOrderPaymentMethodsLabel } from "@/lib/orderPaymentDisplay";
+import { getOrderItemDisplayImage } from "@/lib/orderItemImage";
 
 function money(amount: number | null | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`;
@@ -379,29 +380,49 @@ export function BookingTransactionsClient() {
                         const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap(
                           (group) => group.options ?? [],
                         );
+                        const itemImage = getOrderItemDisplayImage(item);
                         return (
                           <div
                             key={item.id}
                             className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--muted)] bg-[var(--myorder-background)] px-3 py-2"
                           >
-                            <div className="min-w-0 flex-1 overflow-hidden">
-                              <LineNameStack name={resolveLineLabel(item)} cnName={item.cn_name} />
-                              {(item.product_type === "variant" || item.product_variant_id) && (
-                                <div className="mt-1">
-                                  <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--foreground)]/50">Variant</p>
-                                  <p className="text-xs font-medium text-[var(--foreground)]">{item.variant_name ?? "—"}</p>
-                                  {item.variant_cn_name ? (
-                                    <p className="mt-0.5 text-[11px] text-[var(--foreground)]/60">{item.variant_cn_name}</p>
-                                  ) : null}
-                                </div>
-                              )}
-                              {item.line_type === "service" ? (
-                                <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
-                              ) : null}
-                              <BookingProductOptionsList options={bookingProductOptions} />
-                              <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+                                {itemImage ? (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src={itemImage}
+                                    alt={item.name ?? "Item image"}
+                                    className="h-full w-full object-cover"
+                                  />
+                                ) : (
+                                  // eslint-disable-next-line @next/next/no-img-element
+                                  <img
+                                    src="/images/placeholder.png"
+                                    alt="No image"
+                                    className="h-full w-full object-contain"
+                                  />
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1 overflow-hidden">
+                                <LineNameStack name={resolveLineLabel(item)} cnName={item.cn_name} />
+                                {(item.product_type === "variant" || item.product_variant_id) && (
+                                  <div className="mt-1">
+                                    <p className="text-[11px] font-bold uppercase tracking-wide text-[var(--foreground)]/50">Variant</p>
+                                    <p className="text-xs font-medium text-[var(--foreground)]">{item.variant_name ?? "—"}</p>
+                                    {item.variant_cn_name ? (
+                                      <p className="mt-0.5 text-[11px] text-[var(--foreground)]/60">{item.variant_cn_name}</p>
+                                    ) : null}
+                                  </div>
+                                )}
+                                {item.line_type === "service" ? (
+                                  <p className="text-xs font-medium text-emerald-700">Covered by Package</p>
+                                ) : null}
+                                <BookingProductOptionsList options={bookingProductOptions} />
+                                <p className="text-xs text-[var(--foreground)]/70">Qty: {item.quantity ?? 1}</p>
+                              </div>
                             </div>
-                            <p className="text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>
+                            <p className="shrink-0 text-sm font-semibold text-[var(--foreground)]">{money(item.line_total)}</p>
                           </div>
                         );
                       })}

@@ -45,7 +45,7 @@ class PublicOrderHistoryController extends Controller
 
         $ordersQuery = Order::query()
             ->where('customer_id', $customer->id)
-            ->with(['items.product.images', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name', 'items.booking:id,addon_items_json', 'payments'])
+            ->with(['items.product.images', 'items.productVariant', 'items.review', 'items.bookingService:id,name,cn_name,image_path', 'items.booking:id,addon_items_json,service_id', 'items.booking.service:id,image_path', 'items.booking.servicePhotos:id,booking_id,image_path,sort_order', 'payments'])
             ->orderByDesc('created_at');
 
         if ($scope === 'booking_related' || $workspace === 'booking') {
@@ -87,7 +87,7 @@ class PublicOrderHistoryController extends Controller
                 'items' => $order->items
                     ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
                     ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
-                        $thumbnail = $item->product?->cover_image_url;
+                        $thumbnail = $this->resolveOrderItemThumbnail($item);
                         $productType = $item->product?->type;
                         $review = $item->review;
                         $reviewedAt = $review?->created_at?->toDateTimeString();
@@ -176,6 +176,35 @@ class PublicOrderHistoryController extends Controller
         ]), true);
     }
 
+    private function resolveOrderItemThumbnail($item): ?string
+    {
+        $productThumbnail = $item->product?->cover_image_url;
+        if ($productThumbnail) {
+            return $productThumbnail;
+        }
+
+        $serviceImage = trim((string) ($item->bookingService?->image_url ?? ''));
+        if ($serviceImage !== '') {
+            return $serviceImage;
+        }
+
+        $bookingServiceImage = trim((string) ($item->booking?->service?->image_url ?? ''));
+        if ($bookingServiceImage !== '') {
+            return $bookingServiceImage;
+        }
+
+        $firstServicePhoto = ($item->booking?->servicePhotos ?? collect())
+            ->sortBy('sort_order')
+            ->first();
+
+        $servicePhotoUrl = trim((string) ($firstServicePhoto?->image_url ?? ''));
+        if ($servicePhotoUrl !== '') {
+            return $servicePhotoUrl;
+        }
+
+        return null;
+    }
+
     protected function resolveReceiptUrl(Order $order, Request $request): ?string
     {
         $token = OrderReceiptToken::query()
@@ -204,8 +233,9 @@ class PublicOrderHistoryController extends Controller
             'items.product.images',
             'items.productVariant',
             'items.review',
-            'items.bookingService:id,name,cn_name',
-            'items.booking:id,addon_items_json',
+            'items.bookingService:id,name,cn_name,image_path',
+            'items.booking:id,addon_items_json,service_id',
+            'items.booking.service:id,image_path',
             'items.booking.servicePhotos:id,booking_id,image_path,caption,sort_order,created_at',
             'voucher',
             'uploads',
@@ -225,7 +255,7 @@ class PublicOrderHistoryController extends Controller
         $items = $order->items
             ->reject(fn ($item) => $this->isFakeMainServiceBookingAddon($item))
             ->map(function ($item) use ($order, $reviewWindowDays, $reviewsEnabled) {
-                $thumbnail = $item->product?->cover_image_url;
+                $thumbnail = $this->resolveOrderItemThumbnail($item);
                 $productType = $item->product?->type;
                 $review = $item->review;
                 $reviewedAt = $review?->created_at?->toDateTimeString();

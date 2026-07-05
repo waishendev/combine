@@ -4,7 +4,7 @@ import Image from "next/image";
 import { getOrderDetail } from "@/lib/server/getOrderDetail";
 import { OrderHeaderClient } from "./OrderHeaderClient";
 import { ReturnRequestButton } from "./ReturnRequestButton";
-import { getPrimaryProductImage } from "@/lib/productMedia";
+import { getOrderItemDisplayImage } from "@/lib/productMedia";
 
 type OrderDetailPageProps = {
   params: Promise<{ id: string }>;
@@ -149,6 +149,7 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
           <div className="mt-3 space-y-3">
             {order.items.map((item) => {
               const bookingProductOptions = (item.selected_booking_product_options ?? []).flatMap((group) => group.options ?? []);
+              const itemImage = getOrderItemDisplayImage(item);
 
               return (
                 <div
@@ -156,18 +157,23 @@ export default async function OrderDetailPage({ params }: OrderDetailPageProps) 
                   className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-3 py-3 sm:flex-row sm:items-start sm:justify-between"
                 >
                   <div className="flex items-start gap-3">
-                    {!item.line_type || item.line_type === "product" ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={getPrimaryProductImage(item)}
-                        alt={item.name ?? "Product image"}
-                        className="h-14 w-14 rounded-lg object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-[var(--muted)] bg-[var(--background)] text-[10px] font-semibold uppercase text-[var(--foreground)]/60">
-                        {String(item.line_type).replaceAll("_", " ")}
-                      </div>
-                    )}
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-100">
+                      {itemImage ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={itemImage}
+                          alt={item.name ?? "Item image"}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src="/images/placeholder.png"
+                          alt="No image"
+                          className="h-full w-full object-contain"
+                        />
+                      )}
+                    </div>
                     <div className="min-w-0 flex-1">
                       <NameStack name={resolveOrderItemLabel(item)} cnName={item.cn_name} />
                       {(item.product_type === "variant" || item.product_variant_id) && (
