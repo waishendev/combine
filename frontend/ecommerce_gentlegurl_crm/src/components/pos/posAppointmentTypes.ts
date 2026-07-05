@@ -19,6 +19,30 @@ export type PosDepositTransaction = {
   remark?: string | null
 }
 
+export type PosPaymentLinkStatus = 'PENDING' | 'PAID' | 'CANCELLED' | 'EXPIRED'
+
+export type PosPaymentLink = {
+  id: number
+  booking_id: number
+  token: string
+  purpose: string
+  amount: number
+  status: PosPaymentLinkStatus
+  url: string
+  provider?: string | null
+  payment_ref?: string | null
+  order_id?: number | null
+  manual_review_status?: string | null
+  manual_slip_url?: string | null
+  has_slip?: boolean
+  payer?: { name?: string | null; phone?: string | null; email?: string | null } | null
+  paid_at?: string | null
+  expires_at?: string | null
+  cancelled_at?: string | null
+  created_at?: string | null
+  created_by?: { id?: number; name?: string } | null
+}
+
 /** Active staff row for day schedule columns (all staff, not only with bookings). */
 export type PosScheduleStaff = { id: number; name: string }
 

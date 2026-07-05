@@ -53,7 +53,7 @@ type BookingRequestRow = {
   id: number
   bookingId: number
   requestId?: number
-  requestType: 'Cancellation request' | 'Hold confirmation'
+  requestType: 'Cancellation request' | 'Hold confirmation' | 'Deposit proof'
   number: string
   customerName: string
   contact: string
@@ -62,6 +62,21 @@ type BookingRequestRow = {
   badgeClassName: string
   reason?: string | null
   adminNote?: string | null
+  linkId?: number
+  amount?: number
+  slipUrl?: string | null
+}
+
+type PaymentLinkReviewRow = {
+  id: number
+  booking_id?: number | null
+  booking_code?: string | null
+  service_name?: string | null
+  amount?: number | null
+  manual_slip_url?: string | null
+  customer_name?: string | null
+  customer_contact?: string | null
+  slip_uploaded_at?: string | null
 }
 
 type EcommerceRequestRow = {
@@ -79,6 +94,7 @@ type EcommerceRequestRow = {
 type BookingConfirmState =
   | { kind: 'cancellation'; row: BookingRequestRow; action: 'approve' | 'reject' }
   | { kind: 'hold'; row: BookingRequestRow; action: 'approve' | 'reject' }
+  | { kind: 'deposit_proof'; row: BookingRequestRow; action: 'approve' | 'reject' }
   | null
 
 const ECOMMERCE_REQUEST_FILTERS = [
@@ -210,6 +226,25 @@ function buildHoldRequest(row: BookingHoldRow): BookingRequestRow {
   }
 }
 
+function buildDepositProofRequest(row: PaymentLinkReviewRow): BookingRequestRow {
+  const bookingId = Number(row.booking_id ?? 0)
+  return {
+    key: `deposit-proof-${row.id}`,
+    id: row.id,
+    linkId: row.id,
+    bookingId,
+    requestType: 'Deposit proof',
+    number: row.booking_code || (bookingId > 0 ? `#${bookingId}` : `Link #${row.id}`),
+    customerName: row.customer_name || 'Guest',
+    contact: row.customer_contact || '-',
+    requestedAt: row.slip_uploaded_at ?? null,
+    status: 'PROOF UPLOADED',
+    badgeClassName: 'bg-blue-100 text-blue-800 ring-blue-200',
+    amount: Number(row.amount ?? 0),
+    slipUrl: row.manual_slip_url ?? null,
+  }
+}
+
 export default function PosRequestCenter({
   disabled = false,
   disabledTitle,
@@ -240,6 +275,10 @@ export default function PosRequestCenter({
     setError(null)
 
     try {
+      const depositProofPromise = fetch('/api/proxy/pos/payment-links/pending-review', { cache: 'no-store' })
+        .then((res) => (res.ok ? res.json() : null))
+        .catch(() => null)
+
       const [cancellationRes, ...remainingResponses] = await Promise.all([
         fetch('/api/proxy/pos/cancellation-requests?status=pending&per_page=50', { cache: 'no-store' }),
         ...BOOKING_HOLD_FILTERS.map((status) => {
@@ -271,7 +310,13 @@ export default function PosRequestCenter({
           .map(buildHoldRequest),
       )
 
-      const nextBookingRows = dedupeByKey([...cancellationRequests, ...holdRequests])
+      const depositProofPayload = await depositProofPromise
+      const depositProofRows = Array.isArray(depositProofPayload?.data?.payment_links)
+        ? (depositProofPayload.data.payment_links as PaymentLinkReviewRow[])
+        : []
+      const depositProofRequests = depositProofRows.map(buildDepositProofRequest)
+
+      const nextBookingRows = dedupeByKey([...cancellationRequests, ...holdRequests, ...depositProofRequests])
 
       const orderPayloads = await Promise.all(orderResponses.map((res) => res.json().catch(() => null)))
       const orders = orderPayloads.flatMap((payload) => extractRows<OrderApiItem>(payload))
@@ -368,7 +413,9 @@ export default function PosRequestCenter({
     try {
       const url = bookingConfirm.kind === 'cancellation'
         ? `/api/proxy/pos/cancellation-requests/${bookingConfirm.row.requestId}/${bookingConfirm.action}`
-        : `/api/proxy/pos/appointments/${bookingConfirm.row.bookingId}/${bookingConfirm.action === 'approve' ? 'approve-hold' : 'cancel-hold'}`
+        : bookingConfirm.kind === 'deposit_proof'
+          ? `/api/proxy/pos/appointments/${bookingConfirm.row.bookingId}/payment-links/${bookingConfirm.row.linkId}/${bookingConfirm.action === 'approve' ? 'approve' : 'reject-proof'}`
+          : `/api/proxy/pos/appointments/${bookingConfirm.row.bookingId}/${bookingConfirm.action === 'approve' ? 'approve-hold' : 'cancel-hold'}`
 
       const res = await fetch(url, {
         method: 'POST',
@@ -489,8 +536,11 @@ export default function PosRequestCenter({
                             <tr key={row.key} className="hover:bg-slate-50/80">
                               <td className="px-4 py-3 align-top">
                                 <p className="truncate font-bold text-slate-950" title={row.number}>{row.number}</p>
-                                {row.requestType === 'Cancellation request' ? (
-                                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">{row.requestType}</p>
+                                {row.requestType !== 'Hold confirmation' ? (
+                                  <p className="mt-0.5 truncate text-[10px] font-medium text-slate-500">
+                                    {row.requestType}
+                                    {row.requestType === 'Deposit proof' && row.amount ? ` · ${formatMoney(row.amount)}` : ''}
+                                  </p>
                                 ) : null}
                               </td>
                               <td className="px-4 py-3 align-top">
@@ -515,8 +565,11 @@ export default function PosRequestCenter({
                           <div className="flex items-start justify-between gap-2">
                             <div className="min-w-0 flex-1">
                               <p className="truncate text-base font-bold text-slate-950" title={row.number}>{row.number}</p>
-                              {row.requestType === 'Cancellation request' ? (
-                                <p className="mt-0.5 truncate text-[11px] text-slate-500">{row.requestType}</p>
+                              {row.requestType !== 'Hold confirmation' ? (
+                                <p className="mt-0.5 truncate text-[11px] text-slate-500">
+                                  {row.requestType}
+                                  {row.requestType === 'Deposit proof' && row.amount ? ` · ${formatMoney(row.amount)}` : ''}
+                                </p>
                               ) : null}
                             </div>
                             <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-bold uppercase text-slate-600">{row.status}</span>
@@ -614,7 +667,9 @@ export default function PosRequestCenter({
             <h3 className="text-lg font-bold text-slate-950">
               {bookingConfirm.kind === 'hold'
                 ? (bookingConfirm.action === 'approve' ? 'Confirm booking?' : 'Reject / cancel booking?')
-                : (bookingConfirm.action === 'approve' ? 'Approve cancellation?' : 'Reject cancellation?')}
+                : bookingConfirm.kind === 'deposit_proof'
+                  ? (bookingConfirm.action === 'approve' ? 'Confirm deposit payment?' : 'Reject payment proof?')
+                  : (bookingConfirm.action === 'approve' ? 'Approve cancellation?' : 'Reject cancellation?')}
             </h3>
             <p className="mt-1 text-sm text-slate-600">{bookingConfirm.row.number} · {bookingConfirm.row.customerName}</p>
             <textarea value={adminNote} onChange={(e) => setAdminNote(e.target.value)} className="mt-4 min-h-24 w-full rounded-lg border border-slate-300 p-3 text-sm" placeholder="Admin note (optional)" />
@@ -689,6 +744,20 @@ export default function PosRequestCenter({
                       <Info label="Duration" value={calcDurationMinutes(bookingDetail.appointment_start_at, bookingDetail.appointment_end_at) != null ? `${calcDurationMinutes(bookingDetail.appointment_start_at, bookingDetail.appointment_end_at)} min` : bookingDetail.estimated_duration_min ? `${bookingDetail.estimated_duration_min} min` : '—'} />
                     </div>
                   </section>
+                  {viewingBooking.requestType === 'Deposit proof' ? (
+                    <section className="rounded-2xl border border-blue-200 bg-blue-50/60 p-4 shadow-sm">
+                      <p className="text-xs font-bold uppercase tracking-wide text-blue-700">Deposit Payment Link · Uploaded Proof</p>
+                      <div className="mt-3 grid gap-4 sm:grid-cols-2">
+                        <Info label="Deposit amount" value={formatMoney(viewingBooking.amount)} />
+                        <Info label="Slip uploaded" value={fmtDateTime(viewingBooking.requestedAt)} />
+                      </div>
+                      {viewingBooking.slipUrl ? (
+                        <a href={viewingBooking.slipUrl} target="_blank" rel="noreferrer" className="mt-3 block overflow-hidden rounded-lg border border-blue-200">
+                          <img src={viewingBooking.slipUrl} alt="Deposit payment proof" className="max-h-72 w-full object-contain bg-white" />
+                        </a>
+                      ) : <p className="mt-3 text-sm text-slate-500">No slip file available.</p>}
+                    </section>
+                  ) : null}
                   <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                     <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Payment Proof / Uploaded Proof</p>
                     {bookingDetail.payment_proofs?.length ? <div className="mt-3 grid gap-3 sm:grid-cols-2">{bookingDetail.payment_proofs.map((proof, idx) => { const proofUrl = proof.file_url ?? proof.url ?? proof.payment_proof_url; return <div key={`${proof.id ?? idx}`} className="rounded-lg border border-slate-200 p-3 text-sm"><p className="font-semibold text-slate-900">Proof {idx + 1}</p>{proofUrl ? <a href={proofUrl} target="_blank" rel="noreferrer" className="mt-2 block overflow-hidden rounded-lg border border-slate-200"><img src={proofUrl} alt={`Payment proof ${idx + 1}`} className="max-h-56 w-full object-cover" /></a> : null}<p className="mt-2 text-slate-600">{proof.note ?? 'No note'}</p><p className="text-xs text-slate-500">{fmtDateTime(proof.uploaded_at)}</p></div> })}</div> : <p className="mt-3 text-sm text-slate-500">No uploaded payment proof.</p>}
@@ -709,6 +778,7 @@ export default function PosRequestCenter({
             <div className="flex flex-wrap justify-end gap-2 border-t border-slate-200 bg-white px-5 py-4">
               {canReviewBookingRequests && viewingBooking.requestType === 'Cancellation request' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Approve</button><button type="button" onClick={() => setBookingConfirm({ kind: 'cancellation', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
               {canReviewBookingRequests && viewingBooking.requestType === 'Hold confirmation' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm booking</button><button type="button" onClick={() => setBookingConfirm({ kind: 'hold', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject</button></> : null}
+              {canReviewBookingRequests && viewingBooking.requestType === 'Deposit proof' ? <><button type="button" onClick={() => setBookingConfirm({ kind: 'deposit_proof', row: viewingBooking, action: 'approve' })} className="rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white hover:bg-green-700">Confirm deposit</button><button type="button" onClick={() => setBookingConfirm({ kind: 'deposit_proof', row: viewingBooking, action: 'reject' })} className="rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white hover:bg-red-700">Reject proof</button></> : null}
               <button type="button" onClick={closeBookingDetail} className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-bold text-white hover:bg-slate-800">Close</button>
             </div>
           </aside>

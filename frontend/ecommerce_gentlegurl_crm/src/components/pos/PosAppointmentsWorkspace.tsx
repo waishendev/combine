@@ -60,6 +60,7 @@ import { normalizeInternationalPhone } from '@/lib/phone'
 import { usePosWideLayout } from '@/lib/usePosWideLayout'
 
 import PosAppointmentDepositCreditSection from '@/components/pos/PosAppointmentDepositCreditSection'
+import PosAppointmentPaymentLinksSection from '@/components/pos/PosAppointmentPaymentLinksSection'
 import PosPriceEditSummaryGrid, { resolvePriceEditQuantity } from '@/components/pos/PosPriceEditSummaryGrid'
 import PosRequestCenter from '@/components/pos/PosRequestCenter'
 import PosAppointmentsSchedule from './PosAppointmentsSchedule'
@@ -4399,6 +4400,20 @@ export default function PosAppointmentsWorkspace({
                       </div>
                     ) : null}
 
+                    {!appointmentIsTerminalCancelled ? (
+                      <div className="mt-3">
+                        <PosAppointmentPaymentLinksSection
+                          bookingId={appointmentDetail.id}
+                          defaultAmount={Number(appointmentDueAmountNow ?? appointmentDetail.balance_due ?? 0)}
+                          showMsg={showMsg}
+                          onDepositRecorded={() => {
+                            void refreshOpenedAppointmentDetail()
+                            void fetchAppointments({ silent: true })
+                          }}
+                        />
+                      </div>
+                    ) : null}
+
                     <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
                       <div className="flex gap-3 text-sm">
                         <span className="w-[5.5rem] shrink-0 text-xs font-semibold uppercase tracking-wide text-slate-500">Staff</span>
@@ -6525,6 +6540,16 @@ export default function PosAppointmentsWorkspace({
                         amount_due_now: Number(payload.amount_due_now ?? appointmentPatch.amount_due_now ?? current.amount_due_now ?? 0),
                       } : current)
                       setEditSettlementDepositTotal(nextDepositTotal)
+                      void refreshOpenedAppointmentDetail()
+                      void fetchAppointments({ silent: true })
+                    }}
+                  />
+
+                  <PosAppointmentPaymentLinksSection
+                    bookingId={appointmentDetail.id}
+                    defaultAmount={Number(appointmentDetail.balance_due ?? appointmentDetail.amount_due_now ?? 0)}
+                    showMsg={showMsg}
+                    onDepositRecorded={() => {
                       void refreshOpenedAppointmentDetail()
                       void fetchAppointments({ silent: true })
                     }}

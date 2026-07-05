@@ -416,6 +416,75 @@ export async function payBooking(bookingId: string | number, payload?: {
   });
 }
 
+export type PaymentLinkDetail = {
+  token: string;
+  status: "PENDING" | "PAID" | "CANCELLED" | "EXPIRED";
+  purpose: string;
+  amount: number;
+  is_payable: boolean;
+  expires_at?: string | null;
+  paid_at?: string | null;
+  provider?: string | null;
+  manual_review_status?: string | null;
+  manual_slip_url?: string | null;
+  appointment?: {
+    booking_code: string;
+    service_name: string;
+    staff_name?: string;
+    start_at?: string | null;
+    end_at?: string | null;
+    customer_name?: string | null;
+  } | null;
+};
+
+export type PaymentLinkPayResponse = {
+  status: string;
+  payment_method: string;
+  payment_url?: string | null;
+  requires_slip_upload?: boolean;
+  manual_bank_account?: PublicBookingBankAccount | null;
+};
+
+export async function getPaymentLink(token: string) {
+  const response = await request<{ data?: PaymentLinkDetail } | PaymentLinkDetail>(`/public/payment-links/${token}`);
+  return unwrapData<PaymentLinkDetail>(response);
+}
+
+export async function payPaymentLink(token: string, payload: {
+  payment_method: "manual_transfer" | "billplz_online_banking" | "billplz_credit_card";
+  bank_account_id?: number;
+  billplz_gateway_option_id?: number;
+  payer_name?: string;
+  payer_phone?: string;
+  payer_email?: string;
+}) {
+  const response = await request<{ data?: PaymentLinkPayResponse } | PaymentLinkPayResponse>(`/public/payment-links/${token}/pay`, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+  return unwrapData<PaymentLinkPayResponse>(response);
+}
+
+export async function uploadPaymentLinkSlip(token: string, file: File, note?: string) {
+  const formData = new FormData();
+  formData.append("slip", file);
+  if (note && note.trim()) {
+    formData.append("note", note.trim());
+  }
+  const response = await request<{ data?: { status?: string; manual_review_status?: string; manual_slip_url?: string } }>(`/public/payment-links/${token}/upload-slip`, {
+    method: "POST",
+    body: formData,
+  });
+  return response.data ?? null;
+}
+
+export async function cancelPaymentLinkSlip(token: string) {
+  const response = await request<{ data?: { status?: string; manual_review_status?: string } }>(`/public/payment-links/${token}/cancel-slip`, {
+    method: "POST",
+  });
+  return response.data ?? null;
+}
+
 export async function getBillplzPaymentGatewayOptions(params: {
   type: "ecommerce" | "booking";
   gateway_group: "online_banking" | "credit_card";

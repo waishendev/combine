@@ -38,6 +38,7 @@ use App\Http\Controllers\Ecommerce\PublicReturnController;
 use App\Http\Controllers\Ecommerce\PublicWishlistController;
 use App\Http\Controllers\Ecommerce\PublicStoreLocationController;
 use App\Http\Controllers\Ecommerce\PromotionController;
+use App\Http\Controllers\Ecommerce\PosAppointmentPaymentLinkController;
 use App\Http\Controllers\Ecommerce\PosController;
 use App\Http\Controllers\Ecommerce\PosCashShiftController;
 use App\Http\Controllers\Ecommerce\PublicReceiptController;
@@ -130,6 +131,15 @@ Route::get('/public/receipt/{token}/invoice', [PublicReceiptController::class, '
 Route::post('/payment/billplz/callback', [BillplzCallbackController::class, 'callback']);
 Route::get('/payment/billplz/redirect', [BillplzCallbackController::class, 'redirect']);
 Route::get('/payment-gateway-options', [BillplzPaymentGatewayOptionController::class, 'publicIndex']);
+
+// 🔗 Appointment deposit payment links (guest or member, token-based, no auth required)
+Route::prefix('/public/payment-links')->middleware('api.session')->group(function () {
+    Route::post('/callback', [\App\Http\Controllers\Booking\PaymentLinkController::class, 'callback']);
+    Route::get('/{token}', [\App\Http\Controllers\Booking\PaymentLinkController::class, 'show']);
+    Route::post('/{token}/pay', [\App\Http\Controllers\Booking\PaymentLinkController::class, 'pay']);
+    Route::post('/{token}/upload-slip', [\App\Http\Controllers\Booking\PaymentLinkController::class, 'uploadSlip']);
+    Route::post('/{token}/cancel-slip', [\App\Http\Controllers\Booking\PaymentLinkController::class, 'cancelSlip']);
+});
 
 // 🛍️ 公共商城接口
 Route::prefix('/public/shop')->group(function () {
@@ -488,6 +498,12 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/edit-settlement', [PosController::class, 'editAppointmentSettlement']);
         Route::post('/appointments/{id}/deposits', [PosController::class, 'addAppointmentDeposit']);
         Route::patch('/appointments/{id}/deposits/{orderItemId}', [PosController::class, 'editAppointmentDepositTransaction']);
+        Route::get('/payment-links/pending-review', [PosAppointmentPaymentLinkController::class, 'pendingReview']);
+        Route::get('/appointments/{id}/payment-links', [PosAppointmentPaymentLinkController::class, 'index']);
+        Route::post('/appointments/{id}/payment-links', [PosAppointmentPaymentLinkController::class, 'store']);
+        Route::post('/appointments/{id}/payment-links/{linkId}/cancel', [PosAppointmentPaymentLinkController::class, 'cancel']);
+        Route::post('/appointments/{id}/payment-links/{linkId}/approve', [PosAppointmentPaymentLinkController::class, 'approveManual']);
+        Route::post('/appointments/{id}/payment-links/{linkId}/reject-proof', [PosAppointmentPaymentLinkController::class, 'rejectProof']);
         Route::get('/services/{serviceId}/addon-options', [PosController::class, 'getServiceAddonOptions']);
         Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment']);
         Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment']);
