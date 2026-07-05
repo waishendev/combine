@@ -269,11 +269,11 @@ $protectedRoutes = function () {
         ->middleware('permission:booking.appointments.view|pos.checkout');
 
     Route::get('/admin/bookings/{booking}/service-photos', [\App\Http\Controllers\Admin\Booking\ServicePhotoController::class, 'index'])
-        ->middleware('permission:booking.appointments.view|pos.checkout|ecommerce.daily-sales-reports.view');
+        ->middleware('permission:booking.appointments.view|pos.checkout|pos.appointments.manage|ecommerce.daily-sales-reports.view');
     Route::post('/admin/bookings/{booking}/service-photos', [\App\Http\Controllers\Admin\Booking\ServicePhotoController::class, 'store'])
-        ->middleware('permission:booking.appointments.update_status|pos.checkout|ecommerce.daily-sales-reports.view');
+        ->middleware('permission:booking.appointments.update_status|pos.checkout|pos.appointments.manage|ecommerce.daily-sales-reports.view');
     Route::delete('/admin/bookings/{booking}/service-photos/{photo}', [\App\Http\Controllers\Admin\Booking\ServicePhotoController::class, 'destroy'])
-        ->middleware('permission:booking.appointments.update_status|pos.checkout|ecommerce.daily-sales-reports.view');
+        ->middleware('permission:booking.appointments.update_status|pos.checkout|pos.appointments.manage|ecommerce.daily-sales-reports.view');
 
     // Admins (users)
     Route::get('/admins', [AdminController::class, 'index'])
@@ -356,7 +356,7 @@ $protectedRoutes = function () {
 
     // Customers
     Route::get('/customers', [CustomerController::class, 'index'])
-        ->middleware('permission:customers.view|pos.checkout');
+        ->middleware('permission:customers.view|customers.create|pos.checkout|pos.appointments.manage');
 
     Route::get('/customers/export', [CustomerController::class, 'exportCsv'])
         ->middleware('permission:customers.view');
@@ -434,7 +434,7 @@ $protectedRoutes = function () {
 
     // Staffs
     Route::get('/staffs', [StaffController::class, 'index'])
-        ->middleware('permission:staff.view|pos.checkout');
+        ->middleware('permission:staff.view|pos.checkout|pos.appointments.manage');
     Route::get('/staffs/export', [StaffController::class, 'exportCsv'])
         ->middleware('permission:staff.view');
     Route::post('/staffs/import', [StaffController::class, 'importCsv'])
@@ -469,10 +469,13 @@ $protectedRoutes = function () {
             ->middleware('permission:pos.staff_consumables.checkout');
     });
 
-    Route::prefix('pos')->middleware('permission:pos.checkout')->group(function () {
-        Route::get('/cash-shifts/current', [PosCashShiftController::class, 'current']);
-        Route::post('/cash-shifts/open', [PosCashShiftController::class, 'open']);
-        Route::post('/cash-shifts/close', [PosCashShiftController::class, 'close']);
+    Route::prefix('pos')->middleware('permission:pos.checkout|pos.appointments.manage')->group(function () {
+        Route::get('/cash-shifts/current', [PosCashShiftController::class, 'current'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::post('/cash-shifts/open', [PosCashShiftController::class, 'open'])
+            ->middleware('permission:pos.checkout');
+        Route::post('/cash-shifts/close', [PosCashShiftController::class, 'close'])
+            ->middleware('permission:pos.checkout');
         Route::get('/members/search', [PosController::class, 'memberSearch']);
         Route::get('/members/{memberId}', [PosController::class, 'memberDetail']);
         Route::get('/members/{memberId}/vouchers', [PosController::class, 'memberVouchers']);
@@ -485,19 +488,24 @@ $protectedRoutes = function () {
         Route::get('/availability/check', [PosController::class, 'availabilityCheck']);
         Route::get('/cancellation-requests', [PosController::class, 'posCancellationRequestsIndex']);
         Route::post('/cancellation-requests/{id}/approve', [PosController::class, 'posCancellationRequestApprove'])
-            ->middleware('permission:booking.appointments.update_status');
+            ->middleware('permission:booking.appointments.update_status|pos.appointments.manage');
         Route::post('/cancellation-requests/{id}/reject', [PosController::class, 'posCancellationRequestReject'])
-            ->middleware('permission:booking.appointments.update_status');
+            ->middleware('permission:booking.appointments.update_status|pos.appointments.manage');
         Route::get('/appointments/{id}', [PosController::class, 'appointmentDetail']);
         Route::post('/appointments/{id}/status', [PosController::class, 'updateAppointmentStatus']);
         Route::post('/appointments/{id}/approve-hold', [PosController::class, 'approveHoldAppointment']);
         Route::post('/appointments/{id}/cancel-hold', [PosController::class, 'cancelHoldAppointment']);
         Route::post('/appointments/{id}/reject-hold-payment-proof', [PosController::class, 'rejectHoldPaymentProof']);
-        Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment']);
-        Route::post('/appointments/{id}/finalize-zero-settlement', [PosController::class, 'finalizeAppointmentZeroSettlement']);
-        Route::post('/appointments/{id}/edit-settlement', [PosController::class, 'editAppointmentSettlement']);
-        Route::post('/appointments/{id}/deposits', [PosController::class, 'addAppointmentDeposit']);
-        Route::patch('/appointments/{id}/deposits/{orderItemId}', [PosController::class, 'editAppointmentDepositTransaction']);
+        Route::post('/appointments/{id}/collect-payment', [PosController::class, 'collectAppointmentPayment'])
+            ->middleware('permission:pos.checkout');
+        Route::post('/appointments/{id}/finalize-zero-settlement', [PosController::class, 'finalizeAppointmentZeroSettlement'])
+            ->middleware('permission:pos.checkout');
+        Route::post('/appointments/{id}/edit-settlement', [PosController::class, 'editAppointmentSettlement'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::post('/appointments/{id}/deposits', [PosController::class, 'addAppointmentDeposit'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
+        Route::patch('/appointments/{id}/deposits/{orderItemId}', [PosController::class, 'editAppointmentDepositTransaction'])
+            ->middleware('permission:pos.checkout|pos.appointments.manage');
         Route::get('/payment-links/pending-review', [PosAppointmentPaymentLinkController::class, 'pendingReview']);
         Route::get('/appointments/{id}/payment-links', [PosAppointmentPaymentLinkController::class, 'index']);
         Route::post('/appointments/{id}/payment-links', [PosAppointmentPaymentLinkController::class, 'store']);
@@ -505,41 +513,45 @@ $protectedRoutes = function () {
         Route::post('/appointments/{id}/payment-links/{linkId}/approve', [PosAppointmentPaymentLinkController::class, 'approveManual']);
         Route::post('/appointments/{id}/payment-links/{linkId}/reject-proof', [PosAppointmentPaymentLinkController::class, 'rejectProof']);
         Route::get('/services/{serviceId}/addon-options', [PosController::class, 'getServiceAddonOptions']);
-        Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment']);
-        Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment']);
+        Route::post('/appointments/{id}/apply-package', [PosController::class, 'applyPackageToAppointment'])
+            ->middleware('permission:pos.checkout');
+        Route::post('/appointments/{id}/release-package', [PosController::class, 'releasePackageForAppointment'])
+            ->middleware('permission:pos.checkout');
         Route::post('/appointments/{id}/mark-completed', [PosController::class, 'markAppointmentCompleted']);
         Route::post('/appointments/{id}/reschedule', [PosController::class, 'rescheduleAppointment']);
         Route::post('/appointments/{id}/send-confirmation-email', [PosController::class, 'sendBookingConfirmationEmail'])
             ->middleware('throttle:6,1');
-        Route::get('/cart', [PosController::class, 'cart']);
-        Route::post('/book-service', [PosController::class, 'bookService']);
-        Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
-        Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
-        Route::post('/cart/add-booking-product', [PosController::class, 'addBookingProduct']);
-        Route::post('/cart/add-package', [PosController::class, 'addPackageToCart']);
-        Route::post('/cart/add-appointment-settlement', [PosController::class, 'addAppointmentSettlementToCart']);
-        Route::delete('/cart/appointment-settlements/{itemId}', [PosController::class, 'removeAppointmentSettlementCartItem']);
-        Route::patch('/cart/package-items/{itemId}', [PosController::class, 'updatePackageCartItem']);
-        Route::delete('/cart/package-items/{itemId}', [PosController::class, 'removePackageCartItem']);
-        Route::post('/cart/add-service', [PosController::class, 'addService']);
-        Route::post('/cart/sync-customer-context', [PosController::class, 'syncCustomerContext']);
-        Route::post('/packages/purchase', [PosController::class, 'purchasePackage']);
-        Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
-        Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
-        Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
-        Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
-        Route::patch('/cart/items/{itemId}/price', [PosController::class, 'updateCartItemPrice']);
-        Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/discount', [PosController::class, 'updateBookingProductOptionDiscount']);
-        Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/price', [PosController::class, 'updateBookingProductOptionPrice']);
-        Route::patch('/cart/package-items/{itemId}/discount', [PosController::class, 'updatePackageCartItemDiscount']);
-        Route::patch('/cart/package-items/{itemId}/price', [PosController::class, 'updatePackageCartItemPrice']);
-        Route::patch('/cart/appointment-settlements/{itemId}/discount', [PosController::class, 'updateAppointmentSettlementCartItemDiscount']);
-        Route::patch('/cart/appointment-settlements/{itemId}/price', [PosController::class, 'updateAppointmentSettlementCartItemPrice']);
-        Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
-        Route::delete('/cart/service-items/{itemId}', [PosController::class, 'removeServiceCartItem']);
-        Route::patch('/cart/service-items/{itemId}/price', [PosController::class, 'updateServiceCartItemPrice']);
-        Route::post('/cart/service-items/{itemId}/release-package-claim', [PosController::class, 'releaseServiceItemPackageClaim']);
-        Route::post('/checkout', [PosController::class, 'checkout']);
+        Route::middleware('permission:pos.checkout')->group(function () {
+            Route::get('/cart', [PosController::class, 'cart']);
+            Route::post('/book-service', [PosController::class, 'bookService']);
+            Route::post('/cart/add-by-barcode', [PosController::class, 'addByBarcode']);
+            Route::post('/cart/add-by-variant', [PosController::class, 'addByVariant']);
+            Route::post('/cart/add-booking-product', [PosController::class, 'addBookingProduct']);
+            Route::post('/cart/add-package', [PosController::class, 'addPackageToCart']);
+            Route::post('/cart/add-appointment-settlement', [PosController::class, 'addAppointmentSettlementToCart']);
+            Route::delete('/cart/appointment-settlements/{itemId}', [PosController::class, 'removeAppointmentSettlementCartItem']);
+            Route::patch('/cart/package-items/{itemId}', [PosController::class, 'updatePackageCartItem']);
+            Route::delete('/cart/package-items/{itemId}', [PosController::class, 'removePackageCartItem']);
+            Route::post('/cart/add-service', [PosController::class, 'addService']);
+            Route::post('/cart/sync-customer-context', [PosController::class, 'syncCustomerContext']);
+            Route::post('/packages/purchase', [PosController::class, 'purchasePackage']);
+            Route::post('/cart/voucher/apply', [PosController::class, 'applyVoucher']);
+            Route::delete('/cart/voucher', [PosController::class, 'removeVoucher']);
+            Route::patch('/cart/items/{itemId}', [PosController::class, 'updateCartItem']);
+            Route::patch('/cart/items/{itemId}/discount', [PosController::class, 'updateCartItemDiscount']);
+            Route::patch('/cart/items/{itemId}/price', [PosController::class, 'updateCartItemPrice']);
+            Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/discount', [PosController::class, 'updateBookingProductOptionDiscount']);
+            Route::patch('/cart/items/{itemId}/booking-product-options/{optionId}/price', [PosController::class, 'updateBookingProductOptionPrice']);
+            Route::patch('/cart/package-items/{itemId}/discount', [PosController::class, 'updatePackageCartItemDiscount']);
+            Route::patch('/cart/package-items/{itemId}/price', [PosController::class, 'updatePackageCartItemPrice']);
+            Route::patch('/cart/appointment-settlements/{itemId}/discount', [PosController::class, 'updateAppointmentSettlementCartItemDiscount']);
+            Route::patch('/cart/appointment-settlements/{itemId}/price', [PosController::class, 'updateAppointmentSettlementCartItemPrice']);
+            Route::delete('/cart/items/{itemId}', [PosController::class, 'removeCartItem']);
+            Route::delete('/cart/service-items/{itemId}', [PosController::class, 'removeServiceCartItem']);
+            Route::patch('/cart/service-items/{itemId}/price', [PosController::class, 'updateServiceCartItemPrice']);
+            Route::post('/cart/service-items/{itemId}/release-package-claim', [PosController::class, 'releaseServiceItemPackageClaim']);
+            Route::post('/checkout', [PosController::class, 'checkout']);
+        });
     });
 
     Route::post('/orders/{orderId}/send-receipt-email', [PosController::class, 'sendReceiptEmail'])

@@ -47,6 +47,10 @@ type StaffOption = {
 type PosCashShiftGateProps = {
   children: ReactNode
   defaultStaffId?: number | null
+  /** When false, skip cash-shift checks and hide the shift status bar. */
+  cashShiftRequired?: boolean
+  /** Open / close shift modals — POS checkout only; staff can view shift status read-only. */
+  canManageCashShift?: boolean
 }
 
 type PosCashShiftContextValue = {
@@ -56,13 +60,14 @@ type PosCashShiftContextValue = {
   requireOpenShiftMessage: string
 }
 
-const CASH_SHIFT_REQUIRED_MESSAGE = ''
+const CASH_SHIFT_OPEN_MESSAGE = 'Open a cash shift before creating appointments or processing requests.'
+const CASH_SHIFT_WAIT_MESSAGE = 'Cash shift is not open. Please use the admin account to open the shift before creating appointments.'
 const EMPTY_POOLS: CashShiftPoolBalances = { total_initial_cash: 0, total_withdraw: 0 }
 const PosCashShiftContext = createContext<PosCashShiftContextValue>({
   shift: null,
   hasOpenShift: true,
   cashShiftLoading: false,
-  requireOpenShiftMessage: CASH_SHIFT_REQUIRED_MESSAGE,
+  requireOpenShiftMessage: CASH_SHIFT_OPEN_MESSAGE,
 })
 
 export function usePosCashShift() {
@@ -120,7 +125,12 @@ function CarriedPoolCards({
   )
 }
 
-export default function PosCashShiftGate({ children, defaultStaffId = null }: PosCashShiftGateProps) {
+export default function PosCashShiftGate({
+  children,
+  defaultStaffId = null,
+  cashShiftRequired = true,
+  canManageCashShift = true,
+}: PosCashShiftGateProps) {
   const [shift, setShift] = useState<PosCashShift | null>(null)
   const [poolBalances, setPoolBalances] = useState<CashShiftPoolBalances>(EMPTY_POOLS)
   const [closeModalShift, setCloseModalShift] = useState<PosCashShift | null>(null)
@@ -181,12 +191,15 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   }, [])
 
   useEffect(() => {
-    void loadStaffOptions()
+    if (!cashShiftRequired) return
     void loadCurrentShift()
-  }, [loadCurrentShift, loadStaffOptions])
+    if (canManageCashShift) {
+      void loadStaffOptions()
+    }
+  }, [canManageCashShift, cashShiftRequired, loadCurrentShift, loadStaffOptions])
 
   useEffect(() => {
-    if (!shift) return
+    if (!cashShiftRequired || !shift) return
     const refreshShift = () => {
       void loadCurrentShift()
     }
@@ -199,7 +212,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
       window.removeEventListener('focus', refreshShift)
       document.removeEventListener('visibilitychange', onVisibilityChange)
     }
-  }, [loadCurrentShift, shift])
+  }, [cashShiftRequired, loadCurrentShift, shift])
 
   const modalShift = closeModalShift ?? shift
   const openAtmAmount = parseCashShiftAmount(openingAtm)
@@ -232,8 +245,8 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   const closeDifference = useMemo(() => Number(closingAmountInput || 0) - expectedCash, [closingAmountInput, expectedCash])
   const openStaffMissing = !openedStaffId
   const closeStaffMissing = !closedStaffId
-  const hasOpenShift = Boolean(shift)
-  const cashShiftOverlayActive = openShiftModalOpen || closeModalOpen
+  const hasOpenShift = cashShiftRequired ? Boolean(shift) : true
+  const cashShiftOverlayActive = cashShiftRequired && (openShiftModalOpen || closeModalOpen)
   const openAtmInvalid = openAtmAmount > 0 && !canUseAtm(poolBalances, openAtmAmount)
   const closeRefillCashInvalid = closeRefillCashAmount > 0 && closeRefillCashAmount > poolBalances.total_initial_cash
 
@@ -249,12 +262,14 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
     }
   }, [cashShiftOverlayActive])
 
+  const requireOpenShiftMessage = canManageCashShift ? CASH_SHIFT_OPEN_MESSAGE : CASH_SHIFT_WAIT_MESSAGE
+
   const contextValue = useMemo<PosCashShiftContextValue>(() => ({
-    shift,
+    shift: cashShiftRequired ? shift : null,
     hasOpenShift,
-    cashShiftLoading,
-    requireOpenShiftMessage: CASH_SHIFT_REQUIRED_MESSAGE,
-  }), [cashShiftLoading, hasOpenShift, shift])
+    cashShiftLoading: cashShiftRequired ? cashShiftLoading : false,
+    requireOpenShiftMessage: cashShiftRequired ? requireOpenShiftMessage : '',
+  }), [cashShiftLoading, cashShiftRequired, hasOpenShift, requireOpenShiftMessage, shift])
 
   const openShift = async () => {
     const amount = parseCashShiftAmount(openingAmount)
@@ -393,6 +408,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
   return (
     <PosCashShiftContext.Provider value={contextValue}>
     <div className="pos-cash-shift-gate-host relative">
+      {cashShiftRequired ? (
       <div className="pos-shift-status-bar mb-2 flex shrink-0 flex-wrap items-center justify-end gap-2 sm:gap-3">
         {cashShiftLoading ? (
           <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-800 shadow-sm">
@@ -406,6 +422,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
             <span><b>Opening:</b> {currency(shift.opening_amount)}</span>
             <span><b>Cash Sales:</b> {currency(shift.cash_sales)}</span>
             <span><b>Opened At:</b> {formatDateTime(shift.opened_at)}</span>
+            {canManageCashShift ? (
             <button
               type="button"
               onClick={() => {
@@ -430,6 +447,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
             >
               Close Shift
             </button>
+            ) : null}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-3">
@@ -438,6 +456,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
               <span className="mx-2 text-slate-300">|</span>
               <span><b>Withdraw Pool:</b> {currency(poolBalances.total_withdraw)}</span>
             </div>
+            {canManageCashShift ? (
             <button
               type="button"
               onClick={() => {
@@ -452,13 +471,19 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
             >
               Open Shift
             </button>
+            ) : (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-900 shadow-sm">
+                Shift closed — Please use admin account to open
+              </div>
+            )}
           </div>
         )}
       </div>
+      ) : null}
 
       {children}
 
-      {openShiftModalOpen ? (
+      {cashShiftRequired && canManageCashShift && openShiftModalOpen ? (
         <PosModalShell
           onClose={() => setOpenShiftModalOpen(false)}
           closeDisabled={opening}
@@ -524,7 +549,7 @@ export default function PosCashShiftGate({ children, defaultStaffId = null }: Po
         </PosModalShell>
       ) : null}
 
-      {closeModalOpen && modalShift ? (
+      {cashShiftRequired && canManageCashShift && closeModalOpen && modalShift ? (
         <PosModalShell
           onClose={() => {
             setCloseModalOpen(false)

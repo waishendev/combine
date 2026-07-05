@@ -1,0 +1,159 @@
+# Staff POS Appointments — Production 部署说明
+
+> 功能：Staff 账号可进 **POS Appointments**（`/pos/appointments`），有 Cash Shift 检查，但**没有**主 POS Checkout。
+> 代码需先部署 **backend + frontend**，再跑 Seeder。
+
+---
+
+## 1. Production 要跑的命令
+
+```bash
+cd /path/to/backend/ecommerce_gentlegurl_backend_api
+
+# ① 确认已部署最新 backend（routes/api.php）+ CRM frontend
+
+# ② 新增权限并赋给 Staff 角色（可重复跑，只加不删）
+php artisan db:seed --class=StaffPosAppointmentsPermissionSeeder
+
+# ③ 若 Production 有 route cache
+php artisan route:clear
+php artisan config:clear
+```
+
+**跑完必做：** 所有 Staff 账号 **重新登录** CRM（权限在 session 里，不登出不会更新）。
+
+**成功输出示例：**
+```
+Granted POS appointments permissions to Staff role.
+```
+
+---
+
+## 2. Staff 角色要开哪些 Permission？
+
+跑 `StaffPosAppointmentsPermissionSeeder` 会自动勾选下面 3 个（若 `permissions` 表已有对应 slug）。
+
+### 本次 POS Appointments 相关（Seeder 会赋给 Staff）
+
+| Permission slug | 名称（CRM 里） | 用途 | 必须？ |
+|-----------------|---------------|------|--------|
+| **`pos.appointments.manage`** | POS Appointments Manage | 进页面、Refresh、Create Appointment、Requests、Edit Settlement、Online Deposit History、Service Photos、Cash Shift **查看** | **必须** |
+| **`customers.create`** | Customers Create | **Create Member** 按钮 | 建议开 |
+| **`booking.appointments.update_status`** | Booking Appointments Update Status | Requests 审批 API（取消申请等） | 建议开 |
+
+### Staff 原本就有（Consumables，不是这次加的）
+
+| Permission slug | 用途 |
+|-----------------|------|
+| `pos.staff_consumables.access` | Staff Consumables 页面 |
+| `pos.staff_consumables.checkout` | Staff Consumables 结账 |
+
+### Staff **不要**开（留给 Admin）
+
+| Permission slug | 说明 |
+|-----------------|------|
+| `pos.checkout` | 主 POS 收银、Open/Close Cash Shift、Checkout |
+| `booking.appointments.view` | Daily Booking 等（Staff 用 `pos.appointments.manage` 即可） |
+
+---
+
+## 3. 不想跑 Seeder？手动在 CRM 开
+
+**Settings → Roles → Staff**，勾选：
+
+- [ ] POS Appointments Manage (`pos.appointments.manage`)
+- [ ] Customers Create (`customers.create`)
+- [ ] Booking Appointments Update Status (`booking.appointments.update_status`)
+
+---
+
+## 4. Staff 能做什么 / 不能做什么
+
+### 导航
+
+| 入口 | Staff | Admin |
+|------|:-----:|:-----:|
+| Sidebar / 顶部 **Appointments** | ✅ | ✅ |
+| 主 **POS** 收银 (`/pos`) | ❌ | ✅ |
+| Daily Booking | ❌ | ✅ |
+
+### 页面顶部
+
+| 功能 | Staff | Admin |
+|------|:-----:|:-----:|
+| **Cash Shift 状态栏**（查看） | ✅ | ✅ |
+| **Open / Close Shift** | ❌ | ✅ |
+| Shift 未开 → **Create Appointment / Requests 禁用** | ✅ | ✅ |
+| Refresh | ✅ | ✅ |
+| Create Member | ✅（需 `customers.create`） | ✅ |
+| Create Appointment | ✅（需 Shift OPEN） | ✅ |
+| Requests | ✅（需 Shift OPEN） | ✅ |
+
+### 筛选器
+
+| 功能 | Staff | Admin |
+|------|:-----:|:-----:|
+| Customer filter | ✅ | ✅ |
+| Staff filter | ✅ | ✅ |
+| Status filter | ✅ | ✅ |
+
+### Settlement Modal（点开预约）
+
+| 功能 | Staff | Admin |
+|------|:-----:|:-----:|
+| 查看预约 / 付款明细 | ✅ | ✅ |
+| **Edit Settlement**（含服务、add-on、staff split、note） | ✅ | ✅ |
+| Edit Settlement 里 **Deposit 记录** | ✅ | ✅ |
+| **Online Deposit History** | ✅ | ✅ |
+| **Service Photos**（查看 / 上传 / 删除，需 Shift OPEN） | ✅ | ✅ |
+| Customer Uploaded Photos（只看） | ✅ | ✅ |
+| Payment history / Receipts（只看） | ✅ | ✅ |
+| Hold 预约 Deposit review | ✅ | ✅ |
+| Complete visit / Mark as Completed | ❌ | ✅ |
+| Booking actions（Reschedule、Cancel、No Show 等） | ❌ | ✅ |
+| Checkout / Collect payment | ❌ | ✅ |
+| Apply package | ❌ | ✅ |
+
+### Cash Shift 流程（Staff）
+
+1. Admin（`pos.checkout`）先 **Open Shift**
+2. Staff 看到 **Shift: OPEN** 后才能 Create Appointment / Requests
+3. Shift 关着时 Staff 看到：**Shift closed — waiting for supervisor**
+
+---
+
+## 5. 上线前自测清单（Staff 账号）
+
+- [ ] 能进 `/pos/appointments`
+- [ ] 顶部有 Cash Shift 栏；Shift 关着时 Create Appointment 灰色不可点
+- [ ] Admin Open Shift 后，Staff 可 Create Appointment
+- [ ] Customer / Staff 筛选有数据、能过滤
+- [ ] Edit Settlement 全套可用（含 Deposit）
+- [ ] Online Deposit History、Service Photos 正常
+- [ ] **没有** Mark as Completed、Booking actions、Checkout
+- [ ] Staff **没有** Open/Close Shift 按钮
+- [ ] 进不了主 POS `/pos`（或没有入口）
+
+---
+
+## 6. 相关文件（开发参考）
+
+| 类型 | 路径 |
+|------|------|
+| Seeder | `backend/.../database/seeders/StaffPosAppointmentsPermissionSeeder.php` |
+| API 权限 | `backend/.../routes/api.php`（`pos.appointments.manage` 中间件） |
+| 页面入口 | `frontend/.../pos/appointments/page.tsx` |
+| Cash Shift | `frontend/.../pos/PosCashShiftGate.tsx` |
+| 工作区 UI | `frontend/.../pos/PosAppointmentsWorkspace.tsx` |
+
+---
+
+## 7. 一键复制（Production）
+
+```bash
+cd /path/to/backend/ecommerce_gentlegurl_backend_api
+php artisan db:seed --class=StaffPosAppointmentsPermissionSeeder
+php artisan route:clear
+```
+
+然后：**Staff 全部重新登录**。

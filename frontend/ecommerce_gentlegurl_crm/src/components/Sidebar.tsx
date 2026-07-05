@@ -86,6 +86,13 @@ export default function Sidebar({ collapsed, permissions, staffId, onToggleSideb
               icon: 'fa-solid fa-box-open',
               href: '/staff-consumables/history',
             },
+            {
+              key: 'pos-appointments',
+              label: 'POS Appointments',
+              icon: 'fa-solid fa-calendar-check',
+              href: '/pos/appointments',
+              requiredPermission: 'pos.appointments.manage',
+            },
           ] as MenuItem[])
         : []),
         // ======================

@@ -38,6 +38,7 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
   const staffPortalOnly = getLoginPortal() === 'staff'
   const workspaceOptions = staffPortalOnly ? OPTIONS.filter((o) => o.value === 'booking') : OPTIONS
   const showPos = permissions.includes('pos.checkout')
+  const showPosAppointments = permissions.includes('pos.checkout') || permissions.includes('pos.appointments.manage')
   const showSalesReport = permissions.includes('ecommerce.daily-sales-reports.view')
   const showDailyBooking = permissions.includes('pos.checkout') || permissions.includes('booking.appointments.view')
   const isPosCheckout = pathname === '/pos'
@@ -183,6 +184,9 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
             {isPosCheckout ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
             POS
           </Link>
+        </>
+      )}
+      {showPosAppointments && (
           <Link
             href="/pos/appointments"
             role="option"
@@ -193,7 +197,6 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
             {isPosAppointments ? <i className="fa-solid fa-check w-4 text-blue-600" /> : <span className="w-4" />}
             Appointments
           </Link>
-        </>
       )}
       {showDailyBooking && (
         <Link
@@ -286,15 +289,15 @@ export default function WorkspaceSwitcher({ permissions = [] }: WorkspaceSwitche
           )
         })}
         {showPos && (
-          <>
-            <Link href="/pos" className={segmentClass(isPosCheckout)}>
-              POS
-            </Link>
-            <Link href="/pos/appointments" className={segmentClass(isPosAppointments)} title="Appointments">
-              <span className="xl:hidden">Apts</span>
-              <span className="hidden xl:inline">Appointments</span>
-            </Link>
-          </>
+          <Link href="/pos" className={segmentClass(isPosCheckout)}>
+            POS
+          </Link>
+        )}
+        {showPosAppointments && (
+          <Link href="/pos/appointments" className={segmentClass(isPosAppointments)} title="Appointments">
+            <span className="xl:hidden">Apts</span>
+            <span className="hidden xl:inline">Appointments</span>
+          </Link>
         )}
         {showDailyBooking && (
           <Link href="/daily-booking" className={segmentClass(isDailyBookingRoute)} title="Daily Booking">

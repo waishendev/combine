@@ -13,14 +13,21 @@ export default async function PosAppointmentsPage() {
     redirect('/login')
   }
 
-  const hasPermission = user.permissions.includes('pos.checkout')
+  const hasPermission =
+    user.permissions.includes('pos.checkout') || user.permissions.includes('pos.appointments.manage')
   if (!hasPermission) {
     redirect('/dashboard')
   }
 
+  const canManageCashShift = user.permissions.includes('pos.checkout')
+
   return (
     <div className="crm-page-shell pos-appt-page px-3 py-3 sm:px-4 sm:py-4 md:px-5 lg:px-6">
-      <PosCashShiftGate defaultStaffId={user.staff_id ?? null}>
+      <PosCashShiftGate
+        defaultStaffId={user.staff_id ?? null}
+        cashShiftRequired
+        canManageCashShift={canManageCashShift}
+      >
         <PosAppointmentsWorkspace
           currentUser={{
             id: user.id,
