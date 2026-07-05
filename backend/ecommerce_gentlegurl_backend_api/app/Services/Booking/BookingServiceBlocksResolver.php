@@ -50,11 +50,18 @@ class BookingServiceBlocksResolver
 
         $originalAddonSource = $nestedOriginalAddons->isNotEmpty() ? $nestedOriginalAddons : $flatAddonItems;
 
+        $addonLinkedServiceIds = $originalAddonSource
+            ->merge($extraMainServiceRows->flatMap(fn (array $row) => collect($row['addon_items'] ?? [])))
+            ->filter(fn ($addon) => is_array($addon))
+            ->map(fn (array $addon) => (int) ($addon['linked_booking_service_id'] ?? 0))
+            ->filter(fn (int $id) => $id > 0);
+
         $linkedIds = $extraMainServiceRows
             ->pluck('linked_booking_service_id')
             ->map(fn ($id) => (int) $id)
             ->filter(fn (int $id) => $id > 0)
             ->merge([$bookingServiceId])
+            ->merge($addonLinkedServiceIds)
             ->unique()
             ->values();
 
@@ -80,7 +87,7 @@ class BookingServiceBlocksResolver
             'is_original' => true,
             'add_ons' => $originalAddonSource
                 ->filter(fn ($addon) => is_array($addon))
-                ->map(fn (array $addon) => $this->mapAddonItem($addon))
+                ->map(fn (array $addon) => $this->mapAddonItem($addon, $servicesById))
                 ->values()
                 ->all(),
         ];
@@ -99,7 +106,7 @@ class BookingServiceBlocksResolver
                     'is_original' => false,
                     'add_ons' => collect($item['addon_items'] ?? [])
                         ->filter(fn ($addon) => is_array($addon))
-                        ->map(fn (array $addon) => $this->mapAddonItem($addon))
+                        ->map(fn (array $addon) => $this->mapAddonItem($addon, $servicesById))
                         ->values()
                         ->all(),
                 ];
@@ -116,28 +123,98 @@ class BookingServiceBlocksResolver
 
     /**
      * @param  array<string, mixed>  $item
+     * @param  Collection<int, BookingService>|null  $servicesById
      * @return array{name: string, cn_name: string|null, extra_duration_min: int, extra_price: float, quantity: int, line_gross_amount: float, price_mode: string|null, price_range_min: float|null, price_range_max: float|null, price_finalized: bool, id: int|null}
      */
-    public function mapAddonItem(array $item): array
+    public function mapAddonItem(array $item, ?Collection $servicesById = null): array
     {
         $quantity = $this->addonQuantityService->resolveStoredQuantity($item);
-        $lineGrossAmount = $this->addonQuantityService->lineGrossAmount($item);
-        $priceMode = (string) ($item['price_mode'] ?? '');
-        $priceFinalized = (bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? true);
+        $linkedServiceId = (int) ($item['linked_booking_service_id'] ?? 0);
+        $linkedService = $linkedServiceId > 0 ? $servicesById?->get($linkedServiceId) : null;
+        $priceMeta = $this->resolveAddonPriceMeta($item, $linkedService);
+        $priceFinalized = $this->resolveAddonPriceFinalized($item, $priceMeta);
+        $unitPrice = $priceFinalized
+            ? round(max(0, (float) ($item['final_price'] ?? $item['settled_price'] ?? $item['adjusted_price'] ?? $item['override_price'] ?? $item['extra_price'] ?? 0)), 2)
+            : 0.0;
+        $lineGrossAmount = $priceFinalized
+            ? (array_key_exists('line_gross_amount', $item) && $item['line_gross_amount'] !== null
+                ? round(max(0, (float) $item['line_gross_amount']), 2)
+                : round($unitPrice * $quantity, 2))
+            : 0.0;
 
         return [
             'id' => isset($item['id']) ? (int) $item['id'] : null,
             'name' => (string) ($item['name'] ?? $item['label'] ?? 'Add-on'),
             'cn_name' => $item['cn_label'] ?? $item['cn_name'] ?? $item['linked_cn_name'] ?? null,
             'extra_duration_min' => max(0, (int) ($item['extra_duration_min'] ?? 0)),
-            'extra_price' => round((float) ($item['extra_price'] ?? 0), 2),
+            'extra_price' => $unitPrice,
             'quantity' => $quantity,
             'line_gross_amount' => $lineGrossAmount,
-            'price_mode' => $priceMode !== '' ? $priceMode : null,
-            'price_range_min' => array_key_exists('price_range_min', $item) ? (float) $item['price_range_min'] : null,
-            'price_range_max' => array_key_exists('price_range_max', $item) ? (float) $item['price_range_max'] : null,
+            'price_mode' => $priceMeta['price_mode'],
+            'price_range_min' => $priceMeta['price_range_min'],
+            'price_range_max' => $priceMeta['price_range_max'],
             'price_finalized' => $priceFinalized,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @return array{price_mode: string|null, price_range_min: float|null, price_range_max: float|null}
+     */
+    protected function resolveAddonPriceMeta(array $item, ?BookingService $linkedService = null): array
+    {
+        if ($linkedService && (string) ($linkedService->price_mode ?? 'fixed') !== '') {
+            return [
+                'price_mode' => (string) ($linkedService->price_mode ?? 'fixed'),
+                'price_range_min' => $linkedService->price_range_min !== null ? (float) $linkedService->price_range_min : null,
+                'price_range_max' => $linkedService->price_range_max !== null ? (float) $linkedService->price_range_max : null,
+            ];
+        }
+
+        $mode = $item['linked_price_mode'] ?? $item['price_mode'] ?? null;
+        if (! is_string($mode) || trim($mode) === '') {
+            return [
+                'price_mode' => null,
+                'price_range_min' => null,
+                'price_range_max' => null,
+            ];
+        }
+
+        $rangeMin = array_key_exists('linked_price_range_min', $item)
+            ? $item['linked_price_range_min']
+            : ($item['price_range_min'] ?? null);
+        $rangeMax = array_key_exists('linked_price_range_max', $item)
+            ? $item['linked_price_range_max']
+            : ($item['price_range_max'] ?? null);
+
+        return [
+            'price_mode' => (string) $mode,
+            'price_range_min' => $rangeMin !== null && $rangeMin !== '' ? (float) $rangeMin : null,
+            'price_range_max' => $rangeMax !== null && $rangeMax !== '' ? (float) $rangeMax : null,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     * @param  array{price_mode: string|null, price_range_min: float|null, price_range_max: float|null}  $priceMeta
+     */
+    protected function resolveAddonPriceFinalized(array $item, array $priceMeta): bool
+    {
+        if (($priceMeta['price_mode'] ?? null) !== 'range') {
+            return (bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? true);
+        }
+
+        if ((bool) ($item['price_finalized'] ?? $item['final_price_set'] ?? false)) {
+            return true;
+        }
+
+        foreach (['final_price', 'settled_price', 'adjusted_price', 'override_price', 'price_override'] as $field) {
+            if (array_key_exists($field, $item) && $item[$field] !== null && $item[$field] !== '') {
+                return true;
+            }
+        }
+
+        return round(max(0, (float) ($item['extra_price'] ?? 0)), 2) > 0.0001;
     }
 
     /**

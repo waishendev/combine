@@ -57,8 +57,11 @@ class PaymentLinkController extends Controller
             'bank_account_id' => ['nullable', 'integer', 'exists:bank_accounts,id'],
             'billplz_gateway_option_id' => ['nullable', 'integer', 'exists:billplz_payment_gateway_options,id'],
             'payer_name' => ['required', 'string', 'max:120'],
-            'payer_phone' => ['required', 'string', 'max:40'],
-            'payer_email' => ['nullable', 'email', 'max:160'],
+            'payer_phone' => ['nullable', 'string', 'max:40', 'required_without:payer_email'],
+            'payer_email' => ['nullable', 'email', 'max:160', 'required_without:payer_phone'],
+        ], [
+            'payer_phone.required_without' => 'Please provide at least one contact — phone or email.',
+            'payer_email.required_without' => 'Please provide at least one contact — phone or email.',
         ]);
 
         $paymentMethod = $this->normalizeMethod((string) $validated['payment_method']);

@@ -71,6 +71,23 @@ function DetailInfoCell({ label, value }: { label: string; value: ReactNode }) {
   )
 }
 
+function LinkMetaRow({
+  label,
+  value,
+  valueClassName = 'text-gray-600',
+}: {
+  label: string
+  value: ReactNode
+  valueClassName?: string
+}) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`mt-0.5 break-words text-[11px] leading-relaxed ${valueClassName}`}>{value}</p>
+    </div>
+  )
+}
+
 function resolvePayer(link: PosPaymentLink, fallback?: BookingCustomerFallback | null) {
   return {
     name: link.payer?.name?.trim() || fallback?.name?.trim() || null,
@@ -269,36 +286,36 @@ export default function PosAppointmentPaymentLinksSection({
       : null
 
   return (
-    <div className="rounded-xl border-2 border-purple-300 bg-gradient-to-br from-purple-50 via-white to-purple-50/60 p-4 shadow-md ring-1 ring-purple-100">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="rounded-xl border-2 border-purple-300 bg-gradient-to-br from-purple-50 via-white to-purple-50/60 p-3 shadow-md ring-1 ring-purple-100 sm:p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
         <button
           type="button"
           onClick={() => setCollapsed((prev) => !prev)}
-          className="flex min-w-0 flex-1 items-start gap-3 text-left"
+          className="flex w-full min-w-0 items-start gap-2.5 text-left sm:flex-1 sm:gap-3"
           aria-expanded={!collapsed}
         >
-          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm">
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-600 text-white shadow-sm sm:h-10 sm:w-10">
+            <svg className="h-4 w-4 sm:h-5 sm:w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
             </svg>
           </span>
           <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-bold uppercase tracking-wide text-purple-900">Online Deposit History</span>
+            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="text-xs font-bold uppercase tracking-wide text-purple-900 sm:text-sm">Online Deposit History</span>
               {actionNeededCount > 0 ? (
-                <span className="rounded-full bg-blue-600 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+                <span className="rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
                   {actionNeededCount} to review
                 </span>
               ) : null}
             </div>
-            <p className="mt-1 text-xs font-medium text-gray-600">
+            <p className="mt-1 break-words text-[11px] font-medium leading-relaxed text-gray-600 sm:text-xs">
               {links.length === 0
                 ? 'Generate a payment link for the customer to pay a deposit online.'
                 : `${links.length} link${links.length > 1 ? 's' : ''}${paidCount > 0 ? ` · ${paidCount} paid · RM ${paidTotal.toFixed(2)} collected` : ''}`}
             </p>
           </div>
           <svg
-            className={`mt-1 h-5 w-5 shrink-0 text-purple-600 transition-transform ${collapsed ? '' : 'rotate-180'}`}
+            className={`mt-0.5 h-5 w-5 shrink-0 text-purple-600 transition-transform sm:mt-1 ${collapsed ? '' : 'rotate-180'}`}
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
@@ -313,7 +330,7 @@ export default function PosAppointmentPaymentLinksSection({
             type="button"
             disabled={disabled || creating}
             onClick={openForm}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-purple-700 disabled:opacity-50"
+            className="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-white shadow-sm transition hover:bg-purple-700 disabled:opacity-50 sm:w-auto sm:py-2"
           >
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 4v16m8-8H4" />
@@ -394,16 +411,25 @@ export default function PosAppointmentPaymentLinksSection({
           No payment links yet.
         </p>
       ) : (
-        <ul className="space-y-2">
+        <ul className="space-y-2.5">
           {links.map((link) => {
             const canCancel = link.status === 'PENDING'
             const busy = actionId === link.id
+            const generatedValue = (
+              <>
+                {link.created_at ? formatDateTime12Hour(link.created_at) : '—'}
+                {link.created_by?.name ? <span className="text-gray-500">{` · ${link.created_by.name}`}</span> : null}
+              </>
+            )
+
             return (
-              <li key={link.id} className="rounded-lg border border-white/80 bg-white px-3 py-2.5 text-xs shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-2">
+              <li key={link.id} className="rounded-lg border border-white/80 bg-white p-3 text-xs shadow-sm sm:px-3 sm:py-2.5">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold tabular-nums text-gray-900">RM {Number(link.amount ?? 0).toFixed(2)}</span>
+                    <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+                      <span className="text-sm font-semibold tabular-nums text-gray-900 sm:text-xs">
+                        RM {Number(link.amount ?? 0).toFixed(2)}
+                      </span>
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_BADGE[link.status]}`}>
                         {STATUS_LABEL[link.status]}
                       </span>
@@ -413,44 +439,27 @@ export default function PosAppointmentPaymentLinksSection({
                         </span>
                       ) : null}
                     </div>
-                    <div className="mt-1.5 space-y-0.5">
-                      <p className="text-[11px] leading-relaxed text-gray-600">
-                        <span className="font-semibold text-gray-500">Generated</span>
-                        {' · '}
-                        {link.created_at ? formatDateTime12Hour(link.created_at) : '—'}
-                        {link.created_by?.name ? (
-                          <span className="text-gray-500">{` · ${link.created_by.name}`}</span>
-                        ) : null}
-                      </p>
+
+                    <div className="mt-2 space-y-2 sm:mt-1.5 sm:space-y-1">
+                      <LinkMetaRow label="Generated" value={generatedValue} />
                       {link.status === 'PENDING' && link.expires_at ? (
-                        <p className="text-[11px] leading-relaxed text-gray-600">
-                          <span className="font-semibold text-gray-500">Expires</span>
-                          {' · '}
-                          {formatDateTime12Hour(link.expires_at)}
-                        </p>
+                        <LinkMetaRow label="Expires" value={formatDateTime12Hour(link.expires_at)} />
                       ) : null}
                       {link.status === 'EXPIRED' && link.expires_at ? (
-                        <p className="text-[11px] leading-relaxed text-gray-600">
-                          <span className="font-semibold text-gray-500">Expired</span>
-                          {' · '}
-                          {formatDateTime12Hour(link.expires_at)}
-                        </p>
+                        <LinkMetaRow label="Expired" value={formatDateTime12Hour(link.expires_at)} />
                       ) : null}
                       {link.status === 'PAID' && link.paid_at ? (
-                        <p className="text-[11px] leading-relaxed text-emerald-700">
-                          <span className="font-semibold">Paid</span>
-                          {' · '}
-                          {formatDateTime12Hour(link.paid_at)}
-                        </p>
+                        <LinkMetaRow label="Paid" value={formatDateTime12Hour(link.paid_at)} valueClassName="text-emerald-700" />
                       ) : null}
                     </div>
                   </div>
-                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+
+                  <div className="grid grid-cols-2 gap-1.5 sm:flex sm:shrink-0 sm:flex-wrap sm:items-center sm:justify-end">
                     {link.status === 'PENDING' ? (
                       <button
                         type="button"
                         onClick={() => void copyLink(link)}
-                        className="rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:bg-slate-100"
+                        className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2 text-[11px] font-semibold text-slate-700 hover:bg-slate-100 sm:py-1"
                       >
                         {copiedId === link.id ? 'Copied!' : 'Copy Link'}
                       </button>
@@ -458,7 +467,7 @@ export default function PosAppointmentPaymentLinksSection({
                     <button
                       type="button"
                       onClick={() => setDetailLinkId(link.id)}
-                      className="rounded-md border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] font-semibold text-purple-800 hover:bg-purple-100"
+                      className="rounded-md border border-purple-200 bg-purple-50 px-2 py-2 text-[11px] font-semibold text-purple-800 hover:bg-purple-100 sm:py-1"
                     >
                       View
                     </button>
@@ -467,7 +476,7 @@ export default function PosAppointmentPaymentLinksSection({
                         type="button"
                         disabled={busy || disabled}
                         onClick={() => void cancelLink(link)}
-                        className="rounded-md border border-rose-300 bg-white px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50"
+                        className="col-span-2 rounded-md border border-rose-300 bg-white px-2 py-2 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:opacity-50 sm:col-span-1 sm:py-1"
                       >
                         {busy ? '…' : 'Cancel'}
                       </button>

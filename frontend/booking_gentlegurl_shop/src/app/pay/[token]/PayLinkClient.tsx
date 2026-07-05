@@ -3,6 +3,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useAuth } from "@/contexts/AuthContext";
+import InternationalPhoneInput from "@/components/common/InternationalPhoneInput";
+import { extractApiError } from "@/lib/auth/redirect";
+import { normalizeInternationalPhone } from "@/lib/phone";
 import {
   ApiError,
   BillplzPaymentGatewayOption,
@@ -23,6 +26,58 @@ type PayMethod = "manual_transfer" | "billplz_online_banking" | "billplz_credit_
 
 type PaymentOption = { key: PayMethod; name: string };
 
+type PayLinkField =
+  | "payer_name"
+  | "payer_phone"
+  | "payer_email"
+  | "payment_method"
+  | "bank_account_id"
+  | "billplz_gateway_option_id";
+
+const PAY_LINK_FIELD_ORDER: PayLinkField[] = [
+  "payer_name",
+  "payer_phone",
+  "payer_email",
+  "payment_method",
+  "bank_account_id",
+  "billplz_gateway_option_id",
+];
+
+function parsePayLinkValidationError(error: unknown): {
+  message: string;
+  fieldErrors: Partial<Record<PayLinkField, string>>;
+  firstField: PayLinkField | null;
+} {
+  const fieldErrors: Partial<Record<PayLinkField, string>> = {};
+
+  if (error instanceof ApiError) {
+    const errors = error.data?.errors;
+    if (errors && typeof errors === "object") {
+      for (const [key, value] of Object.entries(errors as Record<string, string[] | string>)) {
+        const field = key as PayLinkField;
+        const msg = Array.isArray(value) ? value[0] : value;
+        if (PAY_LINK_FIELD_ORDER.includes(field) && typeof msg === "string" && msg.trim()) {
+          fieldErrors[field] = msg;
+        }
+      }
+    }
+  }
+
+  const firstField = PAY_LINK_FIELD_ORDER.find((field) => fieldErrors[field]) ?? null;
+  const message = firstField && fieldErrors[firstField] ? fieldErrors[firstField]! : extractApiError(error);
+
+  return { message, fieldErrors, firstField };
+}
+
+function inputErrorClass(hasError: boolean) {
+  return hasError
+    ? "border-[var(--status-error,#dc2626)] ring-1 ring-[var(--status-error,#dc2626)]/25"
+    : "border-[var(--card-border)]";
+}
+
+const PHONE_PATTERN = /^\+?[0-9]{8,15}$/;
+const CONTACT_REQUIRED_MESSAGE = "Please provide at least one contact — phone or email.";
+
 function normalizeGatewayKey(key: string): PayMethod | null {
   const normalized =
     key === "billplz_fpx" ? "billplz_online_banking" : key === "billplz_card" ? "billplz_credit_card" : key;
@@ -32,18 +87,110 @@ function normalizeGatewayKey(key: string): PayMethod | null {
   return null;
 }
 
-function formatDateTime(value?: string | null): string {
-  if (!value) return "—";
+function parseAppointmentDate(value?: string | null): Date | null {
+  if (!value) return null;
   const date = new Date(value.replace(" ", "T"));
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString(undefined, {
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function formatAppointmentDate(startAt?: string | null): string {
+  const start = parseAppointmentDate(startAt);
+  if (!start) return "—";
+  return start.toLocaleString(undefined, {
     weekday: "short",
     day: "2-digit",
     month: "short",
     year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   });
+}
+
+function formatAppointmentTimeRange(startAt?: string | null, endAt?: string | null): string {
+  const start = parseAppointmentDate(startAt);
+  if (!start) return "—";
+
+  const startTime = start.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit" });
+  const end = parseAppointmentDate(endAt);
+  if (end) {
+    const endTime = end.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit" });
+    return `${startTime} – ${endTime}`;
+  }
+
+  return startTime;
+}
+
+type PriceBounds = { min: number; max: number; hasRange: boolean };
+
+function serviceBlockPriceBounds(block: PaymentLinkServiceBlock): PriceBounds {
+  const mode = String(block.price_mode ?? "fixed").toLowerCase();
+  const finalized = block.price_finalized !== false;
+  const amount = Number(block.amount ?? 0);
+  if (mode === "range" && !finalized && amount <= 0) {
+    const rangeMin = Number(block.price_range_min ?? 0);
+    const rangeMax = Number(block.price_range_max ?? 0);
+    return {
+      min: Math.min(rangeMin, rangeMax),
+      max: Math.max(rangeMin, rangeMax),
+      hasRange: rangeMin > 0 || rangeMax > 0,
+    };
+  }
+  const fixed = amount > 0 ? amount : 0;
+  return { min: fixed, max: fixed, hasRange: false };
+}
+
+function addonPriceBounds(addon: PaymentLinkServiceBlockAddon): PriceBounds {
+  const qty = Math.max(1, Number(addon.quantity ?? 1));
+  if (addonIsRangePending(addon)) {
+    const rangeMin = Number(addon.price_range_min ?? 0) * qty;
+    const rangeMax = Number(addon.price_range_max ?? 0) * qty;
+    return {
+      min: Math.min(rangeMin, rangeMax),
+      max: Math.max(rangeMin, rangeMax),
+      hasRange: rangeMin > 0 || rangeMax > 0,
+    };
+  }
+  const line = Number(addon.line_gross_amount ?? Number(addon.extra_price ?? 0) * qty);
+  return { min: line, max: line, hasRange: false };
+}
+
+function computeApproxTotalBounds(blocks: PaymentLinkServiceBlock[]): PriceBounds {
+  let min = 0;
+  let max = 0;
+  let hasRange = false;
+
+  for (const block of blocks) {
+    const serviceBounds = serviceBlockPriceBounds(block);
+    min += serviceBounds.min;
+    max += serviceBounds.max;
+    if (serviceBounds.hasRange || serviceBounds.min !== serviceBounds.max) {
+      hasRange = true;
+    }
+
+    for (const addon of block.add_ons ?? []) {
+      const addonBounds = addonPriceBounds(addon);
+      min += addonBounds.min;
+      max += addonBounds.max;
+      if (addonBounds.hasRange || addonBounds.min !== addonBounds.max) {
+        hasRange = true;
+      }
+    }
+  }
+
+  return {
+    min: roundMoney(min),
+    max: roundMoney(max),
+    hasRange: hasRange || Math.abs(min - max) > 0.009,
+  };
+}
+
+function roundMoney(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function formatApproxTotalPrice(bounds: PriceBounds): string {
+  if (bounds.hasRange) {
+    return `${formatMoney(bounds.min)} – ${formatMoney(bounds.max)}`;
+  }
+  return formatMoney(bounds.min);
 }
 
 function formatMoney(value?: number | string | null): string {
@@ -65,11 +212,31 @@ function formatServicePrice(block: PaymentLinkServiceBlock): string {
   return formatMoney(amount);
 }
 
+function addonIsRangePending(addon: PaymentLinkServiceBlockAddon): boolean {
+  const mode = String(addon.price_mode ?? "").toLowerCase();
+  return mode === "range" && addon.price_finalized === false && Number(addon.extra_price ?? 0) <= 0;
+}
+
 function formatAddonPrice(addon: PaymentLinkServiceBlockAddon): string {
-  const qty = Number(addon.quantity ?? 1);
-  const line = Number(addon.line_gross_amount ?? (Number(addon.extra_price ?? 0) * (qty > 0 ? qty : 1)));
-  if (line <= 0) return "";
-  return formatMoney(line);
+  const qty = Math.max(1, Number(addon.quantity ?? 1));
+  if (addonIsRangePending(addon)) {
+    const rangeMin = Number(addon.price_range_min ?? 0) * qty;
+    const rangeMax = Number(addon.price_range_max ?? 0) * qty;
+    if (rangeMin > 0 || rangeMax > 0) {
+      return `${formatMoney(Math.min(rangeMin, rangeMax))} – ${formatMoney(Math.max(rangeMin, rangeMax))}`;
+    }
+    return "Price on consultation";
+  }
+  const unit = Number(addon.extra_price ?? 0);
+  const line = Number(addon.line_gross_amount ?? unit * qty);
+  return formatMoney(line > 0 ? line : unit * qty);
+}
+
+function formatAddonDuration(addon: PaymentLinkServiceBlockAddon): string | null {
+  const unitMinutes = Number(addon.extra_duration_min ?? 0);
+  if (unitMinutes <= 0) return null;
+  const qty = Math.max(1, Number(addon.quantity ?? 1));
+  return `${unitMinutes * qty} mins`;
 }
 
 function ServiceBlockRow({ block }: { block: PaymentLinkServiceBlock }) {
@@ -77,46 +244,61 @@ function ServiceBlockRow({ block }: { block: PaymentLinkServiceBlock }) {
   const isRangePending = String(block.price_mode ?? "").toLowerCase() === "range" && block.price_finalized === false;
 
   return (
-    <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-      <div className="flex items-start justify-between gap-3">
+    <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:p-3.5">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="font-semibold text-[var(--foreground)]">{block.name}</p>
-            {block.cn_name ? <span className="text-xs text-[var(--text-muted)]">{block.cn_name}</span> : null}
-          </div>
+          <p className="break-words text-[15px] font-semibold leading-snug text-[var(--foreground)] sm:text-sm">
+            {block.name}
+          </p>
+          {block.cn_name ? (
+            <p className="mt-0.5 break-words text-xs leading-relaxed text-[var(--text-muted)]">{block.cn_name}</p>
+          ) : null}
           {Number(block.duration_min ?? 0) > 0 ? (
-            <p className="mt-0.5 text-xs text-[var(--text-muted)]">{block.duration_min} mins</p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">{block.duration_min} mins</p>
           ) : null}
         </div>
-        <div className="shrink-0 text-right">
-          <p className={`text-sm font-semibold tabular-nums ${isRangePending ? "text-amber-700" : "text-[var(--foreground)]"}`}>
+        <div className="shrink-0 sm:max-w-[48%] sm:text-right">
+          <p
+            className={`text-sm font-semibold leading-snug tabular-nums sm:text-right ${
+              isRangePending ? "text-amber-700" : "text-[var(--foreground)]"
+            }`}
+          >
             {formatServicePrice(block)}
           </p>
-          {isRangePending ? <p className="mt-0.5 text-[10px] text-amber-700">Final price at salon</p> : null}
         </div>
       </div>
 
       {addOns.length > 0 ? (
-        <div className="mt-2 space-y-1.5 border-t border-[var(--card-border)] pt-2">
+        <div className="mt-2.5 space-y-2.5 border-t border-[var(--card-border)] pt-2.5">
           <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add-ons</p>
           {addOns.map((addon, index) => {
-            const qty = Number(addon.quantity ?? 1);
+            const qty = Math.max(1, Number(addon.quantity ?? 1));
             const priceText = formatAddonPrice(addon);
+            const durationText = formatAddonDuration(addon);
+            const rangePending = addonIsRangePending(addon);
             return (
-              <div key={`${addon.id ?? addon.name}-${index}`} className="flex items-start justify-between gap-3">
+              <div
+                key={`${addon.id ?? addon.name}-${index}`}
+                className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
+              >
                 <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    <p className="text-sm text-[var(--foreground)]">{addon.name}</p>
-                    {qty > 1 ? (
-                      <span className="rounded-full bg-[var(--background)] px-1.5 py-0.5 text-[10px] font-semibold text-[var(--text-muted)]">
-                        × {qty}
-                      </span>
-                    ) : null}
-                  </div>
-                  {addon.cn_name ? <p className="text-xs text-[var(--text-muted)]">{addon.cn_name}</p> : null}
+                  <p className="break-words text-sm leading-snug text-[var(--foreground)]">{addon.name}</p>
+                  {addon.cn_name ? (
+                    <p className="mt-0.5 break-words text-xs leading-relaxed text-[var(--text-muted)]">{addon.cn_name}</p>
+                  ) : null}
+                  {durationText ? <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{durationText}</p> : null}
+                  {qty > 1 ? (
+                    <p className="mt-0.5 text-[11px] font-semibold text-[var(--text-muted)]">× {qty}</p>
+                  ) : null}
                 </div>
                 {priceText ? (
-                  <p className="shrink-0 text-right text-xs font-medium tabular-nums text-[var(--text-muted)]">{priceText}</p>
+                  <p
+                    className={`shrink-0 text-sm font-medium leading-snug tabular-nums sm:max-w-[48%] sm:text-right sm:text-xs ${
+                      rangePending ? "text-amber-700" : "text-[var(--text-muted)]"
+                    }`}
+                  >
+                    {priceText}
+                  </p>
                 ) : null}
               </div>
             );
@@ -148,6 +330,67 @@ export default function PayLinkClient({ token }: { token: string }) {
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Partial<Record<PayLinkField, string>>>({});
+
+  const payerNameRef = useRef<HTMLInputElement>(null);
+  const payerPhoneRef = useRef<HTMLDivElement>(null);
+  const payerEmailRef = useRef<HTMLInputElement>(null);
+  const paymentMethodRef = useRef<HTMLDivElement>(null);
+  const bankAccountRef = useRef<HTMLDivElement>(null);
+  const onlineBankingRef = useRef<HTMLDivElement>(null);
+
+  const scrollToPayField = useCallback((field: PayLinkField) => {
+    const target =
+      field === "payer_name"
+        ? payerNameRef.current
+        : field === "payer_phone"
+          ? payerPhoneRef.current
+          : field === "payer_email"
+            ? payerEmailRef.current
+            : field === "payment_method"
+              ? paymentMethodRef.current
+              : field === "bank_account_id"
+                ? bankAccountRef.current
+                : onlineBankingRef.current;
+
+    requestAnimationFrame(() => {
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      if (target instanceof HTMLInputElement) {
+        target.focus({ preventScroll: true });
+      }
+    });
+  }, []);
+
+  const showFieldError = useCallback(
+    (field: PayLinkField, message: string) => {
+      setFieldErrors({ [field]: message });
+      setFormError(null);
+      scrollToPayField(field);
+    },
+    [scrollToPayField],
+  );
+
+  const showContactRequiredError = useCallback(() => {
+    setFieldErrors({
+      payer_phone: CONTACT_REQUIRED_MESSAGE,
+      payer_email: CONTACT_REQUIRED_MESSAGE,
+    });
+    setFormError(null);
+    scrollToPayField("payer_phone");
+  }, [scrollToPayField]);
+
+  const clearFieldError = useCallback((field: PayLinkField) => {
+    setFieldErrors((prev) => {
+      if (prev.payer_phone === CONTACT_REQUIRED_MESSAGE && prev.payer_email === CONTACT_REQUIRED_MESSAGE) {
+        return {};
+      }
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+    setFormError(null);
+  }, []);
 
   // Manual transfer flow: after "pay", show bank details + slip upload.
   const [manualBank, setManualBank] = useState<PublicBookingBankAccount | null>(null);
@@ -218,24 +461,39 @@ export default function PayLinkClient({ token }: { token: string }) {
 
   const submitPayment = useCallback(async () => {
     if (!selectedMethod) {
-      setFormError("Please choose a payment method.");
+      showFieldError("payment_method", "Please choose a payment method.");
       return;
     }
     if (selectedMethod === "manual_transfer" && !selectedBankAccountId) {
-      setFormError("Please choose a bank account.");
+      showFieldError("bank_account_id", "Please choose a bank account.");
       return;
     }
     if (!payerName.trim()) {
-      setFormError("Please enter your name.");
+      showFieldError("payer_name", "Please enter your name.");
       return;
     }
-    if (!payerPhone.trim()) {
-      setFormError("Please enter your phone number.");
+
+    const normalizedPhone = normalizeInternationalPhone(payerPhone);
+    const trimmedEmail = payerEmail.trim();
+
+    if (payerPhone.trim() && !normalizedPhone) {
+      showFieldError("payer_phone", "Please enter a complete phone number.");
+      return;
+    }
+
+    if (!normalizedPhone && !trimmedEmail) {
+      showContactRequiredError();
+      return;
+    }
+
+    if (normalizedPhone && !PHONE_PATTERN.test(normalizedPhone)) {
+      showFieldError("payer_phone", "Please enter a valid phone number (8-15 digits, optional + prefix).");
       return;
     }
 
     setSubmitting(true);
     setFormError(null);
+    setFieldErrors({});
     try {
       const response = await payPaymentLink(token, {
         payment_method: selectedMethod,
@@ -243,8 +501,8 @@ export default function PayLinkClient({ token }: { token: string }) {
         billplz_gateway_option_id:
           selectedMethod === "billplz_online_banking" ? selectedOnlineOptionId ?? undefined : undefined,
         payer_name: payerName.trim() || undefined,
-        payer_phone: payerPhone.trim() || undefined,
-        payer_email: payerEmail.trim() || undefined,
+        payer_phone: normalizedPhone || undefined,
+        payer_email: trimmedEmail || undefined,
       });
 
       if (response.payment_url) {
@@ -260,11 +518,38 @@ export default function PayLinkClient({ token }: { token: string }) {
       // Fallback: re-fetch to reflect any status change.
       await loadLink();
     } catch (error) {
-      setFormError(error instanceof ApiError ? error.message : "Payment could not be started. Please try again.");
+      const parsed = parsePayLinkValidationError(error);
+      const contactApiError =
+        parsed.fieldErrors.payer_phone === CONTACT_REQUIRED_MESSAGE ||
+        parsed.fieldErrors.payer_email === CONTACT_REQUIRED_MESSAGE ||
+        parsed.message === CONTACT_REQUIRED_MESSAGE;
+
+      if (contactApiError) {
+        showContactRequiredError();
+      } else if (parsed.firstField) {
+        setFieldErrors(parsed.fieldErrors);
+        setFormError(null);
+        scrollToPayField(parsed.firstField);
+      } else {
+        setFieldErrors({});
+        setFormError(parsed.message);
+      }
     } finally {
       setSubmitting(false);
     }
-  }, [loadLink, payerEmail, payerName, payerPhone, selectedBankAccountId, selectedMethod, selectedOnlineOptionId, token]);
+  }, [
+    loadLink,
+    payerEmail,
+    payerName,
+    payerPhone,
+    scrollToPayField,
+    selectedBankAccountId,
+    selectedMethod,
+    selectedOnlineOptionId,
+    showFieldError,
+    showContactRequiredError,
+    token,
+  ]);
 
   const submitSlip = useCallback(async () => {
     if (!slipFile) {
@@ -279,7 +564,7 @@ export default function PayLinkClient({ token }: { token: string }) {
       setSlipUploaded(true);
       await loadLink();
     } catch (error) {
-      setFormError(error instanceof ApiError ? error.message : "Slip upload failed. Please try again.");
+      setFormError(extractApiError(error));
     } finally {
       setUploading(false);
     }
@@ -295,11 +580,17 @@ export default function PayLinkClient({ token }: { token: string }) {
       setManualBank(null);
       await loadLink();
     } catch (error) {
-      setFormError(error instanceof ApiError ? error.message : "Could not remove the proof. Please try again.");
+      setFormError(extractApiError(error));
     } finally {
       setUploading(false);
     }
   }, [loadLink, token]);
+
+  const serviceBlocks = link?.appointment?.service_blocks ?? [];
+  const approxTotalBounds = useMemo(() => {
+    return serviceBlocks.length > 0 ? computeApproxTotalBounds(serviceBlocks) : null;
+  }, [serviceBlocks]);
+  const showApproxTotal = approxTotalBounds != null && (approxTotalBounds.min > 0 || approxTotalBounds.max > 0);
 
   if (loading) {
     return <p className="text-sm text-[var(--text-muted)]">Loading payment details…</p>;
@@ -316,39 +607,60 @@ export default function PayLinkClient({ token }: { token: string }) {
 
   const appointment = link.appointment;
 
-  const serviceBlocks = appointment?.service_blocks ?? [];
   const hasBlocks = serviceBlocks.length > 0;
   const multiService = Boolean(appointment?.multi_service) || serviceBlocks.length > 1;
   const durationMin = Number(appointment?.estimated_duration_min ?? 0);
-  const itemsTotal = Number(appointment?.items_total ?? 0);
-  const depositCollected = Number(appointment?.deposit_collected ?? 0);
 
   const summaryCard = (
-    <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+    <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-5">
       <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">Deposit request</p>
-      <p className="mt-1 text-3xl font-semibold tabular-nums text-[var(--foreground)]">{amountLabel}</p>
+      <p className="mt-1 text-2xl font-semibold tabular-nums text-[var(--foreground)] sm:text-3xl">{amountLabel}</p>
 
       {appointment ? (
         <>
-          <div className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--card-border)] pt-4 text-sm">
-            {appointment.staff_name ? (
+          <div className="mt-4 border-t border-[var(--card-border)] pt-4 text-sm">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              Appointment details
+            </p>
+
+            {(appointment.staff_name || appointment.booking_code) ? (
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {appointment.staff_name ? (
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Stylist</p>
+                    <p className="mt-0.5 break-words font-medium leading-snug text-[var(--foreground)]">
+                      {appointment.staff_name}
+                    </p>
+                  </div>
+                ) : null}
+                {appointment.booking_code ? (
+                  <div className={`min-w-0 ${appointment.staff_name ? "sm:text-right" : ""}`}>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Reference</p>
+                    <p className="mt-0.5 break-all font-mono text-xs leading-snug text-[var(--foreground)]">
+                      {appointment.booking_code}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="min-w-0">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Stylist</p>
-                <p className="mt-0.5 truncate font-medium text-[var(--foreground)]">{appointment.staff_name}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Date</p>
+                <p className="mt-0.5 font-medium leading-snug text-[var(--foreground)]">
+                  {formatAppointmentDate(appointment.start_at)}
+                </p>
               </div>
-            ) : null}
-            {appointment.booking_code ? (
-              <div className="min-w-0 text-right">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Reference</p>
-                <p className="mt-0.5 truncate font-mono text-xs text-[var(--foreground)]">{appointment.booking_code}</p>
+              <div className="min-w-0 sm:text-right">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Time</p>
+                <p className="mt-0.5 font-medium leading-snug tabular-nums text-[var(--foreground)]">
+                  {formatAppointmentTimeRange(appointment.start_at, appointment.end_at)}
+                </p>
               </div>
-            ) : null}
-            <div className="min-w-0">
-              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Appointment</p>
-              <p className="mt-0.5 font-medium text-[var(--foreground)]">{formatDateTime(appointment.start_at)}</p>
             </div>
+
             {durationMin > 0 ? (
-              <div className="min-w-0 text-right">
+              <div className="mt-3">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">Duration</p>
                 <p className="mt-0.5 font-medium text-[var(--foreground)]">{durationMin} mins</p>
               </div>
@@ -356,7 +668,7 @@ export default function PayLinkClient({ token }: { token: string }) {
           </div>
 
           <div className="mt-4 border-t border-[var(--card-border)] pt-4">
-            <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
               <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">
                 {multiService ? "Services" : "Service"}
               </p>
@@ -367,37 +679,33 @@ export default function PayLinkClient({ token }: { token: string }) {
               ) : null}
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2.5">
               {hasBlocks
                 ? serviceBlocks.map((block, index) => (
                     <ServiceBlockRow key={`${block.service_id ?? block.name}-${index}`} block={block} />
                   ))
                 : (
-                  <div className="flex items-start justify-between gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
-                    <p className="font-semibold text-[var(--foreground)]">{appointment.service_name}</p>
+                  <div className="rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3">
+                    <p className="break-words font-semibold leading-snug text-[var(--foreground)]">
+                      {appointment.service_name}
+                    </p>
                   </div>
                 )}
             </div>
           </div>
 
-          {itemsTotal > 0 || depositCollected > 0 ? (
-            <div className="mt-4 space-y-1.5 border-t border-[var(--card-border)] pt-4 text-sm">
-              {itemsTotal > 0 ? (
-                <div className="flex justify-between gap-3">
-                  <span className="text-[var(--text-muted)]">Booking total</span>
-                  <span className="font-medium tabular-nums text-[var(--foreground)]">{formatMoney(itemsTotal)}</span>
-                </div>
-              ) : null}
-              {depositCollected > 0 ? (
-                <div className="flex justify-between gap-3">
-                  <span className="text-[var(--text-muted)]">Deposit already paid</span>
-                  <span className="font-medium tabular-nums text-emerald-700">{formatMoney(depositCollected)}</span>
-                </div>
-              ) : null}
-              <div className="flex justify-between gap-3 border-t border-[var(--card-border)] pt-2 text-base">
-                <span className="font-semibold text-[var(--foreground)]">This deposit</span>
-                <span className="font-semibold tabular-nums text-[var(--accent-strong,var(--accent))]">{amountLabel}</span>
-              </div>
+          {showApproxTotal && approxTotalBounds ? (
+            <div className="mt-4 flex flex-col gap-1 border-t border-[var(--card-border)] pt-4 text-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+              <span className="text-[var(--text-muted)]">
+                {approxTotalBounds.hasRange ? "Approx. total price" : "Total price"}
+              </span>
+              <span
+                className={`font-semibold leading-snug tabular-nums sm:shrink-0 sm:text-right ${
+                  approxTotalBounds.hasRange ? "text-amber-700" : "text-[var(--foreground)]"
+                }`}
+              >
+                {formatApproxTotalPrice(approxTotalBounds)}
+              </span>
             </div>
           ) : null}
         </>
@@ -409,13 +717,13 @@ export default function PayLinkClient({ token }: { token: string }) {
   if (link.status === "PAID") {
     return (
       <div className="space-y-4">
-        {summaryCard}
         <div className="rounded-2xl border border-[var(--status-success,#16a34a)]/30 bg-[var(--card)] p-6 text-center">
           <h1 className="text-lg font-semibold text-[var(--foreground)]">Deposit received</h1>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
             Thank you! Your deposit of {amountLabel} has been confirmed. We look forward to seeing you.
           </p>
         </div>
+        {summaryCard}
       </div>
     );
   }
@@ -576,37 +884,70 @@ export default function PayLinkClient({ token }: { token: string }) {
     <div className="space-y-4">
       {summaryCard}
 
-      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">
+      <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-4 shadow-sm sm:p-5">
         <h2 className="text-base font-semibold text-[var(--foreground)]">Pay your deposit</h2>
 
         <div className="mt-4 space-y-3">
-          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Your details</p>
-          <input
-            type="text"
-            value={payerName}
-            onChange={(e) => setPayerName(e.target.value)}
-            placeholder="Name *"
-            className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2.5 text-sm text-[var(--foreground)]"
-          />
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Payer details</p>
+          <p className="text-xs text-[var(--text-muted)]">
+            Please provide a name and at least one contact detail either a phone number or email address for payment records and communication purposes.
+          </p>
+          <div>
             <input
-              type="tel"
-              value={payerPhone}
-              onChange={(e) => setPayerPhone(e.target.value)}
-              placeholder="Phone *"
-              className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2.5 text-sm text-[var(--foreground)]"
+              ref={payerNameRef}
+              type="text"
+              value={payerName}
+              onChange={(e) => {
+                setPayerName(e.target.value);
+                clearFieldError("payer_name");
+              }}
+              placeholder="Name *"
+              className={`w-full rounded-xl border bg-[var(--card)] px-4 py-2.5 text-sm text-[var(--foreground)] ${inputErrorClass(Boolean(fieldErrors.payer_name))}`}
             />
-            <input
-              type="email"
-              value={payerEmail}
-              onChange={(e) => setPayerEmail(e.target.value)}
-              placeholder="Email (optional)"
-              className="w-full rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2.5 text-sm text-[var(--foreground)]"
-            />
+            {fieldErrors.payer_name ? (
+              <p className="mt-1 text-xs text-[var(--status-error,#dc2626)]">{fieldErrors.payer_name}</p>
+            ) : null}
           </div>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div ref={payerPhoneRef}>
+              <InternationalPhoneInput
+                value={payerPhone}
+                onChange={(phone) => {
+                  setPayerPhone(phone);
+                  clearFieldError("payer_phone");
+                }}
+                placeholder="Phone"
+                error={Boolean(fieldErrors.payer_phone)}
+              />
+              {fieldErrors.payer_phone && fieldErrors.payer_phone !== fieldErrors.payer_email ? (
+                <p className="mt-1 text-xs text-[var(--status-error,#dc2626)]">{fieldErrors.payer_phone}</p>
+              ) : null}
+            </div>
+            <div>
+              <input
+                ref={payerEmailRef}
+                type="email"
+                value={payerEmail}
+                onChange={(e) => {
+                  setPayerEmail(e.target.value);
+                  clearFieldError("payer_email");
+                }}
+                placeholder="Email"
+                className={`w-full rounded-xl border bg-[var(--card)] px-4 py-2.5 text-sm text-[var(--foreground)] ${inputErrorClass(Boolean(fieldErrors.payer_email))}`}
+              />
+              {fieldErrors.payer_email && fieldErrors.payer_email !== fieldErrors.payer_phone ? (
+                <p className="mt-1 text-xs text-[var(--status-error,#dc2626)]">{fieldErrors.payer_email}</p>
+              ) : null}
+            </div>
+          </div>
+          {fieldErrors.payer_phone &&
+          fieldErrors.payer_email &&
+          fieldErrors.payer_phone === fieldErrors.payer_email ? (
+            <p className="text-xs text-[var(--status-error,#dc2626)]">{fieldErrors.payer_phone}</p>
+          ) : null}
         </div>
 
-        <div className="mt-5">
+        <div ref={paymentMethodRef} className="mt-5">
           <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Payment method</p>
           <div className="space-y-2">
             {paymentOptions.map((option) => (
@@ -615,7 +956,9 @@ export default function PayLinkClient({ token }: { token: string }) {
                 className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm font-medium transition-all ${
                   selectedMethod === option.key
                     ? "border-[var(--accent-strong,var(--accent))] bg-[var(--muted)]/60 ring-2 ring-[var(--accent)]/25"
-                    : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/50"
+                    : fieldErrors.payment_method
+                      ? "border-[var(--status-error,#dc2626)] bg-[var(--card)]"
+                      : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/50"
                 }`}
               >
                 <input
@@ -623,7 +966,10 @@ export default function PayLinkClient({ token }: { token: string }) {
                   name="pay_link_method"
                   className="h-4 w-4 accent-[var(--accent-strong,var(--accent))]"
                   checked={selectedMethod === option.key}
-                  onChange={() => setSelectedMethod(option.key)}
+                  onChange={() => {
+                    setSelectedMethod(option.key);
+                    clearFieldError("payment_method");
+                  }}
                 />
                 <span className="text-[var(--foreground)]">{option.name}</span>
               </label>
@@ -634,10 +980,13 @@ export default function PayLinkClient({ token }: { token: string }) {
               </p>
             ) : null}
           </div>
+          {fieldErrors.payment_method ? (
+            <p className="mt-2 text-xs text-[var(--status-error,#dc2626)]">{fieldErrors.payment_method}</p>
+          ) : null}
         </div>
 
         {selectedMethod === "manual_transfer" ? (
-          <div className="mt-4">
+          <div ref={bankAccountRef} className="mt-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Bank account</p>
             <div className="space-y-2">
               {bankAccounts.map((account) => (
@@ -646,7 +995,9 @@ export default function PayLinkClient({ token }: { token: string }) {
                   className={`block cursor-pointer rounded-xl border-2 p-4 text-sm transition-all ${
                     selectedBankAccountId === account.id
                       ? "border-[var(--accent-strong,var(--accent))] bg-[var(--muted)]/40 ring-2 ring-[var(--accent)]/20"
-                      : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/40"
+                      : fieldErrors.bank_account_id
+                        ? "border-[var(--status-error,#dc2626)] bg-[var(--card)]"
+                        : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/40"
                   }`}
                 >
                   <div className="flex gap-3">
@@ -655,7 +1006,10 @@ export default function PayLinkClient({ token }: { token: string }) {
                       name="pay_link_bank"
                       className="mt-1 h-4 w-4 shrink-0 accent-[var(--accent-strong,var(--accent))]"
                       checked={selectedBankAccountId === account.id}
-                      onChange={() => setSelectedBankAccountId(account.id)}
+                      onChange={() => {
+                        setSelectedBankAccountId(account.id);
+                        clearFieldError("bank_account_id");
+                      }}
                     />
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-[var(--foreground)]">{account.label || account.bank_name}</p>
@@ -673,11 +1027,14 @@ export default function PayLinkClient({ token }: { token: string }) {
                 </p>
               ) : null}
             </div>
+            {fieldErrors.bank_account_id ? (
+              <p className="mt-2 text-xs text-[var(--status-error,#dc2626)]">{fieldErrors.bank_account_id}</p>
+            ) : null}
           </div>
         ) : null}
 
         {selectedMethod === "billplz_online_banking" && onlineBankingOptions.length > 0 ? (
-          <div className="mt-4">
+          <div ref={onlineBankingRef} className="mt-4">
             <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Online banking</p>
             <div className="space-y-2">
               {onlineBankingOptions.map((option) => (
@@ -686,7 +1043,9 @@ export default function PayLinkClient({ token }: { token: string }) {
                   className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 px-4 py-3 text-sm transition-all ${
                     selectedOnlineOptionId === option.id
                       ? "border-[var(--accent-strong,var(--accent))] bg-[var(--muted)]/40 ring-2 ring-[var(--accent)]/20"
-                      : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/40"
+                      : fieldErrors.billplz_gateway_option_id
+                        ? "border-[var(--status-error,#dc2626)] bg-[var(--card)]"
+                        : "border-[var(--card-border)] bg-[var(--card)] hover:border-[var(--accent)]/40"
                   }`}
                 >
                   <input
@@ -694,7 +1053,10 @@ export default function PayLinkClient({ token }: { token: string }) {
                     name="pay_link_online_option"
                     className="h-4 w-4 accent-[var(--accent-strong,var(--accent))]"
                     checked={selectedOnlineOptionId === option.id}
-                    onChange={() => setSelectedOnlineOptionId(option.id)}
+                    onChange={() => {
+                      setSelectedOnlineOptionId(option.id);
+                      clearFieldError("billplz_gateway_option_id");
+                    }}
                   />
                   {option.logo_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -704,6 +1066,9 @@ export default function PayLinkClient({ token }: { token: string }) {
                 </label>
               ))}
             </div>
+            {fieldErrors.billplz_gateway_option_id ? (
+              <p className="mt-2 text-xs text-[var(--status-error,#dc2626)]">{fieldErrors.billplz_gateway_option_id}</p>
+            ) : null}
           </div>
         ) : null}
 

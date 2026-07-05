@@ -122,6 +122,18 @@ class BookingAddonQuantityService
             'staff_splits' => collect($staffSplits)->values()->all(),
         ];
 
+        if ($option->linkedBookingService) {
+            $row['price_mode'] = (string) ($option->linkedBookingService->price_mode ?? 'fixed');
+            if ($row['price_mode'] === 'range') {
+                $row['price_range_min'] = $option->linkedBookingService->price_range_min !== null
+                    ? (float) $option->linkedBookingService->price_range_min
+                    : null;
+                $row['price_range_max'] = $option->linkedBookingService->price_range_max !== null
+                    ? (float) $option->linkedBookingService->price_range_max
+                    : null;
+            }
+        }
+
         if ($lineGrossOverride !== null) {
             $row['line_gross_amount'] = round(max(0, $lineGrossOverride), 2);
         } else {
