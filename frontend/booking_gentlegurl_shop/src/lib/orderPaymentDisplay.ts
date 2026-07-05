@@ -24,6 +24,14 @@ export function formatOrderPaymentMethod(method?: string | null): string {
   return method || "N/A";
 }
 
+export function formatOrderPaymentMethodsLabel(order: OrderPaymentSource): string {
+  const rows = normalizeOrderPayments(order);
+  if (rows.length > 0) {
+    return rows.map((payment) => formatOrderPaymentMethod(payment.method)).join(", ");
+  }
+  return formatOrderPaymentMethod(order.payment_method);
+}
+
 export function normalizeOrderPayments(order: OrderPaymentSource): OrderPaymentRow[] {
   const rows = (order.payments ?? [])
     .map((payment) => ({

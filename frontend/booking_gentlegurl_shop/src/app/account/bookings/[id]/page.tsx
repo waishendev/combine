@@ -16,6 +16,11 @@ import { BookingPolicy, BookingRecord } from "@/lib/types";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatBookingDateTime, formatBookingTime } from "@/lib/bookingTime";
 import BookingServiceBlocksSection from "@/components/booking/BookingServiceBlocksSection";
+import {
+  formatReceiptMeta,
+  getBookingReceiptRows,
+  resolveReceiptViewUrl,
+} from "@/lib/bookingReceiptLinks";
 
 
 function ServiceNameStack({ name, cnName }: { name: string; cnName?: string | null }) {
@@ -460,6 +465,7 @@ export default function BookingDetailPage() {
             Number(booking.service?.duration_min ?? 0) + Number(booking.addon_total_duration_min ?? 0);
           const canPayNow = String(booking.status).toUpperCase() === "HOLD" && payment.paymentStatus !== "PAID";
           const hasActions = canPayNow || state.canReschedule || state.canRequestCancellation || state.hasPendingCancellation;
+          const receiptRows = getBookingReceiptRows(booking);
 
           return (
             <div key={booking.id} className="space-y-4">
@@ -558,6 +564,41 @@ export default function BookingDetailPage() {
                 <div className="mt-4 rounded-xl bg-[var(--background)]/30 p-3 text-sm text-[var(--text-muted)]">
                   <p>{payment.helperText}</p>
                 </div>
+
+                {receiptRows.length > 0 ? (
+                  <div className="mt-4 border-t border-[var(--card-border)] pt-4">
+                    <p className="text-sm font-semibold text-[var(--foreground)]">Receipts</p>
+                    <p className="mt-0.5 text-xs text-[var(--text-muted)]">
+                      Each deposit or settlement payment has its own receipt.
+                    </p>
+                    <div className="mt-3 space-y-2">
+                      {receiptRows.map((receipt, index) => {
+                        const receiptUrl = resolveReceiptViewUrl(receipt.receipt_public_url);
+                        if (!receiptUrl) return null;
+                        return (
+                          <div
+                            key={`${receipt.order_id}-${receipt.line_type}-${index}`}
+                            className="flex flex-col gap-3 rounded-xl border border-[var(--card-border)] bg-[var(--background)]/20 p-3 sm:flex-row sm:items-center sm:justify-between"
+                          >
+                            <div className="min-w-0">
+                              <p className="text-sm font-semibold text-[var(--foreground)]">{receipt.stage_label}</p>
+                              <p className="mt-0.5 text-xs text-[var(--text-muted)]">{formatReceiptMeta(receipt)}</p>
+                            </div>
+                            <a
+                              href={receiptUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="inline-flex shrink-0 items-center justify-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                            >
+                              <i className="fa-solid fa-receipt text-[10px]" aria-hidden />
+                              View Receipt
+                            </a>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : null}
               </section>
 
               <section className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-5 shadow-sm">

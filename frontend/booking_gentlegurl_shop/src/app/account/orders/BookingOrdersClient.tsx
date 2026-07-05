@@ -9,7 +9,7 @@ import {
   PublicAccountOrder,
 } from "@/lib/apiClient";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
-import { formatOrderPaymentMethod, normalizeOrderPayments } from "@/lib/orderPaymentDisplay";
+import { formatOrderPaymentMethodsLabel } from "@/lib/orderPaymentDisplay";
 
 function money(amount: number | null | undefined) {
   return `RM ${Number(amount ?? 0).toFixed(2)}`;
@@ -173,7 +173,7 @@ export function BookingOrdersClient() {
   }
 
   if (loading) {
-    return <p className="text-sm text-[var(--foreground)]/70">Loading your orders...</p>;
+    return <p className="text-sm text-[var(--foreground)]/70">Loading your transactions...</p>;
   }
 
   if (error) {
@@ -187,7 +187,7 @@ export function BookingOrdersClient() {
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-start justify-center rounded-xl border border-dashed border-[var(--muted)] bg-[var(--background)] p-10 text-center shadow-sm">
-        <p className="mb-3 text-lg font-semibold text-[var(--foreground)]">You have no booking-related orders yet.</p>
+        <p className="mb-3 text-lg font-semibold text-[var(--foreground)]">You have no transactions yet.</p>
         <p className="mb-4 text-sm text-[var(--foreground)]/70">Try placing a booking or package order to see it here.</p>
         <Link
           href="/booking"
@@ -234,9 +234,10 @@ export function BookingOrdersClient() {
           const canPay = isPendingUnpaid && !isExpired;
           const canUploadSlip = order.payment_method === "manual_transfer" && (isPendingUnpaid || isProcessing);
           const isExpanded = expandedOrderId === order.id;
-          const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
-          const receiptUrl = order.receipt_public_url ? `${order.receipt_public_url}/invoice` : null;
-          const paymentRows = normalizeOrderPayments(order);
+          const receiptUrl =
+            paymentStatusKey === "paid" && order.receipt_public_url
+              ? `${order.receipt_public_url}/invoice`
+              : null;
 
           let displayStatus: string;
           if (statusKey === "cancelled" || isPendingUnpaidExpired) {
@@ -309,17 +310,9 @@ export function BookingOrdersClient() {
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Payment</p>
                   <div className="text-base font-medium text-[var(--foreground)]">
                     <p>{paymentStatusValue}</p>
-                    {paymentRows.length > 0 ? (
-                      <div className="mt-1 space-y-1 text-xs text-[var(--foreground)]/70">
-                        {paymentRows.map((payment, index) => (
-                          <p key={`${payment.method}-${payment.amount}-${index}`}>
-                            {formatOrderPaymentMethod(payment.method)} {money(payment.amount)}
-                          </p>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-1 text-xs text-[var(--foreground)]/70">{formatOrderPaymentMethod(order.payment_method)}</p>
-                    )}
+                    <p className="mt-1 text-xs text-[var(--foreground)]/70">
+                      {formatOrderPaymentMethodsLabel(order)}
+                    </p>
                   </div>
                 </div>
                 <div>
@@ -353,7 +346,7 @@ export function BookingOrdersClient() {
                       <button
                         type="button"
                         onClick={() => setSlipModal({ orderId: order.id })}
-                        className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-3 py-1 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
+                        className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                       >
                         Reupload Slip
                       </button>
@@ -373,16 +366,6 @@ export function BookingOrdersClient() {
                         className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
                       >
                         View Receipt
-                      </a>
-                    ) : null}
-                    {paymentStatusKey === "paid" ? (
-                      <a
-                        href={invoiceUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-2 rounded-full border border-[var(--accent)] px-4 py-2 text-xs font-semibold uppercase text-[var(--accent)] transition hover:border-[var(--accent-strong)] hover:text-[var(--accent-strong)]"
-                      >
-                        Download Invoice
                       </a>
                     ) : null}
                   </div>

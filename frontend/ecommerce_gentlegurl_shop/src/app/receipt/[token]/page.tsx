@@ -110,6 +110,16 @@ function normalizeReceiptPayments(payments: ReceiptData['payments']) {
     .filter((payment) => payment.method && Number.isFinite(payment.amount) && payment.amount > 0);
 }
 
+function formatReceiptPaymentMethodsLabel(
+  payments: ReturnType<typeof normalizeReceiptPayments>,
+  fallbackMethod?: string | null,
+) {
+  if (payments.length > 0) {
+    return payments.map((payment) => formatPaymentMethod(payment.method)).join(", ");
+  }
+  return formatPaymentMethod(fallbackMethod ?? undefined);
+}
+
 function formatDate(value?: string) {
   if (!value) return "-";
   const date = new Date(value);
@@ -189,7 +199,7 @@ export default async function PublicReceiptPage({ params }: Props) {
               </tr>
               <tr>
                 <td className="pr-4 text-[var(--foreground)]/70 md:pr-8">Payment Method</td>
-                <td className="font-semibold">{receiptPayments.length ? receiptPayments.map((payment) => <div key={payment.key}>{formatPaymentMethod(payment.method)} RM {payment.amount.toFixed(2)}{payment.reference ? <span className="font-normal text-[var(--foreground)]/60"> ({payment.reference})</span> : null}</div>) : formatPaymentMethod(receipt.payment_method)}</td>
+                <td className="font-semibold">{formatReceiptPaymentMethodsLabel(receiptPayments, receipt.payment_method)}</td>
               </tr>
               <tr>
                 <td className="pr-4 text-[var(--foreground)]/70 md:pr-8">Payment Status</td>

@@ -11,7 +11,7 @@ import OrderCompleteModal from "@/components/orders/OrderCompleteModal";
 import UploadReceiptModal from "@/components/orders/UploadReceiptModal";
 import { getPrimaryProductImage } from "@/lib/productMedia";
 import { NameStack, VariantNameBlock } from "@/components/common/NameStack";
-import { formatOrderPaymentMethod, normalizeOrderPayments } from "@/lib/orderPaymentDisplay";
+import { formatOrderPaymentMethodsLabel } from "@/lib/orderPaymentDisplay";
 
 type OrdersClientProps = {
   orders: OrderSummary[];
@@ -285,7 +285,6 @@ export function OrdersClient({ orders }: OrdersClientProps) {
           (statusKey === "ready_for_pickup" && paymentStatusKey === "paid") || statusKey === "shipped";
         const isCompleted = statusKey === "completed";
         const invoiceUrl = `/api/proxy/public/shop/orders/${order.id}/invoice`;
-        const paymentRows = normalizeOrderPayments(order);
         
         // New status display logic based on the requirements
         let displayStatus: string;
@@ -358,17 +357,9 @@ export function OrdersClient({ orders }: OrdersClientProps) {
                 <p className="text-xs font-semibold uppercase tracking-wide text-[var(--foreground)]/60">Payment</p>
                 <div className="text-base font-medium text-[var(--foreground)]">
                   <p>{paymentStatusValue}</p>
-                  {paymentRows.length > 0 ? (
-                    <div className="mt-1 space-y-1 text-xs text-[var(--foreground)]/70">
-                      {paymentRows.map((payment, index) => (
-                        <p key={`${payment.method}-${payment.amount}-${index}`}>
-                          {formatOrderPaymentMethod(payment.method)} RM {Number(payment.amount).toFixed(2)}
-                        </p>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="mt-1 text-xs text-[var(--foreground)]/70">{formatOrderPaymentMethod(order.payment_method)}</p>
-                  )}
+                  <p className="mt-1 text-xs text-[var(--foreground)]/70">
+                    {formatOrderPaymentMethodsLabel(order)}
+                  </p>
                 </div>
               </div>
               <div>

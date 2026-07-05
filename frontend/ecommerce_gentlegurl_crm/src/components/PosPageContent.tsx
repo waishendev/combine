@@ -2239,18 +2239,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const bookingDepositTotal = Number(cart?.booking_deposit_total ?? 0)
   const bookingDepositBreakdown = cart?.booking_deposit_breakdown ?? null
   
-  // Calculate promotion discount from items
-  const promotionDiscount = useMemo(() => {
-    if (!cart?.items) return 0
-    return cart.items.reduce((sum, item) => {
-      if (item.promotion_applied && item.line_total_snapshot) {
-        return sum + (Number(item.line_total_snapshot) - Number(item.line_total))
-      }
-      return sum
-    }, 0)
-  }, [cart?.items])
-  
-  // Calculate voucher discount
+  // Voucher discount only — product promotions are already reflected in each line's line_total.
   const voucherDiscount = useMemo(() => {
     return Number(cart?.voucher?.discount_amount ?? 0)
   }, [cart?.voucher?.discount_amount])
@@ -2265,8 +2254,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     [cartAppointmentSettlementItems, cartItems, cartPackageItems, cartServiceItems],
   )
   const cartNetAmountBounds = useMemo(
-    () => applyPosCartDiscountsToBounds(cartGrossAmountBounds, promotionDiscount + voucherDiscount),
-    [cartGrossAmountBounds, promotionDiscount, voucherDiscount],
+    () => applyPosCartDiscountsToBounds(cartGrossAmountBounds, voucherDiscount),
+    [cartGrossAmountBounds, voucherDiscount],
   )
   const cartSubtotalDisplayLabel = formatPosAccumulatedPriceDisplay(cartGrossAmountBounds)
   const cartTotalDisplayLabel = formatPosAccumulatedPriceDisplay(cartNetAmountBounds)
@@ -8928,12 +8917,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
             <div className="pos-split-cart-footer shrink-0">
             <div className="rounded-xl border-2 border-gray-200 bg-white p-3 shadow-sm sm:p-4">
               <div className="space-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm">
-                {promotionDiscount > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Promotion Discount</span>
-                    <span className="font-semibold text-gray-700">- RM {promotionDiscount.toFixed(2)}</span>
-                  </div>
-                )}
                 {voucherDiscount > 0 && (
                   <div className="flex justify-between">
                     <span className="text-gray-600">Voucher Discount</span>
@@ -10325,7 +10308,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             ) : (item.discount_amount ?? 0) > 0 ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(isBookingProduct ? bookingProductBaseLineTotal : (item.line_total_snapshot ?? item.line_total)).toFixed(2)}</p>
-                                <p className="text-xs text-amber-700">- RM {Number(item.discount_amount ?? 0).toFixed(2)}</p>
                                 <p className="font-bold text-orange-700">RM {Number(isBookingProduct ? bookingProductBaseNetLineTotal : item.line_total).toFixed(2)}</p>
                               </div>
                             ) : (
@@ -10390,7 +10372,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               {optionDiscount > 0 ? (
                                 <div className="space-y-0.5">
                                   <p className="text-xs text-gray-400 line-through">RM {optionGross.toFixed(2)}</p>
-                                  <p className="text-xs text-amber-700">- RM {optionDiscount.toFixed(2)}</p>
                                   <p>RM {optionNet.toFixed(2)}</p>
                                 </div>
                               ) : (
@@ -10661,7 +10642,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                         ) : serviceDiscount > 0 ? (
                                           <div className="space-y-0.5">
                                             <p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...service, extra_price: serviceFullPrice })}</p>
-                                            <p className="text-xs font-semibold text-amber-700">- RM {serviceDiscount.toFixed(2)}</p>
                                             <p className="text-lg font-bold leading-tight text-orange-700">RM {serviceDue.toFixed(2)}</p>
                                           </div>
                                         ) : (
@@ -10719,7 +10699,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                       </div>
                                     </td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} inline /> : <span className="block">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</span>}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: gross })}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</p></div>)}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{coveredByPackage ? <PosPackageIncludedAmount originalAmount={addonOriginalPrice} /> : discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">{formatPosPriceDisplay({ ...addonPriceSource, extra_price: gross })}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {displayDue.toFixed(2)}</p></div>) : (<div className="space-y-0.5"><p className="text-lg font-bold leading-tight text-orange-700">{formatPosCurrentOrRangeDisplay({ ...addonPriceSource, extra_price: due })}</p></div>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
@@ -10790,7 +10770,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     </td>
                                     <td className="min-w-[260px] px-4 py-2 align-top"><button type="button" onClick={() => addon.line_key && openDiscountModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key, name: addon.name, lineTotal: gross, discountType: addon.discount_type ?? null, discountValue: Number(addon.discount_value ?? 0), discountRemark: addon.discount_remark ?? null })} disabled={!addon.line_key} className="inline-flex items-center rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:opacity-50">{discount > 0 ? 'Edit Discount' : 'Discount'}</button>{addon.line_key ? <button type="button" onClick={() => openPriceEditModal({ kind: 'settlementLine', id: settlement.id, lineKey: addon.line_key!, name: addon.name, currentUnitPrice: gross, originalUnitPrice: Number(addon.price_override?.original_unit_price ?? addon.extra_price ?? gross), priceSource: addon })} className="ml-2 inline-flex items-center rounded-lg border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-700">Edit Price</button> : null}</td>
                                     <td className="px-4 py-2 align-top tabular-nums text-xs font-semibold text-gray-700">RM {due.toFixed(2)}</td>
-                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-xs font-semibold text-amber-700">- RM {discount.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
+                                    <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">{discount > 0 ? (<div className="space-y-0.5"><p className="text-xs text-gray-400 line-through">RM {gross.toFixed(2)}</p><p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p></div>) : (<p className="text-lg font-bold leading-tight text-orange-700">RM {due.toFixed(2)}</p>)}</td>
                                     <td className="w-12 min-w-12 max-w-12 shrink-0 px-2 py-2" aria-hidden />
                                   </tr>
                                 )
@@ -10885,7 +10865,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             {(packageItem.discount_amount ?? 0) > 0 ? (
                               <div className="space-y-0.5">
                                 <p className="text-xs text-gray-400 line-through">RM {Number(packageItem.line_total_snapshot ?? packageItem.line_total).toFixed(2)}</p>
-                                <p className="text-xs text-amber-700">- RM {Number(packageItem.discount_amount ?? 0).toFixed(2)}</p>
                                 <p className="text-lg font-bold tabular-nums text-orange-700">RM {Number(packageItem.line_total ?? 0).toFixed(2)}</p>
                               </div>
                             ) : (
@@ -10924,12 +10903,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                     <p className="text-sm font-medium text-gray-600">Subtotal</p>
                     <p className="text-sm font-semibold text-gray-700">{cartSubtotalDisplayLabel}</p>
                   </div>
-                  {promotionDiscount > 0 && (
-                    <div className="flex items-center justify-between">
-                      <p className="text-sm font-medium text-gray-600">Promotion Discount</p>
-                      <p className="text-sm font-semibold text-gray-700">- RM {promotionDiscount.toFixed(2)}</p>
-                    </div>
-                  )}
                   {voucherDiscount > 0 && (
                     <div className="flex items-center justify-between">
                       <p className="text-sm font-medium text-gray-600">Voucher Discount</p>

@@ -462,15 +462,14 @@
                 <td>Payment Method</td>
                 <td>
                   <?php if($paymentRows->isNotEmpty()): ?>
-                    <?php foreach($paymentRows as $payment): ?>
-                      <?php $pm = $paymentMethodMap[$payment['method']] ?? $payment['method']; ?>
-                      <div>
-                        {{ $pm }} {{ $currency }} {{ number_format((float) $payment['amount'], 2) }}
-                        <?php if(!empty($payment['reference_no'])): ?>
-                          <span class="muted small">({{ $payment['reference_no'] }})</span>
-                        <?php endif; ?>
-                      </div>
-                    <?php endforeach; ?>
+                    <?php
+                      $paymentMethodLabels = $paymentRows
+                        ->map(fn ($payment) => $paymentMethodMap[$payment['method']] ?? $payment['method'])
+                        ->filter(fn ($label) => trim((string) $label) !== '')
+                        ->unique()
+                        ->values();
+                    ?>
+                    {{ $paymentMethodLabels->implode(', ') }}
                   <?php else: ?>
                     {{ $paymentMethodDisplay }}
                   <?php endif; ?>

@@ -10,7 +10,7 @@ import { useAuth } from "@/contexts/AuthContext";
 const navItems = [
   { label: "My Account", href: "/account" },
   { label: "My Bookings", href: "/account/bookings" },
-  { label: "My Orders", href: "/account/orders" },
+  { label: "My Transactions", href: "/account/orders" },
   { label: "My Packages", href: "/account/packages" },
 ];
 
