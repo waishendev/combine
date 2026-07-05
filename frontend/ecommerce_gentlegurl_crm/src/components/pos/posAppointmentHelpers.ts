@@ -517,6 +517,20 @@ export function formatDurationFromRange(startAt?: string | null, endAt?: string 
   return m > 0 ? `${h}h ${m}m` : `${h}h`
 }
 
+/** Masked phone for compact pickers — e.g. ******6789 (full number still searchable). */
+export function formatCustomerPhoneMasked(phone?: string | null): string | null {
+  const digits = String(phone ?? '').replace(/\D/g, '')
+  if (digits.length < 4) return null
+  const last4 = digits.slice(-4)
+  const starCount = Math.max(6, digits.length - 4)
+  return `${'*'.repeat(starCount)}${last4}`
+}
+
+/** @deprecated Use formatCustomerPhoneMasked */
+export function formatCustomerPhoneLast4(phone?: string | null): string | null {
+  return formatCustomerPhoneMasked(phone)
+}
+
 /** Member name, or `Name (GUEST)` when the booking has no linked customer row. */
 export function formatAppointmentCustomerDisplayName(detail: PosAppointmentDetail | null | undefined): string {
   const memberName = detail?.customer?.name?.trim()

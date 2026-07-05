@@ -43,6 +43,10 @@ const STATUS_LABEL: Record<PosPaymentLinkStatus, string> = {
   EXPIRED: 'Expired',
 }
 
+function linkNeedsPendingReview(link: Pick<PosPaymentLink, 'status' | 'manual_review_status'>): boolean {
+  return link.status === 'PENDING' && link.manual_review_status === 'slip_uploaded_pending_review'
+}
+
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
   billplz_credit_card: 'Credit Card',
   billplz_card: 'Credit Card',
@@ -265,9 +269,7 @@ export default function PosAppointmentPaymentLinksSection({
   const paidTotal = links
     .filter((link) => link.status === 'PAID')
     .reduce((sum, link) => sum + Number(link.amount ?? 0), 0)
-  const actionNeededCount = links.filter(
-    (link) => link.status === 'PENDING' && link.manual_review_status === 'slip_uploaded_pending_review',
-  ).length
+  const actionNeededCount = links.filter((link) => linkNeedsPendingReview(link)).length
 
   const detailLink = detailLinkId != null ? links.find((link) => link.id === detailLinkId) ?? null : null
   const detailBusy = detailLink != null && actionId === detailLink.id
@@ -430,14 +432,15 @@ export default function PosAppointmentPaymentLinksSection({
                       <span className="text-sm font-semibold tabular-nums text-gray-900 sm:text-xs">
                         RM {Number(link.amount ?? 0).toFixed(2)}
                       </span>
-                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_BADGE[link.status]}`}>
-                        {STATUS_LABEL[link.status]}
-                      </span>
-                      {link.status === 'PENDING' && link.manual_review_status === 'slip_uploaded_pending_review' ? (
+                      {linkNeedsPendingReview(link) ? (
                         <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-blue-800">
-                          Slip uploaded
+                          Pending Review
                         </span>
-                      ) : null}
+                      ) : (
+                        <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${STATUS_BADGE[link.status]}`}>
+                          {STATUS_LABEL[link.status]}
+                        </span>
+                      )}
                     </div>
 
                     <div className="mt-2 space-y-2 sm:mt-1.5 sm:space-y-1">
@@ -510,14 +513,15 @@ export default function PosAppointmentPaymentLinksSection({
                         RM {Number(detailLink.amount ?? 0).toFixed(2)}
                       </p>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white ring-1 ring-white/20">
-                          {STATUS_LABEL[detailLink.status]}
-                        </span>
-                        {detailLink.status === 'PENDING' && detailLink.manual_review_status === 'slip_uploaded_pending_review' ? (
+                        {linkNeedsPendingReview(detailLink) ? (
                           <span className="rounded-full bg-blue-500/90 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                            Needs review
+                            Pending Review
                           </span>
-                        ) : null}
+                        ) : (
+                          <span className="rounded-full bg-white/15 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white ring-1 ring-white/20">
+                            {STATUS_LABEL[detailLink.status]}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <button

@@ -6,6 +6,7 @@ import { renderPosBodyModalPortal } from '@/components/pos/posBodyModalPortal'
 import BookingPackageItemServicePicker from '@/components/booking/BookingPackageItemServicePicker'
 import BookingStatusBadge from '@/components/booking/BookingStatusBadge'
 import InternationalPhoneInput from '@/components/common/InternationalPhoneInput'
+import SearchableFilterSelect from '@/components/common/SearchableFilterSelect'
 import {
   accumulatePosPriceBounds,
   appointmentDetailHasUnsettledRangePricing,
@@ -70,6 +71,7 @@ import {
   posAppointmentShowOnScheduleCalendar,
   formatAppointmentCustomerDisplayName,
   formatAppointmentCustomerContactLines,
+  formatCustomerPhoneMasked,
   formatAppointmentReceiptDefaultEmail,
   getAppointmentDisplayRemarkLines,
   formatBookingAddonSummary,
@@ -3736,6 +3738,41 @@ export default function PosAppointmentsWorkspace({
     [appointmentQuery, appointmentCustomerFilter, appointmentStaffFilter, appointmentStatusFilter],
   )
 
+  const appointmentCustomerFilterOptions = useMemo(
+    () =>
+      appointmentCustomerOptions.map((customer) => {
+        const maskedPhone = formatCustomerPhoneMasked(customer.phone)
+        return {
+          value: String(customer.id),
+          label: maskedPhone ? `${customer.name} · ${maskedPhone}` : customer.name,
+          searchText: [customer.name, customer.phone ?? '', customer.email ?? '', maskedPhone ?? '']
+            .filter(Boolean)
+            .join(' '),
+        }
+      }),
+    [appointmentCustomerOptions],
+  )
+
+  const appointmentStaffFilterOptions = useMemo(
+    () =>
+      appointmentStaffOptions.map((staff) => ({
+        value: String(staff.id),
+        label: staff.name,
+        searchText: staff.name,
+      })),
+    [appointmentStaffOptions],
+  )
+
+  const appointmentStatusFilterOptions = useMemo(
+    () =>
+      APPOINTMENT_STATUS_FILTER_OPTIONS.filter((option) => option.value !== '').map((option) => ({
+        value: option.value,
+        label: option.label,
+        searchText: option.label,
+      })),
+    [],
+  )
+
   return (
       <div className="pos-appt-workspace min-w-0">
       <div className="lg:hidden">
@@ -3936,42 +3973,34 @@ export default function PosAppointmentsWorkspace({
                     className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
                     placeholder="Search booking no (e.g. BK-20260327233637-15FFBC)"
                   />
-                  <select
+                  <SearchableFilterSelect
                     value={appointmentCustomerFilter}
-                    onChange={(e) => setAppointmentCustomerFilter(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  >
-                    <option value="">{appointmentCustomerLoading ? 'Loading customers...' : 'All Customers'}</option>
-                    {appointmentCustomerOptions.map((customer) => (
-                      <option key={`appointment-customer-${customer.id}`} value={String(customer.id)}>
-                        {customer.name}{customer.phone ? ` · ${customer.phone}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <select
+                    onChange={setAppointmentCustomerFilter}
+                    options={appointmentCustomerFilterOptions}
+                    allLabel="All Customers"
+                    loading={appointmentCustomerLoading}
+                    loadingLabel="Loading customers…"
+                    searchPlaceholder="Search customer…"
+                    aria-label="Customer filter"
+                  />
+                  <SearchableFilterSelect
                     value={appointmentStaffFilter}
-                    onChange={(e) => setAppointmentStaffFilter(e.target.value)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
-                  >
-                    <option value="">{appointmentStaffLoading ? 'Loading staffs...' : 'All Staffs'}</option>
-                    {appointmentStaffOptions.map((staff) => (
-                      <option key={`appointment-staff-${staff.id}`} value={String(staff.id)}>
-                        {staff.name}{staff.code ? ` · ${staff.code}` : ''}
-                      </option>
-                    ))}
-                  </select>
-                  <select
+                    onChange={setAppointmentStaffFilter}
+                    options={appointmentStaffFilterOptions}
+                    allLabel="All Staffs"
+                    loading={appointmentStaffLoading}
+                    loadingLabel="Loading staffs…"
+                    searchPlaceholder="Search staff…"
+                    aria-label="Staff filter"
+                  />
+                  <SearchableFilterSelect
                     value={appointmentStatusFilter}
-                    onChange={(e) => setAppointmentStatusFilter(e.target.value as AppointmentStatusFilterValue)}
-                    className="w-full rounded-lg border-2 border-gray-300 bg-gray-50 px-3 py-2 text-sm focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all"
+                    onChange={(next) => setAppointmentStatusFilter(next as AppointmentStatusFilterValue)}
+                    options={appointmentStatusFilterOptions}
+                    allLabel="All statuses"
+                    searchPlaceholder="Search status…"
                     aria-label="Appointment status filter"
-                  >
-                    {APPOINTMENT_STATUS_FILTER_OPTIONS.map((option) => (
-                      <option key={`appointment-status-${option.value || 'all'}`} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
+                  />
                     </div>
                   ) : null}
                 </div>
