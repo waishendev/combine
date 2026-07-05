@@ -488,7 +488,7 @@ export function CartDrawer({ isOpen, onClose }: CartDrawerProps) {
       const hasPackageOnlyCheckout = (checkoutResponse?.owned_package_ids?.length ?? 0) > 0;
       if (hasPackageOnlyCheckout) {
         onClose();
-        router.push("/account/orders");
+        router.push("/account/transactions");
         return;
       }
 

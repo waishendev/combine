@@ -276,7 +276,7 @@ export function Header({ logoUrl }: { logoUrl?: string | null }) {
                       My Bookings
                     </Link>
                     <Link
-                      href="/account/orders"
+                      href="/account/transactions"
                       className="block rounded-lg px-3 py-2 text-sm text-[var(--foreground)]/80 transition-colors hover:bg-[var(--muted)]/50 hover:text-[var(--accent-strong)]"
                       onClick={() => setUserMenuOpen(false)}
                     >

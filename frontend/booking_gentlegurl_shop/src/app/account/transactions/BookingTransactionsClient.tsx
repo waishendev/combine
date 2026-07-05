@@ -73,7 +73,7 @@ type SlipModalState = {
   orderId: number;
 };
 
-export function BookingOrdersClient() {
+export function BookingTransactionsClient() {
   const [orders, setOrders] = useState<PublicAccountOrder[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

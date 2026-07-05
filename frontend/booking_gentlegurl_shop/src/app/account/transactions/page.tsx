@@ -1,6 +1,6 @@
-import { BookingOrdersClient } from "./BookingOrdersClient";
+import { BookingTransactionsClient } from "./BookingTransactionsClient";
 
-export default function BookingAccountOrdersPage() {
+export default function BookingAccountTransactionsPage() {
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -12,7 +12,7 @@ export default function BookingAccountOrdersPage() {
         </div>
       </div>
 
-      <BookingOrdersClient />
+      <BookingTransactionsClient />
     </div>
   );
 }
