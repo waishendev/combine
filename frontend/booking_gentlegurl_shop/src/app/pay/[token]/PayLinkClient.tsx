@@ -438,21 +438,31 @@ export default function PayLinkClient({ token }: { token: string }) {
 
   // Manual transfer: slip uploaded and awaiting review (persists across refresh).
   const isInReview = link.status === "PENDING" && (slipUploaded || link.manual_review_status === "slip_uploaded_pending_review");
-  if (isInReview) {
+  // Staff rejected the previously uploaded slip — ask the customer to upload a new one.
+  const isRejected = link.status === "PENDING" && !slipUploaded && link.manual_review_status === "rejected";
+  if (isInReview || isRejected) {
     return (
       <div className="space-y-4">
         {summaryCard}
         <div className="rounded-2xl border border-[var(--card-border)] bg-[var(--card)] p-6">
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-full bg-[var(--muted)]/60 px-3 py-1 text-xs font-semibold text-[var(--foreground)]">
-              Under review
+            <span
+              className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${
+                isRejected ? "bg-rose-100 text-rose-700" : "bg-[var(--muted)]/60 text-[var(--foreground)]"
+              }`}
+            >
+              {isRejected ? "Proof rejected" : "Under review"}
             </span>
           </div>
-          <h1 className="mt-3 text-lg font-semibold text-[var(--foreground)]">Payment proof received</h1>
+          <h1 className="mt-3 text-lg font-semibold text-[var(--foreground)]">
+            {isRejected ? "Payment proof rejected" : "Payment proof received"}
+          </h1>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            Thank you! We&apos;ve received your transfer slip and will confirm your deposit of {amountLabel} shortly.
+            {isRejected
+              ? `Your previous transfer slip could not be verified. Please upload a new, clear slip for your deposit of ${amountLabel}.`
+              : `Thank you! We've received your transfer slip and will confirm your deposit of ${amountLabel} shortly.`}
           </p>
-          {link.manual_slip_url ? (
+          {!isRejected && link.manual_slip_url ? (
             <a
               href={link.manual_slip_url}
               target="_blank"
@@ -464,8 +474,14 @@ export default function PayLinkClient({ token }: { token: string }) {
           ) : null}
 
           <div className="mt-6 border-t border-[var(--card-border)] pt-5">
-            <p className="text-sm font-semibold text-[var(--foreground)]">Uploaded the wrong slip?</p>
-            <p className="mt-1 text-xs text-[var(--text-muted)]">You can replace it or remove it and start over.</p>
+            <p className="text-sm font-semibold text-[var(--foreground)]">
+              {isRejected ? "Upload a new slip" : "Uploaded the wrong slip?"}
+            </p>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">
+              {isRejected
+                ? "Make sure the transfer amount, date, and reference are clearly visible."
+                : "You can replace it or remove it and start over."}
+            </p>
             <input
               ref={fileInputRef}
               type="file"
@@ -481,16 +497,18 @@ export default function PayLinkClient({ token }: { token: string }) {
                 onClick={() => void submitSlip()}
                 className="flex-1 rounded-xl bg-[var(--accent-strong,var(--accent))] px-4 py-2.5 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {uploading ? "Uploading…" : "Replace slip"}
+                {uploading ? "Uploading…" : isRejected ? "Upload slip" : "Replace slip"}
               </button>
-              <button
-                type="button"
-                disabled={uploading}
-                onClick={() => void cancelProof()}
-                className="flex-1 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/40 disabled:opacity-50"
-              >
-                Cancel proof
-              </button>
+              {!isRejected ? (
+                <button
+                  type="button"
+                  disabled={uploading}
+                  onClick={() => void cancelProof()}
+                  className="flex-1 rounded-xl border border-[var(--card-border)] bg-[var(--card)] px-4 py-2.5 text-sm font-semibold text-[var(--foreground)] transition-colors hover:bg-[var(--muted)]/40 disabled:opacity-50"
+                >
+                  Cancel proof
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
