@@ -4404,6 +4404,24 @@ export default function PosAppointmentsWorkspace({
                       <div className="mt-3">
                         <PosAppointmentPaymentLinksSection
                           bookingId={appointmentDetail.id}
+                          bookingCode={appointmentDetail.booking_code}
+                          bookingCustomer={{
+                            name:
+                              appointmentDetail.customer_name
+                              ?? appointmentDetail.guest_name
+                              ?? appointmentDetail.customer?.name
+                              ?? null,
+                            phone:
+                              appointmentDetail.customer_phone
+                              ?? appointmentDetail.guest_phone
+                              ?? appointmentDetail.customer?.phone
+                              ?? null,
+                            email:
+                              appointmentDetail.customer_email
+                              ?? appointmentDetail.guest_email
+                              ?? appointmentDetail.customer?.email
+                              ?? null,
+                          }}
                           defaultAmount={Number(appointmentDueAmountNow ?? appointmentDetail.balance_due ?? 0)}
                           showMsg={showMsg}
                           onDepositRecorded={() => {

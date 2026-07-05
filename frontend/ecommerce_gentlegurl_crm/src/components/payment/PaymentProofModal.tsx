@@ -49,6 +49,8 @@ type Props = {
   bookingCode?: string | null
   className?: string
   layout?: 'default' | 'tile' | 'icon'
+  overlayZIndexClass?: string
+  previewZIndexClass?: string
 }
 
 export default function PaymentProofModal({
@@ -56,6 +58,8 @@ export default function PaymentProofModal({
   bookingCode,
   className = '',
   layout = 'default',
+  overlayZIndexClass = 'z-[170]',
+  previewZIndexClass = 'z-[180]',
 }: Props) {
   const [open, setOpen] = useState(false)
   const [previewIndex, setPreviewIndex] = useState(0)
@@ -183,7 +187,7 @@ export default function PaymentProofModal({
 
       {open ? (
         <div
-          className="fixed inset-0 z-[170] flex items-end justify-center bg-stone-900/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-4"
+          className={`fixed inset-0 ${overlayZIndexClass} flex items-end justify-center bg-stone-900/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-4`}
           role="dialog"
           aria-modal="true"
           aria-labelledby="payment-proof-modal-title"
@@ -322,7 +326,7 @@ export default function PaymentProofModal({
 
       {previewOpen && imageItems.length > 0 ? (
         <div
-          className="fixed inset-0 z-[180] flex flex-col items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm"
+          className={`fixed inset-0 ${previewZIndexClass} flex flex-col items-center justify-center bg-stone-950/80 p-4 backdrop-blur-sm`}
           onClick={() => setPreviewOpen(false)}
           role="dialog"
           aria-label="Payment proof preview"
