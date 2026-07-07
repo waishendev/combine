@@ -377,6 +377,9 @@ type ServiceCartItem = {
   deposit_price_override?: PriceOverrideSnapshot | null
   package_claim_status?: 'reserved' | 'consumed' | 'released' | null
   package_claim_name?: string | null
+  package_claim_names?: string[]
+  package_claim_count?: number
+  package_claims?: Array<{ usage_id: number; customer_service_package_id: number; package_name: string; booking_service_id: number; status: string; used_qty: number }>
   package_claim_usage_id?: number | null
   package_claim_package_id?: number | null
   claimed_by_package?: boolean
@@ -487,6 +490,7 @@ function getPosServiceAddonDepositReference(
 }
 
 function getPosServiceDepositBlocks(item: ServiceCartItem) {
+  const claims = item.package_claims ?? []
   const isMainPackageClaimed = Boolean(
     item.claimed_by_package ||
     item.package_claim_status === 'reserved' ||
@@ -499,11 +503,13 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
     const isOriginal = service.is_original ?? idx === 0
     const serviceRef = String(service.linked_booking_service_id ?? service.id ?? idx)
     const serviceLineKey = isOriginal ? 'main' : `main_service:${serviceRef}`
+    const serviceBookingServiceId = Number(service.linked_booking_service_id ?? service.id ?? 0)
     const deposit = isOriginal ? Number(item.deposit_contribution ?? 0) : 0
     const referenceDeposit = isOriginal && isMainPackageClaimed
       ? Math.max(mainDepositReference, deposit)
       : deposit
-    const coveredByPackage = isOriginal && isMainPackageClaimed && deposit < 0.0001
+    const serviceClaim = claims.find((claim) => claim.booking_service_id === serviceBookingServiceId)
+    const coveredByPackage = Boolean(serviceClaim) || (isOriginal && isMainPackageClaimed && deposit < 0.0001)
 
     return {
       ...service,
@@ -512,11 +518,13 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
       price_override: item.deposit_price_override ?? null,
       reference_deposit: referenceDeposit,
       covered_by_package: coveredByPackage,
-      package_note: coveredByPackage ? `Covered by ${pkgName}` : null,
+      package_note: coveredByPackage ? `Covered by ${serviceClaim?.package_name ?? pkgName}` : null,
       add_ons: (service.add_ons ?? []).map((addon) => {
         const addonDeposit = getPosServiceAddonDeposit(item, addon.id)
         const addonReferenceDeposit = getPosServiceAddonDepositReference(item, addon)
-        const addonCoveredByPackage = isMainPackageClaimed && addonReferenceDeposit > addonDeposit + 0.0001 && addonDeposit < 0.0001
+        const addonBookingServiceId = Number(addon.linked_booking_service_id ?? addon.id ?? 0)
+        const addonClaim = claims.find((claim) => claim.booking_service_id === addonBookingServiceId)
+        const addonCoveredByPackage = Boolean(addonClaim) || (isMainPackageClaimed && addonReferenceDeposit > addonDeposit + 0.0001 && addonDeposit < 0.0001)
         const depositLine = (item.deposit_addon_lines ?? []).find((line) => Number(line.id ?? 0) === Number(addon.id ?? 0))
 
         return {
@@ -526,7 +534,7 @@ function getPosServiceDepositBlocks(item: ServiceCartItem) {
           price_override: depositLine?.price_override ?? null,
           reference_deposit: Math.max(addonReferenceDeposit, addonDeposit),
           covered_by_package: addonCoveredByPackage,
-          package_note: addonCoveredByPackage ? `Covered by ${pkgName} (add-on)` : null,
+          package_note: addonCoveredByPackage ? `Covered by ${addonClaim?.package_name ?? pkgName} (add-on)` : null,
         }
       }),
     }
@@ -8463,9 +8471,19 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   const hasAddons = depositBlocks.some((block) => (block.add_ons ?? []).length > 0)
                   const staffSplitSummary = formatPosServiceStaffSplitSummary(serviceItem)
                   const mainCoveredByPkg = isPkgClaimed && depMain < 0.0001
-                  const servicePackageDisabledReason = !selectedMember?.id
+                  const isServiceMember = Number(serviceItem.customer_id ?? 0) > 0
+                  const servicePackageDisabledReason = !isServiceMember
                     ? 'Package can only be applied for members.'
                     : null
+                  const servicePackageClaimCount = Math.max(
+                    Number(serviceItem.package_claim_count ?? 0),
+                    (serviceItem.package_claim_names ?? []).length,
+                    isPkgClaimed ? 1 : 0,
+                  )
+                  const servicePackageNames = Array.from(new Set((serviceItem.package_claim_names ?? []).filter(Boolean)))
+                  const servicePackageBadgeLabel = servicePackageClaimCount > 1
+                    ? `[PKG] ${servicePackageClaimCount} packages claimed`
+                    : `[PKG] ${servicePackageNames[0] ?? serviceItem.package_claim_name ?? 'Package'}`
 
                   return (
                   <div key={`service-${serviceItem.id}`} className="rounded-xl border border-emerald-200 bg-gradient-to-b from-emerald-50/80 to-white p-3 shadow-sm sm:p-4">
@@ -8479,11 +8497,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         </div>
                         <div className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
                           {isPkgClaimed ? (
-                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800">
-                              [PKG] {serviceItem.package_claim_name ?? 'Package'}
+                            <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-800" title={servicePackageNames.join(', ') || undefined}>
+                              {servicePackageBadgeLabel}
                             </span>
                           ) : null}
-                          {serviceItem.package_claim_status === 'reserved' ? (
+                          {isServiceMember && serviceItem.package_claim_status === 'reserved' ? (
                             <button
                               type="button"
                               disabled={serviceUnclaimingIds[serviceItem.id] || serviceRedeemingIds[serviceItem.id]}
@@ -8492,7 +8510,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                             >
                               Manage packages
                             </button>
-                          ) : (
+                          ) : isServiceMember ? (
                             <span className="inline-flex items-center">
                               <button
                                 type="button"
@@ -8518,7 +8536,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                     : 'Claim package'}
                               </button>
                             </span>
-                          )}
+                          ) : null}
                           <button
                             type="button"
                             onClick={() => void removeServiceItem(serviceItem.id)}
@@ -8621,7 +8639,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                           ) : null}
                         </div>
                         <div className="pos-cart-settlement-actions flex flex-wrap items-center justify-end gap-x-2 gap-y-1.5 sm:shrink-0">
-                            {settlement.package_status?.status === 'reserved' ? (
+                            {Number(settlement.customer_id ?? 0) > 0 && settlement.package_status?.status === 'reserved' ? (
                               <button
                                 type="button"
                                 disabled={settlementUnclaimingIds[settlement.id] || settlementRedeemingIds[settlement.id]}
@@ -8630,7 +8648,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               >
                                 Manage packages
                               </button>
-                            ) : (
+                            ) : Number(settlement.customer_id ?? 0) > 0 ? (
                               <span className="inline-flex items-center">
                                 <button
                                   type="button"
@@ -8650,7 +8668,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                                   Apply package
                                 </button>
                               </span>
-                            )}
+                            ) : null}
                           <button
                             type="button"
                             onClick={() => void openCartEditSettlement(settlement)}

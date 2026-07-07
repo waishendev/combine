@@ -6,9 +6,9 @@ use Illuminate\Database\Eloquent\Model;
 
 class ServicePackageItem extends Model
 {
-    protected $fillable = ['service_package_id', 'booking_service_id', 'quantity'];
+    protected $fillable = ['service_package_id', 'booking_service_id', 'quantity', 'redemption_value'];
 
-    protected $casts = ['quantity' => 'integer'];
+    protected $casts = ['quantity' => 'integer', 'redemption_value' => 'decimal:2'];
 
     public function package()
     {

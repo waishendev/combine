@@ -2,6 +2,7 @@ export type ServicePackageItem = {
   id: number
   booking_service_id: number
   quantity: number
+  redemption_value?: number | string | null
   booking_service?: {
     id: number
     name: string

@@ -18,6 +18,7 @@ export type SalesVisualSummaryData = {
     product: number
     service: number
     multi_package: number
+    package_redemption?: number
     unlimited_plan: number
     other?: number
   }
@@ -168,6 +169,10 @@ export default function SalesVisualSummaryCards({
               <li className="flex justify-between gap-2 border-t border-slate-200 pt-2">
                 <span className="font-bold text-slate-800">TOTAL</span>
                 <span className="font-bold text-slate-900">{fmtRm(itemTypeTotal)}</span>
+              </li>
+              <li className="mt-3 flex justify-between gap-2 border-t border-dashed border-slate-300 pt-3">
+                <span className="text-slate-600">Package Redemption</span>
+                <span className="font-semibold text-slate-900">{fmtRm(Number(itemTypes.package_redemption) || 0)}</span>
               </li>
             </ul>
           )}

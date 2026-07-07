@@ -249,11 +249,12 @@ class StaffCommissionService
         // Step 2: Fallback for order_items WITHOUT order_item_staff_splits (e.g., online deposits)
         // These should use booking_service_staff_splits for attribution
         $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+        $fallbackLineTotal = "GREATEST($lineTotal, " . $this->packageRedemptionLineValueExpr('order_items') . ")";
 
         $fallbackItems = $this->applyBaseOrderScope(
             DB::table('order_items')
                 ->join('orders', 'orders.id', '=', 'order_items.order_id')
-                ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
                 ->whereNotNull('order_items.booking_id')
                 ->where('orders.created_at', '>=', $start)
                 ->where('orders.created_at', '<', $nextMonthStart)
@@ -264,7 +265,7 @@ class StaffCommissionService
                 })
         )
             ->selectRaw('order_items.booking_id as booking_id')
-            ->selectRaw("SUM($lineTotal) as line_amount")
+            ->selectRaw("SUM($fallbackLineTotal) as line_amount")
             ->groupBy('order_items.booking_id')
             ->get();
 
@@ -473,7 +474,7 @@ class StaffCommissionService
         return DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
             ->where(function ($query) {
@@ -530,6 +531,14 @@ class StaffCommissionService
             ->whereNull('orders.refunded_at');
     }
 
+    private function packageRedemptionLineValueExpr(string $orderItemAlias = 'order_items'): string
+    {
+        $netExpr = "COALESCE($orderItemAlias.line_total_after_discount, $orderItemAlias.effective_line_total, $orderItemAlias.line_total, 0)::numeric";
+        $grossExpr = "COALESCE($orderItemAlias.line_total_snapshot, $orderItemAlias.line_total, 0)::numeric";
+
+        return "(CASE WHEN $orderItemAlias.line_type IN ('booking_settlement','booking_addon') AND $orderItemAlias.booking_id IS NOT NULL AND $orderItemAlias.booking_service_id IS NOT NULL AND $netExpr <= 0.0001 AND $grossExpr > 0.0001 THEN COALESCE((SELECT COALESCE(spi.redemption_value, 0)::numeric * GREATEST(1, COALESCE($orderItemAlias.quantity, 1))::numeric FROM customer_service_package_usages u JOIN customer_service_packages csp ON csp.id = u.customer_service_package_id JOIN service_package_items spi ON spi.service_package_id = csp.service_package_id AND spi.booking_service_id = u.booking_service_id WHERE u.booking_service_id = $orderItemAlias.booking_service_id AND u.status IN ('reserved','consumed') AND (u.booking_id = $orderItemAlias.booking_id OR (u.used_from = 'POS' AND u.used_ref_id = $orderItemAlias.booking_id)) ORDER BY u.id LIMIT 1), 0) ELSE 0 END)::numeric";
+    }
+
     private function effectiveLineTotalExpr(): string
     {
         $lineTotalExpr = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
@@ -548,7 +557,7 @@ class StaffCommissionService
         $net = (float) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('order_items.booking_id', $bookingId)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
@@ -575,7 +584,7 @@ class StaffCommissionService
         return DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereIn('order_items.booking_id', $ids)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
@@ -613,7 +622,7 @@ class StaffCommissionService
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn ($query) => $query->where('order_item_staff_splits.staff_id', $staffId))
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -650,7 +659,7 @@ class StaffCommissionService
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->where('order_items.booking_id', $bookingId)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -682,12 +691,13 @@ class StaffCommissionService
         // Step 2: Also check for order_items WITHOUT order_item_staff_splits (e.g., online deposits)
         // These should use booking_service_staff_splits for attribution
         $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+        $fallbackLineTotal = "GREATEST($lineTotal, " . $this->packageRedemptionLineValueExpr('order_items') . ")";
 
         $fallbackItems = $this->applyBaseOrderScope(
             DB::table('order_items')
                 ->join('orders', 'orders.id', '=', 'order_items.order_id')
                 ->where('order_items.booking_id', $bookingId)
-                ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
                 ->whereNotExists(function ($sub) {
                     $sub->selectRaw('1')
                         ->from('order_item_staff_splits')
@@ -696,7 +706,7 @@ class StaffCommissionService
         )
             ->selectRaw('order_items.id as order_item_id')
             ->selectRaw('order_items.line_type as line_type')
-            ->selectRaw("$lineTotal as line_amount")
+            ->selectRaw("$fallbackLineTotal as line_amount")
             ->get();
 
         if ($fallbackItems->isNotEmpty()) {

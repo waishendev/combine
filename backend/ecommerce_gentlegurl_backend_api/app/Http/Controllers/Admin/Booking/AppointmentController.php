@@ -413,6 +413,13 @@ class AppointmentController extends Controller
         })->values()->all();
     }
 
+    private function normalizeHistorySettlementPaid(float $payableTotal, float $depositPaid, float $rawSettlementPaid, float $packageOffset, float $balanceDue = 0.0): float
+    {
+        $cashSettlementCap = max(0.0, round($payableTotal - $depositPaid - $packageOffset - max(0.0, $balanceDue), 2));
+
+        return round(min(max(0.0, $rawSettlementPaid), $cashSettlementCap), 2);
+    }
+
     private function resolveHistoryAmountDisplayBounds(Booking $booking, array $summary): array
     {
         $min = 0.0;
@@ -457,12 +464,15 @@ class AppointmentController extends Controller
             $min = $max = $payableTotal;
         }
 
-        $paidTotal = round(
-            (float) ($summary['deposit_paid'] ?? 0)
-            + (float) ($summary['settlement_paid'] ?? 0)
-            + (float) ($summary['package_offset'] ?? 0),
-            2,
+        $depositPaid = round((float) ($summary['deposit_paid'] ?? 0), 2);
+        $packageOffset = round((float) ($summary['package_offset'] ?? 0), 2);
+        $settlementPaid = $this->normalizeHistorySettlementPaid(
+            $max,
+            $depositPaid,
+            round((float) ($summary['settlement_paid'] ?? 0), 2),
+            $packageOffset,
         );
+        $paidTotal = round($depositPaid + $settlementPaid + $packageOffset, 2);
         $balanceMin = max(0, round($min - $paidTotal, 2));
         $balanceMax = max(0, round($max - $paidTotal, 2));
 
@@ -480,10 +490,16 @@ class AppointmentController extends Controller
     {
         $payableTotal = round((float) ($summary['service_total'] ?? 0) + (float) ($summary['addon_total_price'] ?? 0), 2);
         $depositPaid = round((float) ($summary['deposit_paid'] ?? 0), 2);
-        $settlementPaid = round((float) ($summary['settlement_paid'] ?? 0), 2);
         $packageOffset = round((float) ($summary['package_offset'] ?? 0), 2);
-        $paidAmount = round($depositPaid + $settlementPaid + $packageOffset, 2);
         $balanceDue = round((float) ($summary['balance_due'] ?? 0), 2);
+        $settlementPaid = $this->normalizeHistorySettlementPaid(
+            $payableTotal,
+            $depositPaid,
+            round((float) ($summary['settlement_paid'] ?? 0), 2),
+            $packageOffset,
+            $balanceDue,
+        );
+        $paidAmount = round($depositPaid + $settlementPaid + $packageOffset, 2);
         $amountBounds = $this->resolveHistoryAmountDisplayBounds($booking, $summary);
         $computedPaymentStatus = $this->resolveHistoryPaymentStatus(
             $summary,
