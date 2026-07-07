@@ -315,6 +315,10 @@ type AppointmentSettlementCartItem = {
   total_covered?: number
   overpaid_amount?: number
   refund_needed?: number
+  refund_handled_amount?: number
+  refund_pending_amount?: number
+  refund_handled?: boolean
+  refund_pending?: boolean
   amount_due_now?: number
   balance_due_snapshot?: number
   discount_type?: 'percentage' | 'fixed' | null
@@ -1945,6 +1949,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
 
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'qrpay' | 'billplz_credit_card'>('qrpay')
   const [splitPaymentAmounts, setSplitPaymentAmounts] = useState<Record<SplitPaymentMethod, string>>({ cash: '', qrpay: '', credit_card: '' })
+  const [cartEditRefundAction, setCartEditRefundAction] = useState<'refund_now' | 'customer_credit' | 'handled_later' | ''>('')
   const [settlementRefundAmountDraft, setSettlementRefundAmountDraft] = useState('')
   const [settlementRefundMethodDraft, setSettlementRefundMethodDraft] = useState<SettlementRefundMethod | ''>('')
   const [settlementRefundRemarkDraft, setSettlementRefundRemarkDraft] = useState('')
@@ -4873,6 +4878,11 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     }
 
     setCartEditSettlementDepositTotal(Number(settlement.deposit_previously_collected_amount ?? settlement.deposit_contribution ?? 0))
+    const editOverpaidAmount = Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0)
+    setCartEditRefundAction('')
+    setSettlementRefundAmountDraft(editOverpaidAmount > 0.0001 ? editOverpaidAmount.toFixed(2) : '')
+    setSettlementRefundMethodDraft('')
+    setSettlementRefundRemarkDraft('')
     setCartEditSettlementNoteDraft(String(settlement.settlement_notes ?? '').trim())
 
     setCartEditAddonOptionsLoading(true)
@@ -6249,13 +6259,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       .filter((row) => row.amount > 0.0001),
     [cartAppointmentSettlementItems],
   )
-  const settlementRefundTotal = useMemo(() => overpaidSettlementItems.reduce((sum, row) => sum + row.amount, 0), [overpaidSettlementItems])
-  const settlementRefundAmount = Number(settlementRefundAmountDraft || settlementRefundTotal || 0)
-  const settlementRefundValid = settlementRefundTotal <= 0.0001 || (
-    settlementRefundMethodDraft !== '' &&
-    Number.isFinite(settlementRefundAmount) &&
-    settlementRefundAmount > 0 &&
-    settlementRefundAmount <= settlementRefundTotal + 0.0001
+  const unhandledOverpaidSettlementItems = useMemo(
+    () => overpaidSettlementItems.filter(({ settlement }) => !settlement.refund_handled),
+    [overpaidSettlementItems],
   )
 
   const handleSplitPaymentAmountChange = useCallback((method: SplitPaymentMethod, rawValue: string) => {
@@ -6287,10 +6293,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       return buildDefaultSplitForTotal(cartTotal)
     })
     setPaymentMethod('qrpay')
-    setSettlementRefundAmountDraft(settlementRefundTotal > 0.0001 ? settlementRefundTotal.toFixed(2) : '')
-    setSettlementRefundMethodDraft('')
-    setSettlementRefundRemarkDraft('')
-  }, [checkoutConfirmationOpen, cartTotal, settlementRefundTotal])
+  }, [checkoutConfirmationOpen, cartTotal])
 
   const hasUnsettledRangeInCart = cartAppointmentSettlementItems.some((settlement) => settlementCartItemHasUnsettledRangePricing(settlement))
   const cashShiftBlocksCheckout = cashShiftLoading || !hasOpenShift
@@ -6418,8 +6421,8 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
       }
     }
 
-    if (!settlementRefundValid) {
-      reportCheckoutError('Please enter a refund / credit amount and method for the overpaid deposit.')
+    if (unhandledOverpaidSettlementItems.length > 0) {
+      reportCheckoutError('This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.')
       return
     }
 
@@ -6550,18 +6553,6 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
               staff_splits: splits.map((split) => ({ staff_id: split.staff_id, share_percent: split.share_percent })),
             }))
         })(),
-        settlement_refunds: overpaidSettlementItems.map(({ settlement, amount }) => {
-          const method = settlementRefundMethodDraft || 'customer_credit'
-          const channel = SETTLEMENT_REFUND_METHODS.find((row) => row.method === method)?.channel ?? 'offline'
-          return {
-            settlement_cart_item_id: settlement.id,
-            amount: overpaidSettlementItems.length === 1 ? settlementRefundAmount : amount,
-            method,
-            channel,
-            reason: 'Package claim overpayment',
-            remark: settlementRefundRemarkDraft.trim() || null,
-          }
-        }),
         package_items: cartPackageItems.map((item) => ({
           type: 'service_package',
           cart_package_item_id: item.id,
@@ -7562,7 +7553,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
   const canConfirmCheckoutInModal = useMemo(() => {
     if (checkingOut) return false
     if (!splitPaymentValid) return false
-    if (!settlementRefundValid) return false
+    if (unhandledOverpaidSettlementItems.length > 0) return false
 
     if (checkoutRequiresCustomerValidation) {
       if (checkoutRequiresMemberOnly) {
@@ -7579,7 +7570,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
     return true
   }, [
     splitPaymentValid,
-    settlementRefundValid,
+    unhandledOverpaidSettlementItems.length,
     checkingOut,
     checkoutAllowsGuestToggle,
     checkoutIdentityMode,
@@ -10100,8 +10091,24 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                         </div>
                       ) : null}
                       {Number(cartEditSettlementItem.overpaid_amount ?? cartEditSettlementItem.refund_needed ?? 0) > 0.0001 ? (
-                        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
-                          Refund / Credit Required: RM {Number(cartEditSettlementItem.overpaid_amount ?? cartEditSettlementItem.refund_needed ?? 0).toFixed(2)} after package coverage. Choose refund method during checkout.
+                        <div className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-3 text-xs text-rose-900">
+                          <p className="font-bold">Refund / Customer Credit</p>
+                          <p className="mt-1 font-semibold">Overpaid deposit: RM {Number(cartEditSettlementItem.overpaid_amount ?? cartEditSettlementItem.refund_needed ?? 0).toFixed(2)}</p>
+                          {cartEditSettlementItem.refund_handled ? (
+                            <p className="mt-2 rounded bg-white px-2 py-1 font-semibold text-emerald-700">{cartEditSettlementItem.refund_pending ? 'Refund pending / handled later' : `Refunded / credited: RM ${Number(cartEditSettlementItem.refund_handled_amount ?? 0).toFixed(2)}`}</p>
+                          ) : (
+                            <div className="mt-3 space-y-2">
+                              <select value={cartEditRefundAction} onChange={(event) => setCartEditRefundAction(event.target.value as 'refund_now' | 'customer_credit' | 'handled_later' | '')} className="h-9 w-full rounded border border-rose-200 bg-white px-2 text-xs font-semibold">
+                                <option value="">Choose action</option>
+                                <option value="refund_now">Refund now</option>
+                                <option value="customer_credit">Convert to customer credit</option>
+                                <option value="handled_later">Mark as handled later</option>
+                              </select>
+                              {cartEditRefundAction === 'refund_now' || cartEditRefundAction === 'customer_credit' ? <input type="number" min="0" max={Number(cartEditSettlementItem.overpaid_amount ?? cartEditSettlementItem.refund_needed ?? 0).toFixed(2)} step="0.01" value={settlementRefundAmountDraft} onChange={(event) => setSettlementRefundAmountDraft(event.target.value)} className="h-9 w-full rounded border border-rose-200 bg-white px-2 text-xs font-semibold" placeholder={cartEditRefundAction === 'customer_credit' ? 'Credit amount' : 'Refund amount'} /> : null}
+                              {cartEditRefundAction === 'refund_now' ? <select value={settlementRefundMethodDraft} onChange={(event) => setSettlementRefundMethodDraft(event.target.value as SettlementRefundMethod)} className="h-9 w-full rounded border border-rose-200 bg-white px-2 text-xs font-semibold"><option value="">Refund method</option>{SETTLEMENT_REFUND_METHODS.filter((row) => row.method !== 'customer_credit').map(({ method, label }) => <option key={method} value={method}>{label}</option>)}</select> : null}
+                              {cartEditRefundAction ? <textarea value={settlementRefundRemarkDraft} onChange={(event) => setSettlementRefundRemarkDraft(event.target.value)} rows={2} className="w-full rounded border border-rose-200 bg-white px-2 py-1 text-xs" placeholder={cartEditRefundAction === 'handled_later' ? 'Remark required' : 'Remark optional'} /> : null}
+                            </div>
+                          )}
                         </div>
                       ) : null}
                       <div className="flex justify-between border-t border-gray-200 pt-1.5">
@@ -10933,7 +10940,7 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                               <td className="px-4 py-2 pl-7 text-xs font-bold text-rose-800 sm:px-5 sm:pl-8">
                                 Refund / Credit Required
                               </td>
-                              <td className="min-w-[260px] px-4 py-2 text-[11px] font-semibold text-rose-700">Select method in checkout before confirming.</td>
+                              <td className="min-w-[260px] px-4 py-2 text-[11px] font-semibold text-rose-700">Open Edit Settlement to handle before checkout.</td>
                               <td className="px-4 py-2 align-top tabular-nums text-xs text-gray-400">—</td>
                               <td className="px-4 py-2 text-right align-top tabular-nums sm:px-5">
                                 <p className="text-lg font-bold leading-tight text-rose-700">RM {Number(settlement.overpaid_amount ?? settlement.refund_needed ?? 0).toFixed(2)}</p>
@@ -11196,27 +11203,9 @@ export default function PosPageContent({ currentUser, permissions = [] }: PosPag
                   ) : null}
                 </div>
 
-              {settlementRefundTotal > 0.0001 ? (
-                <div className="mt-6 rounded-xl border-2 border-rose-200 bg-rose-50 p-5 shadow-sm">
-                  <p className="text-sm font-bold text-rose-900">Refund / Credit Required</p>
-                  <p className="mt-1 text-xs font-semibold text-rose-800">Overpaid amount: RM {settlementRefundTotal.toFixed(2)}</p>
-                  <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <label className="text-xs font-semibold uppercase tracking-wide text-rose-900">
-                      Refund amount
-                      <input type="number" min="0" max={settlementRefundTotal.toFixed(2)} step="0.01" value={settlementRefundAmountDraft || settlementRefundTotal.toFixed(2)} onChange={(event) => { setSettlementRefundAmountDraft(event.target.value); reportCheckoutError(null) }} className="mt-1 h-11 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-bold text-gray-900" />
-                    </label>
-                    <label className="text-xs font-semibold uppercase tracking-wide text-rose-900">
-                      Refund method
-                      <select value={settlementRefundMethodDraft} onChange={(event) => { setSettlementRefundMethodDraft(event.target.value as SettlementRefundMethod); reportCheckoutError(null) }} className="mt-1 h-11 w-full rounded-xl border border-rose-200 bg-white px-3 text-sm font-semibold text-gray-900">
-                        <option value="">Select refund / credit method</option>
-                        {SETTLEMENT_REFUND_METHODS.map(({ method, label }) => <option key={method} value={method}>{label}</option>)}
-                      </select>
-                    </label>
-                  </div>
-                  <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-rose-900">
-                    Remark optional
-                    <textarea value={settlementRefundRemarkDraft} onChange={(event) => setSettlementRefundRemarkDraft(event.target.value)} rows={2} className="mt-1 w-full rounded-xl border border-rose-200 bg-white px-3 py-2 text-sm text-gray-900" placeholder="Package fully covered service." />
-                  </label>
+              {unhandledOverpaidSettlementItems.length > 0 ? (
+                <div className="mt-6 rounded-xl border-2 border-rose-200 bg-rose-50 p-4 text-sm font-semibold text-rose-800">
+                  This booking has overpaid deposit. Please handle refund/credit in Edit Settlement before checkout.
                 </div>
               ) : null}
 
