@@ -448,16 +448,25 @@ class SalesVisualDailyReportService
 
     private function packageRedemptionValue(Carbon $start, Carbon $end): float
     {
+        $redemptionExpr = $this->packageRedemptionLineValueExpr('oi');
+
         return round((float) $this->applyOrderScope(
-            DB::table('order_item_staff_splits as sps')
-                ->join('order_items as oi', 'oi.id', '=', 'sps.order_item_id')
+            DB::table('order_items as oi')
                 ->join('orders as o', 'o.id', '=', 'oi.order_id')
                 ->whereBetween(DB::raw($this->orderBillAtSql()), [$start, $end]),
             'o'
         )
-            ->where('sps.line_type', 'settlement_package_redemption')
-            ->selectRaw('COALESCE(SUM((COALESCE(sps.amount_basis, 0)::numeric) * (sps.share_percent::numeric / 100)), 0) as v')
+            ->whereIn('oi.line_type', ['booking_settlement', 'booking_addon'])
+            ->selectRaw("COALESCE(SUM($redemptionExpr), 0) as v")
             ->value('v'), 2);
+    }
+
+    private function packageRedemptionLineValueExpr(string $orderItemAlias = 'order_items'): string
+    {
+        $netExpr = "COALESCE($orderItemAlias.line_total_after_discount, $orderItemAlias.effective_line_total, $orderItemAlias.line_total, 0)::numeric";
+        $grossExpr = "COALESCE($orderItemAlias.line_total_snapshot, $orderItemAlias.line_total, 0)::numeric";
+
+        return "(CASE WHEN $orderItemAlias.line_type IN ('booking_settlement','booking_addon') AND $orderItemAlias.booking_id IS NOT NULL AND $orderItemAlias.booking_service_id IS NOT NULL AND $netExpr <= 0.0001 AND $grossExpr > 0.0001 THEN COALESCE((SELECT COALESCE(spi.redemption_value, 0)::numeric * GREATEST(1, COALESCE($orderItemAlias.quantity, 1))::numeric FROM customer_service_package_usages u JOIN customer_service_packages csp ON csp.id = u.customer_service_package_id JOIN service_package_items spi ON spi.service_package_id = csp.service_package_id AND spi.booking_service_id = u.booking_service_id WHERE u.booking_service_id = $orderItemAlias.booking_service_id AND u.status IN ('reserved','consumed') AND (u.booking_id = $orderItemAlias.booking_id OR (u.used_from = 'POS' AND u.used_ref_id = $orderItemAlias.booking_id)) ORDER BY u.id LIMIT 1), 0) ELSE 0 END)::numeric";
     }
 
     /** @return list<array{staff_id: int, name: string}> */
@@ -647,6 +656,7 @@ class SalesVisualDailyReportService
             // Step 2b: Fallback for order_items WITHOUT order_item_staff_splits (e.g., online deposits)
             // These should use booking_service_staff_splits instead
             $lineTotal = 'COALESCE(order_items.line_total_after_discount, order_items.effective_line_total, order_items.line_total)::numeric';
+            $fallbackLineTotal = "GREATEST($lineTotal, " . $this->packageRedemptionLineValueExpr('order_items') . ")";
 
             $fallbackItems = $this->applyOrderScope(
                 DB::table('order_items')
@@ -662,7 +672,7 @@ class SalesVisualDailyReportService
             )
                 ->selectRaw('order_items.id as order_item_id')
                 ->selectRaw('order_items.booking_id as booking_id')
-                ->selectRaw("$lineTotal as line_amount")
+                ->selectRaw("$fallbackLineTotal as line_amount")
                 ->get();
 
             if ($fallbackItems->isNotEmpty()) {

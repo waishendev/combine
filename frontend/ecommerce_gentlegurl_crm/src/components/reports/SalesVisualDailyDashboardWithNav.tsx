@@ -125,6 +125,12 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
   const paymentFinalOffline = payments.reduce((a, p) => a + (Number(p.offline) || 0), 0)
   const paymentFinalTotal = payments.reduce((a, p) => a + (Number(p.total) || 0), 0)
   const itemTypes = data?.item_types
+  const itemTypeTotal = itemTypes
+    ? (Number(itemTypes.product) || 0) +
+      (Number(itemTypes.service) || 0) +
+      (Number(itemTypes.multi_package) || 0) +
+      (Number(itemTypes.other) || 0)
+    : 0
   const staffSales = data?.staff?.sales_activity ?? []
   const staffSvc = data?.staff?.service_activity ?? []
   const oo = data?.online_offline
@@ -238,16 +244,20 @@ export default function SalesVisualDailyDashboardWithNav({ mode }: { mode: Mode 
                 <span className="text-slate-600">Package</span>
                 <span className="font-semibold text-slate-900">{fmtRm(itemTypes.multi_package)}</span>
               </li>
-              <li className="flex justify-between gap-2">
-                <span className="text-slate-600">Package Redemption</span>
-                <span className="font-semibold text-slate-900">{fmtRm(Number(itemTypes.package_redemption) || 0)}</span>
-              </li>
               {itemTypes.other != null && itemTypes.other > 0 ? (
                 <li className="flex justify-between gap-2">
                   <span className="text-slate-600">Other lines</span>
                   <span className="font-semibold text-slate-900">{fmtRm(itemTypes.other)}</span>
                 </li>
               ) : null}
+              <li className="flex justify-between gap-2 border-t border-slate-200 pt-2">
+                <span className="font-bold text-slate-800">TOTAL</span>
+                <span className="font-bold text-slate-900">{fmtRm(itemTypeTotal)}</span>
+              </li>
+              <li className="mt-3 flex justify-between gap-2 border-t border-dashed border-slate-300 pt-3">
+                <span className="text-slate-600">Package Redemption</span>
+                <span className="font-semibold text-slate-900">{fmtRm(Number(itemTypes.package_redemption) || 0)}</span>
+              </li>
             </ul>
           )}
         </div>
