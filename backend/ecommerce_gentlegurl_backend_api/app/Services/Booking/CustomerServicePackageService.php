@@ -2,10 +2,12 @@
 
 namespace App\Services\Booking;
 
+use App\Models\Booking\Booking;
 use App\Models\Booking\CustomerServicePackage;
 use App\Models\Booking\CustomerServicePackageBalance;
 use App\Models\Booking\CustomerServicePackageUsage;
 use App\Models\Booking\ServicePackage;
+use App\Models\Ecommerce\OrderItemStaffSplit;
 use Illuminate\Support\Facades\DB;
 
 class CustomerServicePackageService
@@ -124,10 +126,19 @@ class CustomerServicePackageService
                 throw new \RuntimeException('Not enough balance in the selected package.');
             }
 
+            $resolvedBookingId = null;
+            if ($sourceRefId) {
+                if (strtoupper($source) === 'POS' && ! Booking::query()->whereKey($sourceRefId)->exists()) {
+                    $resolvedBookingId = null;
+                } else {
+                    $resolvedBookingId = $sourceRefId;
+                }
+            }
+
             return CustomerServicePackageUsage::create([
                 'customer_service_package_id' => $customerServicePackageId,
                 'customer_id' => $customerId,
-                'booking_id' => $sourceRefId,
+                'booking_id' => $resolvedBookingId,
                 'booking_service_id' => $bookingServiceId,
                 'used_qty' => $usedQty,
                 'used_from' => strtoupper($source),
@@ -189,24 +200,76 @@ class CustomerServicePackageService
             ->where('used_from', strtoupper($source))
             ->where('used_ref_id', $sourceRefId)
             ->where('status', 'reserved')
-            ->whereNull('booking_id')
+            ->where(function ($query) use ($sourceRefId) {
+                $query->whereNull('booking_id')
+                    ->orWhere('booking_id', $sourceRefId);
+            })
             ->update([
                 'booking_id' => $bookingId,
                 'updated_at' => now(),
             ]);
     }
 
+    public function resolvePosCartServiceItemIdsForBooking(int $bookingId): array
+    {
+        if ($bookingId <= 0) {
+            return [];
+        }
+
+        return OrderItemStaffSplit::query()
+            ->whereHas('orderItem', fn ($query) => $query->where('booking_id', $bookingId))
+            ->pluck('snapshot')
+            ->map(function ($snapshot) {
+                $data = is_array($snapshot) ? $snapshot : json_decode((string) $snapshot, true);
+
+                return (int) (is_array($data) ? ($data['cart_service_item_id'] ?? 0) : 0);
+            })
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    public function resolvePosCartServiceItemIdsForOrderItem(int $orderItemId): array
+    {
+        if ($orderItemId <= 0) {
+            return [];
+        }
+
+        return OrderItemStaffSplit::query()
+            ->where('order_item_id', $orderItemId)
+            ->pluck('snapshot')
+            ->map(function ($snapshot) {
+                $data = is_array($snapshot) ? $snapshot : json_decode((string) $snapshot, true);
+
+                return (int) (is_array($data) ? ($data['cart_service_item_id'] ?? 0) : 0);
+            })
+            ->filter(fn (int $id) => $id > 0)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
     public function consumeReservedClaimsForBooking(int $bookingId): int
     {
         return DB::transaction(function () use ($bookingId) {
+            $posCartItemIds = $this->resolvePosCartServiceItemIdsForBooking($bookingId);
+
             $claims = CustomerServicePackageUsage::query()
-                ->where(function ($q) use ($bookingId) {
+                ->where(function ($q) use ($bookingId, $posCartItemIds) {
                     $q->where('booking_id', $bookingId)
                         ->orWhere(function ($q2) use ($bookingId) {
                             $q2->where('used_from', 'POS')
                                 ->where('used_ref_id', $bookingId)
                                 ->whereNull('booking_id');
                         });
+
+                    if ($posCartItemIds !== []) {
+                        $q->orWhere(function ($q3) use ($posCartItemIds) {
+                            $q3->where('used_from', 'POS')
+                                ->whereIn('used_ref_id', $posCartItemIds);
+                        })->orWhereIn('booking_id', $posCartItemIds);
+                    }
                 })
                 ->where('status', 'reserved')
                 ->lockForUpdate()

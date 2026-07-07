@@ -280,17 +280,11 @@ function TableCustomerCell({ row }: { row: AppointmentHistoryRow }) {
 function TableServiceCell({ row }: { row: AppointmentHistoryRow }) {
   const serviceName = row.service?.name || '—'
   const addonCount = row.add_ons?.length ?? 0
-  const hasPackageCoverage = (row.package_claims?.length ?? 0) > 0 || (row.package_offset ?? 0) > 0.001
 
   return (
     <div className="min-w-0">
       <p className="line-clamp-2 font-medium leading-snug text-slate-900" title={row.service?.name ?? undefined}>
         {serviceName}
-        {hasPackageCoverage && (
-          <span className="ml-1.5 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-emerald-700">
-            PKG
-          </span>
-        )}
       </p>
       {row.service?.cn_name ? (
         <p className="mt-0.5 truncate text-xs text-slate-500" title={row.service.cn_name}>

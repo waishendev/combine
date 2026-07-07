@@ -304,7 +304,9 @@ class AppointmentController extends Controller
     private function mapHistoryBooking(Booking $booking): array
     {
         $booking->loadMissing(['service', 'staff', 'customer']);
-        $summary = app(PosController::class)->appointmentFinancialSummaryForBooking($booking);
+        $posController = app(PosController::class);
+        $summary = $posController->appointmentFinancialSummaryForBooking($booking);
+        $packageClaims = $posController->resolvePerLinePackageClaims($booking, $summary);
         $financial = $this->resolveHistoryFinancialsFromSummary($booking, $summary);
         $mainStaffSplits = $this->resolveHistoryStaffSplits($booking);
         $services = $this->mapHistoryServiceBlocksFromSummary($booking, $summary, $mainStaffSplits);
@@ -354,6 +356,7 @@ class AppointmentController extends Controller
             'booking_payment_status' => (string) $booking->payment_status,
             'payment_status' => (string) ($financial['computed_payment_status'] ?? $booking->payment_status),
             'settlement_notes' => ($settlementNotes = trim((string) ($booking->settlement_notes ?? ''))) !== '' ? $settlementNotes : null,
+            'package_claims' => $packageClaims,
             ...$financial,
         ];
     }
@@ -389,6 +392,7 @@ class AppointmentController extends Controller
 
                     return [
                         'id' => isset($addon['id']) ? (int) $addon['id'] : null,
+                        'linked_booking_service_id' => isset($addon['linked_booking_service_id']) ? (int) $addon['linked_booking_service_id'] : null,
                         'name' => (string) ($addon['name'] ?? 'Add-on'),
                         'cn_name' => $addon['cn_name'] ?? null,
                         'extra_duration_min' => max(0, (int) ($addon['extra_duration_min'] ?? 0)),
@@ -478,7 +482,7 @@ class AppointmentController extends Controller
         $depositPaid = round((float) ($summary['deposit_paid'] ?? 0), 2);
         $settlementPaid = round((float) ($summary['settlement_paid'] ?? 0), 2);
         $packageOffset = round((float) ($summary['package_offset'] ?? 0), 2);
-        $paidAmount = round($depositPaid + $settlementPaid, 2);
+        $paidAmount = round($depositPaid + $settlementPaid + $packageOffset, 2);
         $balanceDue = round((float) ($summary['balance_due'] ?? 0), 2);
         $amountBounds = $this->resolveHistoryAmountDisplayBounds($booking, $summary);
         $computedPaymentStatus = $this->resolveHistoryPaymentStatus(

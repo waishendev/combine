@@ -8,6 +8,7 @@ export type StaffSplit = { staff_id: number; staff_name?: string | null; name?: 
 
 export type BookingServiceAddOn = {
   id?: number | null
+  linked_booking_service_id?: number | null
   name: string
   cn_name?: string | null
   extra_duration_min?: number | null
@@ -194,7 +195,7 @@ export default function BookingServicesAddOnsSection({ row, className }: Booking
               {(service.add_ons ?? []).length > 0 ? (
                 <div className="mt-2 space-y-3">
                   {service.add_ons?.map((item, index) => {
-                    const addonServiceId = Number(item.id ?? 0)
+                    const addonServiceId = Number(item.linked_booking_service_id ?? item.id ?? 0)
                     const addonHasClaim = hasPackageClaim(addonServiceId > 0 ? addonServiceId : null)
                     return (
                       <div key={`${item.id ?? item.name}-${index}`} className="rounded-lg border border-slate-200 bg-white p-3">

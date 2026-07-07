@@ -60,6 +60,7 @@ type BookingRow = {
   package_name: string | null
   package_cn_name?: string | null
   package_applied?: boolean
+  applied_package_name?: string | null
   gross_amount: number
   discount: number
   net_amount: number
@@ -734,6 +735,8 @@ export default function SalesChannelReportPage({
         booking_id: bookingNo === first.booking_no ? first.booking_id : null,
         booking_no: bookingNo,
         package_name: summarizeMore(first.package_name, additionalCount),
+        package_applied: rows.some((row) => row.package_applied),
+        applied_package_name: rows.find((row) => row.package_applied)?.applied_package_name ?? first.applied_package_name ?? null,
         gross_amount: rows.reduce((total, row) => total + Number(row.gross_amount ?? 0), 0),
         discount: rows.reduce((total, row) => total + Number(row.discount ?? 0), 0),
         net_amount: rows.reduce((total, row) => total + Number(row.net_amount ?? 0), 0),
@@ -961,14 +964,7 @@ export default function SalesChannelReportPage({
                   <td className="px-4 py-2 border border-gray-200 font-medium">{row.customer}</td>
                   <td className="px-4 py-2 border border-gray-200">{labelize(row.channel)}</td>
                   <td className="px-4 py-2 border border-gray-200"><PaymentMethodCell method={row.payment_method} payments={row.payments} /></td>
-                  <td className="px-4 py-2 border border-gray-200">
-                    {labelize(row.type)}
-                    {(row.package_applied || normalizeBookingType(row.type) === 'package_purchase') && (
-                      <span className="ml-1.5 inline-flex rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
-                        Pkg: Yes
-                      </span>
-                    )}
-                  </td>
+                  <td className="px-4 py-2 border border-gray-200">{labelize(row.type)}</td>
                   <td className="px-4 py-2 border border-gray-200">{row.booking_no ?? '—'}</td>
                   <td className="px-4 py-2 border border-gray-200">
                     <ReportNameStack name={row.package_name} cnName={row.package_cn_name} />
@@ -1253,6 +1249,9 @@ export default function SalesChannelReportPage({
                 <DetailMeta label="Final line total" value={`RM ${formatAmount(Number(selectedDetailLine.price_override?.final_line_total ?? selectedDetailLine.final_line_total ?? selectedDetailLine.gross_amount ?? 0))}`} />
                 <DetailMeta label="Discount" value={`RM ${formatAmount(selectedDetailLine.discount_amount)}`} />
                 <DetailMeta label="Net amount" value={`RM ${formatAmount(selectedDetailLine.net_amount)}`} />
+                {selectedDetailLine.package_applied ? (
+                  <DetailMeta label="Package applied" value={selectedDetailLine.package_name ?? 'Yes'} />
+                ) : null}
               </div>
             </section>
 

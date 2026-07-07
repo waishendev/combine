@@ -9896,16 +9896,25 @@ class PosController extends Controller
         ];
     }
 
-    protected function resolvePerLinePackageClaims(Booking $booking, array $summary): array
+    public function resolvePerLinePackageClaims(Booking $booking, array $summary): array
     {
+        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
+
         $claims = CustomerServicePackageUsage::query()
             ->with(['customerServicePackage.servicePackage'])
-            ->where(function ($q) use ($booking) {
+            ->where(function ($q) use ($booking, $posCartItemIds) {
                 $q->where('booking_id', (int) $booking->id)
                     ->orWhere(function ($q2) use ($booking) {
                         $q2->where('used_from', 'POS')
                             ->where('used_ref_id', (int) $booking->id);
                     });
+
+                if ($posCartItemIds !== []) {
+                    $q->orWhere(function ($q3) use ($posCartItemIds) {
+                        $q3->where('used_from', 'POS')
+                            ->whereIn('used_ref_id', $posCartItemIds);
+                    })->orWhereIn('booking_id', $posCartItemIds);
+                }
             })
             ->whereIn('status', ['reserved', 'consumed'])
             ->get();
@@ -10668,12 +10677,25 @@ class PosController extends Controller
             ->latest('id')
             ->first();
 
+        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForBooking((int) $booking->id);
+
         if (! $packageUsage && $booking->customer_id && $booking->service_id) {
             $packageUsage = CustomerServicePackageUsage::query()
                 ->where('customer_id', (int) $booking->customer_id)
                 ->where('booking_service_id', (int) $booking->service_id)
-                ->where('used_from', 'POS')
-                ->where('used_ref_id', (int) $booking->id)
+                ->where(function ($q) use ($booking, $posCartItemIds) {
+                    $q->where(function ($q2) use ($booking) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', (int) $booking->id);
+                    });
+
+                    if ($posCartItemIds !== []) {
+                        $q->orWhere(function ($q3) use ($posCartItemIds) {
+                            $q3->where('used_from', 'POS')
+                                ->whereIn('used_ref_id', $posCartItemIds);
+                        })->orWhereIn('booking_id', $posCartItemIds);
+                    }
+                })
                 ->whereIn('status', ['reserved', 'consumed'])
                 ->latest('id')
                 ->first();

@@ -7,6 +7,7 @@ use App\Models\Ecommerce\Order;
 use App\Models\Ecommerce\OrderItem;
 use App\Models\Ecommerce\OrderActionLog;
 use App\Models\Ecommerce\OrderReceiptToken;
+use App\Services\Booking\CustomerServicePackageService;
 use App\Models\User;
 use App\Support\BookingNotes;
 use App\Services\Ecommerce\InvoiceService;
@@ -376,16 +377,7 @@ class SalesChannelReportService
         return \App\Models\Booking\CustomerServicePackageUsage::query()
             ->where('booking_service_id', $bookingServiceId)
             ->where(function ($q) use ($item) {
-                $bookingId = (int) ($item->booking_id ?? 0);
-                if ($bookingId > 0) {
-                    $q->where('booking_id', $bookingId)
-                        ->orWhere(function ($q2) use ($bookingId) {
-                            $q2->where('used_from', 'POS')
-                                ->where('used_ref_id', $bookingId);
-                        });
-                } else {
-                    $q->whereNotNull('id');
-                }
+                $this->applyOrderItemPackageUsageScope($q, $item);
             })
             ->whereIn('status', ['reserved', 'consumed'])
             ->exists();
@@ -402,21 +394,39 @@ class SalesChannelReportService
             ->with('customerServicePackage.servicePackage')
             ->where('booking_service_id', $bookingServiceId)
             ->where(function ($q) use ($item) {
-                $bookingId = (int) ($item->booking_id ?? 0);
-                if ($bookingId > 0) {
-                    $q->where('booking_id', $bookingId)
-                        ->orWhere(function ($q2) use ($bookingId) {
-                            $q2->where('used_from', 'POS')
-                                ->where('used_ref_id', $bookingId);
-                        });
-                } else {
-                    $q->whereNotNull('id');
-                }
+                $this->applyOrderItemPackageUsageScope($q, $item);
             })
             ->whereIn('status', ['reserved', 'consumed'])
             ->first();
 
         return $usage?->customerServicePackage?->servicePackage?->name ?? null;
+    }
+
+    private function applyOrderItemPackageUsageScope($query, OrderItem $item): void
+    {
+        $bookingId = (int) ($item->booking_id ?? 0);
+        $posCartItemIds = app(CustomerServicePackageService::class)->resolvePosCartServiceItemIdsForOrderItem((int) $item->id);
+
+        $query->where(function ($q) use ($bookingId, $posCartItemIds) {
+            if ($bookingId > 0) {
+                $q->where('booking_id', $bookingId)
+                    ->orWhere(function ($q2) use ($bookingId) {
+                        $q2->where('used_from', 'POS')
+                            ->where('used_ref_id', $bookingId);
+                    });
+            }
+
+            if ($posCartItemIds !== []) {
+                $q->orWhere(function ($q3) use ($posCartItemIds) {
+                    $q3->where('used_from', 'POS')
+                        ->whereIn('used_ref_id', $posCartItemIds);
+                })->orWhereIn('booking_id', $posCartItemIds);
+            }
+
+            if ($bookingId <= 0 && $posCartItemIds === []) {
+                $q->whereNotNull('id');
+            }
+        });
     }
 
     private function resolveBookingStaffSplitsForLine(OrderItem $item, $existingSplits)
@@ -808,8 +818,14 @@ class SalesChannelReportService
 
         $cnNames = $this->resolveOrderItemCnNames($pageItems->pluck('order_item_id')->all());
         $paymentRowsByOrder = $this->paymentRowsByOrderIds($pageItems->pluck('order_id')->all());
+        $orderItemsById = OrderItem::query()
+            ->whereIn('id', $pageItems->pluck('order_item_id')->map(fn ($id) => (int) $id)->filter(fn (int $id) => $id > 0)->unique()->values()->all())
+            ->get()
+            ->keyBy('id');
 
-        $rows = $pageItems->map(function ($row) use ($cnNames, $paymentRowsByOrder) {
+        $rows = $pageItems->map(function ($row) use ($cnNames, $paymentRowsByOrder, $orderItemsById) {
+            $orderItem = $orderItemsById->get((int) $row->order_item_id);
+
             return [
                 'order_id' => (int) $row->order_id,
                 'order_no' => (string) $row->order_no,
@@ -829,6 +845,8 @@ class SalesChannelReportService
                 'booking_no' => $row->booking_no,
                 'package_name' => $row->package_name,
                 'package_cn_name' => $cnNames->get((int) $row->order_item_id),
+                'package_applied' => $orderItem ? $this->resolveLinePackageApplied($orderItem) : false,
+                'applied_package_name' => $orderItem ? $this->resolveLinePackageName($orderItem) : null,
                 'gross_amount' => (float) $row->gross_amount,
                 'discount' => (float) $row->discount,
                 'net_amount' => (float) $row->net_amount,
