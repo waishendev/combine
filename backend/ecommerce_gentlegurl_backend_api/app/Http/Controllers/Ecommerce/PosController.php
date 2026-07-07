@@ -6290,6 +6290,13 @@ class PosController extends Controller
             'settlement_line_staff_splits.*.staff_splits' => ['nullable', 'array'],
             'settlement_line_staff_splits.*.staff_splits.*.staff_id' => ['required', 'integer', 'exists:staffs,id'],
             'settlement_line_staff_splits.*.staff_splits.*.share_percent' => ['required', 'integer', 'min:0', 'max:100'],
+            'settlement_refunds' => ['nullable', 'array'],
+            'settlement_refunds.*.settlement_cart_item_id' => ['required_with:settlement_refunds', 'integer'],
+            'settlement_refunds.*.amount' => ['required_with:settlement_refunds', 'numeric', 'gt:0'],
+            'settlement_refunds.*.method' => ['required_with:settlement_refunds', 'string', 'in:cash,qrpay,manual_transfer,credit_card,customer_credit,store_credit'],
+            'settlement_refunds.*.channel' => ['nullable', 'string', 'in:online,offline'],
+            'settlement_refunds.*.reason' => ['nullable', 'string', 'max:255'],
+            'settlement_refunds.*.remark' => ['nullable', 'string', 'max:1000'],
             'package_items' => ['nullable', 'array'],
             'package_items.*.type' => ['nullable', 'in:service_package'],
             'package_items.*.cart_package_item_id' => ['nullable', 'integer'],
@@ -6387,7 +6394,7 @@ class PosController extends Controller
             }
         }
 
-        [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
+        [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds] = DB::transaction(function () use ($validated, $cart, $request, $orderPaymentService) {
             $confirmedBookingIds = [];
             $packageCustomerIds = $cart->packageItems
                 ->pluck('customer_id')
@@ -6687,6 +6694,11 @@ class PosController extends Controller
                 $cartServiceItemId = isset($item['cart_service_item_id']) ? (int) $item['cart_service_item_id'] : 0;
                 return $cartServiceItemId > 0 ? [$cartServiceItemId => collect($item['line_staff_splits'] ?? [])->values()->all()] : [];
             });
+
+            $refundPayloadBySettlementItemId = collect($validated['settlement_refunds'] ?? [])
+                ->filter(fn (array $row) => ! empty($row['settlement_cart_item_id']))
+                ->keyBy(fn (array $row) => (int) $row['settlement_cart_item_id']);
+            $bookingRefunds = [];
 
             $lineStaffSplitsBySettlementItemId = collect($validated['settlement_line_staff_splits'] ?? [])
                 ->groupBy(fn (array $line) => (int) ($line['settlement_cart_item_id'] ?? 0));
@@ -7331,6 +7343,17 @@ class PosController extends Controller
                 $mainSettlementItems = collect((array) ($summary['main_service_settlement_items'] ?? []));
                 $addonSettlementItems = collect((array) ($summary['addon_settlement_items'] ?? []));
                 $balanceDue = max(0.0, (float) ($summary['balance_due'] ?? 0));
+                $overpaidAmount = round(max(0.0, (float) ($summary['overpaid_amount'] ?? 0)), 2);
+                $refundPayload = $refundPayloadBySettlementItemId->get((int) $settlementItem->id);
+                if ($overpaidAmount > 0.0001) {
+                    if (! $refundPayload) {
+                        abort(422, __('Refund / credit details are required for the overpaid deposit.'));
+                    }
+                    $refundAmount = round((float) ($refundPayload['amount'] ?? 0), 2);
+                    if ($refundAmount <= 0.0001 || $refundAmount > $overpaidAmount + 0.0001) {
+                        abort(422, __('Refund amount must be greater than 0 and cannot exceed the overpaid amount.'));
+                    }
+                }
                 $discountLines = $this->normalizeAppointmentSettlementDiscountLines($settlementItem->discount_lines ?? []);
                 $hasPerLineDiscounts = ! empty($discountLines);
                 $settlementDiscount = $hasPerLineDiscounts
@@ -7339,6 +7362,34 @@ class PosController extends Controller
                 $discountLeft = $settlementDiscount;
                 if ($balanceDue <= 0.0001) {
                     $this->recordPackageCoveredAppointmentOnOrder($order, $booking);
+                    if ($overpaidAmount > 0.0001 && $refundPayload) {
+                        $method = (string) ($refundPayload['method'] ?? '');
+                        if ($method === 'store_credit') {
+                            $method = 'customer_credit';
+                        }
+                        $refund = BookingRefund::query()->create([
+                            'booking_id' => (int) $booking->id,
+                            'order_id' => (int) $order->id,
+                            'refund_no' => 'REF-' . now()->format('YmdHis') . '-' . strtoupper(substr(bin2hex(random_bytes(3)), 0, 6)),
+                            'amount' => round((float) $refundPayload['amount'], 2),
+                            'method' => $method,
+                            'channel' => (string) ($refundPayload['channel'] ?? ($method === 'customer_credit' ? 'online' : 'offline')),
+                            'reason' => (string) ($refundPayload['reason'] ?? 'Package claim overpayment'),
+                            'status' => 'completed',
+                            'processed_by' => (int) $request->user()->id,
+                            'processed_at' => now(),
+                            'remark' => $refundPayload['remark'] ?? null,
+                        ]);
+                        $bookingRefunds[] = [
+                            'id' => (int) $refund->id,
+                            'booking_id' => (int) $booking->id,
+                            'booking_code' => (string) ($booking->booking_code ?: ('BOOKING-' . $booking->id)),
+                            'refund_no' => (string) $refund->refund_no,
+                            'amount' => (float) $refund->amount,
+                            'method' => (string) $refund->method,
+                            'channel' => (string) $refund->channel,
+                        ];
+                    }
 
                     continue;
                 }
@@ -7565,7 +7616,7 @@ class PosController extends Controller
             $cart->appointmentSettlementItems()->delete();
             $this->clearVoucherFromCart($cart);
 
-            return [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds];
+            return [$order, $receiptUrl, $purchasedPackageLines, $confirmedBookingIds, $bookingRefunds];
         });
 
         $this->dispatchBookingConfirmationEmails($confirmedBookingIds);
@@ -7585,6 +7636,7 @@ class PosController extends Controller
             'payment_status' => $order->payment_status,
             'receipt_public_url' => $receiptUrl,
             'package_items' => $purchasedPackageLines,
+            'refunds' => $bookingRefunds,
         ]);
     }
 
@@ -8803,6 +8855,9 @@ class PosController extends Controller
                 'deposit_previously_collected_amount' => (float) ($summary['deposit_previously_collected_amount'] ?? 0),
                 'deposit_transactions' => $this->resolveAppointmentDepositTransactions($booking),
                 'package_offset' => (float) ($summary['package_offset'] ?? 0),
+                'total_covered' => (float) ($summary['total_covered'] ?? 0),
+                'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+                'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
                 'amount_due_now' => (float) $netLineTotal,
                 'service_balance_due' => (float) ($hasPerLineDiscounts ? $mainSettlementItems->sum('line_total_after_discount') : ($summary['service_balance_due'] ?? 0)),
                 'addon_settlement_items' => $addonSettlementItems->all(),
