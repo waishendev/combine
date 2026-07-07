@@ -394,6 +394,9 @@ class PosController extends Controller
                 'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
                 'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
                 'package_offset' => (float) $summary['package_offset'],
+                'total_covered' => (float) ($summary['total_covered'] ?? 0),
+                'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+                'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
                 'balance_due' => (float) $summary['balance_due'],
                 'amount_due_now' => (float) $summary['amount_due_now'],
                 'settlement_paid' => (float) ($summary['settlement_paid'] ?? 0),
@@ -545,6 +548,9 @@ class PosController extends Controller
             'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
             'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
             'package_offset' => (float) $summary['package_offset'],
+            'total_covered' => (float) ($summary['total_covered'] ?? 0),
+            'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+            'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
             'settlement_paid' => (float) $summary['settlement_paid'],
             'service_balance_due' => (float) ($summary['service_balance_due'] ?? 0),
             'balance_due' => (float) $summary['balance_due'],
@@ -1497,7 +1503,7 @@ class PosController extends Controller
             'payment_method' => ['required', 'in:cash,qrpay,billplz_credit_card,store_credit,manual_transfer'],
             'refund' => ['nullable', 'array'],
             'refund.amount' => ['required_with:refund', 'numeric', 'gt:0'],
-            'refund.method' => ['required_with:refund', 'string', 'in:cash,qrpay,manual_transfer,store_credit'],
+            'refund.method' => ['required_with:refund', 'string', 'in:cash,qrpay,manual_transfer,credit_card,customer_credit,store_credit'],
             'refund.channel' => ['nullable', 'string', 'in:online,offline'],
             'refund.reason' => ['nullable', 'string', 'max:255'],
             'refund.remark' => ['nullable', 'string', 'max:1000'],
@@ -1581,6 +1587,9 @@ class PosController extends Controller
                 $refund = null;
                 if ($refundPayload && $overpaidAmount > 0.0001) {
                     $method = (string) $refundPayload['method'];
+                    if ($method === 'store_credit') {
+                        $method = 'customer_credit';
+                    }
                     $refund = BookingRefund::query()->create([
                         'booking_id' => (int) $booking->id,
                         'order_id' => (int) $order->id,
@@ -10054,6 +10063,9 @@ class PosController extends Controller
             'deposit_previously_collected' => (bool) $summary['deposit_previously_collected'],
             'deposit_previously_collected_amount' => (float) $summary['deposit_previously_collected_amount'],
             'package_offset' => (float) $summary['package_offset'],
+            'total_covered' => (float) ($summary['total_covered'] ?? 0),
+            'overpaid_amount' => (float) ($summary['overpaid_amount'] ?? 0),
+            'refund_needed' => (float) ($summary['refund_needed'] ?? 0),
             'settlement_paid' => (float) $summary['settlement_paid'],
             'balance_due' => (float) $summary['balance_due'],
             'amount_due_now' => (float) $summary['amount_due_now'],

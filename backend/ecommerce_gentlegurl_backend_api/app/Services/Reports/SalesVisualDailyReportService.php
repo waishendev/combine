@@ -881,6 +881,8 @@ class SalesVisualDailyReportService
             'cash' => 'Cash Refund',
             'qrpay' => 'QRPay Refund',
             'manual_transfer' => 'Manual Transfer Refund',
+            'credit_card' => 'Credit Card Refund',
+            'customer_credit' => 'Customer Credit / Store Credit',
             'store_credit' => 'Store Credit / Customer Balance',
         ];
 

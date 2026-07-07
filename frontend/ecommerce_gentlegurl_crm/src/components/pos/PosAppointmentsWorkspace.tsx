@@ -135,12 +135,13 @@ const appointmentMatchesStatusFilter = (row: PosAppointmentListItem, value: stri
 }
 
 type SplitPaymentMethod = 'cash' | 'qrpay' | 'credit_card'
-type AppointmentRefundMethod = 'cash' | 'qrpay' | 'manual_transfer' | 'store_credit'
+type AppointmentRefundMethod = 'cash' | 'qrpay' | 'manual_transfer' | 'credit_card' | 'customer_credit'
 const APPOINTMENT_REFUND_METHODS: Array<{ method: AppointmentRefundMethod; label: string; channel: 'online' | 'offline' }> = [
   { method: 'cash', label: 'Cash', channel: 'offline' },
   { method: 'qrpay', label: 'QRPay', channel: 'offline' },
   { method: 'manual_transfer', label: 'Manual Transfer', channel: 'offline' },
-  { method: 'store_credit', label: 'Store Credit / Customer Balance', channel: 'online' },
+  { method: 'credit_card', label: 'Credit Card', channel: 'offline' },
+  { method: 'customer_credit', label: 'Customer Credit / Store Credit', channel: 'online' },
 ]
 const SPLIT_PAYMENT_METHODS: Array<{ method: SplitPaymentMethod; label: string }> = [
   { method: 'cash', label: 'Cash' },
@@ -2097,7 +2098,7 @@ export default function PosAppointmentsWorkspace({
         ? `/api/proxy/pos/appointments/${appointmentDetail.id}/finalize-zero-settlement`
         : `/api/proxy/pos/appointments/${appointmentDetail.id}/collect-payment`
 
-      const selectedRefundMethod = appointmentRefundActionDraft === 'store_credit' ? 'store_credit' : appointmentRefundMethodDraft
+      const selectedRefundMethod = appointmentRefundActionDraft === 'store_credit' ? 'customer_credit' : appointmentRefundMethodDraft
       const selectedRefundChannel = APPOINTMENT_REFUND_METHODS.find((row) => row.method === selectedRefundMethod)?.channel ?? 'offline'
       const zeroSettlementBody = {
         payment_method: mapZeroSettlementPaymentMethod(appointmentPaymentMethod),
@@ -3671,7 +3672,7 @@ export default function PosAppointmentsWorkspace({
 
   const appointmentDueAmountNow = Number(appointmentDetail?.amount_due_now ?? appointmentDetail?.balance_due ?? 0)
   const appointmentOverpaidAmount = Number(appointmentDetail?.overpaid_amount ?? appointmentDetail?.refund_needed ?? 0)
-  const appointmentTotalCovered = Number(appointmentDetail?.total_covered ?? (appointmentDepositTotalForBreakdown + Number(appointmentDetail?.settlement_paid ?? 0) + appointmentPackageOffsetAmount))
+  const appointmentTotalCovered = Number(appointmentPackageOffsetAmount)
   const appointmentSettlementPaid = Number(appointmentDetail?.settlement_paid ?? 0)
   const appointmentPackageApplied =
     ['reserved', 'consumed'].includes(String(appointmentDetail?.package_status?.status ?? '').toLowerCase()) ||
@@ -4786,7 +4787,7 @@ export default function PosAppointmentsWorkspace({
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-slate-600">Add-ons</span>
                           <span className="font-medium tabular-nums text-slate-900">
-                            {appointmentAddonBreakdownDisplay ?? '—'}
+                            {appointmentAddonBreakdownDisplay ?? 'RM 0.00'}
                           </span>
                         </div>
                         {appointmentAddonTotal > appointmentAddonDueForBreakdown + 0.005 &&
@@ -4802,7 +4803,7 @@ export default function PosAppointmentsWorkspace({
                         <span className="font-semibold tabular-nums text-slate-900">RM {appointmentSubtotalBeforeCredits.toFixed(2)}</span>
                       </div> */}
                       <div className="flex items-center justify-between gap-3 py-3.5">
-                        <span className="text-slate-600">Deposit</span>
+                        <span className="text-slate-600">Deposit Paid</span>
                         <span className="font-medium tabular-nums text-slate-800">
                           {appointmentDepositTotalForBreakdown > 0 ? `− RM ${appointmentDepositTotalForBreakdown.toFixed(2)}` : '—'}
                         </span>
@@ -7644,7 +7645,7 @@ export default function PosAppointmentsWorkspace({
                     </label>
                     <label className="text-xs font-semibold uppercase tracking-wide text-gray-700">
                       Staff Choice
-                      <select value={appointmentRefundActionDraft} onChange={(event) => { const value = event.target.value as 'refund_now' | 'store_credit'; setAppointmentRefundActionDraft(value); if (value === 'store_credit') setAppointmentRefundMethodDraft('store_credit') }} className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900">
+                      <select value={appointmentRefundActionDraft} onChange={(event) => { const value = event.target.value as 'refund_now' | 'store_credit'; setAppointmentRefundActionDraft(value); if (value === 'store_credit') setAppointmentRefundMethodDraft('customer_credit') }} className="mt-1 h-10 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm text-gray-900">
                         <option value="refund_now">Refund now</option>
                         <option value="store_credit">Keep as customer credit</option>
                       </select>
@@ -7652,7 +7653,7 @@ export default function PosAppointmentsWorkspace({
                   </div>
                   {appointmentRefundActionDraft === 'refund_now' ? (
                     <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                      {APPOINTMENT_REFUND_METHODS.filter((row) => row.method !== 'store_credit').map(({ method, label }) => (
+                      {APPOINTMENT_REFUND_METHODS.filter((row) => row.method !== 'customer_credit').map(({ method, label }) => (
                         <button key={method} type="button" onClick={() => { reportAppointmentCheckoutError(null); setAppointmentRefundMethodDraft(method) }} className={`rounded-lg border-2 px-3 py-2.5 text-sm font-semibold transition ${appointmentRefundMethodDraft === method ? 'border-rose-600 bg-white text-rose-800 shadow-sm' : 'border-rose-100 bg-white/70 text-gray-700 hover:border-rose-300'}`}>
                           {label}
                         </button>
