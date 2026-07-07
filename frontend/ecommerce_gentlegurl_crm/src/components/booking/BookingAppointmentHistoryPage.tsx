@@ -412,10 +412,10 @@ export function BookingAppointmentDetailDrawer({
                 <h4 className="font-semibold text-slate-900">Payment Breakdown</h4>
                 <dl className="mt-4 grid gap-4 md:grid-cols-2">
                   <DetailField label="Total Amount" value={<HistoryMoneyDisplayValue row={row} field="total" className="text-sm" />} />
-                  <DetailField label="Deposit" value={formatMoney(row.deposit_paid)} />
+                  <DetailField label="Deposit Paid" value={formatMoney(row.deposit_paid)} />
                   <DetailField label="Settlement Paid" value={formatMoney(row.settlement_paid)} />
-                  <DetailField label="Package Offset" value={formatMoney(row.package_offset)} />
-                  <DetailField label="Paid Amount" value={formatHistoryMoneyDisplay(row, 'paid')} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
+                  <DetailField label="Package Covered" value={formatMoney(row.package_offset)} />
+                  <DetailField label="Total Covered" value={formatHistoryMoneyDisplay(row, 'paid')} labelClassName="text-emerald-700" valueClassName={paidAmountClass(row.paid_amount)} />
                   <DetailField label="Balance Due" value={<HistoryMoneyDisplayValue row={row} field="balance" className={`text-sm ${balanceDueClass(row.balance_due)}`} />} labelClassName="text-amber-700" valueClassName={balanceDueClass(row.balance_due)} />
                 </dl>
               </section>
