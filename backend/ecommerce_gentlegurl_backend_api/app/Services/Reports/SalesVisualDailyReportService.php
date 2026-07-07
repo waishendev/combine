@@ -292,7 +292,7 @@ class SalesVisualDailyReportService
             ->selectRaw('oi.booking_id');
 
         $itemAgg = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
+            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
@@ -393,7 +393,7 @@ class SalesVisualDailyReportService
             ->selectRaw('oi.booking_id');
 
         $itemBooking = DB::query()->fromSub($bookingSub, 'r')
-            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('deposit','final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
+            ->selectRaw("COALESCE(SUM(CASE WHEN line_kind IN ('final_settlement','addon','booking_product') THEN net_amount ELSE 0 END), 0) as service_bucket")
             ->selectRaw("COALESCE(SUM(CASE WHEN line_kind = 'package_purchase' THEN net_amount ELSE 0 END), 0) as multi_package")
             ->first();
 
@@ -620,7 +620,7 @@ class SalesVisualDailyReportService
                     ->join('orders', 'orders.id', '=', 'order_items.order_id')
                     ->join('staffs', 'staffs.id', '=', 'order_item_staff_splits.staff_id')
                     ->whereIn('order_items.booking_id', $settledBookingIds)
-                    ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon']),
+                    ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon']),
                 'orders'
             )
                 ->selectRaw('staffs.id as staff_id')
@@ -665,7 +665,7 @@ class SalesVisualDailyReportService
                 DB::table('order_items')
                     ->join('orders', 'orders.id', '=', 'order_items.order_id')
                     ->whereIn('order_items.booking_id', $settledBookingIds)
-                    ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                    ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
                     ->whereNotExists(function ($sub) {
                         $sub->selectRaw('1')
                             ->from('order_item_staff_splits')
@@ -808,7 +808,7 @@ class SalesVisualDailyReportService
                 ->whereBetween(DB::raw($this->orderBillAtSql('orders')), [$start, $end]),
             'orders'
         )
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product']);
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product']);
     }
 
     /**
@@ -1182,7 +1182,7 @@ class SalesVisualDailyReportService
                     ->join('orders as o', 'o.id', '=', 'oi.order_id')
                     ->whereIn('oi.booking_id', $bookingIds)
             )
-                ->whereIn('oi.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereIn('oi.line_type', ['booking_settlement', 'booking_addon'])
                 ->groupBy('oi.booking_id')
                 ->selectRaw('oi.booking_id as booking_id')
                 ->selectRaw("COALESCE(SUM($lineTotal), 0) as service_amount")

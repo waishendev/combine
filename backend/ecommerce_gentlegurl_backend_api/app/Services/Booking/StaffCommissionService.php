@@ -254,7 +254,7 @@ class StaffCommissionService
         $fallbackItems = $this->applyBaseOrderScope(
             DB::table('order_items')
                 ->join('orders', 'orders.id', '=', 'order_items.order_id')
-                ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
                 ->whereNotNull('order_items.booking_id')
                 ->where('orders.created_at', '>=', $start)
                 ->where('orders.created_at', '<', $nextMonthStart)
@@ -474,7 +474,7 @@ class StaffCommissionService
         return DB::table('orders')
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where('orders.created_at', '>=', $start)
             ->where('orders.created_at', '<', $nextMonthStart)
             ->where(function ($query) {
@@ -557,7 +557,7 @@ class StaffCommissionService
         $net = (float) DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('order_items.booking_id', $bookingId)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
@@ -584,7 +584,7 @@ class StaffCommissionService
         return DB::table('order_items')
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->whereIn('order_items.booking_id', $ids)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
             ->whereNotIn('orders.status', ['cancelled', 'draft', 'voided'])
             ->where(function ($query) {
                 $query->where('orders.payment_status', '!=', 'refunded')
@@ -622,7 +622,7 @@ class StaffCommissionService
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->when($staffId, fn ($query) => $query->where('order_item_staff_splits.staff_id', $staffId))
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -659,7 +659,7 @@ class StaffCommissionService
             ->join('order_items', 'order_items.order_id', '=', 'orders.id')
             ->join('order_item_staff_splits', 'order_item_staff_splits.order_item_id', '=', 'order_items.id')
             ->where('order_items.booking_id', $bookingId)
-            ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon', 'booking_product'])
+            ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon', 'booking_product'])
             ->where(function ($query) {
                 $query->where('orders.status', 'completed')
                     ->orWhere('orders.payment_status', 'paid');
@@ -697,7 +697,7 @@ class StaffCommissionService
             DB::table('order_items')
                 ->join('orders', 'orders.id', '=', 'order_items.order_id')
                 ->where('order_items.booking_id', $bookingId)
-                ->whereIn('order_items.line_type', ['booking_deposit', 'booking_settlement', 'booking_addon'])
+                ->whereIn('order_items.line_type', ['booking_settlement', 'booking_addon'])
                 ->whereNotExists(function ($sub) {
                     $sub->selectRaw('1')
                         ->from('order_item_staff_splits')
